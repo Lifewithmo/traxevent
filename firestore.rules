@@ -1,0 +1,71 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Platform admin helper
+    function isPlatformAdmin() {
+      return request.auth != null && request.auth.token.role == 'platform_admin';
+    }
+
+    // Org membership helper
+    function isOrgMember(orgId) {
+      return request.auth != null && request.auth.token.orgId == orgId;
+    }
+
+    function isOrgAdmin(orgId) {
+      return isOrgMember(orgId) && request.auth.token.role in ['owner', 'admin'];
+    }
+
+    // User profile — each user reads/writes their own doc
+    match /users/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // Platform admin roster — platform admin only
+    match /platform_admins/{uid} {
+      allow read: if isPlatformAdmin();
+      allow write: if isPlatformAdmin();
+    }
+
+    // Stripe subscription data
+    match /subscriptions/{orgId} {
+      allow read: if isOrgMember(orgId) || isPlatformAdmin();
+      allow write: if isPlatformAdmin();
+    }
+
+    // Org root document
+    match /orgs/{orgId} {
+      allow read: if isOrgMember(orgId) || isPlatformAdmin();
+      allow write: if isOrgAdmin(orgId) || isPlatformAdmin();
+
+      // Members — readable by all org members, writable by admins
+      match /members/{uid} {
+        allow read: if isOrgMember(orgId);
+        allow write: if isOrgAdmin(orgId);
+      }
+
+      // Invitations — public read (so accept-invite page works without auth),
+      // writable by org admins only
+      match /invitations/{token} {
+        allow read: if true;
+        allow write: if isOrgAdmin(orgId);
+      }
+
+      // Integrations — org admins only (credentials stored here)
+      match /integrations/{slug} {
+        allow read, write: if isOrgAdmin(orgId);
+      }
+
+      // Camps and all sub-collections
+      // Staff access is enforced at the Server Action layer, not here,
+      // because per-page granularity cannot be expressed in security rules.
+      match /camps/{campId} {
+        allow read, write: if isOrgAdmin(orgId) || isPlatformAdmin();
+
+        match /{collection}/{docId} {
+          allow read, write: if isOrgAdmin(orgId) || isPlatformAdmin();
+        }
+      }
+    }
+  }
+}
