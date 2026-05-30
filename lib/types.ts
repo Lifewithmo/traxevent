@@ -65,3 +65,70 @@ export interface AuthClaims {
   orgSlug: string
   role: OrgRole | 'platform_admin'
 }
+
+export interface RegistrantProfile {
+  uid: string
+  display_name: string
+  email: string
+  phone: string
+  address: {
+    street: string
+    city: string
+    state: string
+    zip: string
+  }
+  emergency_contact: {
+    name: string
+    phone: string
+    relationship: string
+  }
+  saved_members: SavedFamilyMember[]
+  created_at: string
+  updated_at: string
+}
+
+export interface SavedFamilyMember {
+  id: string
+  first_name: string
+  last_name: string
+  birth_year: number
+  gender: string
+}
+
+export interface Family {
+  id: string
+  org_id: string
+  camp_id: string
+  org_slug: string
+  camp_slug: string
+  camp_name: string
+  org_name: string
+  first_name: string
+  last_name: string
+  email: string
+  phone: string
+  address: { street: string; city: string; state: string; zip: string }
+  emergency_contact: { name: string; phone: string; relationship: string }
+  registration_status: 'pending' | 'confirmed' | 'waitlisted' | 'cancelled'
+  payment_status: 'unpaid' | 'paid' | 'partial' | 'waived'
+  registrant_uid: string | null
+  pco_household_id: string | null
+  access_token: string | null
+  access_token_expires_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface FamilyMember {
+  id: string
+  family_id: string
+  first_name: string
+  last_name: string
+  birth_year: number
+  gender: string
+  grade: string
+  allergies: string
+  dietary_restrictions: string
+  tshirt_size: string
+  medical_notes: string
+}
