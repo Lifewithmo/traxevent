@@ -1,25 +1,13 @@
 'use server'
 
-import { randomBytes } from 'crypto'
 import { adminDb } from '@/lib/firebase-admin'
 import { setOrgClaims } from '@/actions/auth'
 import {
-  CAMP_PAGES,
   type OrgRole,
   type OrgMember,
   type OrgInvitation,
-  type CampPage,
 } from '@/lib/types'
-
-export function buildInviteToken(): string {
-  return randomBytes(16).toString('hex')
-}
-
-export function validateCampPages(pages: string[]): CampPage[] {
-  return pages.filter((p): p is CampPage =>
-    (CAMP_PAGES as readonly string[]).includes(p)
-  )
-}
+import { buildInviteToken, validateCampPages } from '@/lib/tokens'
 
 export async function createInvitation(
   orgId: string,

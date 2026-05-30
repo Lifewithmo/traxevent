@@ -16,7 +16,7 @@ vi.mock('@/actions/auth', () => ({
   setOrgClaims: vi.fn().mockResolvedValue(undefined),
 }))
 
-import { slugify } from '@/actions/orgs'
+import { slugify } from '@/lib/slug'
 
 describe('slugify', () => {
   it('lowercases and hyphenates spaces', () => {

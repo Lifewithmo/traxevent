@@ -18,7 +18,7 @@ vi.mock('@/actions/auth', () => ({
   setOrgClaims: vi.fn().mockResolvedValue(undefined),
 }))
 
-import { buildInviteToken, validateCampPages } from '@/actions/members'
+import { buildInviteToken, validateCampPages } from '@/lib/tokens'
 import { CAMP_PAGES } from '@/lib/types'
 
 describe('buildInviteToken', () => {

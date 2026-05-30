@@ -2,16 +2,7 @@
 
 import { adminDb } from '@/lib/firebase-admin'
 import type { Camp, CampRegistrationType } from '@/lib/types'
-
-export function buildCampSlug(name: string, year: number): string {
-  const base = name
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, '')
-    .trim()
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-')
-  return `${base}-${year}`
-}
+import { buildCampSlug } from '@/lib/slug'
 
 export async function createCamp(
   orgId: string,

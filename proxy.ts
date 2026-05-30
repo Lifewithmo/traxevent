@@ -13,7 +13,7 @@ export function extractOrgSlug(hostname: string): string | null {
   return sub
 }
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const hostname = request.headers.get('host') ?? ''
   const orgSlug = extractOrgSlug(hostname)
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { extractOrgSlug } from '@/middleware'
+import { extractOrgSlug } from '@/proxy'
 
 describe('extractOrgSlug', () => {
   it('returns slug from subdomain on traxevent.com', () => {

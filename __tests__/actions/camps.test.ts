@@ -11,7 +11,7 @@ vi.mock('@/lib/firebase-admin', () => ({
   },
 }))
 
-import { buildCampSlug } from '@/actions/camps'
+import { buildCampSlug } from '@/lib/slug'
 
 describe('buildCampSlug', () => {
   it('appends the year to the name slug', () => {

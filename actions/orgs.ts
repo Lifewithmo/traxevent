@@ -3,15 +3,7 @@
 import { adminDb } from '@/lib/firebase-admin'
 import { setOrgClaims } from '@/actions/auth'
 import type { Org, OrgRole } from '@/lib/types'
-
-export function slugify(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, '')
-    .trim()
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-')
-}
+import { slugify } from '@/lib/slug'
 
 export async function createOrg(
   uid: string,
