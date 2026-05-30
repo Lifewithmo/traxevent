@@ -9,6 +9,10 @@ export default defineConfig({
     globals: true,
     setupFiles: ['./vitest.setup.ts'],
     passWithNoTests: true,
+    env: {
+      RESEND_API_KEY: 'test-key',
+      RESEND_FROM_EMAIL: 'test@example.com',
+    },
   },
   resolve: {
     alias: { '@': path.resolve(__dirname, '.') },
