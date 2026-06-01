@@ -4,6 +4,7 @@ import { adminDb } from '@/lib/firebase-admin'
 import type { Family, FamilyMember, FamilyNote, FamilyCsvRow } from '@/lib/types'
 import { randomBytes } from 'crypto'
 import { exportFamiliesCsv } from '@/lib/csv'
+import { FieldValue } from 'firebase-admin/firestore'
 
 function familiesRef(orgId: string, campId: string) {
   return adminDb
@@ -14,7 +15,7 @@ function familiesRef(orgId: string, campId: string) {
 
 export async function getAdminFamilies(orgId: string, campId: string): Promise<Family[]> {
   const snap = await familiesRef(orgId, campId).orderBy('created_at', 'desc').get()
-  return snap.docs.map(d => d.data() as Family)
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }) as Family)
 }
 
 export async function getAdminFamily(
@@ -29,8 +30,8 @@ export async function getAdminFamily(
     .collection('family_members')
     .get()
   return {
-    family: familySnap.data() as Family,
-    members: membersSnap.docs.map(d => d.data() as FamilyMember),
+    family: { id: familySnap.id, ...familySnap.data() } as Family,
+    members: membersSnap.docs.map(d => ({ id: d.id, ...d.data() }) as FamilyMember),
   }
 }
 
@@ -64,11 +65,9 @@ export async function updateFamilyStatus(
     created_at: new Date().toISOString(),
     type: 'system',
   }
-  const snap = await familiesRef(orgId, campId).doc(familyId).get()
-  const existing = ((snap.data() as Family).notes) ?? []
   await familiesRef(orgId, campId).doc(familyId).update({
     registration_status: status,
-    notes: [...existing, note],
+    notes: FieldValue.arrayUnion(note),
     updated_at: new Date().toISOString(),
   })
 }
@@ -99,10 +98,8 @@ export async function addFamilyNote(
     created_at: new Date().toISOString(),
     type: 'admin',
   }
-  const snap = await familiesRef(orgId, campId).doc(familyId).get()
-  const existing = ((snap.data() as Family).notes) ?? []
   await familiesRef(orgId, campId).doc(familyId).update({
-    notes: [...existing, note],
+    notes: FieldValue.arrayUnion(note),
     updated_at: new Date().toISOString(),
   })
   return note

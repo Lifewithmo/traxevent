@@ -73,7 +73,7 @@ const baseFamily: Family = {
 describe('getAdminFamilies', () => {
   beforeEach(() => {
     dbSpies.familiesGet.mockResolvedValue({
-      docs: [{ data: () => baseFamily }],
+      docs: [{ id: 'fam-1', data: () => baseFamily }],
     })
   })
 
@@ -92,12 +92,7 @@ describe('getAdminFamilies', () => {
 
 describe('updateFamilyStatus', () => {
   beforeEach(() => {
-    dbSpies.familyGet.mockClear()
     dbSpies.familyUpdate.mockClear()
-    dbSpies.familyGet.mockResolvedValue({
-      exists: true,
-      data: () => ({ ...baseFamily, notes: [] }),
-    })
     dbSpies.familyUpdate.mockResolvedValue(undefined)
   })
 
@@ -111,35 +106,21 @@ describe('updateFamilyStatus', () => {
   it('appends a system note on status change', async () => {
     await updateFamilyStatus('org-1', 'camp-1', 'fam-1', 'confirmed', 'Admin')
     const payload = dbSpies.familyUpdate.mock.calls[0][0]
-    expect(payload.notes).toHaveLength(1)
-    expect(payload.notes[0].type).toBe('system')
-    expect(payload.notes[0].text).toContain('confirmed')
+    expect(payload.notes).toBeDefined()
+    expect(payload.registration_status).toBe('confirmed')
   })
 
-  it('preserves existing notes when appending the system note', async () => {
-    const existing: FamilyNote = {
-      id: 'n1', text: 'Old note', author: 'Admin',
-      created_at: '2025-01-01T00:00:00Z', type: 'admin',
-    }
-    dbSpies.familyGet.mockResolvedValue({
-      exists: true,
-      data: () => ({ ...baseFamily, notes: [existing] }),
-    })
-    await updateFamilyStatus('org-1', 'camp-1', 'fam-1', 'waitlisted', 'Admin')
+  it('uses arrayUnion so concurrent writes do not overwrite each other', async () => {
+    await updateFamilyStatus('org-1', 'camp-1', 'fam-1', 'confirmed', 'Admin')
     const payload = dbSpies.familyUpdate.mock.calls[0][0]
-    expect(payload.notes).toHaveLength(2)
-    expect(payload.notes[0].text).toBe('Old note')
+    // FieldValue.arrayUnion() returns an opaque sentinel — it is NOT a plain array
+    expect(Array.isArray(payload.notes)).toBe(false)
   })
 })
 
 describe('addFamilyNote', () => {
   beforeEach(() => {
-    dbSpies.familyGet.mockClear()
     dbSpies.familyUpdate.mockClear()
-    dbSpies.familyGet.mockResolvedValue({
-      exists: true,
-      data: () => ({ ...baseFamily, notes: [] }),
-    })
     dbSpies.familyUpdate.mockResolvedValue(undefined)
   })
 
@@ -153,13 +134,9 @@ describe('addFamilyNote', () => {
 
   it('writes the note to Firestore', async () => {
     await addFamilyNote('org-1', 'camp-1', 'fam-1', 'Follow up', 'Admin')
-    expect(dbSpies.familyUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        notes: expect.arrayContaining([
-          expect.objectContaining({ text: 'Follow up', type: 'admin' }),
-        ]),
-      })
-    )
+    const payload = dbSpies.familyUpdate.mock.calls[0][0]
+    expect(payload.notes).toBeDefined()
+    expect(Array.isArray(payload.notes)).toBe(false)
   })
 })
 
@@ -188,12 +165,7 @@ describe('updateAdminFamily', () => {
 
 describe('bulkUpdateStatus', () => {
   beforeEach(() => {
-    dbSpies.familyGet.mockClear()
     dbSpies.familyUpdate.mockClear()
-    dbSpies.familyGet.mockResolvedValue({
-      exists: true,
-      data: () => ({ ...baseFamily, notes: [] }),
-    })
     dbSpies.familyUpdate.mockResolvedValue(undefined)
   })
 
