@@ -1,15 +1,7 @@
 'use server'
 
-import { randomBytes } from 'crypto'
 import { adminDb } from '@/lib/firebase-admin'
-
-export function generateAccessToken(): string {
-  return randomBytes(24).toString('hex')
-}
-
-export function isTokenExpired(expiresAt: string): boolean {
-  return new Date(expiresAt) < new Date()
-}
+import { generateAccessToken, isTokenExpired } from '@/lib/tokens'
 
 // Attaches a signed access token to a family record. Called after createRegistration.
 export async function attachAccessToken(

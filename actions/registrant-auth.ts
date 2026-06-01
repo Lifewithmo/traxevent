@@ -1,27 +1,9 @@
 'use server'
 
 import { adminDb } from '@/lib/firebase-admin'
-import type { RegistrantProfile, SavedFamilyMember } from '@/lib/types'
+import type { SavedFamilyMember } from '@/lib/types'
 import { randomBytes } from 'crypto'
-
-export function buildEmptyProfile(
-  uid: string,
-  email: string,
-  displayName: string
-): RegistrantProfile {
-  const now = new Date().toISOString()
-  return {
-    uid,
-    display_name: displayName,
-    email,
-    phone: '',
-    address: { street: '', city: '', state: '', zip: '' },
-    emergency_contact: { name: '', phone: '', relationship: '' },
-    saved_members: [],
-    created_at: now,
-    updated_at: now,
-  }
-}
+import { buildEmptyProfile } from '@/lib/profile-utils'
 
 export async function createRegistrantProfile(
   uid: string,

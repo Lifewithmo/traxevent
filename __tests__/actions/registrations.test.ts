@@ -22,7 +22,7 @@ vi.mock('@/lib/email', () => ({
   sendRegistrationConfirmation: vi.fn().mockResolvedValue(undefined),
 }))
 
-import { buildFamilyId } from '@/actions/registrations'
+import { buildFamilyId } from '@/lib/tokens'
 
 describe('buildFamilyId', () => {
   it('returns a non-empty string', () => {

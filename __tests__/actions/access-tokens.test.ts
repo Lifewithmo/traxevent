@@ -9,7 +9,7 @@ vi.mock('@/lib/firebase-admin', () => ({
   },
 }))
 
-import { generateAccessToken, isTokenExpired } from '@/actions/access-tokens'
+import { generateAccessToken, isTokenExpired } from '@/lib/tokens'
 
 describe('generateAccessToken', () => {
   it('returns a 48-char hex string', () => {

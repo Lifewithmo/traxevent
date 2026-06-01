@@ -4,11 +4,7 @@ import { adminDb } from '@/lib/firebase-admin'
 import { attachAccessToken } from '@/actions/access-tokens'
 import { sendRegistrationConfirmation } from '@/lib/email'
 import type { Family, FamilyMember } from '@/lib/types'
-import { randomBytes } from 'crypto'
-
-export function buildFamilyId(): string {
-  return randomBytes(8).toString('hex')
-}
+import { buildFamilyId } from '@/lib/tokens'
 
 export interface CreateRegistrationInput {
   orgId: string

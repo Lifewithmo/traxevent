@@ -10,7 +10,7 @@ vi.mock('@/lib/firebase-admin', () => ({
   },
 }))
 
-import { buildEmptyProfile } from '@/actions/registrant-auth'
+import { buildEmptyProfile } from '@/lib/profile-utils'
 
 describe('buildEmptyProfile', () => {
   it('returns a profile with the given uid and email', () => {
