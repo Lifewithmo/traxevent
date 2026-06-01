@@ -11,8 +11,6 @@ interface FamiliesClientProps {
   families: Family[]
   orgId: string
   campId: string
-  orgSlug: string
-  campSlug: string
 }
 
 export function FamiliesClient({

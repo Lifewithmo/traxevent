@@ -38,13 +38,17 @@ export function FamilySlideOver({
   useEffect(() => {
     if (!familyId) return
     setLoading(true)
-    getAdminFamily(orgId, campId, familyId).then(result => {
-      if (result) {
-        setFamily(result.family)
-        setMembers(result.members)
+    ;(async () => {
+      try {
+        const result = await getAdminFamily(orgId, campId, familyId)
+        if (result) {
+          setFamily(result.family)
+          setMembers(result.members)
+        }
+      } finally {
+        setLoading(false)
       }
-      setLoading(false)
-    })
+    })()
   }, [familyId, orgId, campId])
 
   // Keyboard: Escape closes
@@ -104,7 +108,9 @@ export function FamilySlideOver({
               <h2 className="text-base font-bold text-gray-900">
                 {family.last_name}, {family.first_name}
               </h2>
-              <p className="text-xs text-gray-400 mt-0.5">{family.email}</p>
+              <p className="text-xs text-gray-400 mt-0.5">
+                {family.email} · Registered {new Date(family.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+              </p>
               <div className="mt-1.5">
                 <StatusBadge status={family.registration_status} />
               </div>
