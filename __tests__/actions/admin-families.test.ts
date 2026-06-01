@@ -42,6 +42,7 @@ import {
   updateFamilyStatus,
   addFamilyNote,
   updateAdminFamily,
+  bulkUpdateStatus,
 } from '@/actions/admin-families'
 
 const baseFamily: Family = {
@@ -182,5 +183,29 @@ describe('updateAdminFamily', () => {
     await updateAdminFamily('org-1', 'camp-1', 'fam-1', { phone: '555-9999' })
     const payload = dbSpies.familyUpdate.mock.calls[0][0]
     expect(payload.updated_at).toBeTruthy()
+  })
+})
+
+describe('bulkUpdateStatus', () => {
+  beforeEach(() => {
+    dbSpies.familyGet.mockClear()
+    dbSpies.familyUpdate.mockClear()
+    dbSpies.familyGet.mockResolvedValue({
+      exists: true,
+      data: () => ({ ...baseFamily, notes: [] }),
+    })
+    dbSpies.familyUpdate.mockResolvedValue(undefined)
+  })
+
+  it('calls updateFamilyStatus for each family ID', async () => {
+    await bulkUpdateStatus('org-1', 'camp-1', ['fam-1', 'fam-2'], 'confirmed', 'Admin')
+    expect(dbSpies.familyUpdate).toHaveBeenCalledTimes(2)
+  })
+
+  it('sets registration_status on all selected families', async () => {
+    await bulkUpdateStatus('org-1', 'camp-1', ['fam-1', 'fam-2'], 'waitlisted', 'Admin')
+    const calls = dbSpies.familyUpdate.mock.calls
+    expect(calls[0][0]).toMatchObject({ registration_status: 'waitlisted' })
+    expect(calls[1][0]).toMatchObject({ registration_status: 'waitlisted' })
   })
 })
