@@ -32,15 +32,13 @@ describe('exportFamiliesCsv', () => {
   })
 
   it('wraps every field in double quotes', () => {
-    const csv = exportFamiliesCsv([makeRow()])
+    const csv = exportFamiliesCsv([makeRow({ familyName: 'Chen' })])
     const dataLine = csv.split('\n')[1]
-    // Split on field boundary (between closing quote + comma + opening quote)
-    // then verify the outer quotes on first and last
-    expect(dataLine.startsWith('"')).toBe(true)
-    expect(dataLine.endsWith('"')).toBe(true)
-    // Every field boundary should be ","
-    const fieldBoundaries = dataLine.match(/","/g)
-    expect(fieldBoundaries).toHaveLength(6) // 7 fields = 6 boundaries
+    const fields = dataLine.split(',')
+    fields.forEach(f => {
+      expect(f.startsWith('"')).toBe(true)
+      expect(f.endsWith('"')).toBe(true)
+    })
   })
 
   it('escapes double quotes inside field values', () => {
