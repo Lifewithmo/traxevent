@@ -1,7 +1,7 @@
 'use server'
 
 import { adminDb } from '@/lib/firebase-admin'
-import type { SavedFamilyMember } from '@/lib/types'
+import type { RegistrantProfile, SavedFamilyMember } from '@/lib/types'
 import { randomBytes } from 'crypto'
 import { buildEmptyProfile } from '@/lib/profile-utils'
 
