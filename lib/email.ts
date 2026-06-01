@@ -1,4 +1,4 @@
-import { resend, FROM_EMAIL } from '@/lib/resend'
+import { getResend, FROM_EMAIL } from '@/lib/resend'
 
 interface RegistrationConfirmationParams {
   to: string
@@ -17,7 +17,7 @@ export async function sendRegistrationConfirmation(
   const portalUrl = `https://${params.orgSlug}.traxevent.com/${params.campSlug}/my-registration?token=${params.accessToken}`
   const accountUrl = `https://${params.orgSlug}.traxevent.com/register/create-account?token=${params.accessToken}&familyId=${params.familyId}`
 
-  await resend.emails.send({
+  await getResend().emails.send({
     from: FROM_EMAIL,
     to: params.to,
     subject: `Registration confirmed — ${params.campName}`,

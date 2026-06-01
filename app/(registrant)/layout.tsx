@@ -1,15 +1,13 @@
 'use client'
 
-import { useEffect } from 'react'
+export const dynamic = 'force-dynamic'
+
+import { Suspense, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import Link from 'next/link'
 
-export default function RegistrantLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
+function RegistrantGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { user, loading } = useAuth()
@@ -37,5 +35,17 @@ export default function RegistrantLayout({
       </header>
       <main className="max-w-2xl mx-auto px-4 py-8">{children}</main>
     </div>
+  )
+}
+
+export default function RegistrantLayout({
+  children,
+}: {
+  children: React.ReactNode
+}) {
+  return (
+    <Suspense fallback={null}>
+      <RegistrantGuard>{children}</RegistrantGuard>
+    </Suspense>
   )
 }
