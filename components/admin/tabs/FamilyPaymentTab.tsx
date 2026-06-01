@@ -35,9 +35,14 @@ export function FamilyPaymentTab({ family, orgId, campId, onSaved }: FamilyPayme
       payment_status:
         paid === 0 ? 'unpaid' : paid >= due ? 'paid' : 'partial',
     }
-    await updateAdminFamily(orgId, campId, family.id, updates)
-    setSaving(false)
-    onSaved(updates)
+    try {
+      await updateAdminFamily(orgId, campId, family.id, updates)
+      onSaved(updates)
+    } catch {
+      alert('Failed to save. Please try again.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (

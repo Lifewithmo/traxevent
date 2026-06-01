@@ -81,9 +81,14 @@ export function FamilyCampersTab({
 
   async function handleSave() {
     setSaving(true)
-    await updateFamilyMembers(orgId, campId, familyId, members)
-    setSaving(false)
-    onSaved(members)
+    try {
+      await updateFamilyMembers(orgId, campId, familyId, members)
+      onSaved(members)
+    } catch {
+      alert('Failed to save. Please try again.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (

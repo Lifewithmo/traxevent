@@ -93,10 +93,15 @@ export function FamilyDetailsTab({ family, orgId, campId, onSaved }: FamilyDetai
         zip: draft.addr_zip,
       },
     }
-    await updateAdminFamily(orgId, campId, family.id, updates)
-    setSaving(false)
-    setClean(draft)
-    onSaved(updates)
+    try {
+      await updateAdminFamily(orgId, campId, family.id, updates)
+      setClean(draft)
+      onSaved(updates)
+    } catch {
+      alert('Failed to save. Please try again.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (

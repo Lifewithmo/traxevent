@@ -158,6 +158,7 @@ export function FamilySlideOver({
             <>
               {activeTab === 'details' && (
                 <FamilyDetailsTab
+                  key={family.id}
                   family={family}
                   orgId={orgId}
                   campId={campId}
@@ -166,6 +167,7 @@ export function FamilySlideOver({
               )}
               {activeTab === 'campers' && (
                 <FamilyCampersTab
+                  key={family.id}
                   members={members}
                   familyId={family.id}
                   orgId={orgId}
@@ -175,6 +177,7 @@ export function FamilySlideOver({
               )}
               {activeTab === 'payment' && (
                 <FamilyPaymentTab
+                  key={family.id}
                   family={family}
                   orgId={orgId}
                   campId={campId}
@@ -183,6 +186,7 @@ export function FamilySlideOver({
               )}
               {activeTab === 'notes' && (
                 <FamilyNotesTab
+                  key={family.id}
                   family={family}
                   orgId={orgId}
                   campId={campId}
