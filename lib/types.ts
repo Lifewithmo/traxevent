@@ -117,6 +117,11 @@ export interface Family {
   access_token_expires_at: string | null
   created_at: string
   updated_at: string
+  // Admin-managed fields (not present at registration time)
+  amount_due?: number
+  amount_paid?: number
+  payment_notes?: string
+  notes?: FamilyNote[]
 }
 
 export interface FamilyMember {
@@ -131,4 +136,22 @@ export interface FamilyMember {
   dietary_restrictions: string
   tshirt_size: string
   medical_notes: string
+}
+
+export interface FamilyNote {
+  id: string
+  text: string
+  author: string
+  created_at: string
+  type: 'admin' | 'system'
+}
+
+export interface FamilyCsvRow {
+  familyName: string
+  email: string
+  phone: string
+  campers: string
+  status: string
+  balance: string
+  submitted: string
 }
