@@ -134,7 +134,7 @@ export async function buildFamiliesCsvAction(
         .doc(f.id)
         .collection('family_members')
         .get()
-      membersMap.set(f.id, snap.docs.map(d => d.data() as FamilyMember))
+      membersMap.set(f.id, snap.docs.map(d => ({ id: d.id, ...d.data() }) as FamilyMember))
     })
   )
 
