@@ -4,22 +4,23 @@ import { useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { createCamp } from '@/actions/camps'
 import { getOrgBySlug } from '@/actions/orgs'
+import { getAllEventTypes } from '@/lib/event-types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent } from '@/components/ui/card'
-import type { CampRegistrationType } from '@/lib/types'
 
-export default function NewCampPage() {
+export default function NewEventPage() {
   const router = useRouter()
   const { orgSlug } = useParams<{ orgSlug: string }>()
   const [name, setName] = useState('')
   const [year, setYear] = useState(new Date().getFullYear())
-  const [regType, setRegType] = useState<CampRegistrationType>('family')
+  const [eventTypeId, setEventTypeId] = useState('summer-camp')
   const [campStart, setCampStart] = useState('')
   const [campEnd, setCampEnd] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const eventTypes = getAllEventTypes()
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -28,16 +29,18 @@ export default function NewCampPage() {
     try {
       const org = await getOrgBySlug(orgSlug)
       if (!org) throw new Error('Organization not found')
+      const selectedType = eventTypes.find((et) => et.id === eventTypeId)!
       const camp = await createCamp(org.id, {
         name,
         year,
-        registration_type: regType,
+        registration_type: selectedType.registrationUnit,
+        event_type_id: eventTypeId,
         camp_start: campStart,
         camp_end: campEnd,
       })
       router.push(`/${orgSlug}/${camp.slug}/dashboard`)
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to create camp')
+      setError(err instanceof Error ? err.message : 'Failed to create event')
     } finally {
       setLoading(false)
     }
@@ -45,20 +48,37 @@ export default function NewCampPage() {
 
   return (
     <div className="p-6 max-w-lg">
-      <h1 className="text-2xl font-bold mb-6">New camp</h1>
+      <h1 className="text-2xl font-bold mb-6">New event</h1>
       <Card>
         <CardContent className="pt-6">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-1">
-              <Label htmlFor="name">Camp name</Label>
+              <Label htmlFor="eventType">Event type</Label>
+              <select
+                id="eventType"
+                className="w-full border rounded-md px-3 py-2 text-sm bg-white"
+                value={eventTypeId}
+                onChange={(e) => setEventTypeId(e.target.value)}
+              >
+                {eventTypes.map((et) => (
+                  <option key={et.id} value={et.id}>
+                    {et.name} — {et.description}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-1">
+              <Label htmlFor="name">Event name</Label>
               <Input
                 id="name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Family Camp 2026"
+                placeholder="Summer Camp 2026"
                 required
               />
             </div>
+
             <div className="space-y-1">
               <Label htmlFor="year">Year</Label>
               <Input
@@ -71,19 +91,7 @@ export default function NewCampPage() {
                 required
               />
             </div>
-            <div className="space-y-1">
-              <Label htmlFor="regType">Registration type</Label>
-              <select
-                id="regType"
-                className="w-full border rounded-md px-3 py-2 text-sm bg-white"
-                value={regType}
-                onChange={(e) => setRegType(e.target.value as CampRegistrationType)}
-              >
-                <option value="family">Family — one form per family unit</option>
-                <option value="individual">Individual — one form per person</option>
-                <option value="child">Child — guardian fills form for a child</option>
-              </select>
-            </div>
+
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1">
                 <Label htmlFor="campStart">Start date</Label>
@@ -106,9 +114,10 @@ export default function NewCampPage() {
                 />
               </div>
             </div>
-            {error && <p className="text-sm text-red-600">{error}</p>}
+
+            {error && <p className="text-sm text-destructive">{error}</p>}
             <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? 'Creating…' : 'Create camp'}
+              {loading ? 'Creating…' : 'Create event'}
             </Button>
           </form>
         </CardContent>
