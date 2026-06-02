@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { ContactStep } from './steps/ContactStep'
 import { FamilyMembersStep } from './steps/FamilyMembersStep'
@@ -24,12 +24,15 @@ export function RegistrationForm({ camp, org }: RegistrationFormProps) {
   const { registrationUnit, terminology } = getEventType(camp.event_type_id)
   const hasFee = (camp.payment_amount ?? 0) > 0
 
-  const steps: StepName[] = [
-    'contact',
-    ...(registrationUnit !== 'individual' ? ['members' as StepName] : []),
-    'review',
-    ...(hasFee ? ['payment' as StepName] : []),
-  ]
+  const steps = useMemo<StepName[]>(
+    () => [
+      'contact',
+      ...(registrationUnit !== 'individual' ? ['members' as StepName] : []),
+      'review',
+      ...(hasFee ? ['payment' as StepName] : []),
+    ],
+    [registrationUnit, hasFee]
+  )
 
   const [stepIndex, setStepIndex] = useState(0)
   const [contact, setContact] = useState<Partial<ContactData>>({})
@@ -50,9 +53,10 @@ export function RegistrationForm({ camp, org }: RegistrationFormProps) {
       members,
       skipConfirmationEmail: hasFee,
     })
-    if (hasFee) {
+    const paymentIndex = steps.indexOf('payment')
+    if (hasFee && paymentIndex !== -1) {
       setFamilyId(result.familyId)
-      setStepIndex(steps.indexOf('payment'))
+      setStepIndex(paymentIndex)
     } else {
       const query = new URLSearchParams({ email: (contact as ContactData).email })
       if (result.waitlisted) query.set('status', 'waitlisted')
