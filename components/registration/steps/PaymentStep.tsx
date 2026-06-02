@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { loadStripe } from '@stripe/stripe-js'
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js'
 import { Button } from '@/components/ui/button'
@@ -81,7 +81,9 @@ export function PaymentStep({ orgSlug, campSlug, familyId, paymentAmount, onSucc
   if (loadError) {
     return (
       <div className="space-y-4">
-        <p className="text-sm text-destructive">{loadError}</p>
+        <div aria-live="polite" aria-atomic="true">
+          <p className="text-sm text-destructive">{loadError}</p>
+        </div>
         <Button variant="outline" onClick={onBack}>Back</Button>
       </div>
     )
@@ -91,9 +93,12 @@ export function PaymentStep({ orgSlug, campSlug, familyId, paymentAmount, onSucc
     return <p className="text-sm text-muted-foreground">Loading payment form…</p>
   }
 
-  const stripePromise = loadStripe(
-    process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!,
-    { stripeAccount: stripeAccountId }
+  const stripePromise = useMemo(
+    () => loadStripe(
+      process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!,
+      { stripeAccount: stripeAccountId! }
+    ),
+    [stripeAccountId]
   )
 
   return (

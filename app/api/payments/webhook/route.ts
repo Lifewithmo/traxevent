@@ -30,11 +30,15 @@ export async function POST(req: Request) {
       .get()
 
     if (!snap.empty) {
-      await snap.docs[0].ref.update({
-        payment_status: 'paid',
-        amount_paid: pi.amount / 100, // cents → dollars
-        updated_at: new Date().toISOString(),
-      })
+      try {
+        await snap.docs[0].ref.update({
+          payment_status: 'paid',
+          amount_paid: pi.amount / 100,
+          updated_at: new Date().toISOString(),
+        })
+      } catch {
+        return new Response('Firestore update failed', { status: 500 })
+      }
     }
   }
 

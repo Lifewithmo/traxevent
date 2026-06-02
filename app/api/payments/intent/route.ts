@@ -40,16 +40,28 @@ export async function POST(req: Request) {
   const amountCents = Math.round(camp.payment_amount * 100)
   const applicationFeeCents = Math.round(amountCents * 0.01) // 1% platform fee
 
-  const paymentIntent = await stripe.paymentIntents.create(
-    {
-      amount: amountCents,
-      currency: 'usd',
-      application_fee_amount: applicationFeeCents,
-      automatic_payment_methods: { enabled: true },
-      metadata: { familyId: familyId ?? '' },
-    },
-    { stripeAccount: org.stripe_account_id }
-  )
+  let paymentIntent: Awaited<ReturnType<typeof stripe.paymentIntents.create>>
+  try {
+    paymentIntent = await stripe.paymentIntents.create(
+      {
+        amount: amountCents,
+        currency: 'usd',
+        application_fee_amount: applicationFeeCents,
+        automatic_payment_methods: { enabled: true },
+        metadata: { familyId: familyId ?? '' },
+      },
+      { stripeAccount: org.stripe_account_id }
+    )
+  } catch (err: unknown) {
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : 'Failed to create payment' },
+      { status: 502 }
+    )
+  }
+
+  if (!paymentIntent.client_secret) {
+    return NextResponse.json({ error: 'Payment intent has no client secret' }, { status: 500 })
+  }
 
   return NextResponse.json({
     clientSecret: paymentIntent.client_secret,
