@@ -309,6 +309,8 @@ Permission levels:
 - Immutable PDF snapshot of the document as it existed at signing, stored per registrant
 - Signed copy emailed to signer automatically
 - Form versioning — old signatures remain tied to the exact version that was signed
+- **Immutable storage:** PDF snapshots stored in Firebase Storage (Google Cloud Storage) with a timestamped path (`/signed-forms/{orgId}/{eventId}/{registrantId}/{formId}/{signedAt}.pdf`) — the timestamp in the path makes overwrite impossible. A 7-year GCS bucket retention policy prevents deletion by anyone (including service accounts) until the retention period expires (WORM compliance).
+- **Metadata record** stored in Firestore with write-once security rules — can be created, never updated or deleted
 - Medical form collection built on the form builder (not a separate system)
 - Health record storage per person
 - Dietary/allergy report generation
