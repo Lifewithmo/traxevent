@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import { getOrgBySlug } from '@/actions/orgs'
 import { getCampBySlug, updateCamp } from '@/actions/camps'
-import { getAllEventTypes } from '@/lib/event-types'
+import { getAllEventTypes, getEventType, DEFAULT_EVENT_TYPE_ID } from '@/lib/event-types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -21,7 +21,7 @@ export default function EventSettingsPage() {
 
   const [name, setName] = useState('')
   const [status, setStatus] = useState<Camp['status']>('draft')
-  const [eventTypeId, setEventTypeId] = useState('summer-camp')
+  const [eventTypeId, setEventTypeId] = useState<string>(DEFAULT_EVENT_TYPE_ID)
   const [campStart, setCampStart] = useState('')
   const [campEnd, setCampEnd] = useState('')
   const [registrationOpen, setRegistrationOpen] = useState('')
@@ -38,7 +38,7 @@ export default function EventSettingsPage() {
       setCamp(c)
       setName(c.name)
       setStatus(c.status)
-      setEventTypeId(c.event_type_id ?? 'summer-camp')
+      setEventTypeId(c.event_type_id ?? DEFAULT_EVENT_TYPE_ID)
       setCampStart(c.camp_start)
       setCampEnd(c.camp_end)
       setRegistrationOpen(c.registration_open ?? '')
@@ -59,6 +59,7 @@ export default function EventSettingsPage() {
         name,
         status,
         event_type_id: eventTypeId,
+        registration_type: getEventType(eventTypeId).registrationUnit,
         camp_start: campStart,
         camp_end: campEnd,
         registration_open: registrationOpen || undefined,

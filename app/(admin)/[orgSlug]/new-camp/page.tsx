@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { createCamp } from '@/actions/camps'
 import { getOrgBySlug } from '@/actions/orgs'
-import { getAllEventTypes, getEventType } from '@/lib/event-types'
+import { getAllEventTypes, getEventType, DEFAULT_EVENT_TYPE_ID } from '@/lib/event-types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -15,7 +15,7 @@ export default function NewEventPage() {
   const { orgSlug } = useParams<{ orgSlug: string }>()
   const [name, setName] = useState('')
   const [year, setYear] = useState(new Date().getFullYear())
-  const [eventTypeId, setEventTypeId] = useState('summer-camp')
+  const [eventTypeId, setEventTypeId] = useState<string>(DEFAULT_EVENT_TYPE_ID)
   const [campStart, setCampStart] = useState('')
   const [campEnd, setCampEnd] = useState('')
   const [error, setError] = useState<string | null>(null)
