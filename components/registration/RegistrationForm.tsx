@@ -40,6 +40,7 @@ export function RegistrationForm({ camp, org }: RegistrationFormProps) {
       orgName: org.name,
       family: contact as ContactData,
       members,
+      skipConfirmationEmail: hasFee,
     })
     if (hasFee) {
       setFamilyId(result.familyId)

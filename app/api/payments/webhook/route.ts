@@ -3,6 +3,7 @@ import Stripe from 'stripe'
 import { stripe } from '@/lib/stripe'
 import { headers } from 'next/headers'
 import { adminDb } from '@/lib/firebase-admin'
+import { sendRegistrationConfirmation } from '@/lib/email'
 
 export async function POST(req: Request) {
   const body = await req.text()
@@ -38,6 +39,33 @@ export async function POST(req: Request) {
         })
       } catch {
         return new Response('Firestore update failed', { status: 500 })
+      }
+
+      const familyData = snap.docs[0].data() as {
+        first_name: string
+        email: string
+        camp_name: string
+        org_name: string
+        org_slug: string
+        camp_slug: string
+        id: string
+        access_token: string | null
+      }
+
+      // Send confirmation email (best-effort — don't fail the webhook if email fails)
+      try {
+        await sendRegistrationConfirmation({
+          to: familyData.email,
+          firstName: familyData.first_name,
+          campName: familyData.camp_name,
+          orgName: familyData.org_name,
+          orgSlug: familyData.org_slug,
+          campSlug: familyData.camp_slug,
+          familyId: familyData.id,
+          accessToken: familyData.access_token ?? '',
+        })
+      } catch {
+        // Email failure should not cause Stripe to retry the webhook
       }
     }
   }

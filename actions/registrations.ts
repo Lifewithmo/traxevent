@@ -21,6 +21,7 @@ export interface CreateRegistrationInput {
   >
   members: Omit<FamilyMember, 'id' | 'family_id'>[]
   registrantUid?: string
+  skipConfirmationEmail?: boolean  // set true for paid registrations; email sent after payment webhook
 }
 
 export async function createRegistration(
@@ -66,17 +67,19 @@ export async function createRegistration(
   // Attach signed URL token
   const accessToken = await attachAccessToken(input.orgId, input.campId, familyId)
 
-  // Send confirmation email
-  await sendRegistrationConfirmation({
-    to: input.family.email,
-    firstName: input.family.first_name,
-    campName: input.campName,
-    orgName: input.orgName,
-    orgSlug: input.orgSlug,
-    campSlug: input.campSlug,
-    familyId,
-    accessToken,
-  })
+  // Send confirmation email (skipped for paid registrations; sent after payment webhook confirms payment)
+  if (!input.skipConfirmationEmail) {
+    await sendRegistrationConfirmation({
+      to: input.family.email,
+      firstName: input.family.first_name,
+      campName: input.campName,
+      orgName: input.orgName,
+      orgSlug: input.orgSlug,
+      campSlug: input.campSlug,
+      familyId,
+      accessToken,
+    })
+  }
 
   return { familyId, accessToken }
 }
