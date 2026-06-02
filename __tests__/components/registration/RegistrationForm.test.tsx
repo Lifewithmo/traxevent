@@ -18,6 +18,7 @@ const mockCamp = {
   year: 2026,
   status: 'active' as const,
   registration_type: 'family' as const,
+  event_type_id: 'summer-camp',
   features: { accommodations: true, teams: true, budget: true, itinerary: true, communicate: true },
   camp_start: '2026-07-10',
   camp_end: '2026-07-13',

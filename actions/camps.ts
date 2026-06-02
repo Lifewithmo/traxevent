@@ -3,6 +3,7 @@
 import { adminDb } from '@/lib/firebase-admin'
 import type { Camp, CampRegistrationType } from '@/lib/types'
 import { buildCampSlug } from '@/lib/slug'
+import { DEFAULT_EVENT_TYPE_ID } from '@/lib/event-types'
 
 export async function createCamp(
   orgId: string,
@@ -10,6 +11,7 @@ export async function createCamp(
     name: string
     year: number
     registration_type: CampRegistrationType
+    event_type_id?: string
     camp_start: string
     camp_end: string
   }
@@ -25,6 +27,7 @@ export async function createCamp(
     year: input.year,
     status: 'draft',
     registration_type: input.registration_type,
+    event_type_id: input.event_type_id ?? DEFAULT_EVENT_TYPE_ID,
     features: {
       accommodations: true,
       teams: true,
@@ -58,4 +61,33 @@ export async function getCampBySlug(orgId: string, slug: string): Promise<Camp |
     .limit(1)
     .get()
   return snap.empty ? null : (snap.docs[0].data() as Camp)
+}
+
+export async function updateCamp(
+  orgId: string,
+  campId: string,
+  updates: Partial<Pick<Camp,
+    | 'name'
+    | 'status'
+    | 'event_type_id'
+    // note: registration_type and event_type_id should be updated together — they are coupled
+    | 'registration_type'
+    | 'camp_start'
+    | 'camp_end'
+    | 'registration_open'
+    | 'registration_close'
+    | 'capacity'
+  >>
+): Promise<void> {
+  const ref = adminDb
+    .collection('orgs').doc(orgId)
+    .collection('camps').doc(campId)
+
+  const snap = await ref.get()
+  if (!snap.exists) throw new Error('Camp not found')
+
+  await ref.update({
+    ...updates,
+    updated_at: new Date().toISOString(),
+  })
 }

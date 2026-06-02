@@ -1,4 +1,5 @@
 import { getOrgBySlug } from '@/actions/orgs'
+import { DEFAULT_EVENT_TYPE_ID } from '@/lib/event-types'
 import { listCamps } from '@/actions/camps'
 import { redirect } from 'next/navigation'
 import { Button } from '@/components/ui/button'
@@ -22,16 +23,16 @@ export default async function OrgHomePage({
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">{org.name}</h1>
         <Link href={`/${orgSlug}/new-camp`}>
-          <Button>New camp</Button>
+          <Button>New event</Button>
         </Link>
       </div>
 
       {camps.length === 0 ? (
-        <div className="text-center py-16 text-gray-500">
-          <p className="text-lg font-medium">No camps yet</p>
-          <p className="mt-1 text-sm">Create your first camp to get started.</p>
+        <div className="text-center py-16 text-muted-foreground">
+          <p className="text-lg font-medium">No events yet</p>
+          <p className="mt-1 text-sm">Create your first event to get started.</p>
           <Link href={`/${orgSlug}/new-camp`} className="mt-4 inline-block">
-            <Button>Create a camp</Button>
+            <Button>Create an event</Button>
           </Link>
         </div>
       ) : (
@@ -48,9 +49,9 @@ export default async function OrgHomePage({
                     <Badge variant={camp.status === 'active' ? 'default' : 'secondary'}>
                       {camp.status}
                     </Badge>
-                    <Badge variant="outline">{camp.registration_type}</Badge>
+                    <Badge variant="outline">{camp.event_type_id ?? DEFAULT_EVENT_TYPE_ID}</Badge>
                   </div>
-                  <p className="mt-2 text-xs text-gray-400">
+                  <p className="mt-2 text-xs text-muted-foreground">
                     {camp.camp_start} → {camp.camp_end}
                   </p>
                 </CardContent>

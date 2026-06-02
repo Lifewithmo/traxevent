@@ -47,6 +47,7 @@ export interface Camp {
   year: number
   status: 'draft' | 'active' | 'archived'
   registration_type: CampRegistrationType
+  event_type_id: string              // drives terminology + UI config
   features: {
     accommodations: boolean
     teams: boolean
@@ -56,7 +57,11 @@ export interface Camp {
   }
   camp_start: string
   camp_end: string
+  registration_open?: string         // ISO date, optional
+  registration_close?: string        // ISO date, optional
+  capacity?: number                  // max registrants, optional
   created_at: string
+  updated_at?: string                // set on every updateCamp call
 }
 
 // Shape of our Firebase Auth JWT custom claims
@@ -117,6 +122,11 @@ export interface Family {
   access_token_expires_at: string | null
   created_at: string
   updated_at: string
+  // Admin-managed fields (not present at registration time)
+  amount_due?: number
+  amount_paid?: number
+  payment_notes?: string
+  notes?: FamilyNote[]
 }
 
 export interface FamilyMember {
@@ -131,4 +141,22 @@ export interface FamilyMember {
   dietary_restrictions: string
   tshirt_size: string
   medical_notes: string
+}
+
+export interface FamilyNote {
+  id: string
+  text: string
+  author: string
+  created_at: string
+  type: 'admin' | 'system'
+}
+
+export interface FamilyCsvRow {
+  familyName: string
+  email: string
+  phone: string
+  campers: string
+  status: string
+  balance: string
+  submitted: string
 }
