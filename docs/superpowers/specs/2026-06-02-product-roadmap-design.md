@@ -275,6 +275,8 @@ Permission levels:
 - Basic email blast to all registrants for an event
 - Email templates per event type
 - Registrant communication log
+- Reply-to address configurable per event (replies route to the admin, not TraxEvent)
+- Custom "from" display name per event (e.g., "Summer Camp 2026 at First Baptist")
 
 ---
 
@@ -297,12 +299,23 @@ Permission levels:
 - Background check collection (Ministry Safe integration)
 - Staff/volunteer communication channel (separate from registrants)
 
-**Medical + Forms:**
-- Medical form collection per registration
+**Forms & Signatures:**
+- Form template builder at org level (reusable across any event)
+- Event-level form assignment (inherit org templates or define event-specific versions)
+- Form types: liability waiver, medical authorization, photo/media consent, code of conduct, background check consent, custom
+- Field types: text, textarea, checkbox, radio, dropdown, date, file upload, signature pad
+- Audience targeting per form: `registrant/parent`, `volunteer`, `staff`
+- Digital signature: typed full name + timestamp + IP address (legally valid under E-SIGN Act)
+- Immutable PDF snapshot of the document as it existed at signing, stored per registrant
+- Signed copy emailed to signer automatically
+- Form versioning — old signatures remain tied to the exact version that was signed
+- Medical form collection built on the form builder (not a separate system)
 - Health record storage per person
 - Dietary/allergy report generation
-- Custom form builder (add questions to any event type)
-- Document collection (waiver upload, passport copy, etc.)
+- Document collection (passport copy, insurance card upload)
+
+**Communication:**
+- Custom sending domain: org verifies their domain via DNS (SPF/DKIM) to send from `@their-domain.org`
 
 **Check-In:**
 - Daily attendance check-in dashboard
@@ -335,6 +348,14 @@ Permission levels:
 - Itinerary builder (day-by-day schedule with time blocks, publish to registrant portal)
 - Volunteer hours tracking
 - Cross-event staff scheduling
+
+**Forms (advanced):**
+- Conditional logic (show/hide fields based on other answers)
+- Bulk missing-signatures view (who hasn't completed required forms)
+- Form submission reports
+
+**Communication:**
+- Per-staff sender identity (individual staff send from `john@their-domain.org` once org domain is verified)
 
 **Reports:**
 - Registration summary (counts by status, type, payment)
@@ -421,7 +442,11 @@ Permission levels:
 | Room/cabin assignments | Phase 2 |
 | Team assignments | Phase 2 |
 | Volunteer management | Phase 2 |
-| Medical forms | Phase 2 |
+| Forms & signatures module | Phase 2 |
+| Custom sending domain (DNS/DKIM) | Phase 2 |
+| Conditional form logic | Phase 3 |
+| Per-staff sender identity | Phase 3 |
+| Medical forms (built on form builder) | Phase 2 |
 | ABAC permissions | Phase 2 |
 | Check-in system | Phase 2 |
 | Org hierarchy (dept/program) | Phase 3 |
