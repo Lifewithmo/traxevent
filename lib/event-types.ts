@@ -10,15 +10,17 @@ export interface Terminology {
 
 export type RegistrationUnit = 'family' | 'individual' | 'child'
 
+export type EventTypeId = 'summer-camp' | 'retreat' | 'vbs' | 'gala' | 'mission-trip'
+
 export interface EventType {
-  id: string
+  id: EventTypeId
   name: string
   description: string
   registrationUnit: RegistrationUnit
   terminology: Terminology
 }
 
-export const DEFAULT_EVENT_TYPE_ID = 'summer-camp'
+export const DEFAULT_EVENT_TYPE_ID: EventTypeId = 'summer-camp'
 
 const BUILT_IN_EVENT_TYPES: EventType[] = [
   {
@@ -98,12 +100,12 @@ const BUILT_IN_EVENT_TYPES: EventType[] = [
   },
 ]
 
-const EVENT_TYPE_MAP = new Map(BUILT_IN_EVENT_TYPES.map((et) => [et.id, et]))
+const EVENT_TYPE_MAP = new Map<string, EventType>(BUILT_IN_EVENT_TYPES.map((et) => [et.id, et]))
 
 export function getEventType(id: string): EventType {
   return EVENT_TYPE_MAP.get(id) ?? EVENT_TYPE_MAP.get(DEFAULT_EVENT_TYPE_ID)!
 }
 
 export function getAllEventTypes(): EventType[] {
-  return BUILT_IN_EVENT_TYPES
+  return [...BUILT_IN_EVENT_TYPES]
 }
