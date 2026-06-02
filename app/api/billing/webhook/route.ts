@@ -25,9 +25,13 @@ export async function POST(req: Request) {
       const session = event.data.object as Stripe.Checkout.Session
       const orgId = session.metadata?.orgId
       if (!orgId) break
+      const customerId = typeof session.customer === 'string'
+        ? session.customer
+        : (session.customer as Stripe.Customer | null)?.id
+      if (!customerId) break
       await orgRef(orgId).update({
         billing_status: 'active',
-        stripe_customer_id: session.customer as string,
+        stripe_customer_id: customerId,
       })
       break
     }

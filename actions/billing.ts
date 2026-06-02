@@ -21,7 +21,8 @@ export async function createCheckoutSession(orgId: string, orgSlug: string): Pro
     cancel_url: `${process.env.NEXT_PUBLIC_BASE_URL}/${orgSlug}/billing`,
   })
 
-  return session.url!
+  if (!session.url) throw new Error('Stripe did not return a session URL')
+  return session.url
 }
 
 export async function createBillingPortalSession(orgId: string, orgSlug: string): Promise<string> {
