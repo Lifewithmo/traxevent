@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { createCamp } from '@/actions/camps'
 import { getOrgBySlug } from '@/actions/orgs'
-import { getAllEventTypes } from '@/lib/event-types'
+import { getAllEventTypes, getEventType } from '@/lib/event-types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -29,7 +29,7 @@ export default function NewEventPage() {
     try {
       const org = await getOrgBySlug(orgSlug)
       if (!org) throw new Error('Organization not found')
-      const selectedType = eventTypes.find((et) => et.id === eventTypeId)!
+      const selectedType = getEventType(eventTypeId)
       const camp = await createCamp(org.id, {
         name,
         year,
