@@ -1,5 +1,6 @@
 'use client'
 
+import { Suspense } from 'react'
 import { useState, useEffect } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { getOrgBySlug } from '@/actions/orgs'
@@ -8,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import type { Org } from '@/lib/types'
 
-export default function BillingPage() {
+function BillingContent() {
   const { orgSlug } = useParams<{ orgSlug: string }>()
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -20,7 +21,9 @@ export default function BillingPage() {
   const justConnected = searchParams.get('connected') === '1'
 
   useEffect(() => {
-    getOrgBySlug(orgSlug).then(setOrg)
+    getOrgBySlug(orgSlug)
+      .then(setOrg)
+      .catch(() => setError('Failed to load organisation'))
   }, [orgSlug])
 
   async function handleSubscribe() {
@@ -79,17 +82,10 @@ export default function BillingPage() {
     <div className="p-6 max-w-lg space-y-6">
       <h1 className="text-2xl font-bold">Billing</h1>
 
-      {justSubscribed && (
-        <div aria-live="polite">
-          <p className="text-sm text-accent">Subscription activated — welcome to TraxEvent!</p>
-        </div>
-      )}
-
-      {justConnected && (
-        <div aria-live="polite">
-          <p className="text-sm text-accent">Stripe account connected. You can now collect registration payments.</p>
-        </div>
-      )}
+      <div aria-live="polite" aria-atomic="true">
+        {justSubscribed && <p className="text-sm text-green-700">Subscription activated — welcome to TraxEvent!</p>}
+        {justConnected && <p className="text-sm text-green-700">Stripe account connected. You can now collect registration payments.</p>}
+      </div>
 
       {/* TraxEvent subscription */}
       <Card>
@@ -154,5 +150,13 @@ export default function BillingPage() {
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+export default function BillingPage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading…</div>}>
+      <BillingContent />
+    </Suspense>
   )
 }
