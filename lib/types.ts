@@ -7,6 +7,8 @@ export interface Org {
   name: string
   slug: string
   billing_status: 'active' | 'trialing' | 'inactive'
+  stripe_customer_id?: string
+  stripe_account_id?: string
   created_at: string
 }
 
@@ -62,6 +64,7 @@ export interface Camp {
   capacity?: number                  // max registrants, optional
   created_at: string
   updated_at?: string                // set on every updateCamp call
+  payment_amount?: number            // registration fee in dollars (e.g. 150 = $150.00); omit or 0 for free events
 }
 
 // Shape of our Firebase Auth JWT custom claims
