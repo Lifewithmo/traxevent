@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { getEventType, DEFAULT_EVENT_TYPE_ID } from '@/lib/event-types'
 import type { Terminology } from '@/lib/event-types'
 
 interface AdminSidebarProps {
@@ -24,15 +25,7 @@ function getCampNav(terminology: Terminology) {
   ]
 }
 
-const DEFAULT_TERMINOLOGY: Terminology = {
-  registrantSingular: 'Family',
-  registrantPlural: 'Families',
-  memberSingular: 'Camper',
-  memberPlural: 'Campers',
-  assignmentSingular: 'Cabin',
-  assignmentPlural: 'Cabins',
-  eventLabel: 'Camp',
-}
+const DEFAULT_TERMINOLOGY: Terminology = getEventType(DEFAULT_EVENT_TYPE_ID).terminology
 
 export function AdminSidebar({ orgSlug, campSlug, terminology }: AdminSidebarProps) {
   const pathname = usePathname()

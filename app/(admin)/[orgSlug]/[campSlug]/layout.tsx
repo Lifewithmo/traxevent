@@ -1,7 +1,7 @@
 import { AdminSidebar } from '@/components/layout/AdminSidebar'
 import { getOrgBySlug } from '@/actions/orgs'
 import { getCampBySlug } from '@/actions/camps'
-import { getEventType } from '@/lib/event-types'
+import { getEventType, DEFAULT_EVENT_TYPE_ID } from '@/lib/event-types'
 
 export default async function CampLayout({
   children,
@@ -13,7 +13,7 @@ export default async function CampLayout({
   const { orgSlug, campSlug } = await params
   const org = await getOrgBySlug(orgSlug)
   const camp = org ? await getCampBySlug(org.id, campSlug) : null
-  const eventType = getEventType(camp?.event_type_id ?? 'summer-camp')
+  const eventType = getEventType(camp?.event_type_id ?? DEFAULT_EVENT_TYPE_ID)
 
   return (
     <div className="flex min-h-screen">
