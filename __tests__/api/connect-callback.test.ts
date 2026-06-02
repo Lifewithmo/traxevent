@@ -57,4 +57,11 @@ describe('GET /api/connect/callback', () => {
     expect(res.status).toBe(400)
     expect(oauthTokenSpy).not.toHaveBeenCalled()
   })
+
+  it('returns 400 when state is invalid JSON', async () => {
+    const req = new Request('http://localhost/api/connect/callback?code=auth_code_abc&state=not-json')
+    const res = await GET(req)
+    expect(res.status).toBe(400)
+    expect(oauthTokenSpy).not.toHaveBeenCalled()
+  })
 })

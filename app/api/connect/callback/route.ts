@@ -20,10 +20,23 @@ export async function GET(req: Request) {
     return new Response('Invalid state parameter', { status: 400 })
   }
 
-  const response = await stripe.oauth.token({
-    grant_type: 'authorization_code',
-    code,
-  })
+  if (!orgId || !orgSlug) {
+    return new Response('Invalid state parameter', { status: 400 })
+  }
+
+  let response: Awaited<ReturnType<typeof stripe.oauth.token>>
+  try {
+    response = await stripe.oauth.token({
+      grant_type: 'authorization_code',
+      code,
+    })
+  } catch {
+    return new Response('Stripe OAuth exchange failed', { status: 502 })
+  }
+
+  if (!response.stripe_user_id) {
+    return new Response('Stripe did not return account ID', { status: 502 })
+  }
 
   await adminDb.collection('orgs').doc(orgId).update({
     stripe_account_id: response.stripe_user_id,
