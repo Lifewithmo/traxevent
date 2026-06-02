@@ -78,6 +78,17 @@ export function PaymentStep({ orgSlug, campSlug, familyId, paymentAmount, onSucc
       .catch(() => setLoadError('Failed to initialize payment'))
   }, [orgSlug, campSlug, familyId])
 
+  const stripePromise = useMemo(
+    () =>
+      stripeAccountId
+        ? loadStripe(
+            process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!,
+            { stripeAccount: stripeAccountId }
+          )
+        : null,
+    [stripeAccountId]
+  )
+
   if (loadError) {
     return (
       <div className="space-y-4">
@@ -92,14 +103,6 @@ export function PaymentStep({ orgSlug, campSlug, familyId, paymentAmount, onSucc
   if (!clientSecret || !stripeAccountId) {
     return <p className="text-sm text-muted-foreground">Loading payment form…</p>
   }
-
-  const stripePromise = useMemo(
-    () => loadStripe(
-      process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!,
-      { stripeAccount: stripeAccountId! }
-    ),
-    [stripeAccountId]
-  )
 
   return (
     <div className="space-y-4">
