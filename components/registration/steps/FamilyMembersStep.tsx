@@ -18,9 +18,10 @@ interface FamilyMembersStepProps {
   initial: MemberInput[]
   onNext: (members: MemberInput[]) => void
   onBack: () => void
+  memberLabel?: string
 }
 
-export function FamilyMembersStep({ initial, onNext, onBack }: FamilyMembersStepProps) {
+export function FamilyMembersStep({ initial, onNext, onBack, memberLabel = 'Family Members' }: FamilyMembersStepProps) {
   const [members, setMembers] = useState<MemberInput[]>(
     initial.length > 0 ? initial : [emptyMember()]
   )
@@ -45,7 +46,7 @@ export function FamilyMembersStep({ initial, onNext, onBack }: FamilyMembersStep
 
   return (
     <div className="space-y-4">
-      <h2 className="text-lg font-semibold text-[#4C1D95]">Family Members</h2>
+      <h2 className="text-lg font-semibold text-[#4C1D95]">{memberLabel}</h2>
       <p className="text-sm text-gray-500">Add everyone who will be attending camp.</p>
 
       <div className="space-y-3">

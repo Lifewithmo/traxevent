@@ -26,7 +26,7 @@ export interface CreateRegistrationInput {
 
 export async function createRegistration(
   input: CreateRegistrationInput
-): Promise<{ familyId: string; accessToken: string }> {
+): Promise<{ familyId: string; accessToken: string; waitlisted: boolean }> {
   const familyId = buildFamilyId()
   const now = new Date().toISOString()
 
@@ -81,7 +81,7 @@ export async function createRegistration(
     })
   }
 
-  return { familyId, accessToken }
+  return { familyId, accessToken, waitlisted: false }  // Task 3 makes this dynamic
 }
 
 export async function getRegistrationByToken(

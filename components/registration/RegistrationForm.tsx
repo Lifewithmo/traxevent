@@ -7,10 +7,12 @@ import { FamilyMembersStep } from './steps/FamilyMembersStep'
 import { ReviewStep } from './steps/ReviewStep'
 import { PaymentStep } from './steps/PaymentStep'
 import { createRegistration } from '@/actions/registrations'
+import { getEventType } from '@/lib/event-types'
 import type { Camp, Family, FamilyMember, Org } from '@/lib/types'
 
 type ContactData = Pick<Family, 'first_name' | 'last_name' | 'email' | 'phone' | 'address' | 'emergency_contact'>
 type MemberInput = Omit<FamilyMember, 'id' | 'family_id'>
+type StepName = 'contact' | 'members' | 'review' | 'payment'
 
 interface RegistrationFormProps {
   camp: Camp
@@ -19,16 +21,22 @@ interface RegistrationFormProps {
 
 export function RegistrationForm({ camp, org }: RegistrationFormProps) {
   const router = useRouter()
+  const { registrationUnit, terminology } = getEventType(camp.event_type_id)
   const hasFee = (camp.payment_amount ?? 0) > 0
 
-  const STEPS = hasFee
-    ? (['Contact Information', 'Family Members', 'Review', 'Payment'] as const)
-    : (['Contact Information', 'Family Members', 'Review'] as const)
+  const steps: StepName[] = [
+    'contact',
+    ...(registrationUnit !== 'individual' ? ['members' as StepName] : []),
+    'review',
+    ...(hasFee ? ['payment' as StepName] : []),
+  ]
 
-  const [step, setStep] = useState(0)
+  const [stepIndex, setStepIndex] = useState(0)
   const [contact, setContact] = useState<Partial<ContactData>>({})
   const [members, setMembers] = useState<MemberInput[]>([])
   const [familyId, setFamilyId] = useState<string>('')
+
+  const currentStep = steps[stepIndex]
 
   async function handleReviewSubmit() {
     const result = await createRegistration({
@@ -44,11 +52,11 @@ export function RegistrationForm({ camp, org }: RegistrationFormProps) {
     })
     if (hasFee) {
       setFamilyId(result.familyId)
-      setStep(3)
+      setStepIndex(steps.indexOf('payment'))
     } else {
-      router.push(
-        `/${org.slug}/${camp.slug}/register/confirmation?email=${encodeURIComponent((contact as ContactData).email)}`
-      )
+      const query = new URLSearchParams({ email: (contact as ContactData).email })
+      if (result.waitlisted) query.set('status', 'waitlisted')
+      router.push(`/${org.slug}/${camp.slug}/register/confirmation?${query.toString()}`)
     }
   }
 
@@ -62,52 +70,48 @@ export function RegistrationForm({ camp, org }: RegistrationFormProps) {
     <div className="min-h-screen bg-[#FAF5FF] py-8 px-4">
       <div className="max-w-xl mx-auto">
         <div className="mb-6">
-          <p className="text-xs font-semibold text-[#7C3AED] uppercase tracking-wide mb-1">
-            {org.name}
-          </p>
+          <p className="text-xs font-semibold text-[#7C3AED] uppercase tracking-wide mb-1">{org.name}</p>
           <h1 className="text-2xl font-bold text-[#4C1D95]">{camp.name}</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            Step {step + 1} of {STEPS.length}
-          </p>
+          <p className="text-sm text-gray-500 mt-1">Step {stepIndex + 1} of {steps.length}</p>
           <div className="mt-3 h-1.5 bg-[#DDD6FE] rounded-full overflow-hidden">
             <div
               className="h-full bg-[#7C3AED] rounded-full transition-all"
-              style={{ width: `${((step + 1) / STEPS.length) * 100}%` }}
+              style={{ width: `${((stepIndex + 1) / steps.length) * 100}%` }}
             />
           </div>
         </div>
-
         <div className="bg-white rounded-xl shadow-sm border border-[#DDD6FE] p-6">
-          {step === 0 && (
+          {currentStep === 'contact' && (
             <ContactStep
               initial={contact}
-              onNext={(data) => { setContact(data); setStep(1) }}
+              onNext={(data) => { setContact(data); setStepIndex((i) => i + 1) }}
             />
           )}
-          {step === 1 && (
+          {currentStep === 'members' && (
             <FamilyMembersStep
               initial={members}
-              onNext={(m) => { setMembers(m); setStep(2) }}
-              onBack={() => setStep(0)}
+              memberLabel={terminology.memberPlural}
+              onNext={(m) => { setMembers(m); setStepIndex((i) => i + 1) }}
+              onBack={() => setStepIndex((i) => i - 1)}
             />
           )}
-          {step === 2 && (
+          {currentStep === 'review' && (
             <ReviewStep
               contact={contact as ContactData}
               members={members}
               campName={camp.name}
               onSubmit={handleReviewSubmit}
-              onBack={() => setStep(1)}
+              onBack={() => setStepIndex((i) => i - 1)}
             />
           )}
-          {step === 3 && hasFee && (
+          {currentStep === 'payment' && hasFee && (
             <PaymentStep
               orgSlug={org.slug}
               campSlug={camp.slug}
               familyId={familyId}
               paymentAmount={camp.payment_amount!}
               onSuccess={handlePaymentSuccess}
-              onBack={() => setStep(2)}
+              onBack={() => setStepIndex((i) => i - 1)}
             />
           )}
         </div>

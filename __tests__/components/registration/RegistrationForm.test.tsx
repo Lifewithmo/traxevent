@@ -33,6 +33,20 @@ const mockOrg = {
   created_at: '2026-01-01',
 }
 
+const mockIndividualCamp = {
+  id: 'camp-2',
+  name: 'Grace Retreat 2026',
+  slug: 'grace-retreat-2026',
+  year: 2026,
+  status: 'active' as const,
+  registration_type: 'individual' as const,
+  event_type_id: 'retreat',
+  features: { accommodations: true, teams: true, budget: true, itinerary: true, communicate: true },
+  camp_start: '2026-09-01',
+  camp_end: '2026-09-03',
+  created_at: '2026-01-01',
+}
+
 describe('RegistrationForm', () => {
   it('renders the first step heading', () => {
     render(<RegistrationForm camp={mockCamp} org={mockOrg} />)
@@ -51,6 +65,17 @@ describe('RegistrationForm', () => {
     await userEvent.type(screen.getAllByLabelText(/Phone/i)[1], '555-9999')
     await userEvent.click(screen.getByRole('button', { name: /Next/i }))
     expect(screen.getByText(/Step 2 of 3/i)).toBeInTheDocument()
-    expect(screen.getByText(/Family Members/i)).toBeInTheDocument()
+    // summer-camp terminology.memberPlural is "Campers"
+    expect(screen.getByText(/Campers/i)).toBeInTheDocument()
+  })
+
+  it('shows Step 1 of 2 for individual event types (no members step)', () => {
+    render(<RegistrationForm camp={mockIndividualCamp} org={mockOrg} />)
+    expect(screen.getByText(/Step 1 of 2/i)).toBeInTheDocument()
+  })
+
+  it('uses terminology memberPlural as members step label for summer-camp', () => {
+    render(<RegistrationForm camp={mockCamp} org={mockOrg} />)
+    expect(screen.getByText(/Step 1 of 3/i)).toBeInTheDocument()
   })
 })
