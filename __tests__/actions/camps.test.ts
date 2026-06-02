@@ -58,6 +58,7 @@ describe('createCamp — event_type_id', () => {
 describe('updateCamp', () => {
   beforeEach(() => {
     campDocGetSpy.mockResolvedValue({ exists: true, data: () => ({ id: 'camp-1' }) })
+    campDocGetSpy.mockClear()
     campUpdateSpy.mockClear()
     campUpdateSpy.mockResolvedValue(undefined)
   })
@@ -80,5 +81,6 @@ describe('updateCamp', () => {
   it('throws "Camp not found" if the camp document does not exist', async () => {
     campDocGetSpy.mockResolvedValue({ exists: false })
     await expect(updateCamp('org-1', 'camp-999', {})).rejects.toThrow('Camp not found')
+    expect(campUpdateSpy).not.toHaveBeenCalled()
   })
 })

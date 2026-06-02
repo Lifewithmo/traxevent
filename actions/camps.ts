@@ -70,6 +70,7 @@ export async function updateCamp(
     | 'name'
     | 'status'
     | 'event_type_id'
+    // note: registration_type and event_type_id should be updated together — they are coupled
     | 'registration_type'
     | 'camp_start'
     | 'camp_end'
