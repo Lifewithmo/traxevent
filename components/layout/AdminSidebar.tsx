@@ -2,25 +2,42 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import type { Terminology } from '@/lib/event-types'
 
 interface AdminSidebarProps {
   orgSlug: string
   campSlug?: string
+  terminology?: Terminology
 }
 
-const CAMP_NAV = [
-  { key: 'dashboard', label: 'Dashboard' },
-  { key: 'families', label: 'Families' },
-  { key: 'assignments', label: 'Assignments' },
-  { key: 'teams', label: 'Teams' },
-  { key: 'budget', label: 'Budget' },
-  { key: 'itinerary', label: 'Itinerary' },
-  { key: 'communicate', label: 'Communicate' },
-  { key: 'reports', label: 'Reports' },
-]
+function getCampNav(terminology: Terminology) {
+  return [
+    { key: 'dashboard', label: 'Dashboard' },
+    { key: 'families', label: terminology.registrantPlural },
+    { key: 'assignments', label: terminology.assignmentPlural },
+    { key: 'teams', label: 'Teams' },
+    { key: 'budget', label: 'Budget' },
+    { key: 'itinerary', label: 'Itinerary' },
+    { key: 'communicate', label: 'Communicate' },
+    { key: 'reports', label: 'Reports' },
+    { key: 'settings', label: 'Settings' },
+  ]
+}
 
-export function AdminSidebar({ orgSlug, campSlug }: AdminSidebarProps) {
+const DEFAULT_TERMINOLOGY: Terminology = {
+  registrantSingular: 'Family',
+  registrantPlural: 'Families',
+  memberSingular: 'Camper',
+  memberPlural: 'Campers',
+  assignmentSingular: 'Cabin',
+  assignmentPlural: 'Cabins',
+  eventLabel: 'Camp',
+}
+
+export function AdminSidebar({ orgSlug, campSlug, terminology }: AdminSidebarProps) {
   const pathname = usePathname()
+  const t = terminology ?? DEFAULT_TERMINOLOGY
+  const campNav = getCampNav(t)
 
   function navClass(href: string) {
     const active = pathname === href || pathname.startsWith(href + '/')
@@ -41,8 +58,8 @@ export function AdminSidebar({ orgSlug, campSlug }: AdminSidebarProps) {
       </div>
 
       {campSlug && (
-        <nav className="flex-1 px-2 py-4 space-y-0.5" aria-label="Camp navigation">
-          {CAMP_NAV.map(({ key, label }) => {
+        <nav className="flex-1 px-2 py-4 space-y-0.5" aria-label="Event navigation">
+          {campNav.map(({ key, label }) => {
             const href = `/${orgSlug}/${campSlug}/${key}`
             return (
               <Link key={key} href={href} className={navClass(href)}>
@@ -56,9 +73,6 @@ export function AdminSidebar({ orgSlug, campSlug }: AdminSidebarProps) {
       <div className="px-2 py-4 border-t border-gray-700 space-y-0.5">
         <Link href={`/${orgSlug}/members`} className={navClass(`/${orgSlug}/members`)}>
           Members
-        </Link>
-        <Link href={`/${orgSlug}/settings`} className={navClass(`/${orgSlug}/settings`)}>
-          Settings
         </Link>
       </div>
     </aside>
