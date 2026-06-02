@@ -47,6 +47,7 @@ export interface Camp {
   year: number
   status: 'draft' | 'active' | 'archived'
   registration_type: CampRegistrationType
+  event_type_id: string              // drives terminology + UI config
   features: {
     accommodations: boolean
     teams: boolean
@@ -56,7 +57,11 @@ export interface Camp {
   }
   camp_start: string
   camp_end: string
+  registration_open?: string         // ISO date, optional
+  registration_close?: string        // ISO date, optional
+  capacity?: number                  // max registrants, optional
   created_at: string
+  updated_at?: string                // set on every updateCamp call
 }
 
 // Shape of our Firebase Auth JWT custom claims
