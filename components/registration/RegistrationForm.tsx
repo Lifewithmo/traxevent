@@ -5,13 +5,12 @@ import { useRouter } from 'next/navigation'
 import { ContactStep } from './steps/ContactStep'
 import { FamilyMembersStep } from './steps/FamilyMembersStep'
 import { ReviewStep } from './steps/ReviewStep'
+import { PaymentStep } from './steps/PaymentStep'
 import { createRegistration } from '@/actions/registrations'
 import type { Camp, Family, FamilyMember, Org } from '@/lib/types'
 
 type ContactData = Pick<Family, 'first_name' | 'last_name' | 'email' | 'phone' | 'address' | 'emergency_contact'>
 type MemberInput = Omit<FamilyMember, 'id' | 'family_id'>
-
-const STEPS = ['Contact Information', 'Family Members', 'Review'] as const
 
 interface RegistrationFormProps {
   camp: Camp
@@ -20,12 +19,19 @@ interface RegistrationFormProps {
 
 export function RegistrationForm({ camp, org }: RegistrationFormProps) {
   const router = useRouter()
+  const hasFee = (camp.payment_amount ?? 0) > 0
+
+  const STEPS = hasFee
+    ? (['Contact Information', 'Family Members', 'Review', 'Payment'] as const)
+    : (['Contact Information', 'Family Members', 'Review'] as const)
+
   const [step, setStep] = useState(0)
   const [contact, setContact] = useState<Partial<ContactData>>({})
   const [members, setMembers] = useState<MemberInput[]>([])
+  const [familyId, setFamilyId] = useState<string>('')
 
-  async function handleSubmit() {
-    await createRegistration({
+  async function handleReviewSubmit() {
+    const result = await createRegistration({
       orgId: org.id,
       campId: camp.id,
       orgSlug: org.slug,
@@ -35,6 +41,17 @@ export function RegistrationForm({ camp, org }: RegistrationFormProps) {
       family: contact as ContactData,
       members,
     })
+    if (hasFee) {
+      setFamilyId(result.familyId)
+      setStep(3)
+    } else {
+      router.push(
+        `/${org.slug}/${camp.slug}/register/confirmation?email=${encodeURIComponent((contact as ContactData).email)}`
+      )
+    }
+  }
+
+  function handlePaymentSuccess() {
     router.push(
       `/${org.slug}/${camp.slug}/register/confirmation?email=${encodeURIComponent((contact as ContactData).email)}`
     )
@@ -78,8 +95,18 @@ export function RegistrationForm({ camp, org }: RegistrationFormProps) {
               contact={contact as ContactData}
               members={members}
               campName={camp.name}
-              onSubmit={handleSubmit}
+              onSubmit={handleReviewSubmit}
               onBack={() => setStep(1)}
+            />
+          )}
+          {step === 3 && hasFee && (
+            <PaymentStep
+              orgSlug={org.slug}
+              campSlug={camp.slug}
+              familyId={familyId}
+              paymentAmount={camp.payment_amount!}
+              onSuccess={handlePaymentSuccess}
+              onBack={() => setStep(2)}
             />
           )}
         </div>

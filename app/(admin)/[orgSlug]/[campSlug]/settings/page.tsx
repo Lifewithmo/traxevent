@@ -27,6 +27,7 @@ export default function EventSettingsPage() {
   const [registrationOpen, setRegistrationOpen] = useState('')
   const [registrationClose, setRegistrationClose] = useState('')
   const [capacity, setCapacity] = useState<string>('')
+  const [paymentAmount, setPaymentAmount] = useState<string>('')
 
   useEffect(() => {
     async function load() {
@@ -44,6 +45,7 @@ export default function EventSettingsPage() {
       setRegistrationOpen(c.registration_open ?? '')
       setRegistrationClose(c.registration_close ?? '')
       setCapacity(c.capacity != null ? String(c.capacity) : '')
+      setPaymentAmount(c.payment_amount != null ? String(c.payment_amount) : '')
     }
     load()
   }, [orgSlug, campSlug])
@@ -65,6 +67,7 @@ export default function EventSettingsPage() {
         registration_open: registrationOpen || undefined,
         registration_close: registrationClose || undefined,
         capacity: capacity ? Number(capacity) : undefined,
+        payment_amount: paymentAmount ? Number(paymentAmount) : undefined,
       })
       setSaved(true)
     } catch (err: unknown) {
@@ -181,6 +184,22 @@ export default function EventSettingsPage() {
                 onChange={(e) => { setCapacity(e.target.value); setSaved(false) }}
                 placeholder="No limit"
               />
+            </div>
+
+            <div className="space-y-1">
+              <Label htmlFor="paymentAmount">Registration fee (optional)</Label>
+              <Input
+                id="paymentAmount"
+                type="number"
+                min={0}
+                step="0.01"
+                value={paymentAmount}
+                onChange={(e) => { setPaymentAmount(e.target.value); setSaved(false) }}
+                placeholder="0 for free events"
+              />
+              <p className="text-xs text-muted-foreground">
+                In dollars. Leave blank or 0 for free events. TraxEvent collects 1% of paid registrations automatically.
+              </p>
             </div>
 
             <div aria-live="polite" aria-atomic="true">
