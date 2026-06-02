@@ -74,7 +74,7 @@ export default function EventSettingsPage() {
   }
 
   if (!camp) {
-    return <div className="p-6 text-sm text-gray-500">Loading…</div>
+    return <div className="p-6 text-sm text-muted-foreground">Loading…</div>
   }
 
   return (
@@ -182,8 +182,10 @@ export default function EventSettingsPage() {
               />
             </div>
 
-            {error && <p className="text-sm text-red-600">{error}</p>}
-            {saved && <p className="text-sm text-green-600">Settings saved.</p>}
+            <div aria-live="polite" aria-atomic="true">
+              {error && <p className="text-sm text-destructive">{error}</p>}
+              {saved && <p className="text-sm text-accent">Settings saved.</p>}
+            </div>
 
             <Button type="submit" disabled={saving}>
               {saving ? 'Saving…' : 'Save settings'}
