@@ -62,3 +62,31 @@ export async function getCampBySlug(orgId: string, slug: string): Promise<Camp |
     .get()
   return snap.empty ? null : (snap.docs[0].data() as Camp)
 }
+
+export async function updateCamp(
+  orgId: string,
+  campId: string,
+  updates: Partial<Pick<Camp,
+    | 'name'
+    | 'status'
+    | 'event_type_id'
+    | 'registration_type'
+    | 'camp_start'
+    | 'camp_end'
+    | 'registration_open'
+    | 'registration_close'
+    | 'capacity'
+  >>
+): Promise<void> {
+  const ref = adminDb
+    .collection('orgs').doc(orgId)
+    .collection('camps').doc(campId)
+
+  const snap = await ref.get()
+  if (!snap.exists) throw new Error('Camp not found')
+
+  await ref.update({
+    ...updates,
+    updated_at: new Date().toISOString(),
+  })
+}
