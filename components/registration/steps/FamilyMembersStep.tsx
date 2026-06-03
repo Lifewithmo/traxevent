@@ -7,10 +7,13 @@ import type { FamilyMember } from '@/lib/types'
 
 type MemberInput = Omit<FamilyMember, 'id' | 'family_id'>
 
-function emptyMember(): MemberInput {
+type MemberInputWithKey = MemberInput & { _key: string }
+
+function emptyMember(): MemberInputWithKey {
   return {
     first_name: '', last_name: '', birth_year: 0, gender: '', grade: '',
     allergies: '', dietary_restrictions: '', tshirt_size: '', medical_notes: '',
+    _key: Math.random().toString(36).slice(2),
   }
 }
 
@@ -18,15 +21,20 @@ interface FamilyMembersStepProps {
   initial: MemberInput[]
   onNext: (members: MemberInput[]) => void
   onBack: () => void
+  memberLabel?: string
 }
 
-export function FamilyMembersStep({ initial, onNext, onBack }: FamilyMembersStepProps) {
-  const [members, setMembers] = useState<MemberInput[]>(
-    initial.length > 0 ? initial : [emptyMember()]
+export function FamilyMembersStep({ initial, onNext, onBack, memberLabel = 'Family Members' }: FamilyMembersStepProps) {
+  const [members, setMembers] = useState<MemberInputWithKey[]>(
+    initial.length > 0
+      ? initial.map((m) => ({ ...m, _key: Math.random().toString(36).slice(2) }))
+      : [emptyMember()]
   )
 
   function handleChange(index: number, updated: MemberInput) {
-    setMembers((prev) => prev.map((m, i) => (i === index ? updated : m)))
+    setMembers((prev) =>
+      prev.map((m, i) => (i === index ? { ...updated, _key: m._key } : m))
+    )
   }
 
   function handleRemove(index: number) {
@@ -38,20 +46,22 @@ export function FamilyMembersStep({ initial, onNext, onBack }: FamilyMembersStep
   }
 
   function handleNext() {
-    const valid = members.filter((m) => m.first_name.trim() && m.last_name.trim())
+    const valid = members
+      .filter((m) => m.first_name.trim() && m.last_name.trim())
+      .map(({ _key, ...m }) => m)  // strip _key before passing out
     if (valid.length === 0) return
     onNext(valid)
   }
 
   return (
     <div className="space-y-4">
-      <h2 className="text-lg font-semibold text-[#4C1D95]">Family Members</h2>
-      <p className="text-sm text-gray-500">Add everyone who will be attending camp.</p>
+      <h2 className="text-lg font-semibold text-[#4C1D95]">{memberLabel}</h2>
+      <p className="text-sm text-gray-500">Add everyone who will be attending.</p>
 
       <div className="space-y-3">
         {members.map((member, i) => (
           <MemberRow
-            key={i}
+            key={member._key}
             index={i}
             member={member}
             onChange={handleChange}

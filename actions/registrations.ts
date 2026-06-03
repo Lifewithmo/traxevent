@@ -3,7 +3,7 @@
 import { adminDb } from '@/lib/firebase-admin'
 import { attachAccessToken } from '@/actions/access-tokens'
 import { sendRegistrationConfirmation } from '@/lib/email'
-import type { Family, FamilyMember } from '@/lib/types'
+import type { Camp, Family, FamilyMember } from '@/lib/types'
 import { buildFamilyId } from '@/lib/tokens'
 
 export interface CreateRegistrationInput {
@@ -26,9 +26,35 @@ export interface CreateRegistrationInput {
 
 export async function createRegistration(
   input: CreateRegistrationInput
-): Promise<{ familyId: string; accessToken: string }> {
+): Promise<{ familyId: string; accessToken: string; waitlisted: boolean }> {
   const familyId = buildFamilyId()
   const now = new Date().toISOString()
+
+  // Determine registration status — check capacity if set on the camp
+  let registrationStatus: Family['registration_status'] = 'pending'
+
+  const campRef = adminDb
+    .collection('orgs').doc(input.orgId)
+    .collection('camps').doc(input.campId)
+
+  const campSnap = await campRef.get()
+  const camp = campSnap.exists ? (campSnap.data() as Camp) : null
+  if (!camp) throw new Error(`Camp not found: ${input.campId}`)
+
+  if (camp?.capacity) {
+    const familiesSnap = await campRef.collection('families').get()
+    const activeCount = familiesSnap.docs.reduce((count, doc) => {
+      const status = (doc.data() as Family).registration_status
+      return status === 'pending' || status === 'confirmed' ? count + 1 : count
+    }, 0)
+    // TODO: replace with Firestore transaction for strict capacity enforcement
+    // Current read-then-write has a small TOCTOU window under concurrent submissions
+    if (activeCount >= camp.capacity) {
+      registrationStatus = 'waitlisted'
+    }
+  }
+
+  const waitlisted = registrationStatus === 'waitlisted'
 
   const family: Family = {
     id: familyId,
@@ -39,7 +65,7 @@ export async function createRegistration(
     camp_name: input.campName,
     org_name: input.orgName,
     ...input.family,
-    registration_status: 'pending',
+    registration_status: registrationStatus,
     payment_status: 'unpaid',
     registrant_uid: input.registrantUid ?? null,
     pco_household_id: null,
@@ -49,11 +75,7 @@ export async function createRegistration(
     updated_at: now,
   }
 
-  const familyRef = adminDb
-    .collection('orgs').doc(input.orgId)
-    .collection('camps').doc(input.campId)
-    .collection('families').doc(familyId)
-
+  const familyRef = campRef.collection('families').doc(familyId)
   await familyRef.set(family)
 
   // Write each family member
@@ -81,7 +103,7 @@ export async function createRegistration(
     })
   }
 
-  return { familyId, accessToken }
+  return { familyId, accessToken, waitlisted }
 }
 
 export async function getRegistrationByToken(
