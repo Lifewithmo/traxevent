@@ -156,5 +156,8 @@ describe('sendEmailBlast', () => {
 
     expect(result.sent).toBe(0)
     expect(batchSendSpy).not.toHaveBeenCalled()
+    expect(logSetSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ recipient_count: 0 })
+    )
   })
 })

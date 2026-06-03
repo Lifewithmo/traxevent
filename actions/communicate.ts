@@ -52,12 +52,14 @@ export async function sendEmailBlast(
     ...(camp.reply_to_email ? { replyTo: camp.reply_to_email } : {}),
   }))
 
+  // Before sending, write the log (records the attempt even if delivery partially fails):
+  await writeLog(campRef as unknown as DocumentReference, input, families.length, input.sentByUid)
+
   const resend = getResend()
   for (let i = 0; i < emailPayloads.length; i += 100) {
     await resend.batch.send(emailPayloads.slice(i, i + 100))
   }
 
-  await writeLog(campRef as unknown as DocumentReference, input, families.length, input.sentByUid)
   return { sent: families.length }
 }
 
