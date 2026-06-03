@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { ContactStep } from './steps/ContactStep'
 import { FamilyMembersStep } from './steps/FamilyMembersStep'
@@ -8,6 +8,8 @@ import { ReviewStep } from './steps/ReviewStep'
 import { PaymentStep } from './steps/PaymentStep'
 import { createRegistration } from '@/actions/registrations'
 import { getEventType } from '@/lib/event-types'
+import { useAuth } from '@/hooks/useAuth'
+import { getRegistrantProfile } from '@/actions/registrant-auth'
 import type { Camp, Family, FamilyMember, Org } from '@/lib/types'
 
 type ContactData = Pick<Family, 'first_name' | 'last_name' | 'email' | 'phone' | 'address' | 'emergency_contact'>
@@ -39,6 +41,46 @@ export function RegistrationForm({ camp, org }: RegistrationFormProps) {
   const [members, setMembers] = useState<MemberInput[]>([])
   const [familyId, setFamilyId] = useState<string>('')
 
+  const { user } = useAuth()
+  const [registrantUid, setRegistrantUid] = useState<string | undefined>()
+  const [profileKey, setProfileKey] = useState('empty')
+
+  useEffect(() => {
+    if (!user?.uid) return
+    setRegistrantUid(user.uid)
+    getRegistrantProfile(user.uid).then((profile) => {
+      if (!profile) return
+      // Split display_name into first + last name
+      const spaceIdx = profile.display_name.indexOf(' ')
+      const firstName = spaceIdx > 0 ? profile.display_name.slice(0, spaceIdx) : profile.display_name
+      const lastName = spaceIdx > 0 ? profile.display_name.slice(spaceIdx + 1) : ''
+      setContact({
+        first_name: firstName,
+        last_name: lastName,
+        email: profile.email,
+        phone: profile.phone,
+        address: profile.address,
+        emergency_contact: profile.emergency_contact,
+      })
+      // Pre-fill members from saved profile (family/child events only)
+      if (registrationUnit !== 'individual' && profile.saved_members.length > 0) {
+        setMembers(profile.saved_members.map((sm) => ({
+          first_name: sm.first_name,
+          last_name: sm.last_name,
+          birth_year: sm.birth_year,
+          gender: sm.gender,
+          grade: '',
+          allergies: '',
+          dietary_restrictions: '',
+          tshirt_size: '',
+          medical_notes: '',
+        })))
+      }
+      // Force ContactStep to remount with the pre-filled initial values
+      setProfileKey('filled')
+    })
+  }, [user?.uid]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const currentStep = steps[stepIndex]
 
   async function handleReviewSubmit() {
@@ -52,6 +94,7 @@ export function RegistrationForm({ camp, org }: RegistrationFormProps) {
       family: contact as ContactData,
       members,
       skipConfirmationEmail: hasFee,
+      registrantUid,
     })
     const paymentIndex = steps.indexOf('payment')
     if (hasFee && paymentIndex !== -1) {
@@ -87,6 +130,7 @@ export function RegistrationForm({ camp, org }: RegistrationFormProps) {
         <div className="bg-white rounded-xl shadow-sm border border-[#DDD6FE] p-6">
           {currentStep === 'contact' && (
             <ContactStep
+              key={profileKey}
               initial={contact}
               onNext={(data) => { setContact(data); setStepIndex((i) => i + 1) }}
             />
