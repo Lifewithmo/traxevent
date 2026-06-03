@@ -28,6 +28,8 @@ export default function EventSettingsPage() {
   const [registrationClose, setRegistrationClose] = useState('')
   const [capacity, setCapacity] = useState<string>('')
   const [paymentAmount, setPaymentAmount] = useState<string>('')
+  const [fromDisplayName, setFromDisplayName] = useState<string>('')
+  const [replyToEmail, setReplyToEmail] = useState<string>('')
 
   useEffect(() => {
     async function load() {
@@ -46,6 +48,8 @@ export default function EventSettingsPage() {
       setRegistrationClose(c.registration_close ?? '')
       setCapacity(c.capacity != null ? String(c.capacity) : '')
       setPaymentAmount(c.payment_amount != null ? String(c.payment_amount) : '')
+      setFromDisplayName(c.from_display_name ?? '')
+      setReplyToEmail(c.reply_to_email ?? '')
     }
     load()
   }, [orgSlug, campSlug])
@@ -68,6 +72,8 @@ export default function EventSettingsPage() {
         registration_close: registrationClose || undefined,
         capacity: capacity ? Number(capacity) : undefined,
         payment_amount: paymentAmount ? Number(paymentAmount) : undefined,
+        from_display_name: fromDisplayName || undefined,
+        reply_to_email: replyToEmail || undefined,
       })
       setSaved(true)
     } catch (err: unknown) {
@@ -199,6 +205,33 @@ export default function EventSettingsPage() {
               />
               <p className="text-xs text-muted-foreground">
                 In dollars. Leave blank or 0 for free events. TraxEvent collects 1% of paid registrations automatically.
+              </p>
+            </div>
+
+            <div className="space-y-1">
+              <Label htmlFor="fromDisplayName">Email sender name (optional)</Label>
+              <Input
+                id="fromDisplayName"
+                value={fromDisplayName}
+                onChange={(e) => { setFromDisplayName(e.target.value); setSaved(false) }}
+                placeholder={`${camp.name} at Your Church`}
+              />
+              <p className="text-xs text-muted-foreground">
+                How your org appears in the "From" field of emails. Defaults to TraxEvent if left blank.
+              </p>
+            </div>
+
+            <div className="space-y-1">
+              <Label htmlFor="replyToEmail">Reply-to email address (optional)</Label>
+              <Input
+                id="replyToEmail"
+                type="email"
+                value={replyToEmail}
+                onChange={(e) => { setReplyToEmail(e.target.value); setSaved(false) }}
+                placeholder="director@yourchurch.org"
+              />
+              <p className="text-xs text-muted-foreground">
+                Replies from registrants are routed to this address instead of TraxEvent.
               </p>
             </div>
 

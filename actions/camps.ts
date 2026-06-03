@@ -78,6 +78,8 @@ export async function updateCamp(
     | 'registration_close'
     | 'capacity'
     | 'payment_amount'
+    | 'from_display_name'
+    | 'reply_to_email'
   >>
 ): Promise<void> {
   const ref = adminDb
