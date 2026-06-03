@@ -39,6 +39,7 @@ export async function createRegistration(
 
   const campSnap = await campRef.get()
   const camp = campSnap.exists ? (campSnap.data() as Camp) : null
+  if (!camp) throw new Error(`Camp not found: ${input.campId}`)
 
   if (camp?.capacity) {
     const familiesSnap = await campRef.collection('families').get()
@@ -46,6 +47,8 @@ export async function createRegistration(
       const status = (doc.data() as Family).registration_status
       return status === 'pending' || status === 'confirmed' ? count + 1 : count
     }, 0)
+    // TODO: replace with Firestore transaction for strict capacity enforcement
+    // Current read-then-write has a small TOCTOU window under concurrent submissions
     if (activeCount >= camp.capacity) {
       registrationStatus = 'waitlisted'
     }

@@ -103,6 +103,8 @@ export function RegistrationForm({ camp, org }: RegistrationFormProps) {
       skipConfirmationEmail: hasFee,
       registrantUid,
     })
+    // TODO: decide behavior when hasFee && waitlisted are both true
+    // Currently sends waitlisted registrants to the payment step — may want to block payment or show warning
     const paymentIndex = steps.indexOf('payment')
     if (hasFee && paymentIndex !== -1) {
       setFamilyId(result.familyId)
