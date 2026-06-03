@@ -100,6 +100,8 @@ export async function createRegistration(
       campSlug: input.campSlug,
       familyId,
       accessToken,
+      fromDisplayName: camp.from_display_name,
+      replyTo: camp.reply_to_email,
     })
   }
 

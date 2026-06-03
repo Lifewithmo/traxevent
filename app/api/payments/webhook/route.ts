@@ -49,8 +49,19 @@ export async function POST(req: Request) {
         org_slug: string
         camp_slug: string
         id: string
+        org_id: string
+        camp_id: string
         access_token: string | null
       }
+
+      // Fetch camp for sender config
+      const campSnap = await adminDb
+        .collection('orgs').doc(familyData.org_id)
+        .collection('camps').doc(familyData.camp_id)
+        .get()
+      const campSenderConfig = campSnap.exists
+        ? campSnap.data() as { from_display_name?: string; reply_to_email?: string }
+        : {}
 
       // Send confirmation email (best-effort — don't fail the webhook if email fails)
       try {
@@ -63,6 +74,8 @@ export async function POST(req: Request) {
           campSlug: familyData.camp_slug,
           familyId: familyData.id,
           accessToken: familyData.access_token ?? '',
+          fromDisplayName: campSenderConfig.from_display_name,
+          replyTo: campSenderConfig.reply_to_email,
         })
       } catch {
         // Email failure should not cause Stripe to retry the webhook

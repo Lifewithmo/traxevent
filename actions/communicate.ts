@@ -3,7 +3,6 @@
 import { adminDb } from '@/lib/firebase-admin'
 import { getResend, FROM_EMAIL } from '@/lib/resend'
 import type { Camp, Family, CommunicationLogEntry } from '@/lib/types'
-import type { DocumentReference } from 'firebase-admin/firestore'
 import { randomBytes } from 'crypto'
 
 export interface EmailBlastInput {
@@ -36,7 +35,16 @@ export async function sendEmailBlast(
     })
 
   if (families.length === 0) {
-    await writeLog(campRef as unknown as DocumentReference, input, 0)
+    const logId = randomBytes(8).toString('hex')
+    await campRef.collection('communication_log').doc(logId).set({
+      id: logId,
+      subject: input.subject,
+      html_body: input.htmlBody,
+      filter: input.filter,
+      recipient_count: 0,
+      sent_at: new Date().toISOString(),
+      ...(input.sentByUid ? { sent_by_uid: input.sentByUid } : {}),
+    } satisfies CommunicationLogEntry)
     return { sent: 0 }
   }
 
@@ -53,7 +61,17 @@ export async function sendEmailBlast(
   }))
 
   // Before sending, write the log (records the attempt even if delivery partially fails):
-  await writeLog(campRef as unknown as DocumentReference, input, families.length, input.sentByUid)
+  const logId = randomBytes(8).toString('hex')
+  const entry: CommunicationLogEntry = {
+    id: logId,
+    subject: input.subject,
+    html_body: input.htmlBody,
+    filter: input.filter,
+    recipient_count: families.length,
+    sent_at: new Date().toISOString(),
+    ...(input.sentByUid ? { sent_by_uid: input.sentByUid } : {}),
+  }
+  await campRef.collection('communication_log').doc(logId).set(entry)
 
   const resend = getResend()
   for (let i = 0; i < emailPayloads.length; i += 100) {
@@ -61,25 +79,6 @@ export async function sendEmailBlast(
   }
 
   return { sent: families.length }
-}
-
-async function writeLog(
-  campRef: DocumentReference,
-  input: EmailBlastInput,
-  recipientCount: number,
-  sentByUid?: string
-) {
-  const id = randomBytes(8).toString('hex')
-  const entry: CommunicationLogEntry = {
-    id,
-    subject: input.subject,
-    html_body: input.htmlBody,
-    filter: input.filter,
-    recipient_count: recipientCount,
-    sent_at: new Date().toISOString(),
-    ...(sentByUid ? { sent_by_uid: sentByUid } : {}),
-  }
-  await campRef.collection('communication_log').doc(id).set(entry)
 }
 
 export async function getCommunicationLog(
