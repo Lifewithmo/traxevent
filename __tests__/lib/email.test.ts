@@ -29,7 +29,7 @@ describe('sendRegistrationConfirmation', () => {
     await sendRegistrationConfirmation(baseParams)
     const call = emailsSendSpy.mock.calls[0][0]
     expect(call.from).toBe('noreply@traxevent.com')
-    expect(call.reply_to).toBeUndefined()
+    expect(call.replyTo).toBeUndefined()
   })
 
   it('uses fromDisplayName in the from field', async () => {
@@ -41,13 +41,13 @@ describe('sendRegistrationConfirmation', () => {
     expect(call.from).toBe('"Summer Camp 2026 at First Hills" <noreply@traxevent.com>')
   })
 
-  it('sets reply_to when replyTo is provided', async () => {
+  it('sets replyTo when replyTo is provided', async () => {
     await sendRegistrationConfirmation({
       ...baseParams,
       replyTo: 'director@firsthills.org',
     })
     const call = emailsSendSpy.mock.calls[0][0]
-    expect(call.reply_to).toBe('director@firsthills.org')
+    expect(call.replyTo).toBe('director@firsthills.org')
   })
 
   it('sends to the correct recipient', async () => {

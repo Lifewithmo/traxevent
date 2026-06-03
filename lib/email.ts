@@ -26,7 +26,7 @@ export async function sendRegistrationConfirmation(
   await getResend().emails.send({
     from,
     to: params.to,
-    ...(params.replyTo ? { reply_to: params.replyTo } : {}),
+    ...(params.replyTo ? { replyTo: params.replyTo } : {}),
     subject: `Registration confirmed — ${params.campName}`,
     html: `
       <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
