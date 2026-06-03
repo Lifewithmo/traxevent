@@ -46,7 +46,14 @@ export function RegistrationForm({ camp, org }: RegistrationFormProps) {
   const [profileKey, setProfileKey] = useState('empty')
 
   useEffect(() => {
-    if (!user?.uid) return
+    if (!user?.uid) {
+      // User signed out — clear pre-filled data
+      setContact({})
+      setMembers([])
+      setRegistrantUid(undefined)
+      setProfileKey('empty')
+      return
+    }
     setRegistrantUid(user.uid)
     getRegistrantProfile(user.uid).then((profile) => {
       if (!profile) return
@@ -79,7 +86,7 @@ export function RegistrationForm({ camp, org }: RegistrationFormProps) {
       // Force ContactStep to remount with the pre-filled initial values
       setProfileKey('filled')
     })
-  }, [user?.uid]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user?.uid, registrationUnit])
 
   const currentStep = steps[stepIndex]
 
