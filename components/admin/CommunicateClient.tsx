@@ -98,7 +98,7 @@ export function CommunicateClient({
             <Label htmlFor="htmlBody">Message (HTML)</Label>
             <textarea
               id="htmlBody"
-              className="w-full border rounded-md px-3 py-2 text-sm font-mono min-h-[160px] bg-white resize-y"
+              className="w-full min-w-0 rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-sm font-mono min-h-[160px] transition-colors outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 resize-y"
               value={htmlBody}
               onChange={(e) => setHtmlBody(e.target.value)}
               placeholder="<p>Hi there,</p><p>Here's an update...</p>"
@@ -110,7 +110,7 @@ export function CommunicateClient({
             <Label htmlFor="filter">Send to</Label>
             <select
               id="filter"
-              className="w-full border rounded-md px-3 py-2 text-sm bg-white"
+              className="w-full min-w-0 rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-sm transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
               value={filter}
               onChange={(e) => setFilter(e.target.value as typeof filter)}
             >
@@ -123,7 +123,7 @@ export function CommunicateClient({
           <div aria-live="polite" aria-atomic="true">
             {error && <p className="text-sm text-destructive">{error}</p>}
             {result && (
-              <p className="text-sm text-green-700">
+              <p className="text-sm text-accent">
                 Sent to {result.sent} recipient{result.sent !== 1 ? 's' : ''}.
               </p>
             )}
