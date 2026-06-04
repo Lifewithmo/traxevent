@@ -127,6 +127,7 @@ export interface Family {
   access_token_expires_at: string | null
   created_at: string
   updated_at: string
+  assignment_slot_id?: string | null  // null = explicitly unassigned; undefined = never set
   // Admin-managed fields (not present at registration time)
   amount_due?: number
   amount_paid?: number
@@ -174,4 +175,14 @@ export interface CommunicationLogEntry {
   recipient_count: number
   sent_at: string
   sent_by_uid?: string
+}
+
+export interface AssignmentSlot {
+  id: string
+  name: string          // "Cabin 4", "Table 7", "Blue Team", "Butterflies Class"
+  capacity?: number     // max occupants; undefined = unlimited
+  notes?: string
+  sort_order?: number   // display ordering (lower = first)
+  created_at: string
+  updated_at?: string
 }
