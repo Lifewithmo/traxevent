@@ -44,6 +44,7 @@ export default async function EventFormsPage({
     assignments.map(async (a) => {
       const snap = await adminDb
         .collectionGroup('signed_forms')
+        .where('org_id', '==', orgId)
         .where('assignment_id', '==', a.id)
         .get()
       signedCountsByAssignment[a.id] = snap.size

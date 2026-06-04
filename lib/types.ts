@@ -233,6 +233,8 @@ export interface EventFormAssignment {
 
 export interface SignedForm {
   id: string
+  org_id: string    // denormalized for cross-org safety in collectionGroup queries
+  camp_id: string   // denormalized for consistency
   assignment_id: string
   template_id: string
   template_version: number
