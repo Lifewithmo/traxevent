@@ -1,6 +1,7 @@
 'use server'
 
 import { adminDb } from '@/lib/firebase-admin'
+import { FieldValue } from 'firebase-admin/firestore'
 import { headers } from 'next/headers'
 import { sendFormSignedConfirmation } from '@/lib/email'
 import type { FormTemplate, EventFormAssignment, SignedForm } from '@/lib/types'
@@ -56,6 +57,7 @@ export async function updateFormTemplate(
 ): Promise<void> {
   await templatesRef(orgId).doc(templateId).update({
     ...updates,
+    version: FieldValue.increment(1),
     updated_at: new Date().toISOString(),
   })
 }
