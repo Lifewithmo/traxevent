@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useParams, useSearchParams, useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { getOrgBySlug } from '@/actions/orgs'
 import { getCampBySlug } from '@/actions/camps'
 import { listEventFormAssignments, getSignedForms, submitSignedForm } from '@/actions/forms'
@@ -213,11 +214,22 @@ export default function FormFillPage() {
   }
 
   if (loading) {
-    return <div className="text-sm text-muted-foreground py-8 text-center">Loading form…</div>
+    return <div role="status" className="text-sm text-muted-foreground py-8 text-center">Loading form…</div>
   }
 
   if (!assignment) {
     return <div className="text-sm text-muted-foreground py-8 text-center">Form not found.</div>
+  }
+
+  if (!family) {
+    return (
+      <div className="space-y-4">
+        <h1 className="text-xl font-bold text-[#4C1D95]">Form not accessible</h1>
+        <p className="text-sm text-gray-500">
+          Please open this form using the link in your registration confirmation email.
+        </p>
+      </div>
+    )
   }
 
   if (alreadySigned) {
@@ -228,9 +240,9 @@ export default function FormFillPage() {
           <p className="font-semibold text-green-800">You have already signed this form.</p>
           <p className="text-sm text-green-700 mt-1">A confirmation was sent to your email.</p>
         </div>
-        <Button variant="outline" className="w-full" onClick={() => router.back()}>
-          Back to my registration
-        </Button>
+        <Link href={`/${orgSlug}/${campSlug}/my-registration${token ? `?token=${token}` : ''}`}>
+          <Button variant="outline" className="w-full">Back to my registration</Button>
+        </Link>
       </div>
     )
   }

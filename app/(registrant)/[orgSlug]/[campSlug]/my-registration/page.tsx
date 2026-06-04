@@ -104,12 +104,12 @@ export default async function MyRegistrationPage({
                   {signed ? (
                     <span className="text-xs text-green-700 font-medium">✓ Signed</span>
                   ) : (
-                    <a
+                    <Link
                       href={`/${orgSlug}/${campSlug}/forms/${form.id}${token ? `?token=${token}` : ''}`}
                       className="text-xs text-[#7C3AED] font-medium hover:underline"
                     >
                       Sign now →
-                    </a>
+                    </Link>
                   )}
                 </li>
               )
