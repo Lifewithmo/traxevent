@@ -20,6 +20,7 @@ export const CAMP_PAGES = [
   'budget',
   'itinerary',
   'communicate',
+  'forms',
   'reports',
 ] as const
 
@@ -185,4 +186,60 @@ export interface AssignmentSlot {
   sort_order?: number   // display ordering (lower = first)
   created_at: string
   updated_at?: string
+}
+
+export type FormFieldType = 'text' | 'textarea' | 'checkbox' | 'radio' | 'dropdown' | 'date'
+
+export type FormType =
+  | 'liability_waiver'
+  | 'medical_authorization'
+  | 'photo_consent'
+  | 'code_of_conduct'
+  | 'background_check_consent'
+  | 'custom'
+
+export type FormAudience = 'registrant' | 'volunteer' | 'staff'
+
+export interface FormField {
+  id: string
+  type: FormFieldType
+  label: string
+  required: boolean
+  options?: string[]
+  placeholder?: string
+}
+
+export interface FormTemplate {
+  id: string
+  name: string
+  form_type: FormType
+  audience: FormAudience
+  fields: FormField[]
+  version: number
+  created_at: string
+  updated_at?: string
+}
+
+export interface EventFormAssignment {
+  id: string
+  template_id: string
+  template_name: string
+  template_version: number
+  fields_snapshot: FormField[]
+  audience: FormAudience
+  required: boolean
+  created_at: string
+}
+
+export interface SignedForm {
+  id: string
+  assignment_id: string
+  template_id: string
+  template_version: number
+  template_name: string
+  responses: Record<string, string | boolean | string[]>
+  signature_name: string
+  signer_ip: string
+  signed_at: string
+  created_at: string
 }
