@@ -56,7 +56,18 @@ export async function updateSlot(
 }
 
 export async function deleteSlot(orgId: string, campId: string, slotId: string): Promise<void> {
-  await slotsRef(orgId, campId).doc(slotId).delete()
+  const batch = adminDb.batch()
+  batch.delete(slotsRef(orgId, campId).doc(slotId))
+
+  const affected = await familiesRef(orgId, campId)
+    .where('assignment_slot_id', '==', slotId)
+    .get()
+  const now = new Date().toISOString()
+  affected.docs.forEach((d) =>
+    batch.update(d.ref, { assignment_slot_id: null, updated_at: now })
+  )
+
+  await batch.commit()
 }
 
 export async function assignFamily(

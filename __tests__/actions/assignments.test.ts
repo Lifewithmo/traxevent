@@ -8,9 +8,18 @@ const slotDocSpy = vi.hoisted(() => ({
 const familyUpdateSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const getSlotsSnapSpy = vi.hoisted(() => vi.fn())
 const getFamiliesSnapSpy = vi.hoisted(() => vi.fn())
+const familiesWhereSpy = vi.hoisted(() => vi.fn())
+const batchDeleteSpy = vi.hoisted(() => vi.fn())
+const batchUpdateSpy = vi.hoisted(() => vi.fn())
+const batchCommitSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 
 vi.mock('@/lib/firebase-admin', () => ({
   adminDb: {
+    batch: vi.fn().mockReturnValue({
+      delete: batchDeleteSpy,
+      update: batchUpdateSpy,
+      commit: batchCommitSpy,
+    }),
     collection: vi.fn().mockImplementation((col: string) => {
       if (col === 'orgs') {
         return {
@@ -31,6 +40,7 @@ vi.mock('@/lib/firebase-admin', () => ({
                         return {
                           doc: vi.fn().mockReturnValue({ update: familyUpdateSpy }),
                           get: getFamiliesSnapSpy,
+                          where: familiesWhereSpy,
                         }
                       }
                       return {}
@@ -97,11 +107,33 @@ describe('updateSlot', () => {
 })
 
 describe('deleteSlot', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => {
+    vi.clearAllMocks()
+    // Restore default where mock after clearAllMocks wipes it
+    familiesWhereSpy.mockReturnValue({ get: vi.fn().mockResolvedValue({ docs: [] }) })
+    // Restore batch mock
+    batchCommitSpy.mockResolvedValue(undefined)
+  })
 
-  it('deletes the slot document', async () => {
+  it('uses a batch write and commits', async () => {
     await deleteSlot('org-1', 'camp-1', 'slot-1')
-    expect(slotDocSpy.delete).toHaveBeenCalled()
+    expect(batchDeleteSpy).toHaveBeenCalled()
+    expect(batchCommitSpy).toHaveBeenCalled()
+  })
+
+  it('clears assignment_slot_id on affected families', async () => {
+    const fakeRef = { id: 'fam-x' }
+    familiesWhereSpy.mockReturnValue({
+      get: vi.fn().mockResolvedValue({
+        docs: [{ ref: fakeRef }],
+      }),
+    })
+    await deleteSlot('org-1', 'camp-1', 'slot-1')
+    expect(batchUpdateSpy).toHaveBeenCalledWith(
+      fakeRef,
+      expect.objectContaining({ assignment_slot_id: null })
+    )
+    expect(batchCommitSpy).toHaveBeenCalled()
   })
 })
 

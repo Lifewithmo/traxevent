@@ -135,12 +135,16 @@ export function AssignmentsClient({
   }
 
   async function handleAssign(familyId: string, slotId: string | null) {
-    await assignFamily(orgId, campId, familyId, slotId)
-    setFamilies((prev) =>
-      prev.map((f) =>
-        f.id === familyId ? { ...f, assignment_slot_id: slotId ?? undefined } : f
+    try {
+      await assignFamily(orgId, campId, familyId, slotId)
+      setFamilies((prev) =>
+        prev.map((f) =>
+          f.id === familyId ? { ...f, assignment_slot_id: slotId ?? undefined } : f
+        )
       )
-    )
+    } catch (err: unknown) {
+      setSlotError(err instanceof Error ? err.message : 'Failed to assign')
+    }
   }
 
   async function handleAutoAssign() {
@@ -152,6 +156,8 @@ export function AssignmentsClient({
         `Auto-assigned ${result.assigned} registrant${result.assigned !== 1 ? 's' : ''}.`
       )
       router.refresh()
+    } catch (err: unknown) {
+      setSlotError(err instanceof Error ? err.message : 'Auto-assign failed')
     } finally {
       setAutoAssigning(false)
     }
