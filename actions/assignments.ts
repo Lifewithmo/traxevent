@@ -36,7 +36,7 @@ export async function createSlot(
     name: input.name,
     ...(input.capacity != null ? { capacity: input.capacity } : {}),
     ...(input.notes ? { notes: input.notes } : {}),
-    ...(input.sort_order != null ? { sort_order: input.sort_order } : {}),
+    sort_order: input.sort_order ?? 0,  // always write; default 0 so new slots appear first
     created_at: now,
   }
   await slotsRef(orgId, campId).doc(id).set(slot)
