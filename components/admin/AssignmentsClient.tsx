@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -35,6 +36,7 @@ export function AssignmentsClient({
   families: initialFamilies,
   terminology,
 }: AssignmentsClientProps) {
+  const router = useRouter()
   const [tab, setTab] = useState<'slots' | 'assignments'>('slots')
   const [slots, setSlots] = useState<AssignmentSlot[]>(initialSlots)
   const [families, setFamilies] = useState<Family[]>(initialFamilies)
@@ -116,6 +118,7 @@ export function AssignmentsClient({
 
   async function handleDeleteSlot(slotId: string) {
     setSaving(true)
+    setSlotError(null)
     try {
       await deleteSlot(orgId, campId, slotId)
       setSlots((prev) => prev.filter((s) => s.id !== slotId))
@@ -124,6 +127,8 @@ export function AssignmentsClient({
           f.assignment_slot_id === slotId ? { ...f, assignment_slot_id: undefined } : f
         )
       )
+    } catch (err: unknown) {
+      setSlotError(err instanceof Error ? err.message : 'Failed to delete')
     } finally {
       setSaving(false)
     }
@@ -146,7 +151,7 @@ export function AssignmentsClient({
       setAutoAssignResult(
         `Auto-assigned ${result.assigned} registrant${result.assigned !== 1 ? 's' : ''}.`
       )
-      window.location.reload()
+      router.refresh()
     } finally {
       setAutoAssigning(false)
     }
@@ -167,10 +172,14 @@ export function AssignmentsClient({
       </div>
 
       {/* Tab bar */}
-      <div className="flex gap-1 border-b">
+      <div role="tablist" aria-label="Assignment views" className="flex gap-1 border-b">
         {(['slots', 'assignments'] as const).map((t) => (
           <button
             key={t}
+            role="tab"
+            aria-selected={tab === t}
+            aria-controls={`panel-${t}`}
+            id={`tab-${t}`}
             onClick={() => setTab(t)}
             className={`px-4 py-2 text-sm font-medium capitalize transition-colors ${
               tab === t
@@ -185,7 +194,7 @@ export function AssignmentsClient({
 
       {/* Slots tab */}
       {tab === 'slots' && (
-        <div className="space-y-4">
+        <div role="tabpanel" id="panel-slots" aria-labelledby="tab-slots" className="space-y-4">
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Add {slotLabel}</CardTitle>
@@ -306,14 +315,14 @@ export function AssignmentsClient({
 
       {/* Assignments tab */}
       {tab === 'assignments' && (
-        <div className="space-y-4">
+        <div role="tabpanel" id="panel-assignments" aria-labelledby="tab-assignments" className="space-y-4">
           <div className="flex items-center justify-between">
             <p className="text-sm text-muted-foreground">
               {activeFamilies.filter((f) => f.assignment_slot_id).length} of{' '}
               {activeFamilies.length} assigned
             </p>
             <div className="flex items-center gap-3">
-              <div aria-live="polite">
+              <div aria-live="polite" aria-atomic="true">
                 {autoAssignResult && (
                   <span className="text-sm text-accent">{autoAssignResult}</span>
                 )}
@@ -332,9 +341,9 @@ export function AssignmentsClient({
           {activeFamilies.length === 0 ? (
             <p className="text-sm text-muted-foreground">No active registrations to assign.</p>
           ) : (
-            <div className="bg-white rounded-lg border overflow-hidden">
+            <div className="bg-card rounded-lg border overflow-hidden">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50 border-b">
+                <thead className="bg-muted border-b">
                   <tr>
                     <th className="px-4 py-2 text-left font-medium text-muted-foreground">
                       Registrant
