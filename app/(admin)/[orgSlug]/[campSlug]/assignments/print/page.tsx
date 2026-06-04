@@ -1,3 +1,4 @@
+import { cache } from 'react'
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { adminDb } from '@/lib/firebase-admin'
@@ -6,7 +7,7 @@ import { getAdminFamilies } from '@/actions/admin-families'
 import { getEventType } from '@/lib/event-types'
 import type { Camp, FamilyMember } from '@/lib/types'
 
-async function resolveIds(orgSlug: string, campSlug: string) {
+const resolveIds = cache(async (orgSlug: string, campSlug: string) => {
   const orgSnap = await adminDb.collection('orgs').where('slug', '==', orgSlug).limit(1).get()
   if (orgSnap.empty) notFound()
   const orgId = orgSnap.docs[0].id
@@ -17,7 +18,7 @@ async function resolveIds(orgSlug: string, campSlug: string) {
   if (campSnap.empty) notFound()
 
   return { orgId, campId: campSnap.docs[0].id, camp: campSnap.docs[0].data() as Camp }
-}
+})
 
 async function getMembersForFamily(
   orgId: string,
@@ -30,7 +31,7 @@ async function getMembersForFamily(
     .collection('families').doc(familyId)
     .collection('family_members')
     .get()
-  return snap.docs.map((d) => d.data() as FamilyMember)
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as FamilyMember)
 }
 
 export async function generateMetadata({
@@ -100,8 +101,9 @@ export default async function AssignmentsPrintPage({
         .print-root .members { font-size: 11px; color: #444; }
         .print-root .empty { color: #aaa; font-style: italic; font-size: 11px; }
         @media print {
-          body > * { display: none; }
-          body > .print-root { display: block; padding: 0; }
+          aside { display: none !important; }
+          main { padding: 0 !important; background: none !important; overflow: visible !important; }
+          .print-root { display: block; }
           @page { margin: 1.5cm; }
         }
       `}</style>
