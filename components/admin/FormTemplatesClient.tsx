@@ -11,7 +11,6 @@ import type { FormTemplate, FormField, FormFieldType, FormType, FormAudience } f
 
 interface FormTemplatesClientProps {
   orgId: string
-  orgName: string
   templates: FormTemplate[]
 }
 
@@ -40,12 +39,7 @@ const FIELD_TYPE_LABELS: Record<FormFieldType, string> = {
 }
 
 function emptyField(): FormField {
-  return {
-    id: Math.random().toString(36).slice(2),
-    type: 'text',
-    label: '',
-    required: false,
-  }
+  return { id: crypto.randomUUID(), type: 'text', label: '', required: false }
 }
 
 function updateField(fields: FormField[], index: number, patch: Partial<FormField>): FormField[] {
@@ -66,72 +60,80 @@ function FieldEditor({
   return (
     <div className="space-y-3">
       <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Fields</p>
-      {fields.map((field, i) => (
-        <div key={field.id} className="border rounded-lg p-3 space-y-2 bg-muted/30">
-          <div className="flex gap-2">
-            <div className="flex-1 space-y-1">
-              <Label className="text-xs">Label</Label>
-              <Input
-                value={field.label}
-                onChange={(e) => onChange(updateField(fields, i, { label: e.target.value }))}
-                placeholder="e.g. Do you consent to..."
-                className="h-7 text-sm"
-              />
-            </div>
-            <div className="w-36 space-y-1">
-              <Label className="text-xs">Type</Label>
-              <select
-                className="w-full h-7 rounded-lg border border-input bg-transparent px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-                value={field.type}
-                onChange={(e) =>
-                  onChange(updateField(fields, i, { type: e.target.value as FormFieldType, options: undefined }))
-                }
-              >
-                {Object.entries(FIELD_TYPE_LABELS).map(([val, lbl]) => (
-                  <option key={val} value={val}>{lbl}</option>
-                ))}
-              </select>
-            </div>
-            <div className="flex items-end pb-0.5">
-              <label className="flex items-center gap-1 text-xs text-muted-foreground cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={field.required}
-                  onChange={(e) => onChange(updateField(fields, i, { required: e.target.checked }))}
-                  className="w-3 h-3"
+      {fields.map((field, i) => {
+        const labelInputId = `field-label-${field.id}`
+        const typeSelectId = `field-type-${field.id}`
+        const optionsId = `field-options-${field.id}`
+        return (
+          <div key={field.id} className="border rounded-lg p-3 space-y-2 bg-muted/30">
+            <div className="flex gap-2">
+              <div className="flex-1 space-y-1">
+                <Label htmlFor={labelInputId} className="text-xs">Label</Label>
+                <Input
+                  id={labelInputId}
+                  value={field.label}
+                  onChange={(e) => onChange(updateField(fields, i, { label: e.target.value }))}
+                  placeholder="e.g. Do you consent to..."
+                  className="h-7 text-sm"
                 />
-                Req
-              </label>
+              </div>
+              <div className="w-36 space-y-1">
+                <Label htmlFor={typeSelectId} className="text-xs">Type</Label>
+                <select
+                  id={typeSelectId}
+                  className="w-full h-7 rounded-lg border border-input bg-transparent px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                  value={field.type}
+                  onChange={(e) =>
+                    onChange(updateField(fields, i, { type: e.target.value as FormFieldType, options: undefined }))
+                  }
+                >
+                  {Object.entries(FIELD_TYPE_LABELS).map(([val, lbl]) => (
+                    <option key={val} value={val}>{lbl}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-end pb-0.5">
+                <label className="flex items-center gap-1 text-xs text-muted-foreground cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={field.required}
+                    onChange={(e) => onChange(updateField(fields, i, { required: e.target.checked }))}
+                    className="w-3 h-3"
+                  />
+                  Req
+                </label>
+              </div>
+              <div className="flex items-end pb-0.5">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 px-2 text-xs"
+                  onClick={() => onChange(removeField(fields, i))}
+                  disabled={fields.length <= 1}
+                >
+                  ✕
+                </Button>
+              </div>
             </div>
-            <div className="flex items-end pb-0.5">
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-7 px-2 text-xs"
-                onClick={() => onChange(removeField(fields, i))}
-                disabled={fields.length <= 1}
-              >
-                ✕
-              </Button>
-            </div>
+            {(field.type === 'radio' || field.type === 'dropdown') && (
+              <div className="space-y-1">
+                <Label htmlFor={optionsId} className="text-xs">Options (one per line)</Label>
+                <textarea
+                  id={optionsId}
+                  className="w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 min-h-[60px] resize-y"
+                  value={(field.options ?? []).join('\n')}
+                  onChange={(e) =>
+                    onChange(updateField(fields, i, {
+                      options: e.target.value.split('\n').filter(Boolean),
+                    }))
+                  }
+                  placeholder={`Option 1\nOption 2\nOption 3`}
+                />
+              </div>
+            )}
           </div>
-          {(field.type === 'radio' || field.type === 'dropdown') && (
-            <div className="space-y-1">
-              <Label className="text-xs">Options (one per line)</Label>
-              <textarea
-                className="w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 min-h-[60px] resize-y"
-                value={(field.options ?? []).join('\n')}
-                onChange={(e) =>
-                  onChange(updateField(fields, i, {
-                    options: e.target.value.split('\n').filter(Boolean),
-                  }))
-                }
-                placeholder={`Option 1\nOption 2\nOption 3`}
-              />
-            </div>
-          )}
-        </div>
-      ))}
+        )
+      })}
       <Button
         type="button"
         variant="outline"
@@ -224,6 +226,7 @@ export function FormTemplatesClient({ orgId, templates: initialTemplates }: Form
   }
 
   async function handleDelete(templateId: string) {
+    if (!confirm('Delete this template? This cannot be undone.')) return
     setSaving(true)
     setError(null)
     try {

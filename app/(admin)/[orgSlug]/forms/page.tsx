@@ -22,7 +22,6 @@ export default async function OrgFormsPage({
   return (
     <FormTemplatesClient
       orgId={orgId}
-      orgName={org.name}
       templates={templates}
     />
   )
