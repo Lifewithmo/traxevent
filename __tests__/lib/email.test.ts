@@ -7,6 +7,10 @@ vi.mock('@/lib/resend', () => ({
   getResend: vi.fn().mockReturnValue({
     emails: { send: emailsSendSpy },
   }),
+  buildFromAddress: (opts: { displayName?: string; domain?: string }) => {
+    const email = opts.domain ? `noreply@${opts.domain}` : 'noreply@traxevent.com'
+    return opts.displayName ? `"${opts.displayName}" <${email}>` : email
+  },
 }))
 
 import { sendRegistrationConfirmation } from '@/lib/email'

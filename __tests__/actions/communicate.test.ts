@@ -10,7 +10,13 @@ vi.mock('@/lib/resend', () => ({
   getResend: vi.fn().mockReturnValue({
     batch: { send: batchSendSpy },
   }),
+  buildFromAddress: (opts: { displayName?: string; domain?: string }) => {
+    const email = opts.domain ? `noreply@${opts.domain}` : 'noreply@traxevent.com'
+    return opts.displayName ? `"${opts.displayName}" <${email}>` : email
+  },
 }))
+
+vi.mock('@/actions/domains', () => ({ getVerifiedSendingDomain: vi.fn().mockResolvedValue(undefined) }))
 
 vi.mock('@/lib/firebase-admin', () => ({
   adminDb: {

@@ -3,6 +3,7 @@
 import { adminDb } from '@/lib/firebase-admin'
 import { attachAccessToken } from '@/actions/access-tokens'
 import { sendRegistrationConfirmation } from '@/lib/email'
+import { getVerifiedSendingDomain } from '@/actions/domains'
 import type { Camp, Family, FamilyMember } from '@/lib/types'
 import { buildFamilyId } from '@/lib/tokens'
 
@@ -91,6 +92,7 @@ export async function createRegistration(
 
   // Send confirmation email (skipped for paid registrations; sent after payment webhook confirms payment)
   if (!input.skipConfirmationEmail) {
+    const fromDomain = await getVerifiedSendingDomain(input.orgId)
     await sendRegistrationConfirmation({
       to: input.family.email,
       firstName: input.family.first_name,
@@ -102,6 +104,7 @@ export async function createRegistration(
       accessToken,
       fromDisplayName: camp.from_display_name,
       replyTo: camp.reply_to_email,
+      fromDomain,
     })
   }
 

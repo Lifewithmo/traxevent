@@ -4,6 +4,7 @@ import { stripe } from '@/lib/stripe'
 import { headers } from 'next/headers'
 import { adminDb } from '@/lib/firebase-admin'
 import { sendRegistrationConfirmation } from '@/lib/email'
+import { getVerifiedSendingDomain } from '@/actions/domains'
 
 export async function POST(req: Request) {
   const body = await req.text()
@@ -65,6 +66,7 @@ export async function POST(req: Request) {
 
       // Send confirmation email (best-effort — don't fail the webhook if email fails)
       try {
+        const fromDomain = await getVerifiedSendingDomain(familyData.org_id)
         await sendRegistrationConfirmation({
           to: familyData.email,
           firstName: familyData.first_name,
@@ -76,6 +78,7 @@ export async function POST(req: Request) {
           accessToken: familyData.access_token ?? '',
           fromDisplayName: campSenderConfig.from_display_name,
           replyTo: campSenderConfig.reply_to_email,
+          fromDomain,
         })
       } catch {
         // Email failure should not cause Stripe to retry the webhook

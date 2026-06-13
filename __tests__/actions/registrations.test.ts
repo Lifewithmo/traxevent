@@ -47,6 +47,7 @@ vi.mock('@/lib/firebase-admin', () => ({
 
 vi.mock('@/actions/access-tokens', () => ({ attachAccessToken: attachAccessTokenSpy }))
 vi.mock('@/lib/email', () => ({ sendRegistrationConfirmation: sendEmailSpy }))
+vi.mock('@/actions/domains', () => ({ getVerifiedSendingDomain: vi.fn().mockResolvedValue(undefined) }))
 
 import { createRegistration } from '@/actions/registrations'
 import type { CreateRegistrationInput } from '@/actions/registrations'

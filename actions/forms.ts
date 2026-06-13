@@ -4,6 +4,7 @@ import { adminDb } from '@/lib/firebase-admin'
 import { FieldValue } from 'firebase-admin/firestore'
 import { headers } from 'next/headers'
 import { sendFormSignedConfirmation } from '@/lib/email'
+import { getVerifiedSendingDomain } from '@/actions/domains'
 import type { FormTemplate, EventFormAssignment, SignedForm } from '@/lib/types'
 import { randomBytes } from 'crypto'
 
@@ -162,6 +163,7 @@ export async function submitSignedForm(
 
   await signedFormsRef(orgId, campId, familyId).doc(id).set(signed)
 
+  const fromDomain = await getVerifiedSendingDomain(orgId)
   await sendFormSignedConfirmation({
     to: input.signerEmail,
     firstName: input.signerFirstName,
@@ -171,6 +173,7 @@ export async function submitSignedForm(
     signedAt: now,
     fromDisplayName: input.fromDisplayName,
     replyTo: input.replyTo,
+    fromDomain,
   })
 
   return signed

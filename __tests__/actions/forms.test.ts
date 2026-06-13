@@ -66,6 +66,7 @@ vi.mock('@/lib/firebase-admin', () => ({
 
 vi.mock('next/headers', () => ({ headers: getHeadersSpy }))
 vi.mock('@/lib/email', () => ({ sendFormSignedConfirmation: sendEmailSpy }))
+vi.mock('@/actions/domains', () => ({ getVerifiedSendingDomain: vi.fn().mockResolvedValue(undefined) }))
 
 import {
   createFormTemplate,

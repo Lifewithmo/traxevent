@@ -8,3 +8,10 @@ export function getResend(): Resend {
   }
   return new Resend(process.env.RESEND_API_KEY)
 }
+
+// Builds the email "from" header. When a verified custom domain is supplied,
+// mail is sent from noreply@<domain>; otherwise the platform default is used.
+export function buildFromAddress(opts: { displayName?: string; domain?: string }): string {
+  const email = opts.domain ? `noreply@${opts.domain}` : FROM_EMAIL
+  return opts.displayName ? `"${opts.displayName}" <${email}>` : email
+}
