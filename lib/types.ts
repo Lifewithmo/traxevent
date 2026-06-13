@@ -210,13 +210,22 @@ export type FormType =
 
 export type FormAudience = 'registrant' | 'volunteer' | 'staff'
 
+export type FormFieldConditionOperator = 'equals' | 'not_equals' | 'is_checked' | 'is_not_empty'
+
+export interface FormFieldCondition {
+  dependsOn: string                       // FormField.id this field's visibility depends on
+  operator: FormFieldConditionOperator
+  value: string                           // compared for equals/not_equals; ignored for is_checked/is_not_empty
+}
+
 export interface FormField {
   id: string
   type: FormFieldType
   label: string
   required: boolean
-  options?: string[]
+  options?: string[]           // only used for 'radio' and 'dropdown'
   placeholder?: string
+  condition?: FormFieldCondition  // when set, field shows only if the condition is met
 }
 
 export interface FormTemplate {
