@@ -71,6 +71,9 @@ export function AdminSidebar({ orgSlug, campSlug, terminology }: AdminSidebarPro
         <Link href={`/${orgSlug}/forms`} className={navClass(`/${orgSlug}/forms`)}>
           Form Templates
         </Link>
+        <Link href={`/${orgSlug}/permissions`} className={navClass(`/${orgSlug}/permissions`)}>
+          Permissions
+        </Link>
         <Link href={`/${orgSlug}/billing`} className={navClass(`/${orgSlug}/billing`)}>
           Billing
         </Link>
