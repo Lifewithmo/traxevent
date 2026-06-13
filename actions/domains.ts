@@ -9,10 +9,19 @@ function orgRef(orgId: string) {
   return adminDb.collection('orgs').doc(orgId)
 }
 
+// Resend domain-level status: 'pending' | 'verified' | 'failed' | 'not_started' | 'partially_verified' | 'partially_failed'
+// (also tolerate record-level 'failure'/'temporary_failure' defensively)
 function mapStatus(resendStatus: string): SendingDomainStatus {
   if (resendStatus === 'verified') return 'verified'
-  if (resendStatus === 'failure' || resendStatus === 'temporary_failure') return 'failed'
-  return 'pending'
+  if (
+    resendStatus === 'failed' ||
+    resendStatus === 'partially_failed' ||
+    resendStatus === 'failure' ||
+    resendStatus === 'temporary_failure'
+  ) {
+    return 'failed'
+  }
+  return 'pending' // pending, not_started, partially_verified
 }
 
 interface ResendDnsRecord {
@@ -44,7 +53,7 @@ export async function createSendingDomain(
   if (error || !data) throw new Error(error?.message ?? 'Failed to create domain')
 
   const status = mapStatus(data.status)
-  const records = mapRecords(data.records as ResendDnsRecord[] | undefined)
+  const records = mapRecords(data.records)
 
   await orgRef(orgId).update({
     sending_domain: domain,

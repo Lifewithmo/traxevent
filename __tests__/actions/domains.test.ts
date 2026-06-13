@@ -94,10 +94,10 @@ describe('verifySendingDomain', () => {
     expect(result.status).toBe('verified')
   })
 
-  it('maps a failure status to failed', async () => {
+  it('maps a failed status to failed', async () => {
     getOrgSpy.mockResolvedValue({ id: 'org-1', sending_domain_id: 'dom_123' })
     domainsVerifySpy.mockResolvedValue({ data: { id: 'dom_123' }, error: null })
-    domainsGetSpy.mockResolvedValue({ data: { id: 'dom_123', status: 'failure' }, error: null })
+    domainsGetSpy.mockResolvedValue({ data: { id: 'dom_123', status: 'failed' }, error: null })
 
     const result = await verifySendingDomain('org-1')
     expect(result.status).toBe('failed')
