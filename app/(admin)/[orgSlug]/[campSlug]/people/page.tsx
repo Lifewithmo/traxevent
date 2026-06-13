@@ -4,7 +4,9 @@ import { notFound } from 'next/navigation'
 import { cache } from 'react'
 import { adminDb } from '@/lib/firebase-admin'
 import { listEventPeople, listPermissionTemplates } from '@/actions/people'
+import { listVolunteerHours } from '@/actions/volunteer-hours'
 import { EventPeopleClient } from '@/components/admin/EventPeopleClient'
+import { VolunteerHoursClient } from '@/components/admin/VolunteerHoursClient'
 import type { Camp } from '@/lib/types'
 
 const resolveIds = cache(async (orgSlug: string, campSlug: string) => {
@@ -28,12 +30,16 @@ export default async function EventPeoplePage({
   const { orgSlug, campSlug } = await params
   const { orgId, campId } = await resolveIds(orgSlug, campSlug)
 
-  const [people, templates] = await Promise.all([
+  const [people, templates, hours] = await Promise.all([
     listEventPeople(orgId, campId),
     listPermissionTemplates(orgId),
+    listVolunteerHours(orgId, campId),
   ])
 
   return (
-    <EventPeopleClient orgId={orgId} campId={campId} people={people} templates={templates} />
+    <>
+      <EventPeopleClient orgId={orgId} campId={campId} people={people} templates={templates} />
+      <VolunteerHoursClient orgId={orgId} campId={campId} volunteers={people.filter((p) => p.kind === 'volunteer')} entries={hours} />
+    </>
   )
 }
