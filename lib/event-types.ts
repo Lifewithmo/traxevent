@@ -13,11 +13,12 @@ export type RegistrationUnit = 'family' | 'individual' | 'child'
 export type EventTypeId = 'summer-camp' | 'retreat' | 'vbs' | 'gala' | 'mission-trip'
 
 export interface EventType {
-  id: EventTypeId
+  id: EventTypeId | string
   name: string
   description: string
   registrationUnit: RegistrationUnit
   terminology: Terminology
+  is_custom?: boolean
 }
 
 export const DEFAULT_EVENT_TYPE_ID: EventTypeId = 'summer-camp'
@@ -108,4 +109,9 @@ export function getEventType(id: string): EventType {
 
 export function getAllEventTypes(): EventType[] {
   return [...BUILT_IN_EVENT_TYPES]
+}
+
+// Pure + sync; safe in server and client components.
+export function resolveTerminology(eventTypeId: string, snapshot?: Terminology): Terminology {
+  return snapshot ?? getEventType(eventTypeId).terminology
 }

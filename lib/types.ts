@@ -1,3 +1,5 @@
+import type { Terminology } from '@/lib/event-types'
+
 export type OrgRole = 'owner' | 'admin' | 'staff'
 
 export type CampRegistrationType = 'family' | 'individual' | 'child'
@@ -75,6 +77,7 @@ export interface Camp {
   from_display_name?: string  // display name in email "from" field, e.g. "Summer Camp 2026 at First Baptist"
   reply_to_email?: string     // reply-to address; replies route to this address instead of TraxEvent
   itinerary_published?: boolean
+  event_type_terminology?: Terminology
 }
 
 // Shape of our Firebase Auth JWT custom claims
