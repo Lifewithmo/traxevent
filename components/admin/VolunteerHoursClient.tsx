@@ -30,6 +30,12 @@ export function VolunteerHoursClient({ orgId, campId, volunteers, entries: initi
   const [error, setError] = useState<string | null>(null)
 
   const totals = sumHoursByPerson(entries)
+  // Hours logged against people no longer in the volunteer list still count —
+  // surface them so the badges don't silently understate total logged hours.
+  const volunteerIds = new Set(volunteers.map((v) => v.id))
+  const unattributedHours = Object.entries(totals)
+    .filter(([id]) => !volunteerIds.has(id))
+    .reduce((sum, [, h]) => sum + h, 0)
 
   async function handleLog() {
     const v = volunteers.find((x) => x.id === personId)
@@ -79,6 +85,9 @@ export function VolunteerHoursClient({ orgId, campId, volunteers, entries: initi
             {volunteers.map((v) => (
               <Badge key={v.id} variant="outline">{v.name}: {totals[v.id] ?? 0} h</Badge>
             ))}
+            {unattributedHours > 0 && (
+              <Badge variant="secondary">Former volunteers: {unattributedHours} h</Badge>
+            )}
           </div>
 
           {/* Log form */}
