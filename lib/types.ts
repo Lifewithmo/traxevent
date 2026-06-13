@@ -326,3 +326,13 @@ export interface ItineraryItem {
   created_at: string
   updated_at?: string
 }
+
+export interface VolunteerHoursEntry {
+  id: string
+  person_id: string    // EventPerson id
+  person_name: string  // denormalized for display
+  date: string         // ISO date 'YYYY-MM-DD'
+  hours: number
+  note?: string
+  created_at: string
+}
