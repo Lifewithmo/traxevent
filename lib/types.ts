@@ -266,7 +266,7 @@ export interface EventPerson {
   email: string
   role: string
   pages: CampPage[]
-  applied_template_id?: string
+  applied_template_id?: string | null
   created_at: string
   updated_at?: string
 }
