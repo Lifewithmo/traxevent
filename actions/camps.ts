@@ -4,6 +4,7 @@ import { adminDb } from '@/lib/firebase-admin'
 import type { Camp, CampRegistrationType } from '@/lib/types'
 import { buildCampSlug } from '@/lib/slug'
 import { DEFAULT_EVENT_TYPE_ID } from '@/lib/event-types'
+import type { Terminology } from '@/lib/event-types'
 
 export async function createCamp(
   orgId: string,
@@ -12,6 +13,7 @@ export async function createCamp(
     year: number
     registration_type: CampRegistrationType
     event_type_id?: string
+    event_type_terminology?: Terminology
     camp_start: string
     camp_end: string
   }
@@ -28,6 +30,7 @@ export async function createCamp(
     status: 'draft',
     registration_type: input.registration_type,
     event_type_id: input.event_type_id ?? DEFAULT_EVENT_TYPE_ID,
+    ...(input.event_type_terminology ? { event_type_terminology: input.event_type_terminology } : {}),
     features: {
       accommodations: true,
       teams: true,
@@ -70,6 +73,7 @@ export async function updateCamp(
     | 'name'
     | 'status'
     | 'event_type_id'
+    | 'event_type_terminology'
     // note: registration_type and event_type_id should be updated together — they are coupled
     | 'registration_type'
     | 'camp_start'
