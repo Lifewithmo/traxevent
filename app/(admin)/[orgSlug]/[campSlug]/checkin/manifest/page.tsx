@@ -19,6 +19,16 @@ const resolveIds = cache(async (orgSlug: string, campSlug: string) => {
   return { orgId, campId: campSnap.docs[0].id, camp: campSnap.docs[0].data() as Camp }
 })
 
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ orgSlug: string; campSlug: string }>
+}) {
+  const { orgSlug, campSlug } = await params
+  const { camp } = await resolveIds(orgSlug, campSlug)
+  return { title: `${camp.name} — Attendance Manifest` }
+}
+
 export default async function CheckinManifestPage({
   params,
   searchParams,
@@ -47,7 +57,8 @@ export default async function CheckinManifestPage({
   return (
     <div className="print-root">
       <style>{`
-        .print-root { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 12px; color: #000; padding: 16px; }
+        .print-root * { box-sizing: border-box; }
+        .print-root { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 12px; color: #000; margin: 0; padding: 16px; }
         .print-root h1 { font-size: 18px; margin: 0 0 2px; }
         .print-root .meta { color: #666; font-size: 11px; margin-bottom: 16px; }
         .print-root table { width: 100%; border-collapse: collapse; }
