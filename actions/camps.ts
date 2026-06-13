@@ -93,8 +93,14 @@ export async function updateCamp(
   const snap = await ref.get()
   if (!snap.exists) throw new Error('Camp not found')
 
+  // Firestore rejects `undefined` values (ignoreUndefinedProperties is off),
+  // and callers pass optional fields as `undefined` when left blank — strip them.
+  const cleaned = Object.fromEntries(
+    Object.entries(updates).filter(([, v]) => v !== undefined)
+  )
+
   await ref.update({
-    ...updates,
+    ...cleaned,
     updated_at: new Date().toISOString(),
   })
 }
