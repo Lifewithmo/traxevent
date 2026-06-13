@@ -118,6 +118,16 @@ export default async function MyRegistrationPage({
         </div>
       )}
 
+      {camp.itinerary_published && (
+        <Link
+          href={`/${orgSlug}/${campSlug}/itinerary${token ? `?token=${token}` : ''}`}
+        >
+          <Button variant="outline" className="w-full border-[#7C3AED] text-[#7C3AED]">
+            View event schedule
+          </Button>
+        </Link>
+      )}
+
       <Link
         href={`/${orgSlug}/${campSlug}/edit${token ? `?token=${token}` : ''}`}
       >
