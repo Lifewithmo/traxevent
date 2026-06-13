@@ -74,6 +74,7 @@ export interface Camp {
   payment_amount?: number            // registration fee in dollars (e.g. 150 = $150.00); omit or 0 for free events
   from_display_name?: string  // display name in email "from" field, e.g. "Summer Camp 2026 at First Baptist"
   reply_to_email?: string     // reply-to address; replies route to this address instead of TraxEvent
+  itinerary_published?: boolean
 }
 
 // Shape of our Firebase Auth JWT custom claims
@@ -308,4 +309,17 @@ export interface DomainDnsRecord {
   value: string
   priority?: number
   ttl?: string
+}
+
+export interface ItineraryItem {
+  id: string
+  day: string          // ISO date 'YYYY-MM-DD'
+  start_time: string   // 'HH:MM' 24-hour
+  end_time?: string    // 'HH:MM' 24-hour, optional
+  title: string
+  location?: string
+  description?: string
+  sort_order: number
+  created_at: string
+  updated_at?: string
 }
