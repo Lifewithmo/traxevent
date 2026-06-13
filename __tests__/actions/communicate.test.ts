@@ -26,6 +26,8 @@ vi.mock('@/lib/resend', () => ({
       .replace(/[^a-z0-9]+/g, '.')
       .replace(/^\.+|\.+$/g, '')
   },
+  resolveSenderEmail: (opts: { verifiedDomain?: string; localPart: string }) =>
+    !opts.verifiedDomain || !opts.localPart ? undefined : `${opts.localPart}@${opts.verifiedDomain}`,
 }))
 
 vi.mock('@/actions/domains', () => ({ getVerifiedSendingDomain: getVerifiedDomainSpy }))

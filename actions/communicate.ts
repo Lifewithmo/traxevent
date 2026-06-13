@@ -1,7 +1,7 @@
 'use server'
 
 import { adminDb } from '@/lib/firebase-admin'
-import { getResend, buildFromAddress, deriveLocalPart } from '@/lib/resend'
+import { getResend, buildFromAddress, deriveLocalPart, resolveSenderEmail } from '@/lib/resend'
 import { getVerifiedSendingDomain } from '@/actions/domains'
 import type { Camp, Family, CommunicationLogEntry, OrgMember } from '@/lib/types'
 import { randomBytes } from 'crypto'
@@ -60,9 +60,11 @@ export async function sendEmailBlast(
       .collection('members').doc(input.sentByUid)
       .get()
     const member = memberSnap.exists ? (memberSnap.data() as OrgMember) : null
-    const localPart = member ? deriveLocalPart(member.email) : ''
-    if (member && localPart) {
-      from = buildFromAddress({ displayName: member.display_name, senderEmail: `${localPart}@${sendingDomain}` })
+    const senderEmail = member
+      ? resolveSenderEmail({ verifiedDomain: sendingDomain, localPart: deriveLocalPart(member.email) })
+      : undefined
+    if (member && senderEmail) {
+      from = buildFromAddress({ displayName: member.display_name, senderEmail })
     }
   }
 
