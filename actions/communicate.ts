@@ -11,6 +11,7 @@ export interface EmailBlastInput {
   htmlBody: string
   filter: 'all' | 'confirmed' | 'pending' | 'waitlisted'
   sentByUid?: string
+  sender?: { name: string; email: string }  // per-staff sender on the org's verified domain
 }
 
 export async function sendEmailBlast(
@@ -50,7 +51,12 @@ export async function sendEmailBlast(
   }
 
   const sendingDomain = await getVerifiedSendingDomain(orgId)
-  const from = buildFromAddress({ displayName: camp.from_display_name, domain: sendingDomain })
+  const senderEmail = input.sender?.email
+  const senderOnVerifiedDomain =
+    !!senderEmail && !!sendingDomain && senderEmail.toLowerCase().endsWith(`@${sendingDomain.toLowerCase()}`)
+  const from = senderOnVerifiedDomain
+    ? buildFromAddress({ displayName: input.sender!.name, senderEmail })
+    : buildFromAddress({ displayName: camp.from_display_name, domain: sendingDomain })
 
   const emailPayloads = families.map((f) => ({
     from,

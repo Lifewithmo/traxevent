@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { sendEmailBlast } from '@/actions/communicate'
+import { deriveLocalPart } from '@/lib/resend'
 import type { CommunicationLogEntry } from '@/lib/types'
 
 interface CommunicateClientProps {
@@ -15,6 +16,8 @@ interface CommunicateClientProps {
   campName: string
   fromDisplayName?: string
   log: CommunicationLogEntry[]
+  members: { uid: string; name: string; email: string }[]
+  verifiedDomain: string | null
 }
 
 const FILTER_LABELS: Record<string, string> = {
@@ -30,6 +33,8 @@ export function CommunicateClient({
   campName,
   fromDisplayName,
   log,
+  members,
+  verifiedDomain,
 }: CommunicateClientProps) {
   const [subject, setSubject] = useState(`${campName} — Update`)
   const [htmlBody, setHtmlBody] = useState('')
@@ -38,6 +43,18 @@ export function CommunicateClient({
   const [result, setResult] = useState<{ sent: number } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [recentLog, setRecentLog] = useState<CommunicationLogEntry[]>(log)
+  const [senderUid, setSenderUid] = useState('')
+
+  const staffOptions = verifiedDomain
+    ? members
+        .map((m) => ({ uid: m.uid, name: m.name, localPart: deriveLocalPart(m.email) }))
+        .filter((m) => m.localPart !== '')
+    : []
+  const selectedStaff = staffOptions.find((m) => m.uid === senderUid)
+  const staffSender =
+    selectedStaff && verifiedDomain
+      ? { name: selectedStaff.name, email: `${selectedStaff.localPart}@${verifiedDomain}` }
+      : undefined
 
   async function handleSend() {
     if (!subject.trim() || !htmlBody.trim()) return
@@ -45,7 +62,13 @@ export function CommunicateClient({
     setError(null)
     setResult(null)
     try {
-      const res = await sendEmailBlast(orgId, campId, { subject, htmlBody, filter })
+      const res = await sendEmailBlast(orgId, campId, {
+        subject,
+        htmlBody,
+        filter,
+        ...(staffSender ? { sender: staffSender } : {}),
+        ...(senderUid ? { sentByUid: senderUid } : {}),
+      })
       setResult(res)
       setRecentLog((prev) => [
         {
@@ -67,9 +90,11 @@ export function CommunicateClient({
     }
   }
 
-  const fromPreview = fromDisplayName
-    ? `"${fromDisplayName}" <noreply@traxevent.com>`
-    : 'noreply@traxevent.com'
+  const fromPreview = staffSender
+    ? `"${staffSender.name}" <${staffSender.email}>`
+    : fromDisplayName
+      ? `"${fromDisplayName}" <${verifiedDomain ? `noreply@${verifiedDomain}` : 'noreply@traxevent.com'}>`
+      : verifiedDomain ? `noreply@${verifiedDomain}` : 'noreply@traxevent.com'
 
   return (
     <div className="p-6 max-w-2xl space-y-6">
@@ -83,6 +108,28 @@ export function CommunicateClient({
           <p className="text-xs text-muted-foreground">
             Sending from: <span className="font-mono">{fromPreview}</span>
           </p>
+
+          <div className="space-y-1">
+            <Label htmlFor="sender">Send from</Label>
+            <select
+              id="sender"
+              className="w-full min-w-0 rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-sm transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+              value={senderUid}
+              onChange={(e) => setSenderUid(e.target.value)}
+            >
+              <option value="">{fromDisplayName ? `${fromDisplayName} (event default)` : 'Event default'}</option>
+              {staffOptions.map((m) => (
+                <option key={m.uid} value={m.uid}>
+                  {m.name} &lt;{m.localPart}@{verifiedDomain}&gt;
+                </option>
+              ))}
+            </select>
+            {!verifiedDomain && (
+              <p className="text-xs text-muted-foreground">
+                Verify a custom sending domain (Email Domain settings) to let staff send from their own address.
+              </p>
+            )}
+          </div>
 
           <div className="space-y-1">
             <Label htmlFor="subject">Subject</Label>

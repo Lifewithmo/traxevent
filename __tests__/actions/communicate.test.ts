@@ -4,19 +4,20 @@ const batchSendSpy = vi.hoisted(() => vi.fn().mockResolvedValue({ data: [], erro
 const logSetSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const getCampSpy = vi.hoisted(() => vi.fn())
 const getFamiliesSpy = vi.hoisted(() => vi.fn())
+const getVerifiedDomainSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 
 vi.mock('@/lib/resend', () => ({
   FROM_EMAIL: 'noreply@traxevent.com',
   getResend: vi.fn().mockReturnValue({
     batch: { send: batchSendSpy },
   }),
-  buildFromAddress: (opts: { displayName?: string; domain?: string }) => {
-    const email = opts.domain ? `noreply@${opts.domain}` : 'noreply@traxevent.com'
+  buildFromAddress: (opts: { displayName?: string; domain?: string; senderEmail?: string }) => {
+    const email = opts.senderEmail ?? (opts.domain ? `noreply@${opts.domain}` : 'noreply@traxevent.com')
     return opts.displayName ? `"${opts.displayName}" <${email}>` : email
   },
 }))
 
-vi.mock('@/actions/domains', () => ({ getVerifiedSendingDomain: vi.fn().mockResolvedValue(undefined) }))
+vi.mock('@/actions/domains', () => ({ getVerifiedSendingDomain: getVerifiedDomainSpy }))
 
 vi.mock('@/lib/firebase-admin', () => ({
   adminDb: {
@@ -66,6 +67,7 @@ describe('sendEmailBlast', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     getCampSpy.mockResolvedValue({ exists: true, data: () => mockCamp })
+    getVerifiedDomainSpy.mockResolvedValue(undefined)
   })
 
   it('sends to all non-cancelled families when filter is "all"', async () => {
@@ -165,5 +167,28 @@ describe('sendEmailBlast', () => {
     expect(logSetSpy).toHaveBeenCalledWith(
       expect.objectContaining({ recipient_count: 0 })
     )
+  })
+
+  it('sends from a staff member on the verified domain when a sender is provided', async () => {
+    getVerifiedDomainSpy.mockResolvedValue('mail.firsthills.org')
+    getFamiliesSpy.mockResolvedValue({ docs: [makeFamily('confirmed', 'a@test.com')] })
+    await sendEmailBlast('org-1', 'camp-1', {
+      subject: 'Hi', htmlBody: '<p>x</p>', filter: 'all',
+      sender: { name: 'John Smith', email: 'john@mail.firsthills.org' },
+    })
+    const emails = batchSendSpy.mock.calls[0][0]
+    expect(emails[0].from).toBe('"John Smith" <john@mail.firsthills.org>')
+  })
+
+  it('ignores a sender that is not on the verified domain (falls back to camp identity)', async () => {
+    getVerifiedDomainSpy.mockResolvedValue('mail.firsthills.org')
+    getFamiliesSpy.mockResolvedValue({ docs: [makeFamily('confirmed', 'a@test.com')] })
+    await sendEmailBlast('org-1', 'camp-1', {
+      subject: 'Hi', htmlBody: '<p>x</p>', filter: 'all',
+      sender: { name: 'John Smith', email: 'john@gmail.com' },
+    })
+    const emails = batchSendSpy.mock.calls[0][0]
+    expect(emails[0].from).not.toContain('gmail.com')
+    expect(emails[0].from).toBe('"Summer Camp at First Hills" <noreply@mail.firsthills.org>')
   })
 })
