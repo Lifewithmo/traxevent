@@ -19,6 +19,75 @@ interface EventPeopleClientProps {
 const selectClass =
   'w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50'
 
+function PersonCard({
+  person,
+  templates,
+  saving,
+  onRemove,
+  onApplyTemplate,
+  onTogglePage,
+}: {
+  person: EventPerson
+  templates: PermissionTemplate[]
+  saving: boolean
+  onRemove: (personId: string) => void
+  onApplyTemplate: (person: EventPerson, tid: string) => void
+  onTogglePage: (person: EventPerson, page: CampPage) => void
+}) {
+  return (
+    <Card>
+      <CardContent className="py-3 space-y-3">
+        <div className="flex items-start justify-between">
+          <div className="space-y-0.5">
+            <div className="flex items-center gap-2">
+              <p className="font-medium">{person.name}</p>
+              {person.role && <Badge variant="secondary">{person.role}</Badge>}
+            </div>
+            <p className="text-xs text-muted-foreground">{person.email}</p>
+          </div>
+          <Button size="sm" variant="outline" onClick={() => onRemove(person.id)} disabled={saving}>
+            Remove
+          </Button>
+        </div>
+
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <Label htmlFor={`tmpl-${person.id}`} className="text-xs text-muted-foreground">Apply template</Label>
+            <select
+              id={`tmpl-${person.id}`}
+              className={selectClass + ' max-w-xs'}
+              value={person.applied_template_id ?? ''}
+              onChange={(e) => e.target.value && onApplyTemplate(person, e.target.value)}
+            >
+              <option value="">— Custom —</option>
+              {templates.map((t) => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            {CAMP_PAGES.map((page) => {
+              const id = `${person.id}-${page}`
+              return (
+                <label key={page} htmlFor={id} className="flex items-center gap-2 text-sm capitalize cursor-pointer">
+                  <input
+                    id={id}
+                    type="checkbox"
+                    className="w-4 h-4"
+                    checked={person.pages.includes(page)}
+                    onChange={() => onTogglePage(person, page)}
+                  />
+                  {page}
+                </label>
+              )
+            })}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
 export function EventPeopleClient({
   orgId,
   campId,
@@ -86,15 +155,17 @@ export function EventPeopleClient({
   }
 
   async function handleTogglePersonPage(person: EventPerson, page: CampPage) {
+    const prev = person  // snapshot before optimistic update
     const nextPages = person.pages.includes(page)
       ? person.pages.filter((p) => p !== page)
       : [...person.pages, page]
-    setPeople((prev) =>
-      prev.map((p) => (p.id === person.id ? { ...p, pages: nextPages, applied_template_id: null } : p))
+    setPeople((list) =>
+      list.map((p) => (p.id === person.id ? { ...p, pages: nextPages, applied_template_id: null } : p))
     )
     try {
       await updateEventPersonPermissions(orgId, campId, person.id, nextPages)
     } catch (err: unknown) {
+      setPeople((list) => list.map((p) => (p.id === person.id ? prev : p)))  // rollback
       setError(err instanceof Error ? err.message : 'Failed to update permissions')
     }
   }
@@ -102,74 +173,21 @@ export function EventPeopleClient({
   async function handleApplyTemplateToPerson(person: EventPerson, tid: string) {
     const t = templates.find((x) => x.id === tid)
     if (!t) return
+    const prev = person  // snapshot before optimistic update
     const nextPages = [...t.pages]
-    setPeople((prev) =>
-      prev.map((p) => (p.id === person.id ? { ...p, pages: nextPages, applied_template_id: tid } : p))
+    setPeople((list) =>
+      list.map((p) => (p.id === person.id ? { ...p, pages: nextPages, applied_template_id: tid } : p))
     )
     try {
       await updateEventPersonPermissions(orgId, campId, person.id, nextPages, tid)
     } catch (err: unknown) {
+      setPeople((list) => list.map((p) => (p.id === person.id ? prev : p)))  // rollback
       setError(err instanceof Error ? err.message : 'Failed to apply template')
     }
   }
 
   const staff = people.filter((p) => p.kind === 'staff')
   const volunteers = people.filter((p) => p.kind === 'volunteer')
-
-  function PersonCard({ person }: { person: EventPerson }) {
-    return (
-      <Card>
-        <CardContent className="py-3 space-y-3">
-          <div className="flex items-start justify-between">
-            <div className="space-y-0.5">
-              <div className="flex items-center gap-2">
-                <p className="font-medium">{person.name}</p>
-                {person.role && <Badge variant="secondary">{person.role}</Badge>}
-              </div>
-              <p className="text-xs text-muted-foreground">{person.email}</p>
-            </div>
-            <Button size="sm" variant="outline" onClick={() => handleRemove(person.id)} disabled={saving}>
-              Remove
-            </Button>
-          </div>
-
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <Label htmlFor={`tmpl-${person.id}`} className="text-xs text-muted-foreground">Apply template</Label>
-              <select
-                id={`tmpl-${person.id}`}
-                className={selectClass + ' max-w-xs'}
-                value={person.applied_template_id ?? ''}
-                onChange={(e) => e.target.value && handleApplyTemplateToPerson(person, e.target.value)}
-              >
-                <option value="">— Custom —</option>
-                {templates.map((t) => (
-                  <option key={t.id} value={t.id}>{t.name}</option>
-                ))}
-              </select>
-            </div>
-            <div className="grid grid-cols-3 gap-2">
-              {CAMP_PAGES.map((page) => {
-                const id = `${person.id}-${page}`
-                return (
-                  <label key={page} htmlFor={id} className="flex items-center gap-2 text-sm capitalize cursor-pointer">
-                    <input
-                      id={id}
-                      type="checkbox"
-                      className="w-4 h-4"
-                      checked={person.pages.includes(page)}
-                      onChange={() => handleTogglePersonPage(person, page)}
-                    />
-                    {page}
-                  </label>
-                )
-              })}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    )
-  }
 
   return (
     <div className="p-6 max-w-3xl space-y-6">
@@ -259,7 +277,17 @@ export function EventPeopleClient({
         {staff.length === 0 ? (
           <p className="text-sm text-muted-foreground">No staff assigned to this event yet.</p>
         ) : (
-          staff.map((p) => <PersonCard key={p.id} person={p} />)
+          staff.map((p) => (
+            <PersonCard
+              key={p.id}
+              person={p}
+              templates={templates}
+              saving={saving}
+              onRemove={handleRemove}
+              onApplyTemplate={handleApplyTemplateToPerson}
+              onTogglePage={handleTogglePersonPage}
+            />
+          ))
         )}
       </section>
 
@@ -268,7 +296,17 @@ export function EventPeopleClient({
         {volunteers.length === 0 ? (
           <p className="text-sm text-muted-foreground">No volunteers assigned to this event yet.</p>
         ) : (
-          volunteers.map((p) => <PersonCard key={p.id} person={p} />)
+          volunteers.map((p) => (
+            <PersonCard
+              key={p.id}
+              person={p}
+              templates={templates}
+              saving={saving}
+              onRemove={handleRemove}
+              onApplyTemplate={handleApplyTemplateToPerson}
+              onTogglePage={handleTogglePersonPage}
+            />
+          ))
         )}
       </section>
     </div>
