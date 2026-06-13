@@ -21,6 +21,7 @@ function getCampNav(terminology: Terminology) {
     { key: 'itinerary', label: 'Itinerary' },
     { key: 'communicate', label: 'Communicate' },
     { key: 'forms', label: 'Forms' },
+    { key: 'people', label: 'People' },
     { key: 'reports', label: 'Reports' },
     { key: 'settings', label: 'Settings' },
   ]
