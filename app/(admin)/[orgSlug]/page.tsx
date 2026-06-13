@@ -39,8 +39,8 @@ export default async function OrgHomePage({
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {camps.map((camp) => (
-            <Link key={camp.id} href={`/${orgSlug}/${camp.slug}/dashboard`}>
-              <Card className="hover:shadow-md transition-shadow cursor-pointer h-full">
+            <Card key={camp.id} className="hover:shadow-md transition-shadow h-full flex flex-col">
+              <Link href={`/${orgSlug}/${camp.slug}/dashboard`} className="block cursor-pointer">
                 <CardHeader>
                   <CardTitle className="text-base">{camp.name}</CardTitle>
                 </CardHeader>
@@ -55,10 +55,12 @@ export default async function OrgHomePage({
                   <p className="mt-2 text-xs text-muted-foreground">
                     {camp.camp_start} → {camp.camp_end}
                   </p>
-                  <DuplicateEventButton orgId={org.id} orgSlug={orgSlug} sourceCampId={camp.id} sourceName={camp.name} />
                 </CardContent>
-              </Card>
-            </Link>
+              </Link>
+              <CardContent className="pt-0 mt-auto">
+                <DuplicateEventButton orgId={org.id} orgSlug={orgSlug} sourceCampId={camp.id} sourceName={camp.name} />
+              </CardContent>
+            </Card>
           ))}
         </div>
       )}

@@ -124,11 +124,19 @@ export async function duplicateEvent(
   if (!sourceSnap.exists) throw new Error('Source event not found')
   const source = sourceSnap.data() as Camp
 
+  const baseSlug = buildCampSlug(input.name, input.year)
+  let slug = baseSlug
+  let suffix = 2
+  while (!(await campsCol.where('slug', '==', slug).limit(1).get()).empty) {
+    slug = `${baseSlug}-${suffix}`
+    suffix++
+  }
+
   const newRef = campsCol.doc()
   const newCamp: Camp = {
     id: newRef.id,
     name: input.name,
-    slug: buildCampSlug(input.name, input.year),
+    slug,
     year: input.year,
     status: 'draft',
     registration_type: source.registration_type,
@@ -145,21 +153,27 @@ export async function duplicateEvent(
   }
   await newRef.set(newCamp)
 
-  const [slotsSnap, formsSnap] = await Promise.all([
-    sourceRef.collection('assignment_slots').get(),
-    sourceRef.collection('form_assignments').get(),
-  ])
+  try {
+    const [slotsSnap, formsSnap] = await Promise.all([
+      sourceRef.collection('assignment_slots').get(),
+      sourceRef.collection('form_assignments').get(),
+    ])
 
-  await Promise.all([
-    ...slotsSnap.docs.map((d) => {
-      const id = randomBytes(8).toString('hex')
-      return newRef.collection('assignment_slots').doc(id).set({ ...d.data(), id, created_at: new Date().toISOString() })
-    }),
-    ...formsSnap.docs.map((d) => {
-      const id = randomBytes(8).toString('hex')
-      return newRef.collection('form_assignments').doc(id).set({ ...d.data(), id, created_at: new Date().toISOString() })
-    }),
-  ])
+    await Promise.all([
+      ...slotsSnap.docs.map((d) => {
+        const id = randomBytes(8).toString('hex')
+        return newRef.collection('assignment_slots').doc(id).set({ ...d.data(), id, created_at: new Date().toISOString() })
+      }),
+      ...formsSnap.docs.map((d) => {
+        const id = randomBytes(8).toString('hex')
+        return newRef.collection('form_assignments').doc(id).set({ ...d.data(), id, created_at: new Date().toISOString() })
+      }),
+    ])
+  } catch (err) {
+    // Roll back the orphaned draft so the user can cleanly retry.
+    await newRef.delete()
+    throw err
+  }
 
   return newCamp
 }

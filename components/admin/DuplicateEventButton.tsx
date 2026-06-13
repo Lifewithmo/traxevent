@@ -39,14 +39,14 @@ export function DuplicateEventButton({ orgId, orgSlug, sourceCampId, sourceName 
 
   if (!open) {
     return (
-      <Button variant="outline" size="sm" onClick={(e) => { e.preventDefault(); setOpen(true) }}>
+      <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
         Duplicate
       </Button>
     )
   }
 
   return (
-    <div className="mt-3 space-y-2 border-t pt-3" onClick={(e) => e.preventDefault()}>
+    <div className="mt-3 space-y-2 border-t pt-3">
       <div className="space-y-1">
         <Label htmlFor={`dup-name-${sourceCampId}`} className="text-xs">New event name</Label>
         <Input id={`dup-name-${sourceCampId}`} value={name} onChange={(e) => setName(e.target.value)} className="h-8" />
@@ -54,7 +54,7 @@ export function DuplicateEventButton({ orgId, orgSlug, sourceCampId, sourceName 
       <div className="grid grid-cols-3 gap-2">
         <div className="space-y-1">
           <Label htmlFor={`dup-year-${sourceCampId}`} className="text-xs">Year</Label>
-          <Input id={`dup-year-${sourceCampId}`} type="number" value={year} onChange={(e) => setYear(Number(e.target.value))} className="h-8" />
+          <Input id={`dup-year-${sourceCampId}`} type="number" min={2020} max={2040} value={year} onChange={(e) => setYear(Number(e.target.value))} className="h-8" />
         </div>
         <div className="space-y-1">
           <Label htmlFor={`dup-start-${sourceCampId}`} className="text-xs">Start</Label>
@@ -70,7 +70,7 @@ export function DuplicateEventButton({ orgId, orgSlug, sourceCampId, sourceName 
         {error && <p className="text-xs text-destructive">{error}</p>}
       </div>
       <div className="flex gap-2">
-        <Button size="sm" onClick={handleDuplicate} disabled={busy || !name.trim() || !start || !end}>
+        <Button size="sm" onClick={handleDuplicate} disabled={busy || !name.trim() || !start || !end || year < 2020}>
           {busy ? 'Duplicating…' : 'Create duplicate'}
         </Button>
         <Button size="sm" variant="outline" onClick={() => setOpen(false)} disabled={busy}>Cancel</Button>
