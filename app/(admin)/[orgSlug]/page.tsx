@@ -1,5 +1,5 @@
 import { getOrgBySlug } from '@/actions/orgs'
-import { DEFAULT_EVENT_TYPE_ID } from '@/lib/event-types'
+import { DEFAULT_EVENT_TYPE_ID, resolveTerminology } from '@/lib/event-types'
 import { listCamps } from '@/actions/camps'
 import { redirect } from 'next/navigation'
 import { Button } from '@/components/ui/button'
@@ -50,7 +50,7 @@ export default async function OrgHomePage({
                     <Badge variant={camp.status === 'active' ? 'default' : 'secondary'}>
                       {camp.status}
                     </Badge>
-                    <Badge variant="outline">{camp.event_type_id ?? DEFAULT_EVENT_TYPE_ID}</Badge>
+                    <Badge variant="outline">{resolveTerminology(camp.event_type_id ?? DEFAULT_EVENT_TYPE_ID, camp.event_type_terminology).eventLabel}</Badge>
                   </div>
                   <p className="mt-2 text-xs text-muted-foreground">
                     {camp.camp_start} → {camp.camp_end}

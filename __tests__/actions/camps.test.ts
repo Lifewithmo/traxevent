@@ -17,6 +17,10 @@ vi.mock('@/lib/firebase-admin', () => ({
   },
 }))
 
+vi.mock('firebase-admin/firestore', () => ({
+  FieldValue: { delete: vi.fn(() => '__deleted__') },
+}))
+
 import { buildCampSlug } from '@/lib/slug'
 import { createCamp, updateCamp } from '@/actions/camps'
 
@@ -76,6 +80,18 @@ describe('updateCamp', () => {
     expect(payload).toMatchObject({ capacity: 100, updated_at: expect.any(String) })
     expect(payload).not.toHaveProperty('name')
     expect(payload).not.toHaveProperty('status')
+  })
+
+  it('clears event_type_terminology with a delete sentinel when passed null', async () => {
+    await updateCamp('org-1', 'camp-1', { event_type_terminology: null })
+    const payload = campUpdateSpy.mock.calls[0][0]
+    expect(payload.event_type_terminology).toBe('__deleted__')
+  })
+
+  it('leaves event_type_terminology unchanged when passed undefined', async () => {
+    await updateCamp('org-1', 'camp-1', { name: 'X', event_type_terminology: undefined })
+    const payload = campUpdateSpy.mock.calls[0][0]
+    expect(payload).not.toHaveProperty('event_type_terminology')
   })
 
   it('throws "Camp not found" if the camp document does not exist', async () => {

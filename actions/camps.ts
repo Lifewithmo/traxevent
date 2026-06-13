@@ -2,6 +2,7 @@
 
 import { randomBytes } from 'crypto'
 import { adminDb } from '@/lib/firebase-admin'
+import { FieldValue } from 'firebase-admin/firestore'
 import type { Camp, CampRegistrationType } from '@/lib/types'
 import { buildCampSlug } from '@/lib/slug'
 import { DEFAULT_EVENT_TYPE_ID } from '@/lib/event-types'
@@ -74,7 +75,6 @@ export async function updateCamp(
     | 'name'
     | 'status'
     | 'event_type_id'
-    | 'event_type_terminology'
     // note: registration_type and event_type_id should be updated together — they are coupled
     | 'registration_type'
     | 'camp_start'
@@ -85,7 +85,7 @@ export async function updateCamp(
     | 'payment_amount'
     | 'from_display_name'
     | 'reply_to_email'
-  >>
+  >> & { event_type_terminology?: Terminology | null }
 ): Promise<void> {
   const ref = adminDb
     .collection('orgs').doc(orgId)
@@ -94,11 +94,14 @@ export async function updateCamp(
   const snap = await ref.get()
   if (!snap.exists) throw new Error('Camp not found')
 
-  // Firestore rejects `undefined` values (ignoreUndefinedProperties is off),
-  // and callers pass optional fields as `undefined` when left blank — strip them.
-  const cleaned = Object.fromEntries(
-    Object.entries(updates).filter(([, v]) => v !== undefined)
-  )
+  // Firestore rejects `undefined` (ignoreUndefinedProperties is off). Convention:
+  //   undefined  → leave the field unchanged (callers pass it for blank optionals)
+  //   null       → explicitly clear the field (FieldValue.delete())
+  const cleaned: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(updates)) {
+    if (v === undefined) continue
+    cleaned[k] = v === null ? FieldValue.delete() : v
+  }
 
   await ref.update({
     ...cleaned,

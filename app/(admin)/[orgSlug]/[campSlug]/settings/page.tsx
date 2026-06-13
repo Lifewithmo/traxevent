@@ -71,7 +71,9 @@ export default function EventSettingsPage() {
         status,
         event_type_id: eventTypeId,
         registration_type: selectedType ? selectedType.registrationUnit : camp.registration_type,
-        event_type_terminology: selectedType?.is_custom ? selectedType.terminology : undefined,
+        event_type_terminology: selectedType
+          ? (selectedType.is_custom ? selectedType.terminology : null)
+          : undefined,
         camp_start: campStart,
         camp_end: campEnd,
         registration_open: registrationOpen || undefined,
