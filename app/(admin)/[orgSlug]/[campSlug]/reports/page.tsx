@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic'
 import { notFound } from 'next/navigation'
 import { cache } from 'react'
 import { adminDb } from '@/lib/firebase-admin'
-import { getEventReportData } from '@/actions/reports'
+import { getEventReportData, getFormSubmissionReport } from '@/actions/reports'
 import { ReportsClient } from '@/components/admin/ReportsClient'
 import type { Camp } from '@/lib/types'
 
@@ -27,7 +27,10 @@ export default async function ReportsPage({
 }) {
   const { orgSlug, campSlug } = await params
   const { orgId, campId, camp } = await resolveIds(orgSlug, campSlug)
-  const data = await getEventReportData(orgId, campId)
+  const [data, formSubmissions] = await Promise.all([
+    getEventReportData(orgId, campId),
+    getFormSubmissionReport(orgId, campId),
+  ])
 
   return (
     <ReportsClient
@@ -36,6 +39,7 @@ export default async function ReportsPage({
       campName={camp.name}
       registrationType={camp.registration_type}
       data={data}
+      formSubmissions={formSubmissions}
     />
   )
 }
