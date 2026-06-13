@@ -4,7 +4,9 @@ import { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import { getOrgBySlug } from '@/actions/orgs'
 import { getCampBySlug, updateCamp } from '@/actions/camps'
-import { getAllEventTypes, getEventType, DEFAULT_EVENT_TYPE_ID } from '@/lib/event-types'
+import { DEFAULT_EVENT_TYPE_ID } from '@/lib/event-types'
+import type { EventType } from '@/lib/event-types'
+import { listOrgEventTypes } from '@/actions/event-types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -30,12 +32,14 @@ export default function EventSettingsPage() {
   const [paymentAmount, setPaymentAmount] = useState<string>('')
   const [fromDisplayName, setFromDisplayName] = useState<string>('')
   const [replyToEmail, setReplyToEmail] = useState<string>('')
+  const [eventTypes, setEventTypes] = useState<EventType[]>([])
 
   useEffect(() => {
     async function load() {
       const org = await getOrgBySlug(orgSlug)
       if (!org) return
       setOrgId(org.id)
+      listOrgEventTypes(org.id).then(setEventTypes).catch(() => setError('Failed to load event types'))
       const c = await getCampBySlug(org.id, campSlug)
       if (!c) return
       setCamp(c)
@@ -61,11 +65,15 @@ export default function EventSettingsPage() {
     setSaving(true)
     setSaved(false)
     try {
+      const selectedType = eventTypes.find((t) => t.id === eventTypeId)
       await updateCamp(orgId, camp.id, {
         name,
         status,
         event_type_id: eventTypeId,
-        registration_type: getEventType(eventTypeId).registrationUnit,
+        registration_type: selectedType ? selectedType.registrationUnit : camp.registration_type,
+        event_type_terminology: selectedType
+          ? (selectedType.is_custom ? selectedType.terminology : null)
+          : undefined,
         camp_start: campStart,
         camp_end: campEnd,
         registration_open: registrationOpen || undefined,
@@ -114,9 +122,9 @@ export default function EventSettingsPage() {
                 value={eventTypeId}
                 onChange={(e) => { setEventTypeId(e.target.value); setSaved(false) }}
               >
-                {getAllEventTypes().map((et) => (
+                {eventTypes.map((et) => (
                   <option key={et.id} value={et.id}>
-                    {et.name} — {et.description}
+                    {et.name}{et.is_custom ? ' (custom)' : ''} — {et.description}
                   </option>
                 ))}
               </select>

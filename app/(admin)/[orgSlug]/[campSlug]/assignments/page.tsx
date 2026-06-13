@@ -4,7 +4,7 @@ import { notFound } from 'next/navigation'
 import { adminDb } from '@/lib/firebase-admin'
 import { listSlots } from '@/actions/assignments'
 import { getAdminFamilies } from '@/actions/admin-families'
-import { getEventType } from '@/lib/event-types'
+import { resolveTerminology } from '@/lib/event-types'
 import { AssignmentsClient } from '@/components/admin/AssignmentsClient'
 import type { Camp } from '@/lib/types'
 
@@ -32,7 +32,7 @@ export default async function AssignmentsPage({
     listSlots(orgId, campId),
     getAdminFamilies(orgId, campId),
   ])
-  const { terminology } = getEventType(camp.event_type_id)
+  const terminology = resolveTerminology(camp.event_type_id, camp.event_type_terminology)
 
   return (
     <AssignmentsClient

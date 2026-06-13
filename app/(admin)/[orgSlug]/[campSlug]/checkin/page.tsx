@@ -4,7 +4,7 @@ import { notFound } from 'next/navigation'
 import { cache } from 'react'
 import { adminDb } from '@/lib/firebase-admin'
 import { listAllEventMembers, getCheckinsForDate } from '@/actions/checkins'
-import { getEventType } from '@/lib/event-types'
+import { resolveTerminology } from '@/lib/event-types'
 import { CheckinClient } from '@/components/admin/CheckinClient'
 import type { Camp } from '@/lib/types'
 
@@ -40,8 +40,8 @@ export default async function CheckinPage({
     getCheckinsForDate(orgId, campId, activeDate),
   ])
 
-  const { registrationUnit, terminology } = getEventType(camp.event_type_id)
-  const guardianMode = registrationUnit === 'child'
+  const terminology = resolveTerminology(camp.event_type_id, camp.event_type_terminology)
+  const guardianMode = camp.registration_type === 'child'
 
   return (
     <CheckinClient

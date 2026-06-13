@@ -1,10 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { createCamp } from '@/actions/camps'
 import { getOrgBySlug } from '@/actions/orgs'
-import { getAllEventTypes, getEventType, DEFAULT_EVENT_TYPE_ID } from '@/lib/event-types'
+import { listOrgEventTypes } from '@/actions/event-types'
+import { DEFAULT_EVENT_TYPE_ID } from '@/lib/event-types'
+import type { EventType } from '@/lib/event-types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -20,21 +22,40 @@ export default function NewEventPage() {
   const [campEnd, setCampEnd] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
-  const eventTypes = getAllEventTypes()
+  const [eventTypes, setEventTypes] = useState<EventType[]>([])
+  const [orgId, setOrgId] = useState<string | null>(null)
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const org = await getOrgBySlug(orgSlug)
+        if (!org) {
+          setError('Organization not found')
+          return
+        }
+        setOrgId(org.id)
+        setEventTypes(await listOrgEventTypes(org.id))
+      } catch {
+        setError('Failed to load event types')
+      }
+    }
+    load()
+  }, [orgSlug])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
     setLoading(true)
     try {
-      const org = await getOrgBySlug(orgSlug)
-      if (!org) throw new Error('Organization not found')
-      const selectedType = getEventType(eventTypeId)
-      const camp = await createCamp(org.id, {
+      if (!orgId) throw new Error('Organization not found')
+      const selectedType = eventTypes.find((t) => t.id === eventTypeId)
+      if (!selectedType) throw new Error('Select an event type')
+      const camp = await createCamp(orgId, {
         name,
         year,
         registration_type: selectedType.registrationUnit,
         event_type_id: eventTypeId,
+        ...(selectedType.is_custom ? { event_type_terminology: selectedType.terminology } : {}),
         camp_start: campStart,
         camp_end: campEnd,
       })
@@ -62,61 +83,31 @@ export default function NewEventPage() {
               >
                 {eventTypes.map((et) => (
                   <option key={et.id} value={et.id}>
-                    {et.name} — {et.description}
+                    {et.name}{et.is_custom ? ' (custom)' : ''} — {et.description}
                   </option>
                 ))}
               </select>
             </div>
-
             <div className="space-y-1">
               <Label htmlFor="name">Event name</Label>
-              <Input
-                id="name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Summer Camp 2026"
-                required
-              />
+              <Input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Summer Camp 2026" required />
             </div>
-
             <div className="space-y-1">
               <Label htmlFor="year">Year</Label>
-              <Input
-                id="year"
-                type="number"
-                value={year}
-                onChange={(e) => setYear(Number(e.target.value))}
-                min={2020}
-                max={2040}
-                required
-              />
+              <Input id="year" type="number" value={year} onChange={(e) => setYear(Number(e.target.value))} min={2020} max={2040} required />
             </div>
-
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1">
                 <Label htmlFor="campStart">Start date</Label>
-                <Input
-                  id="campStart"
-                  type="date"
-                  value={campStart}
-                  onChange={(e) => setCampStart(e.target.value)}
-                  required
-                />
+                <Input id="campStart" type="date" value={campStart} onChange={(e) => setCampStart(e.target.value)} required />
               </div>
               <div className="space-y-1">
                 <Label htmlFor="campEnd">End date</Label>
-                <Input
-                  id="campEnd"
-                  type="date"
-                  value={campEnd}
-                  onChange={(e) => setCampEnd(e.target.value)}
-                  required
-                />
+                <Input id="campEnd" type="date" value={campEnd} onChange={(e) => setCampEnd(e.target.value)} required />
               </div>
             </div>
-
             {error && <p className="text-sm text-destructive">{error}</p>}
-            <Button type="submit" className="w-full" disabled={loading}>
+            <Button type="submit" className="w-full" disabled={loading || eventTypes.length === 0}>
               {loading ? 'Creating…' : 'Create event'}
             </Button>
           </form>

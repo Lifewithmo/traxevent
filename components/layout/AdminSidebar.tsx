@@ -82,6 +82,9 @@ export function AdminSidebar({ orgSlug, campSlug, terminology }: AdminSidebarPro
         <Link href={`/${orgSlug}/email-domain`} className={navClass(`/${orgSlug}/email-domain`)}>
           Email Domain
         </Link>
+        <Link href={`/${orgSlug}/event-types`} className={navClass(`/${orgSlug}/event-types`)}>
+          Event Types
+        </Link>
       </div>
     </aside>
   )

@@ -1,10 +1,11 @@
 import { getOrgBySlug } from '@/actions/orgs'
-import { DEFAULT_EVENT_TYPE_ID } from '@/lib/event-types'
+import { DEFAULT_EVENT_TYPE_ID, resolveTerminology } from '@/lib/event-types'
 import { listCamps } from '@/actions/camps'
 import { redirect } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { DuplicateEventButton } from '@/components/admin/DuplicateEventButton'
 import Link from 'next/link'
 
 export default async function OrgHomePage({
@@ -38,8 +39,8 @@ export default async function OrgHomePage({
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {camps.map((camp) => (
-            <Link key={camp.id} href={`/${orgSlug}/${camp.slug}/dashboard`}>
-              <Card className="hover:shadow-md transition-shadow cursor-pointer h-full">
+            <Card key={camp.id} className="hover:shadow-md transition-shadow h-full flex flex-col">
+              <Link href={`/${orgSlug}/${camp.slug}/dashboard`} className="block cursor-pointer">
                 <CardHeader>
                   <CardTitle className="text-base">{camp.name}</CardTitle>
                 </CardHeader>
@@ -49,14 +50,17 @@ export default async function OrgHomePage({
                     <Badge variant={camp.status === 'active' ? 'default' : 'secondary'}>
                       {camp.status}
                     </Badge>
-                    <Badge variant="outline">{camp.event_type_id ?? DEFAULT_EVENT_TYPE_ID}</Badge>
+                    <Badge variant="outline">{resolveTerminology(camp.event_type_id ?? DEFAULT_EVENT_TYPE_ID, camp.event_type_terminology).eventLabel}</Badge>
                   </div>
                   <p className="mt-2 text-xs text-muted-foreground">
                     {camp.camp_start} → {camp.camp_end}
                   </p>
                 </CardContent>
-              </Card>
-            </Link>
+              </Link>
+              <CardContent className="pt-0 mt-auto">
+                <DuplicateEventButton orgId={org.id} orgSlug={orgSlug} sourceCampId={camp.id} sourceName={camp.name} />
+              </CardContent>
+            </Card>
           ))}
         </div>
       )}

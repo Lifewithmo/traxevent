@@ -4,7 +4,7 @@ import { notFound } from 'next/navigation'
 import { adminDb } from '@/lib/firebase-admin'
 import { listSlots } from '@/actions/assignments'
 import { getAdminFamilies } from '@/actions/admin-families'
-import { getEventType } from '@/lib/event-types'
+import { resolveTerminology } from '@/lib/event-types'
 import type { Camp, FamilyMember } from '@/lib/types'
 
 const resolveIds = cache(async (orgSlug: string, campSlug: string) => {
@@ -41,7 +41,7 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { orgSlug, campSlug } = await params
   const { camp } = await resolveIds(orgSlug, campSlug)
-  const { terminology } = getEventType(camp.event_type_id)
+  const terminology = resolveTerminology(camp.event_type_id, camp.event_type_terminology)
   return { title: `${camp.name} — ${terminology.assignmentPlural} Roster` }
 }
 
@@ -56,7 +56,8 @@ export default async function AssignmentsPrintPage({
     listSlots(orgId, campId),
     getAdminFamilies(orgId, campId),
   ])
-  const { terminology, registrationUnit } = getEventType(camp.event_type_id)
+  const terminology = resolveTerminology(camp.event_type_id, camp.event_type_terminology)
+  const registrationUnit = camp.registration_type
 
   // Group assigned families by slot
   const familiesBySlot = new Map<string, typeof families>()

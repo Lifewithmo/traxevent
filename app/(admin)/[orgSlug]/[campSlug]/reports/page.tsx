@@ -4,7 +4,6 @@ import { notFound } from 'next/navigation'
 import { cache } from 'react'
 import { adminDb } from '@/lib/firebase-admin'
 import { getEventReportData } from '@/actions/reports'
-import { getEventType } from '@/lib/event-types'
 import { ReportsClient } from '@/components/admin/ReportsClient'
 import type { Camp } from '@/lib/types'
 
@@ -29,14 +28,13 @@ export default async function ReportsPage({
   const { orgSlug, campSlug } = await params
   const { orgId, campId, camp } = await resolveIds(orgSlug, campSlug)
   const data = await getEventReportData(orgId, campId)
-  const { registrationUnit } = getEventType(camp.event_type_id)
 
   return (
     <ReportsClient
       orgId={orgId}
       campId={campId}
       campName={camp.name}
-      registrationType={registrationUnit}
+      registrationType={camp.registration_type}
       data={data}
     />
   )
