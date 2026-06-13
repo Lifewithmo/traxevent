@@ -13,5 +13,8 @@ export function getResend(): Resend {
 // mail is sent from noreply@<domain>; otherwise the platform default is used.
 export function buildFromAddress(opts: { displayName?: string; domain?: string }): string {
   const email = opts.domain ? `noreply@${opts.domain}` : FROM_EMAIL
-  return opts.displayName ? `"${opts.displayName}" <${email}>` : email
+  if (!opts.displayName) return email
+  // Escape backslashes and double-quotes for a valid RFC 5322 quoted-string
+  const escaped = opts.displayName.replace(/([\\"])/g, '\\$1')
+  return `"${escaped}" <${email}>`
 }

@@ -19,4 +19,10 @@ describe('buildFromAddress', () => {
       '"First Hills" <noreply@mail.firsthills.org>'
     )
   })
+
+  it('escapes double-quotes and backslashes in the display name', () => {
+    expect(buildFromAddress({ displayName: 'Camp "Pinewood"', domain: 'mail.x.org' })).toBe(
+      '"Camp \\"Pinewood\\"" <noreply@mail.x.org>'
+    )
+  })
 })
