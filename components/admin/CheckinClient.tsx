@@ -40,9 +40,12 @@ export function CheckinClient({
 
   const byMember = new Map(checkins.map((c) => [c.member_id, c]))
 
-  const checkedIn = checkins.filter((c) => c.status === 'in').length
-  const checkedOut = checkins.filter((c) => c.status === 'out').length
-  const notIn = members.length - checkins.length
+  // Counts derived from the roster join so they always sum to members.length
+  // (ignores any orphaned checkin records for members no longer on the roster).
+  const rosterRecords = members.map((m) => byMember.get(m.member_id))
+  const checkedIn = rosterRecords.filter((c) => c?.status === 'in').length
+  const checkedOut = rosterRecords.filter((c) => c?.status === 'out').length
+  const notIn = rosterRecords.filter((c) => !c).length
 
   function changeDate(newDate: string) {
     router.push(`/${orgSlug}/${campSlug}/checkin?date=${newDate}`)
@@ -73,8 +76,13 @@ export function CheckinClient({
     let guardianName: string | undefined
     if (guardianMode) {
       const entered = window.prompt('Who is picking up this child? Enter guardian name:')
-      if (entered === null) return
-      guardianName = entered.trim() || undefined
+      if (entered === null) return // cancelled
+      const trimmed = entered.trim()
+      if (!trimmed) {
+        setError('A guardian name is required to check out a child.')
+        return
+      }
+      guardianName = trimmed
     }
     setBusyId(member.member_id)
     setError(null)
@@ -158,8 +166,8 @@ export function CheckinClient({
                     </div>
                   </div>
                   <div className="flex gap-2">
-                    {status === 'in' ? (
-                      <Button size="sm" variant="outline" onClick={() => handleCheckOut(member, record!)} disabled={busy}>
+                    {record && status === 'in' ? (
+                      <Button size="sm" variant="outline" onClick={() => handleCheckOut(member, record)} disabled={busy}>
                         {busy ? '…' : 'Check out'}
                       </Button>
                     ) : status === 'out' ? (
