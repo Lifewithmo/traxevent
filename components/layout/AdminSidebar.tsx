@@ -21,6 +21,7 @@ function getCampNav(terminology: Terminology) {
     { key: 'itinerary', label: 'Itinerary' },
     { key: 'communicate', label: 'Communicate' },
     { key: 'forms', label: 'Forms' },
+    { key: 'people', label: 'People' },
     { key: 'reports', label: 'Reports' },
     { key: 'settings', label: 'Settings' },
   ]
@@ -70,6 +71,9 @@ export function AdminSidebar({ orgSlug, campSlug, terminology }: AdminSidebarPro
         </Link>
         <Link href={`/${orgSlug}/forms`} className={navClass(`/${orgSlug}/forms`)}>
           Form Templates
+        </Link>
+        <Link href={`/${orgSlug}/permissions`} className={navClass(`/${orgSlug}/permissions`)}>
+          Permissions
         </Link>
         <Link href={`/${orgSlug}/billing`} className={navClass(`/${orgSlug}/billing`)}>
           Billing

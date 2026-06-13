@@ -21,6 +21,7 @@ export const CAMP_PAGES = [
   'itinerary',
   'communicate',
   'forms',
+  'people',
   'reports',
 ] as const
 
@@ -244,4 +245,28 @@ export interface SignedForm {
   signer_ip: string
   signed_at: string
   created_at: string
+}
+
+export type EventPersonKind = 'staff' | 'volunteer'
+
+export interface PermissionTemplate {
+  id: string
+  name: string
+  description?: string
+  pages: CampPage[]
+  is_built_in?: boolean
+  created_at?: string
+  updated_at?: string
+}
+
+export interface EventPerson {
+  id: string
+  kind: EventPersonKind
+  name: string
+  email: string
+  role: string
+  pages: CampPage[]
+  applied_template_id?: string | null
+  created_at: string
+  updated_at?: string
 }
