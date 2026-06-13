@@ -13,29 +13,29 @@ function checkinsRef(orgId: string, campId: string) {
 
 export async function listAllEventMembers(orgId: string, campId: string): Promise<EventMember[]> {
   const familiesSnap = await campRef(orgId, campId).collection('families').get()
-  const members: EventMember[] = []
 
-  for (const familyDoc of familiesSnap.docs) {
-    const family = familyDoc.data() as Family
-    if (family.registration_status === 'cancelled') continue
-
-    const membersSnap = await campRef(orgId, campId)
-      .collection('families').doc(familyDoc.id)
-      .collection('family_members').get()
-
-    for (const memberDoc of membersSnap.docs) {
-      const m = memberDoc.data() as FamilyMember
-      members.push({
-        member_id: memberDoc.id,
-        family_id: familyDoc.id,
-        first_name: m.first_name,
-        last_name: m.last_name,
-        family_name: family.last_name,
+  const perFamily = await Promise.all(
+    familiesSnap.docs
+      .filter((d) => (d.data() as Family).registration_status !== 'cancelled')
+      .map(async (familyDoc) => {
+        const family = familyDoc.data() as Family
+        const membersSnap = await campRef(orgId, campId)
+          .collection('families').doc(familyDoc.id)
+          .collection('family_members').get()
+        return membersSnap.docs.map((memberDoc) => {
+          const m = memberDoc.data() as FamilyMember
+          return {
+            member_id: memberDoc.id,
+            family_id: familyDoc.id,
+            first_name: m.first_name,
+            last_name: m.last_name,
+            family_name: family.last_name,
+          } as EventMember
+        })
       })
-    }
-  }
+  )
 
-  return members
+  return perFamily.flat()
 }
 
 export async function getCheckinsForDate(
@@ -72,6 +72,8 @@ export async function checkInMember(
     checked_in_at: now,
     ...(input.checkedInBy ? { checked_in_by: input.checkedInBy } : {}),
   }
+  // Deterministic id makes check-in idempotent; re-checking in after a checkout
+  // intentionally resets the record to 'in' (e.g. a child who left and returned).
   await checkinsRef(orgId, campId).doc(id).set(record)
   return record
 }
@@ -82,7 +84,10 @@ export async function checkOutMember(
   recordId: string,
   guardianPickupName?: string
 ): Promise<void> {
-  await checkinsRef(orgId, campId).doc(recordId).update({
+  const ref = checkinsRef(orgId, campId).doc(recordId)
+  const snap = await ref.get()
+  if (!snap.exists) throw new Error('Check-in record not found')
+  await ref.update({
     status: 'out',
     checked_out_at: new Date().toISOString(),
     ...(guardianPickupName ? { guardian_pickup_name: guardianPickupName } : {}),

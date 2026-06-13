@@ -131,7 +131,10 @@ describe('checkInMember', () => {
 })
 
 describe('checkOutMember', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => {
+    vi.clearAllMocks()
+    getCheckinDocSpy.mockResolvedValue({ exists: true })
+  })
 
   it('updates record to status out with checked_out_at', async () => {
     await checkOutMember('org-1', 'camp-1', '2026-07-10_m-1')
@@ -151,6 +154,12 @@ describe('checkOutMember', () => {
         guardian_pickup_name: 'Jane Smith (mother)',
       })
     )
+  })
+
+  it('throws when the check-in record does not exist', async () => {
+    getCheckinDocSpy.mockResolvedValue({ exists: false })
+    await expect(checkOutMember('org-1', 'camp-1', 'missing_id')).rejects.toThrow('Check-in record not found')
+    expect(checkinDocSpy.update).not.toHaveBeenCalled()
   })
 })
 
