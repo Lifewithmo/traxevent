@@ -193,11 +193,11 @@ export function ItineraryClient({ orgId, campId, items: initialItems, published:
                     {editingId === it.id ? (
                       <div className="space-y-2">
                         <div className="grid grid-cols-3 gap-2">
-                          <Input className="h-8" value={editStart} type="time" onChange={(e) => setEditStart(e.target.value)} />
-                          <Input className="h-8" value={editEnd} type="time" onChange={(e) => setEditEnd(e.target.value)} />
-                          <Input className="h-8" value={editLocation} onChange={(e) => setEditLocation(e.target.value)} placeholder="Location" />
+                          <Input className="h-8" aria-label="Start time" value={editStart} type="time" onChange={(e) => setEditStart(e.target.value)} />
+                          <Input className="h-8" aria-label="End time" value={editEnd} type="time" onChange={(e) => setEditEnd(e.target.value)} />
+                          <Input className="h-8" aria-label="Location" value={editLocation} onChange={(e) => setEditLocation(e.target.value)} placeholder="Location" />
                         </div>
-                        <Input className="h-8" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} />
+                        <Input className="h-8" aria-label="Title" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} />
                         <div className="flex gap-2">
                           <Button size="sm" onClick={() => handleSaveEdit(it.id)} disabled={saving}>Save</Button>
                           <Button size="sm" variant="outline" onClick={() => setEditingId(null)}>Cancel</Button>
