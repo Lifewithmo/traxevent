@@ -1,4 +1,4 @@
-import { getResend, FROM_EMAIL } from '@/lib/resend'
+import { getResend, buildFromAddress } from '@/lib/resend'
 
 interface RegistrationConfirmationParams {
   to: string
@@ -11,6 +11,7 @@ interface RegistrationConfirmationParams {
   accessToken: string
   fromDisplayName?: string
   replyTo?: string
+  fromDomain?: string
 }
 
 export async function sendRegistrationConfirmation(
@@ -19,9 +20,7 @@ export async function sendRegistrationConfirmation(
   const portalUrl = `https://${params.orgSlug}.traxevent.com/${params.campSlug}/my-registration?token=${params.accessToken}`
   const accountUrl = `https://${params.orgSlug}.traxevent.com/register/create-account?token=${params.accessToken}&familyId=${params.familyId}`
 
-  const from = params.fromDisplayName
-    ? `"${params.fromDisplayName}" <${FROM_EMAIL}>`
-    : FROM_EMAIL
+  const from = buildFromAddress({ displayName: params.fromDisplayName, domain: params.fromDomain })
 
   await getResend().emails.send({
     from,
@@ -63,14 +62,13 @@ interface FormSignedConfirmationParams {
   signedAt: string
   fromDisplayName?: string
   replyTo?: string
+  fromDomain?: string
 }
 
 export async function sendFormSignedConfirmation(
   params: FormSignedConfirmationParams
 ): Promise<void> {
-  const from = params.fromDisplayName
-    ? `"${params.fromDisplayName}" <${FROM_EMAIL}>`
-    : FROM_EMAIL
+  const from = buildFromAddress({ displayName: params.fromDisplayName, domain: params.fromDomain })
 
   await getResend().emails.send({
     from,

@@ -9,6 +9,10 @@ export interface Org {
   billing_status: 'active' | 'trialing' | 'inactive'
   stripe_customer_id?: string
   stripe_account_id?: string
+  sending_domain?: string
+  sending_domain_id?: string
+  sending_domain_status?: SendingDomainStatus
+  sending_domain_records?: DomainDnsRecord[]
   created_at: string
 }
 
@@ -293,4 +297,15 @@ export interface EventMember {
   first_name: string
   last_name: string
   family_name: string
+}
+
+export type SendingDomainStatus = 'pending' | 'verified' | 'failed'
+
+export interface DomainDnsRecord {
+  record: string
+  name: string
+  type: string
+  value: string
+  priority?: number
+  ttl?: string
 }

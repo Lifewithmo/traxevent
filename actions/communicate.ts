@@ -1,7 +1,8 @@
 'use server'
 
 import { adminDb } from '@/lib/firebase-admin'
-import { getResend, FROM_EMAIL } from '@/lib/resend'
+import { getResend, buildFromAddress } from '@/lib/resend'
+import { getVerifiedSendingDomain } from '@/actions/domains'
 import type { Camp, Family, CommunicationLogEntry } from '@/lib/types'
 import { randomBytes } from 'crypto'
 
@@ -48,9 +49,8 @@ export async function sendEmailBlast(
     return { sent: 0 }
   }
 
-  const from = camp.from_display_name
-    ? `"${camp.from_display_name}" <${FROM_EMAIL}>`
-    : FROM_EMAIL
+  const sendingDomain = await getVerifiedSendingDomain(orgId)
+  const from = buildFromAddress({ displayName: camp.from_display_name, domain: sendingDomain })
 
   const emailPayloads = families.map((f) => ({
     from,
