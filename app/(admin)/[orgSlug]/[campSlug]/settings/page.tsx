@@ -39,7 +39,7 @@ export default function EventSettingsPage() {
       const org = await getOrgBySlug(orgSlug)
       if (!org) return
       setOrgId(org.id)
-      listOrgEventTypes(org.id).then(setEventTypes)
+      listOrgEventTypes(org.id).then(setEventTypes).catch(() => setError('Failed to load event types'))
       const c = await getCampBySlug(org.id, campSlug)
       if (!c) return
       setCamp(c)

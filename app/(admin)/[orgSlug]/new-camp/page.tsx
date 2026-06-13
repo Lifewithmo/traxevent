@@ -23,11 +23,23 @@ export default function NewEventPage() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [eventTypes, setEventTypes] = useState<EventType[]>([])
+  const [orgId, setOrgId] = useState<string | null>(null)
 
   useEffect(() => {
-    getOrgBySlug(orgSlug).then((org) => {
-      if (org) listOrgEventTypes(org.id).then(setEventTypes)
-    })
+    async function load() {
+      try {
+        const org = await getOrgBySlug(orgSlug)
+        if (!org) {
+          setError('Organization not found')
+          return
+        }
+        setOrgId(org.id)
+        setEventTypes(await listOrgEventTypes(org.id))
+      } catch {
+        setError('Failed to load event types')
+      }
+    }
+    load()
   }, [orgSlug])
 
   async function handleSubmit(e: React.FormEvent) {
@@ -35,11 +47,10 @@ export default function NewEventPage() {
     setError(null)
     setLoading(true)
     try {
-      const org = await getOrgBySlug(orgSlug)
-      if (!org) throw new Error('Organization not found')
+      if (!orgId) throw new Error('Organization not found')
       const selectedType = eventTypes.find((t) => t.id === eventTypeId)
       if (!selectedType) throw new Error('Select an event type')
-      const camp = await createCamp(org.id, {
+      const camp = await createCamp(orgId, {
         name,
         year,
         registration_type: selectedType.registrationUnit,
