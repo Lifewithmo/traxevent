@@ -39,6 +39,15 @@ async function loadFamiliesAndMembers(
         const m = { id: d.id, ...d.data() } as FamilyMember
         const row: MemberWithFamily = {
           ...m,
+          first_name: m.first_name ?? '',
+          last_name: m.last_name ?? '',
+          birth_year: m.birth_year ?? 0,
+          gender: m.gender ?? '',
+          grade: m.grade ?? '',
+          allergies: m.allergies ?? '',
+          dietary_restrictions: m.dietary_restrictions ?? '',
+          tshirt_size: m.tshirt_size ?? '',
+          medical_notes: m.medical_notes ?? '',
           family_last_name: f.last_name,
           family_first_name: f.first_name,
           email: f.email,

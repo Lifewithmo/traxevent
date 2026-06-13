@@ -73,6 +73,20 @@ describe('getEventReportData', () => {
     expect(data.tshirt.bySize).toEqual({ M: 1 })
     expect(data.medical).toHaveLength(0)
   })
+
+  it('tolerates member docs missing optional string fields', async () => {
+    getFamiliesSpy.mockResolvedValue({ docs: [familyDoc('fam-1', baseFamily)] })
+    // member doc with ONLY first_name/last_name/family_id — no allergies/medical/tshirt/etc.
+    getMembersSpy.mockResolvedValue({
+      docs: [{ id: 'm-1', data: () => ({ id: 'm-1', family_id: 'fam-1', first_name: 'Ann', last_name: 'Smith' }) }],
+    })
+
+    const data = await getEventReportData('org-1', 'camp-1')
+    // Should not throw; member has no allergies/medical/tshirt so those reports are empty
+    expect(data.dietary).toHaveLength(0)
+    expect(data.medical).toHaveLength(0)
+    expect(data.tshirt.total).toBe(0)
+  })
 })
 
 describe('buildCustomReportCsv', () => {
