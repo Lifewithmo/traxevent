@@ -9,6 +9,14 @@
       ]
     },
     {
+      "collectionGroup": "signed_forms",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "org_id", "order": "ASCENDING" },
+        { "fieldPath": "camp_id", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "families",
       "queryScope": "COLLECTION_GROUP",
       "fields": [

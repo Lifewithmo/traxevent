@@ -112,7 +112,7 @@ export async function getFormSubmissionReport(orgId: string, campId: string): Pr
     .filter((f) => f.registration_status !== 'cancelled')
     .map((f) => ({
       family_id: f.id,
-      name: `${f.first_name} ${f.last_name}`.trim(),
+      name: `${f.first_name ?? ''} ${f.last_name ?? ''}`.trim(),
       email: f.email,
     }))
 
