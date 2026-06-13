@@ -1,7 +1,8 @@
 'use server'
 
 import { adminDb } from '@/lib/firebase-admin'
-import type { Family, FamilyMember } from '@/lib/types'
+import type { Family, FamilyMember, EventFormAssignment } from '@/lib/types'
+import { summarizeFormCompletion, type FormCompletionRow } from '@/lib/forms'
 import {
   buildRegistrationSummary,
   buildFinancialReport,
@@ -91,4 +92,40 @@ export async function buildCustomReportCsv(
 ): Promise<string> {
   const { members } = await loadFamiliesAndMembers(orgId, campId)
   return buildCustomCsv(members, fields)
+}
+
+export async function getFormSubmissionReport(orgId: string, campId: string): Promise<FormCompletionRow[]> {
+  const campRef = adminDb.collection('orgs').doc(orgId).collection('camps').doc(campId)
+
+  const [familiesSnap, assignmentsSnap, signedSnap] = await Promise.all([
+    campRef.collection('families').get(),
+    campRef.collection('form_assignments').get(),
+    adminDb
+      .collectionGroup('signed_forms')
+      .where('org_id', '==', orgId)
+      .where('camp_id', '==', campId)
+      .get(),
+  ])
+
+  const families = familiesSnap.docs
+    .map((d) => d.data() as Family)
+    .filter((f) => f.registration_status !== 'cancelled')
+    .map((f) => ({
+      family_id: f.id,
+      name: `${f.first_name} ${f.last_name}`.trim(),
+      email: f.email,
+    }))
+
+  const assignments = assignmentsSnap.docs.map((d) => d.data() as EventFormAssignment)
+
+  // Build `${familyId}:${assignmentId}` keys. signed_forms live under
+  // families/{familyId}/signed_forms, so the family id is the grandparent doc id.
+  const signedKeys = new Set<string>()
+  for (const doc of signedSnap.docs) {
+    const familyId = doc.ref.parent.parent?.id
+    const assignmentId = (doc.data() as { assignment_id?: string }).assignment_id
+    if (familyId && assignmentId) signedKeys.add(`${familyId}:${assignmentId}`)
+  }
+
+  return summarizeFormCompletion(families, assignments, signedKeys)
 }
