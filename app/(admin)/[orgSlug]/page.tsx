@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { DuplicateEventButton } from '@/components/admin/DuplicateEventButton'
 import Link from 'next/link'
 
 export default async function OrgHomePage({
@@ -54,6 +55,7 @@ export default async function OrgHomePage({
                   <p className="mt-2 text-xs text-muted-foreground">
                     {camp.camp_start} → {camp.camp_end}
                   </p>
+                  <DuplicateEventButton orgId={org.id} orgSlug={orgSlug} sourceCampId={camp.id} sourceName={camp.name} />
                 </CardContent>
               </Card>
             </Link>

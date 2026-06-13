@@ -1,5 +1,6 @@
 'use server'
 
+import { randomBytes } from 'crypto'
 import { adminDb } from '@/lib/firebase-admin'
 import type { Camp, CampRegistrationType } from '@/lib/types'
 import { buildCampSlug } from '@/lib/slug'
@@ -103,4 +104,62 @@ export async function updateCamp(
     ...cleaned,
     updated_at: new Date().toISOString(),
   })
+}
+
+export interface DuplicateEventInput {
+  name: string
+  year: number
+  camp_start: string
+  camp_end: string
+}
+
+export async function duplicateEvent(
+  orgId: string,
+  sourceCampId: string,
+  input: DuplicateEventInput
+): Promise<Camp> {
+  const campsCol = adminDb.collection('orgs').doc(orgId).collection('camps')
+  const sourceRef = campsCol.doc(sourceCampId)
+  const sourceSnap = await sourceRef.get()
+  if (!sourceSnap.exists) throw new Error('Source event not found')
+  const source = sourceSnap.data() as Camp
+
+  const newRef = campsCol.doc()
+  const newCamp: Camp = {
+    id: newRef.id,
+    name: input.name,
+    slug: buildCampSlug(input.name, input.year),
+    year: input.year,
+    status: 'draft',
+    registration_type: source.registration_type,
+    event_type_id: source.event_type_id,
+    ...(source.event_type_terminology ? { event_type_terminology: source.event_type_terminology } : {}),
+    features: source.features,
+    camp_start: input.camp_start,
+    camp_end: input.camp_end,
+    ...(source.capacity != null ? { capacity: source.capacity } : {}),
+    ...(source.payment_amount != null ? { payment_amount: source.payment_amount } : {}),
+    ...(source.from_display_name ? { from_display_name: source.from_display_name } : {}),
+    ...(source.reply_to_email ? { reply_to_email: source.reply_to_email } : {}),
+    created_at: new Date().toISOString(),
+  }
+  await newRef.set(newCamp)
+
+  const [slotsSnap, formsSnap] = await Promise.all([
+    sourceRef.collection('assignment_slots').get(),
+    sourceRef.collection('form_assignments').get(),
+  ])
+
+  await Promise.all([
+    ...slotsSnap.docs.map((d) => {
+      const id = randomBytes(8).toString('hex')
+      return newRef.collection('assignment_slots').doc(id).set({ ...d.data(), id, created_at: new Date().toISOString() })
+    }),
+    ...formsSnap.docs.map((d) => {
+      const id = randomBytes(8).toString('hex')
+      return newRef.collection('form_assignments').doc(id).set({ ...d.data(), id, created_at: new Date().toISOString() })
+    }),
+  ])
+
+  return newCamp
 }
