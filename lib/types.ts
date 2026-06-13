@@ -22,6 +22,7 @@ export const CAMP_PAGES = [
   'communicate',
   'forms',
   'people',
+  'checkin',
   'reports',
 ] as const
 
@@ -269,4 +270,27 @@ export interface EventPerson {
   applied_template_id?: string | null
   created_at: string
   updated_at?: string
+}
+
+export type CheckinStatus = 'in' | 'out'
+
+export interface CheckinRecord {
+  id: string             // `${date}_${member_id}`
+  date: string           // ISO date 'YYYY-MM-DD'
+  member_id: string
+  family_id: string
+  member_name: string
+  status: CheckinStatus
+  checked_in_at: string
+  checked_in_by?: string
+  checked_out_at?: string
+  guardian_pickup_name?: string
+}
+
+export interface EventMember {
+  member_id: string
+  family_id: string
+  first_name: string
+  last_name: string
+  family_name: string
 }
