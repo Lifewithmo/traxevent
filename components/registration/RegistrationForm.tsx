@@ -7,7 +7,7 @@ import { FamilyMembersStep } from './steps/FamilyMembersStep'
 import { ReviewStep } from './steps/ReviewStep'
 import { PaymentStep } from './steps/PaymentStep'
 import { createRegistration } from '@/actions/registrations'
-import { getEventType } from '@/lib/event-types'
+import { resolveTerminology } from '@/lib/event-types'
 import { useAuth } from '@/hooks/useAuth'
 import { getRegistrantProfile } from '@/actions/registrant-auth'
 import type { Camp, Family, FamilyMember, Org } from '@/lib/types'
@@ -23,7 +23,8 @@ interface RegistrationFormProps {
 
 export function RegistrationForm({ camp, org }: RegistrationFormProps) {
   const router = useRouter()
-  const { registrationUnit, terminology } = getEventType(camp.event_type_id)
+  const registrationUnit = camp.registration_type
+  const terminology = resolveTerminology(camp.event_type_id, camp.event_type_terminology)
   const hasFee = (camp.payment_amount ?? 0) > 0
 
   const steps = useMemo<StepName[]>(
