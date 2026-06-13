@@ -122,7 +122,16 @@ export async function getRegistrationByToken(
     .get()
 
   if (snap.empty) return null
-  return snap.docs[0].data() as Family
+
+  const family = snap.docs[0].data() as Family
+
+  // Check token expiry
+  if (family.access_token_expires_at) {
+    const expiry = new Date(family.access_token_expires_at)
+    if (expiry < new Date()) return null
+  }
+
+  return family
 }
 
 export async function getRegistrationByUid(

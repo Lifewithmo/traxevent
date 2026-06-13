@@ -53,3 +53,45 @@ export async function sendRegistrationConfirmation(
     `,
   })
 }
+
+interface FormSignedConfirmationParams {
+  to: string
+  firstName: string
+  formName: string
+  campName: string
+  orgName: string
+  signedAt: string
+  fromDisplayName?: string
+  replyTo?: string
+}
+
+export async function sendFormSignedConfirmation(
+  params: FormSignedConfirmationParams
+): Promise<void> {
+  const from = params.fromDisplayName
+    ? `"${params.fromDisplayName}" <${FROM_EMAIL}>`
+    : FROM_EMAIL
+
+  await getResend().emails.send({
+    from,
+    to: params.to,
+    ...(params.replyTo ? { replyTo: params.replyTo } : {}),
+    subject: `Form signed — ${params.formName} (${params.campName})`,
+    html: `
+      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
+        <h1 style="color:#7C3AED;margin-bottom:8px">Form signed</h1>
+        <p style="color:#4C1D95;font-size:16px;margin-bottom:24px">
+          Hi ${params.firstName}, your electronic signature has been recorded for
+          <strong>${params.formName}</strong> — ${params.campName} at ${params.orgName}.
+        </p>
+        <p style="color:#64748B;font-size:13px;margin-bottom:8px">
+          Signed: ${new Date(params.signedAt).toLocaleString()}
+        </p>
+        <p style="color:#64748B;font-size:12px;margin-top:24px">
+          This is a record of your electronic signature under the E-SIGN Act.
+          Your signature is legally binding.
+        </p>
+      </div>
+    `,
+  })
+}

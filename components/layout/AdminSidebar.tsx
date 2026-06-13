@@ -20,6 +20,7 @@ function getCampNav(terminology: Terminology) {
     { key: 'budget', label: 'Budget' },
     { key: 'itinerary', label: 'Itinerary' },
     { key: 'communicate', label: 'Communicate' },
+    { key: 'forms', label: 'Forms' },
     { key: 'reports', label: 'Reports' },
     { key: 'settings', label: 'Settings' },
   ]
@@ -66,6 +67,9 @@ export function AdminSidebar({ orgSlug, campSlug, terminology }: AdminSidebarPro
       <div className="px-2 py-4 border-t border-gray-700 space-y-0.5">
         <Link href={`/${orgSlug}/members`} className={navClass(`/${orgSlug}/members`)}>
           Members
+        </Link>
+        <Link href={`/${orgSlug}/forms`} className={navClass(`/${orgSlug}/forms`)}>
+          Form Templates
         </Link>
         <Link href={`/${orgSlug}/billing`} className={navClass(`/${orgSlug}/billing`)}>
           Billing

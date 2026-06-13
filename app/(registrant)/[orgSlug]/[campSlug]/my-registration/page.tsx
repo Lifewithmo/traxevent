@@ -1,6 +1,7 @@
 import { getOrgBySlug } from '@/actions/orgs'
 import { getCampBySlug } from '@/actions/camps'
 import { getRegistrationByToken, getFamilyMembers } from '@/actions/registrations'
+import { listEventFormAssignments, getSignedForms } from '@/actions/forms'
 import { notFound } from 'next/navigation'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -40,6 +41,13 @@ export default async function MyRegistrationPage({
   }
 
   const members = await getFamilyMembers(org.id, camp.id, family.id)
+
+  const [formAssignments, signedForms] = await Promise.all([
+    listEventFormAssignments(org.id, camp.id),
+    getSignedForms(org.id, camp.id, family.id),
+  ])
+  const signedAssignmentIds = new Set(signedForms.map((s) => s.assignment_id))
+  const registrantForms = formAssignments.filter((a) => a.audience === 'registrant')
 
   const statusColor: Record<string, string> = {
     confirmed: 'bg-green-100 text-green-800',
@@ -83,6 +91,32 @@ export default async function MyRegistrationPage({
           ))}
         </ul>
       </div>
+
+      {registrantForms.length > 0 && (
+        <div className="bg-white rounded-xl border border-[#DDD6FE] p-5">
+          <h2 className="font-semibold text-gray-700 mb-3">Required forms</h2>
+          <ul className="space-y-2">
+            {registrantForms.map((form) => {
+              const signed = signedAssignmentIds.has(form.id)
+              return (
+                <li key={form.id} className="flex items-center justify-between">
+                  <span className="text-sm text-gray-700">{form.template_name}</span>
+                  {signed ? (
+                    <span className="text-xs text-green-700 font-medium">✓ Signed</span>
+                  ) : (
+                    <Link
+                      href={`/${orgSlug}/${campSlug}/forms/${form.id}${token ? `?token=${token}` : ''}`}
+                      className="text-xs text-[#7C3AED] font-medium hover:underline"
+                    >
+                      Sign now →
+                    </Link>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+        </div>
+      )}
 
       <Link
         href={`/${orgSlug}/${campSlug}/edit${token ? `?token=${token}` : ''}`}
