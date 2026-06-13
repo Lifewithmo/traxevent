@@ -66,7 +66,6 @@ export function CommunicateClient({
         subject,
         htmlBody,
         filter,
-        ...(staffSender ? { sender: staffSender } : {}),
         ...(senderUid ? { sentByUid: senderUid } : {}),
       })
       setResult(res)
