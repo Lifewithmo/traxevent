@@ -7,8 +7,9 @@ import { Badge } from '@/components/ui/badge'
 import { buildCustomReportCsv } from '@/actions/reports'
 import { CUSTOM_REPORT_FIELDS, type CustomReportField } from '@/lib/reports'
 import type { EventReportData } from '@/actions/reports'
+import type { FormCompletionRow } from '@/lib/forms'
 
-type TabKey = 'summary' | 'financial' | 'dietary' | 'medical' | 'tshirt' | 'custom'
+type TabKey = 'summary' | 'financial' | 'dietary' | 'medical' | 'tshirt' | 'forms' | 'custom'
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'summary', label: 'Summary' },
@@ -16,6 +17,7 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'dietary', label: 'Dietary & Allergy' },
   { key: 'medical', label: 'Medical' },
   { key: 'tshirt', label: 'T-shirts' },
+  { key: 'forms', label: 'Forms' },
   { key: 'custom', label: 'Custom Export' },
 ]
 
@@ -25,13 +27,26 @@ interface ReportsClientProps {
   campName: string
   registrationType: string
   data: EventReportData
+  formSubmissions: FormCompletionRow[]
 }
 
 function money(n: number): string {
   return `$${n.toFixed(2)}`
 }
 
-export function ReportsClient({ orgId, campId, campName, registrationType, data }: ReportsClientProps) {
+function downloadMissingCsv(row: { template_name: string; missing: { name: string; email: string }[] }) {
+  const esc = (s: string) => `"${s.replace(/"/g, '""')}"`
+  const lines = ['Name,Email', ...row.missing.map((m) => `${esc(m.name)},${esc(m.email)}`)]
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `missing-${row.template_name.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+export function ReportsClient({ orgId, campId, campName, registrationType, data, formSubmissions }: ReportsClientProps) {
   const [tab, setTab] = useState<TabKey>('summary')
   const [selectedFields, setSelectedFields] = useState<CustomReportField[]>([
     'family_last_name',
@@ -203,6 +218,61 @@ export function ReportsClient({ orgId, campId, campName, registrationType, data 
               )}
             </CardContent>
           </Card>
+        </div>
+      )}
+
+      {tab === 'forms' && (
+        <div role="tabpanel" id="panel-forms" aria-labelledby="tab-forms" className="space-y-4">
+          {formSubmissions.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No required registrant forms are assigned to this event.
+            </p>
+          ) : (
+            formSubmissions.map((row) => {
+              const pct = row.total === 0 ? 0 : Math.round((row.submitted_count / row.total) * 100)
+              return (
+                <div key={row.assignment_id} className="bg-card rounded-lg border overflow-hidden">
+                  <div className="flex items-center justify-between px-4 py-3 border-b bg-muted">
+                    <div>
+                      <p className="font-medium">{row.template_name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {row.submitted_count} of {row.total} signed ({pct}%)
+                      </p>
+                    </div>
+                    {row.missing.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => downloadMissingCsv(row)}
+                        className="text-xs underline text-muted-foreground hover:text-foreground"
+                      >
+                        Export missing CSV
+                      </button>
+                    )}
+                  </div>
+                  {row.missing.length === 0 ? (
+                    <p className="px-4 py-3 text-sm text-accent">All registrants have signed. 🎉</p>
+                  ) : (
+                    <table className="w-full text-sm">
+                      <thead className="border-b">
+                        <tr>
+                          <th className="px-4 py-2 text-left font-medium text-muted-foreground">Missing — Name</th>
+                          <th className="px-4 py-2 text-left font-medium text-muted-foreground">Email</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {row.missing.map((m) => (
+                          <tr key={m.family_id} className="border-b last:border-0">
+                            <td className="px-4 py-2 font-medium">{m.name}</td>
+                            <td className="px-4 py-2 text-muted-foreground">{m.email}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              )
+            })
+          )}
         </div>
       )}
 

@@ -131,6 +131,87 @@ function FieldEditor({
                 />
               </div>
             )}
+            {/* Conditional visibility — show this field only when an earlier field matches */}
+            {(() => {
+              const earlierFields = fields.slice(0, i).filter((ef) => ef.label.trim() !== '')
+              const cond = field.condition
+              return (
+                <div className="mt-2 rounded-md border border-dashed border-input p-2 space-y-2">
+                  <label className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                    <input
+                      type="checkbox"
+                      className="w-3.5 h-3.5"
+                      checked={!!cond}
+                      disabled={earlierFields.length === 0}
+                      onChange={(e) =>
+                        onChange(updateField(fields, i, {
+                          condition: e.target.checked
+                            ? { dependsOn: earlierFields[0].id, operator: 'equals', value: '' }
+                            : undefined,
+                        }))
+                      }
+                    />
+                    Only show this field conditionally
+                    {earlierFields.length === 0 && <span className="italic"> (needs an earlier field)</span>}
+                  </label>
+
+                  {cond && (
+                    <div className="grid grid-cols-3 gap-2">
+                      <select
+                        aria-label="Depends on field"
+                        className="rounded-md border border-input bg-transparent px-2 py-1 text-xs"
+                        value={cond.dependsOn}
+                        onChange={(e) => onChange(updateField(fields, i, { condition: { ...cond, dependsOn: e.target.value } }))}
+                      >
+                        {earlierFields.map((ef) => (
+                          <option key={ef.id} value={ef.id}>{ef.label}</option>
+                        ))}
+                      </select>
+
+                      <select
+                        aria-label="Condition operator"
+                        className="rounded-md border border-input bg-transparent px-2 py-1 text-xs"
+                        value={cond.operator}
+                        onChange={(e) =>
+                          onChange(updateField(fields, i, {
+                            condition: { ...cond, operator: e.target.value as typeof cond.operator },
+                          }))
+                        }
+                      >
+                        <option value="equals">equals</option>
+                        <option value="not_equals">does not equal</option>
+                        <option value="is_checked">is checked</option>
+                        <option value="is_not_empty">is answered</option>
+                      </select>
+
+                      {(cond.operator === 'equals' || cond.operator === 'not_equals') && (() => {
+                        const dep = earlierFields.find((ef) => ef.id === cond.dependsOn)
+                        const opts = dep?.options ?? []
+                        return opts.length > 0 ? (
+                          <select
+                            aria-label="Condition value"
+                            className="rounded-md border border-input bg-transparent px-2 py-1 text-xs"
+                            value={cond.value}
+                            onChange={(e) => onChange(updateField(fields, i, { condition: { ...cond, value: e.target.value } }))}
+                          >
+                            <option value="">— value —</option>
+                            {opts.map((o) => <option key={o} value={o}>{o}</option>)}
+                          </select>
+                        ) : (
+                          <Input
+                            aria-label="Condition value"
+                            className="h-8 text-xs"
+                            value={cond.value}
+                            onChange={(e) => onChange(updateField(fields, i, { condition: { ...cond, value: e.target.value } }))}
+                            placeholder="value"
+                          />
+                        )
+                      })()}
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
           </div>
         )
       })}

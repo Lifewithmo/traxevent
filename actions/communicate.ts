@@ -1,16 +1,16 @@
 'use server'
 
 import { adminDb } from '@/lib/firebase-admin'
-import { getResend, buildFromAddress } from '@/lib/resend'
+import { getResend, buildFromAddress, deriveLocalPart, resolveSenderEmail } from '@/lib/resend'
 import { getVerifiedSendingDomain } from '@/actions/domains'
-import type { Camp, Family, CommunicationLogEntry } from '@/lib/types'
+import type { Camp, Family, CommunicationLogEntry, OrgMember } from '@/lib/types'
 import { randomBytes } from 'crypto'
 
 export interface EmailBlastInput {
   subject: string
   htmlBody: string
   filter: 'all' | 'confirmed' | 'pending' | 'waitlisted'
-  sentByUid?: string
+  sentByUid?: string  // when set, the blast is sent AS this org member (on the verified domain)
 }
 
 export async function sendEmailBlast(
@@ -50,7 +50,23 @@ export async function sendEmailBlast(
   }
 
   const sendingDomain = await getVerifiedSendingDomain(orgId)
-  const from = buildFromAddress({ displayName: camp.from_display_name, domain: sendingDomain })
+  // Default: the camp identity. If the blast is sent as a specific org member AND the
+  // org has a verified domain, reconstruct the sender address authoritatively from the
+  // member record — never trust a client-supplied address.
+  let from = buildFromAddress({ displayName: camp.from_display_name, domain: sendingDomain })
+  if (input.sentByUid && sendingDomain) {
+    const memberSnap = await adminDb
+      .collection('orgs').doc(orgId)
+      .collection('members').doc(input.sentByUid)
+      .get()
+    const member = memberSnap.exists ? (memberSnap.data() as OrgMember) : null
+    const senderEmail = member
+      ? resolveSenderEmail({ verifiedDomain: sendingDomain, localPart: deriveLocalPart(member.email) })
+      : undefined
+    if (member && senderEmail) {
+      from = buildFromAddress({ displayName: member.display_name, senderEmail })
+    }
+  }
 
   const emailPayloads = families.map((f) => ({
     from,

@@ -7,6 +7,7 @@ import { getOrgBySlug } from '@/actions/orgs'
 import { getCampBySlug } from '@/actions/camps'
 import { listEventFormAssignments, getSignedForms, submitSignedForm } from '@/actions/forms'
 import { getRegistrationByToken } from '@/actions/registrations'
+import { getVisibleFields } from '@/lib/forms'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -61,6 +62,8 @@ export default function FormFillPage() {
     }
     load()
   }, [orgSlug, campSlug, assignmentId, token])
+
+  const visibleFields = assignment ? getVisibleFields(assignment.fields_snapshot, responses) : []
 
   function setResponse(fieldId: string, value: string | boolean | string[]) {
     setResponses((prev) => ({ ...prev, [fieldId]: value }))
@@ -184,6 +187,10 @@ export default function FormFillPage() {
       setError('Please type your full name as your electronic signature.')
       return
     }
+    const visibleIds = new Set(getVisibleFields(assignment.fields_snapshot, responses).map((f) => f.id))
+    const cleanedResponses = Object.fromEntries(
+      Object.entries(responses).filter(([id]) => visibleIds.has(id))
+    )
     setSubmitting(true)
     setError(null)
     try {
@@ -192,7 +199,7 @@ export default function FormFillPage() {
         templateId: assignment.template_id,
         templateVersion: assignment.template_version,
         templateName: assignment.template_name,
-        responses,
+        responses: cleanedResponses,
         signatureName: signatureName.trim(),
         signerEmail: family.email,
         signerFirstName: family.first_name,
@@ -256,8 +263,8 @@ export default function FormFillPage() {
 
       <form onSubmit={handleSubmit} className="space-y-5">
         <div className="bg-white rounded-xl border border-[#DDD6FE] p-5 space-y-5">
-          {assignment.fields_snapshot.map(renderField)}
-          {assignment.fields_snapshot.length === 0 && (
+          {visibleFields.map(renderField)}
+          {visibleFields.length === 0 && (
             <p className="text-sm text-muted-foreground">No additional fields for this form.</p>
           )}
         </div>
