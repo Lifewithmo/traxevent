@@ -1,31 +1,9 @@
 export const dynamic = 'force-dynamic'
 
 import { Suspense } from 'react'
-import { notFound } from 'next/navigation'
-import { adminDb } from '@/lib/firebase-admin'
+import { requireCampPage } from '@/lib/auth/guards'
 import { getAdminFamilies } from '@/actions/admin-families'
 import { FamiliesClient } from '@/components/admin/FamiliesClient'
-
-async function resolveIds(orgSlug: string, campSlug: string) {
-  const orgSnap = await adminDb
-    .collection('orgs')
-    .where('slug', '==', orgSlug)
-    .limit(1)
-    .get()
-  if (orgSnap.empty) notFound()
-  const orgId = orgSnap.docs[0].id
-
-  const campSnap = await adminDb
-    .collection('orgs').doc(orgId)
-    .collection('camps')
-    .where('slug', '==', campSlug)
-    .limit(1)
-    .get()
-  if (campSnap.empty) notFound()
-  const campId = campSnap.docs[0].id
-
-  return { orgId, campId }
-}
 
 export default async function FamiliesPage({
   params,
@@ -33,7 +11,7 @@ export default async function FamiliesPage({
   params: Promise<{ orgSlug: string; campSlug: string }>
 }) {
   const { orgSlug, campSlug } = await params
-  const { orgId, campId } = await resolveIds(orgSlug, campSlug)
+  const { orgId, campId } = await requireCampPage(orgSlug, campSlug, 'families')
   const families = await getAdminFamilies(orgId, campId)
 
   return (
