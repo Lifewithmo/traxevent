@@ -172,3 +172,69 @@ export function buildCustomCsv(members: MemberWithFamily[], fields: CustomReport
   const lines = members.map((m) => fields.map((f) => csvEscape(fieldValue(m, f))).join(','))
   return [header, ...lines].join('\n')
 }
+
+export interface OrgCampReportRow {
+  camp_id: string
+  camp_name: string
+  year: number
+  status: string
+  department_id: string | null
+  registrants: number
+  confirmed: number
+  pending: number
+  waitlisted: number
+  totalDue: number
+  totalPaid: number
+  outstanding: number
+}
+
+export interface OrgReport {
+  rows: OrgCampReportRow[]
+  totals: {
+    camps: number
+    registrants: number
+    confirmed: number
+    totalDue: number
+    totalPaid: number
+    outstanding: number
+  }
+}
+
+// Collapse one camp's active families into a single report row. `families` should
+// already exclude cancelled registrations (the action filters them out).
+export function buildOrgCampRow(
+  camp: { id: string; name: string; year: number; status: string; department_id?: string | null },
+  families: Family[]
+): OrgCampReportRow {
+  const summary = buildRegistrationSummary(families)
+  const fin = buildFinancialReport(families)
+  return {
+    camp_id: camp.id,
+    camp_name: camp.name,
+    year: camp.year,
+    status: camp.status,
+    department_id: camp.department_id ?? null,
+    registrants: summary.total,
+    confirmed: summary.byStatus['confirmed'] ?? 0,
+    pending: summary.byStatus['pending'] ?? 0,
+    waitlisted: summary.byStatus['waitlisted'] ?? 0,
+    totalDue: fin.totalDue,
+    totalPaid: fin.totalPaid,
+    outstanding: fin.outstanding,
+  }
+}
+
+export function aggregateOrgReport(rows: OrgCampReportRow[]): OrgReport {
+  const totals = rows.reduce(
+    (acc, r) => ({
+      camps: acc.camps + 1,
+      registrants: acc.registrants + r.registrants,
+      confirmed: acc.confirmed + r.confirmed,
+      totalDue: acc.totalDue + r.totalDue,
+      totalPaid: acc.totalPaid + r.totalPaid,
+      outstanding: acc.outstanding + r.outstanding,
+    }),
+    { camps: 0, registrants: 0, confirmed: 0, totalDue: 0, totalPaid: 0, outstanding: 0 }
+  )
+  return { rows, totals }
+}

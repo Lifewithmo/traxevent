@@ -7,6 +7,8 @@ import {
   buildTshirtReport,
   buildCustomCsv,
   CUSTOM_REPORT_FIELDS,
+  buildOrgCampRow,
+  aggregateOrgReport,
   type MemberWithFamily,
 } from '@/lib/reports'
 import type { Family } from '@/lib/types'
@@ -156,5 +158,43 @@ describe('buildCustomCsv', () => {
     expect(CUSTOM_REPORT_FIELDS).toContain('balance')
     expect(CUSTOM_REPORT_FIELDS).toContain('member_first_name')
     expect(CUSTOM_REPORT_FIELDS).toContain('registration_status')
+  })
+})
+
+describe('buildOrgCampRow', () => {
+  it('collapses one camp\'s (active) families into a row', () => {
+    const camp = { id: 'c1', name: 'Summer', year: 2026, status: 'active', department_id: 'd1' }
+    const families = [
+      fam({ registration_status: 'confirmed', amount_due: 100, amount_paid: 100 }),
+      fam({ registration_status: 'pending', amount_due: 100, amount_paid: 0, payment_status: 'unpaid' }),
+    ]
+    const row = buildOrgCampRow(camp, families)
+    expect(row).toMatchObject({
+      camp_id: 'c1', camp_name: 'Summer', year: 2026, status: 'active', department_id: 'd1',
+      registrants: 2, confirmed: 1, pending: 1, waitlisted: 0,
+      totalDue: 200, totalPaid: 100, outstanding: 100,
+    })
+  })
+
+  it('defaults department_id to null when absent', () => {
+    const row = buildOrgCampRow({ id: 'c2', name: 'X', year: 2026, status: 'draft' }, [])
+    expect(row.department_id).toBeNull()
+    expect(row.registrants).toBe(0)
+  })
+})
+
+describe('aggregateOrgReport', () => {
+  it('sums rows into org totals', () => {
+    const rows = [
+      buildOrgCampRow({ id: 'c1', name: 'A', year: 2026, status: 'active' }, [fam({ amount_due: 100, amount_paid: 50, payment_status: 'partial' })]),
+      buildOrgCampRow({ id: 'c2', name: 'B', year: 2026, status: 'active' }, [fam({ amount_due: 100, amount_paid: 100 })]),
+    ]
+    const report = aggregateOrgReport(rows)
+    expect(report.rows).toHaveLength(2)
+    expect(report.totals).toMatchObject({ camps: 2, registrants: 2, confirmed: 2, totalDue: 200, totalPaid: 150, outstanding: 50 })
+  })
+
+  it('returns zero totals for no rows', () => {
+    expect(aggregateOrgReport([]).totals).toMatchObject({ camps: 0, registrants: 0, totalDue: 0 })
   })
 })

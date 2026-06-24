@@ -1,7 +1,7 @@
 'use server'
 
 import { adminDb } from '@/lib/firebase-admin'
-import type { Family, FamilyMember, EventFormAssignment } from '@/lib/types'
+import type { Family, FamilyMember, EventFormAssignment, Camp } from '@/lib/types'
 import { summarizeFormCompletion, type FormCompletionRow } from '@/lib/forms'
 import {
   buildRegistrationSummary,
@@ -10,6 +10,8 @@ import {
   buildMedicalReport,
   buildTshirtReport,
   buildCustomCsv,
+  buildOrgCampRow,
+  aggregateOrgReport,
   type MemberWithFamily,
   type RegistrationSummary,
   type FinancialReport,
@@ -17,6 +19,7 @@ import {
   type MedicalRow,
   type TshirtReport,
   type CustomReportField,
+  type OrgReport,
 } from '@/lib/reports'
 
 function familiesRef(orgId: string, campId: string) {
@@ -128,4 +131,31 @@ export async function getFormSubmissionReport(orgId: string, campId: string): Pr
   }
 
   return summarizeFormCompletion(families, assignments, signedKeys)
+}
+
+export async function getOrgReportData(orgId: string, departmentId?: string): Promise<OrgReport> {
+  const campsSnap = await adminDb
+    .collection('orgs').doc(orgId)
+    .collection('camps')
+    .orderBy('created_at', 'desc')
+    .get()
+
+  let camps = campsSnap.docs.map((d) => d.data() as Camp)
+  if (departmentId) camps = camps.filter((c) => c.department_id === departmentId)
+
+  const rows = await Promise.all(
+    camps.map(async (camp) => {
+      const famSnap = await adminDb
+        .collection('orgs').doc(orgId)
+        .collection('camps').doc(camp.id)
+        .collection('families')
+        .get()
+      const families = famSnap.docs
+        .map((d) => d.data() as Family)
+        .filter((f) => f.registration_status !== 'cancelled')
+      return buildOrgCampRow(camp, families)
+    })
+  )
+
+  return aggregateOrgReport(rows)
 }
