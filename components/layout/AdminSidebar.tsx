@@ -88,6 +88,9 @@ export function AdminSidebar({ orgSlug, campSlug, terminology }: AdminSidebarPro
         <Link href={`/${orgSlug}/departments`} className={navClass(`/${orgSlug}/departments`)}>
           Departments
         </Link>
+        <Link href={`/${orgSlug}/reports`} className={navClass(`/${orgSlug}/reports`)}>
+          Reports
+        </Link>
       </div>
     </aside>
   )
