@@ -15,6 +15,11 @@ export default defineConfig({
     },
   },
   resolve: {
-    alias: { '@': path.resolve(__dirname, '.') },
+    alias: {
+      '@': path.resolve(__dirname, '.'),
+      // `server-only` throws when imported outside an RSC graph. In tests we
+      // load server modules directly, so map it to the package's empty shim.
+      'server-only': path.resolve(__dirname, 'node_modules/server-only/empty.js'),
+    },
   },
 })
