@@ -1,8 +1,9 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { getEventType, DEFAULT_EVENT_TYPE_ID } from '@/lib/event-types'
+import { endSession } from '@/lib/auth/establish-session'
 import type { Terminology } from '@/lib/event-types'
 
 interface AdminSidebarProps {
@@ -32,8 +33,14 @@ const DEFAULT_TERMINOLOGY: Terminology = getEventType(DEFAULT_EVENT_TYPE_ID).ter
 
 export function AdminSidebar({ orgSlug, campSlug, terminology }: AdminSidebarProps) {
   const pathname = usePathname()
+  const router = useRouter()
   const t = terminology ?? DEFAULT_TERMINOLOGY
   const campNav = getCampNav(t)
+
+  async function handleSignOut() {
+    await endSession()
+    router.push('/login')
+  }
 
   function navClass(href: string) {
     const active = pathname === href || pathname.startsWith(href + '/')
@@ -91,6 +98,12 @@ export function AdminSidebar({ orgSlug, campSlug, terminology }: AdminSidebarPro
         <Link href={`/${orgSlug}/reports`} className={navClass(`/${orgSlug}/reports`)}>
           Reports
         </Link>
+        <button
+          onClick={handleSignOut}
+          className="block w-full text-left px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:bg-gray-700 hover:text-white"
+        >
+          Sign out
+        </button>
       </div>
     </aside>
   )

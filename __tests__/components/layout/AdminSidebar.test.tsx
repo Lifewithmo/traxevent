@@ -5,6 +5,12 @@ import { getEventType } from '@/lib/event-types'
 
 vi.mock('next/navigation', () => ({
   usePathname: () => '/acme/camp-2026/dashboard',
+  useRouter: () => ({ push: vi.fn() }),
+}))
+
+vi.mock('@/lib/firebase', () => ({
+  auth: {},
+  db: {},
 }))
 
 describe('AdminSidebar — terminology-driven labels', () => {
