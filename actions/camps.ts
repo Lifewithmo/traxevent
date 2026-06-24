@@ -18,6 +18,7 @@ export async function createCamp(
     event_type_terminology?: Terminology
     camp_start: string
     camp_end: string
+    department_id?: string | null
   }
 ): Promise<Camp> {
   const campRef = adminDb
@@ -33,6 +34,7 @@ export async function createCamp(
     registration_type: input.registration_type,
     event_type_id: input.event_type_id ?? DEFAULT_EVENT_TYPE_ID,
     ...(input.event_type_terminology ? { event_type_terminology: input.event_type_terminology } : {}),
+    ...(input.department_id ? { department_id: input.department_id } : {}),
     features: {
       accommodations: true,
       teams: true,
@@ -85,6 +87,7 @@ export async function updateCamp(
     | 'payment_amount'
     | 'from_display_name'
     | 'reply_to_email'
+    | 'department_id'
   >> & { event_type_terminology?: Terminology | null }
 ): Promise<void> {
   const ref = adminDb

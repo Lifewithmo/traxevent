@@ -78,6 +78,7 @@ export interface Camp {
   reply_to_email?: string     // reply-to address; replies route to this address instead of TraxEvent
   itinerary_published?: boolean
   event_type_terminology?: Terminology
+  department_id?: string | null   // optional grouping; null/undefined = unassigned
 }
 
 // Shape of our Firebase Auth JWT custom claims
@@ -344,4 +345,13 @@ export interface VolunteerHoursEntry {
   hours: number
   note?: string
   created_at: string
+}
+
+export interface Department {
+  id: string
+  name: string
+  description?: string
+  sort_order?: number
+  created_at: string
+  updated_at?: string
 }
