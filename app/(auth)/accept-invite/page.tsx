@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { acceptInvitation } from '@/actions/members'
+import { establishSession } from '@/lib/auth/establish-session'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 
@@ -31,6 +32,7 @@ function AcceptInviteInner() {
       await user.getIdToken(true) // refresh claims
       const result = await user.getIdTokenResult()
       const orgSlug = result.claims.orgSlug as string | undefined
+      await establishSession()
       router.push(orgSlug ? `/${orgSlug}` : '/')
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to accept invitation')

@@ -1,24 +1,8 @@
 export const dynamic = 'force-dynamic'
 
-import { notFound } from 'next/navigation'
-import { cache } from 'react'
-import { adminDb } from '@/lib/firebase-admin'
+import { requireCampPage } from '@/lib/auth/guards'
 import { getEventReportData, getFormSubmissionReport } from '@/actions/reports'
 import { ReportsClient } from '@/components/admin/ReportsClient'
-import type { Camp } from '@/lib/types'
-
-const resolveIds = cache(async (orgSlug: string, campSlug: string) => {
-  const orgSnap = await adminDb.collection('orgs').where('slug', '==', orgSlug).limit(1).get()
-  if (orgSnap.empty) notFound()
-  const orgId = orgSnap.docs[0].id
-
-  const campSnap = await adminDb
-    .collection('orgs').doc(orgId)
-    .collection('camps').where('slug', '==', campSlug).limit(1).get()
-  if (campSnap.empty) notFound()
-
-  return { orgId, campId: campSnap.docs[0].id, camp: campSnap.docs[0].data() as Camp }
-})
 
 export default async function ReportsPage({
   params,
@@ -26,7 +10,7 @@ export default async function ReportsPage({
   params: Promise<{ orgSlug: string; campSlug: string }>
 }) {
   const { orgSlug, campSlug } = await params
-  const { orgId, campId, camp } = await resolveIds(orgSlug, campSlug)
+  const { orgId, campId, camp } = await requireCampPage(orgSlug, campSlug, 'reports')
   const [data, formSubmissions] = await Promise.all([
     getEventReportData(orgId, campId),
     getFormSubmissionReport(orgId, campId),

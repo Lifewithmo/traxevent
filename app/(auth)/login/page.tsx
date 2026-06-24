@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { signInWithEmailAndPassword } from 'firebase/auth'
 import { auth } from '@/lib/firebase'
+import { establishSession } from '@/lib/auth/establish-session'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -26,6 +27,7 @@ export default function LoginPage() {
       // Force token refresh to get latest claims
       const result = await cred.user.getIdTokenResult(true)
       const orgSlug = result.claims.orgSlug as string | undefined
+      await establishSession()
       router.push(orgSlug ? `/${orgSlug}` : '/my-registrations')
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Login failed')

@@ -1,24 +1,17 @@
 import { cache } from 'react'
 import type { Metadata } from 'next'
-import { notFound } from 'next/navigation'
 import { adminDb } from '@/lib/firebase-admin'
 import { listSlots } from '@/actions/assignments'
 import { getAdminFamilies } from '@/actions/admin-families'
+import { requireCampPage } from '@/lib/auth/guards'
 import { resolveTerminology } from '@/lib/event-types'
-import type { Camp, FamilyMember } from '@/lib/types'
+import type { FamilyMember } from '@/lib/types'
 
-const resolveIds = cache(async (orgSlug: string, campSlug: string) => {
-  const orgSnap = await adminDb.collection('orgs').where('slug', '==', orgSlug).limit(1).get()
-  if (orgSnap.empty) notFound()
-  const orgId = orgSnap.docs[0].id
-
-  const campSnap = await adminDb
-    .collection('orgs').doc(orgId)
-    .collection('camps').where('slug', '==', campSlug).limit(1).get()
-  if (campSnap.empty) notFound()
-
-  return { orgId, campId: campSnap.docs[0].id, camp: campSnap.docs[0].data() as Camp }
-})
+// Enforce the 'assignments' grant (same as the main assignments page) before
+// rendering the roster's PII. cache() dedupes the guard within a single request.
+const resolveCtx = cache((orgSlug: string, campSlug: string) =>
+  requireCampPage(orgSlug, campSlug, 'assignments')
+)
 
 async function getMembersForFamily(
   orgId: string,
@@ -40,7 +33,7 @@ export async function generateMetadata({
   params: Promise<{ orgSlug: string; campSlug: string }>
 }): Promise<Metadata> {
   const { orgSlug, campSlug } = await params
-  const { camp } = await resolveIds(orgSlug, campSlug)
+  const { camp } = await resolveCtx(orgSlug, campSlug)
   const terminology = resolveTerminology(camp.event_type_id, camp.event_type_terminology)
   return { title: `${camp.name} — ${terminology.assignmentPlural} Roster` }
 }
@@ -51,7 +44,7 @@ export default async function AssignmentsPrintPage({
   params: Promise<{ orgSlug: string; campSlug: string }>
 }) {
   const { orgSlug, campSlug } = await params
-  const { orgId, campId, camp } = await resolveIds(orgSlug, campSlug)
+  const { orgId, campId, camp } = await resolveCtx(orgSlug, campSlug)
   const [slots, families] = await Promise.all([
     listSlots(orgId, campId),
     getAdminFamilies(orgId, campId),

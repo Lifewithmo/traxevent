@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { createOrg } from '@/actions/orgs'
+import { establishSession } from '@/lib/auth/establish-session'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -30,6 +31,7 @@ export default function OnboardingPage() {
       )
       // Force token refresh so new claims (orgId, orgSlug, role) are active
       await user.getIdToken(true)
+      await establishSession()
       router.push(`/${org.slug}`)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to create organization')

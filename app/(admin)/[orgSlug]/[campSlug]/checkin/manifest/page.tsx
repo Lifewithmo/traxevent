@@ -1,23 +1,8 @@
 export const dynamic = 'force-dynamic'
 
-import { notFound } from 'next/navigation'
-import { cache } from 'react'
-import { adminDb } from '@/lib/firebase-admin'
+import { requireCampPage } from '@/lib/auth/guards'
 import { listAllEventMembers, getCheckinsForDate } from '@/actions/checkins'
-import type { Camp, CheckinRecord } from '@/lib/types'
-
-const resolveIds = cache(async (orgSlug: string, campSlug: string) => {
-  const orgSnap = await adminDb.collection('orgs').where('slug', '==', orgSlug).limit(1).get()
-  if (orgSnap.empty) notFound()
-  const orgId = orgSnap.docs[0].id
-
-  const campSnap = await adminDb
-    .collection('orgs').doc(orgId)
-    .collection('camps').where('slug', '==', campSlug).limit(1).get()
-  if (campSnap.empty) notFound()
-
-  return { orgId, campId: campSnap.docs[0].id, camp: campSnap.docs[0].data() as Camp }
-})
+import type { CheckinRecord } from '@/lib/types'
 
 export async function generateMetadata({
   params,
@@ -25,7 +10,7 @@ export async function generateMetadata({
   params: Promise<{ orgSlug: string; campSlug: string }>
 }) {
   const { orgSlug, campSlug } = await params
-  const { camp } = await resolveIds(orgSlug, campSlug)
+  const { camp } = await requireCampPage(orgSlug, campSlug, 'checkin')
   return { title: `${camp.name} — Attendance Manifest` }
 }
 
@@ -38,7 +23,7 @@ export default async function CheckinManifestPage({
 }) {
   const { orgSlug, campSlug } = await params
   const { date } = await searchParams
-  const { orgId, campId, camp } = await resolveIds(orgSlug, campSlug)
+  const { orgId, campId, camp } = await requireCampPage(orgSlug, campSlug, 'checkin')
 
   const activeDate = date ?? new Date().toISOString().slice(0, 10)
 
