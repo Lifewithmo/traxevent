@@ -7,6 +7,8 @@ import { getCampBySlug, updateCamp } from '@/actions/camps'
 import { DEFAULT_EVENT_TYPE_ID } from '@/lib/event-types'
 import type { EventType } from '@/lib/event-types'
 import { listOrgEventTypes } from '@/actions/event-types'
+import { listDepartments } from '@/actions/departments'
+import type { Department } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -33,6 +35,8 @@ export default function EventSettingsPage() {
   const [fromDisplayName, setFromDisplayName] = useState<string>('')
   const [replyToEmail, setReplyToEmail] = useState<string>('')
   const [eventTypes, setEventTypes] = useState<EventType[]>([])
+  const [departments, setDepartments] = useState<Department[]>([])
+  const [departmentId, setDepartmentId] = useState<string>('')
 
   useEffect(() => {
     async function load() {
@@ -40,12 +44,14 @@ export default function EventSettingsPage() {
       if (!org) return
       setOrgId(org.id)
       listOrgEventTypes(org.id).then(setEventTypes).catch(() => setError('Failed to load event types'))
+      listDepartments(org.id).then(setDepartments).catch(() => setError('Failed to load departments'))
       const c = await getCampBySlug(org.id, campSlug)
       if (!c) return
       setCamp(c)
       setName(c.name)
       setStatus(c.status)
       setEventTypeId(c.event_type_id ?? DEFAULT_EVENT_TYPE_ID)
+      setDepartmentId(c.department_id ?? '')
       setCampStart(c.camp_start)
       setCampEnd(c.camp_end)
       setRegistrationOpen(c.registration_open ?? '')
@@ -70,6 +76,7 @@ export default function EventSettingsPage() {
         name,
         status,
         event_type_id: eventTypeId,
+        department_id: departmentId || null,
         registration_type: selectedType ? selectedType.registrationUnit : camp.registration_type,
         event_type_terminology: selectedType
           ? (selectedType.is_custom ? selectedType.terminology : null)
@@ -126,6 +133,21 @@ export default function EventSettingsPage() {
                   <option key={et.id} value={et.id}>
                     {et.name}{et.is_custom ? ' (custom)' : ''} — {et.description}
                   </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-1">
+              <Label htmlFor="department">Department (optional)</Label>
+              <select
+                id="department"
+                className="w-full border rounded-md px-3 py-2 text-sm bg-white"
+                value={departmentId}
+                onChange={(e) => { setDepartmentId(e.target.value); setSaved(false) }}
+              >
+                <option value="">— None —</option>
+                {departments.map((d) => (
+                  <option key={d.id} value={d.id}>{d.name}</option>
                 ))}
               </select>
             </div>
