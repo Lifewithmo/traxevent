@@ -14,6 +14,7 @@ export default async function NetworkLayout({ children, params }: { children: Re
           {isAdmin && <a href={`/network/${networkSlug}/regions`} className="block px-3 py-2 rounded-md text-gray-300 hover:bg-gray-700 hover:text-white">Regions</a>}
           {isAdmin && <a href={`/network/${networkSlug}/onboard`} className="block px-3 py-2 rounded-md text-gray-300 hover:bg-gray-700 hover:text-white">Onboard orgs</a>}
           {isAdmin && <a href={`/network/${networkSlug}/billing`} className="block px-3 py-2 rounded-md text-gray-300 hover:bg-gray-700 hover:text-white">Billing</a>}
+          {isAdmin && <a href={`/network/${networkSlug}/portal`} className="block px-3 py-2 rounded-md text-gray-300 hover:bg-gray-700 hover:text-white">Portal & branding</a>}
         </nav>
       </aside>
       <main className="flex-1 bg-gray-50 overflow-auto">{children}</main>

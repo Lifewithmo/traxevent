@@ -13,16 +13,36 @@ export function extractOrgSlug(hostname: string): string | null {
   return sub
 }
 
+export function isPlatformHost(host: string): boolean {
+  const h = host.split(':')[0]
+  return h === ROOT_DOMAIN || h.endsWith(`.${ROOT_DOMAIN}`) || h === 'localhost' || h.endsWith('.vercel.app')
+}
+
+// For a custom (non-platform) host, only the root path maps to the host-resolved portal;
+// all other paths pass through so org/registrant routes keep working on the custom domain.
+export function portalRewritePath(host: string, pathname: string): string | null {
+  if (isPlatformHost(host)) return null
+  return pathname === '/' ? '/portal' : null
+}
+
 export function proxy(request: NextRequest) {
   const hostname = request.headers.get('host') ?? ''
   const orgSlug = extractOrgSlug(hostname)
 
-  if (!orgSlug) return NextResponse.next()
+  if (orgSlug) {
+    const url = request.nextUrl.clone()
+    // Rewrite: /{path} → /{orgSlug}/{path} so the [orgSlug] route segment is populated
+    if (!url.pathname.startsWith(`/${orgSlug}`)) {
+      url.pathname = `/${orgSlug}${url.pathname}`
+      return NextResponse.rewrite(url)
+    }
+    return NextResponse.next()
+  }
 
-  const url = request.nextUrl.clone()
-  // Rewrite: /{path} → /{orgSlug}/{path} so the [orgSlug] route segment is populated
-  if (!url.pathname.startsWith(`/${orgSlug}`)) {
-    url.pathname = `/${orgSlug}${url.pathname}`
+  const portalPath = portalRewritePath(hostname, request.nextUrl.pathname)
+  if (portalPath) {
+    const url = request.nextUrl.clone()
+    url.pathname = portalPath
     return NextResponse.rewrite(url)
   }
 
