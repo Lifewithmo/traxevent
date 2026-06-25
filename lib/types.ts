@@ -394,3 +394,20 @@ export interface Department {
   created_at: string
   updated_at?: string
 }
+
+export type LeadStage = 'inquiry' | 'consultation' | 'proposal' | 'booked' | 'delivered'
+
+export interface Lead {
+  id: string
+  name: string
+  email?: string
+  phone?: string
+  organization?: string
+  event_type?: string          // free text, e.g. "Wedding", "Corporate gala"
+  event_date?: string          // ISO date, optional
+  estimated_value?: number     // dollars
+  stage: LeadStage
+  notes?: string
+  created_at: string
+  updated_at?: string
+}
