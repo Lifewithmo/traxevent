@@ -149,6 +149,15 @@ export async function assignCoordinator(networkId: string, email: string, region
   } catch {
     throw new Error('No user found with that email')
   }
+  const regionsSnap = await adminDb.collection('networks').doc(networkId).collection('regions').get()
+  const validRegionIds = new Set(regionsSnap.docs.map((d) => (d.data() as Region).id))
+  if (regionIds.some((id) => !validRegionIds.has(id))) {
+    throw new Error('Invalid region selection')
+  }
+  const existingSnap = await adminDb.collection('networks').doc(networkId).collection('members').doc(uid).get()
+  if (existingSnap.exists && (existingSnap.data() as NetworkMember).role === 'admin') {
+    throw new Error('User is already a network admin')
+  }
   const member: NetworkMember = {
     uid,
     role: 'coordinator',

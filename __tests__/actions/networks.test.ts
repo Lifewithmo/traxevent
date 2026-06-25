@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 const networkDocSetSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const networkDocGetSpy = vi.hoisted(() => vi.fn())
 const memberDocSetSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
+const memberDocGetSpy = vi.hoisted(() => vi.fn())
 const membersGetSpy = vi.hoisted(() => vi.fn())
 const regionDocSetSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const regionsGetSpy = vi.hoisted(() => vi.fn())
@@ -17,7 +18,7 @@ const getUserByEmailSpy = vi.hoisted(() => vi.fn())
 
 vi.mock('@/lib/firebase-admin', () => {
   const membersCol = {
-    doc: vi.fn().mockReturnValue({ set: memberDocSetSpy }),
+    doc: vi.fn().mockReturnValue({ set: memberDocSetSpy, get: memberDocGetSpy }),
     get: membersGetSpy,
   }
   let nextRegionId = 0
@@ -181,6 +182,13 @@ describe('networks actions', () => {
     it('assignCoordinator resolves the email to a uid, writes the member doc, and sets claims', async () => {
       networkDocGetSpy.mockResolvedValue({ exists: true, data: () => ({ id: 'net-1', slug: 'my-net' }) })
       getUserByEmailSpy.mockResolvedValue({ uid: 'u9' })
+      regionsGetSpy.mockResolvedValue({
+        docs: [
+          { data: () => ({ id: 'r1', name: 'R1' }) },
+          { data: () => ({ id: 'r2', name: 'R2' }) },
+        ],
+      })
+      memberDocGetSpy.mockResolvedValue({ exists: false })
       await assignCoordinator('net-1', 'coord@x.org', ['r1', 'r2'])
       expect(assertNetworkAdmin).toHaveBeenCalledWith('net-1')
       expect(getUserByEmailSpy).toHaveBeenCalledWith('coord@x.org')
@@ -200,6 +208,30 @@ describe('networks actions', () => {
       networkDocGetSpy.mockResolvedValue({ exists: true, data: () => ({ id: 'net-1', slug: 'my-net' }) })
       getUserByEmailSpy.mockRejectedValue(new Error('user-not-found'))
       await expect(assignCoordinator('net-1', 'nobody@x.org', ['r1'])).rejects.toThrow('No user found with that email')
+      expect(memberDocSetSpy).not.toHaveBeenCalled()
+      expect(setNetworkClaimsSpy).not.toHaveBeenCalled()
+    })
+
+    it('assignCoordinator throws and writes nothing when a regionId is not in the network', async () => {
+      networkDocGetSpy.mockResolvedValue({ exists: true, data: () => ({ id: 'net-1', slug: 'my-net' }) })
+      getUserByEmailSpy.mockResolvedValue({ uid: 'u9' })
+      regionsGetSpy.mockResolvedValue({
+        docs: [{ data: () => ({ id: 'r1', name: 'R1' }) }],
+      })
+      memberDocGetSpy.mockResolvedValue({ exists: false })
+      await expect(assignCoordinator('net-1', 'coord@x.org', ['r1', 'r-bogus'])).rejects.toThrow('Invalid region selection')
+      expect(memberDocSetSpy).not.toHaveBeenCalled()
+      expect(setNetworkClaimsSpy).not.toHaveBeenCalled()
+    })
+
+    it('assignCoordinator throws and writes nothing when the user is already a network admin', async () => {
+      networkDocGetSpy.mockResolvedValue({ exists: true, data: () => ({ id: 'net-1', slug: 'my-net' }) })
+      getUserByEmailSpy.mockResolvedValue({ uid: 'u9' })
+      regionsGetSpy.mockResolvedValue({
+        docs: [{ data: () => ({ id: 'r1', name: 'R1' }) }],
+      })
+      memberDocGetSpy.mockResolvedValue({ exists: true, data: () => ({ uid: 'u9', role: 'admin' }) })
+      await expect(assignCoordinator('net-1', 'coord@x.org', ['r1'])).rejects.toThrow('User is already a network admin')
       expect(memberDocSetSpy).not.toHaveBeenCalled()
       expect(setNetworkClaimsSpy).not.toHaveBeenCalled()
     })
