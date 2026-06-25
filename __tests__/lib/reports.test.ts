@@ -9,7 +9,9 @@ import {
   CUSTOM_REPORT_FIELDS,
   buildOrgCampRow,
   aggregateOrgReport,
+  aggregateNetworkReport,
   type MemberWithFamily,
+  type NetworkOrgReport,
 } from '@/lib/reports'
 import type { Family } from '@/lib/types'
 
@@ -196,5 +198,25 @@ describe('aggregateOrgReport', () => {
 
   it('returns zero totals for no rows', () => {
     expect(aggregateOrgReport([]).totals).toMatchObject({ camps: 0, registrants: 0, totalDue: 0 })
+  })
+})
+
+describe('aggregateNetworkReport', () => {
+  const orgReport = (
+    t: { camps: number; registrants: number; confirmed: number; totalDue: number; totalPaid: number; outstanding: number }
+  ) => ({ rows: [], totals: t })
+
+  it('sums org totals into a network total', () => {
+    const orgs: NetworkOrgReport[] = [
+      { org_id: 'a', org_name: 'Org A', report: orgReport({ camps: 1, registrants: 2, confirmed: 2, totalDue: 100, totalPaid: 50, outstanding: 50 }) },
+      { org_id: 'b', org_name: 'Org B', report: orgReport({ camps: 2, registrants: 3, confirmed: 1, totalDue: 200, totalPaid: 200, outstanding: 0 }) },
+    ]
+    const report = aggregateNetworkReport(orgs)
+    expect(report.orgs).toHaveLength(2)
+    expect(report.totals).toEqual({ orgs: 2, camps: 3, registrants: 5, confirmed: 3, totalDue: 300, totalPaid: 250, outstanding: 50 })
+  })
+
+  it('returns all-zero totals for no orgs', () => {
+    expect(aggregateNetworkReport([]).totals).toEqual({ orgs: 0, camps: 0, registrants: 0, confirmed: 0, totalDue: 0, totalPaid: 0, outstanding: 0 })
   })
 })
