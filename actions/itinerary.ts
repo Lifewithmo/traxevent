@@ -1,6 +1,7 @@
 'use server'
 
 import { adminDb } from '@/lib/firebase-admin'
+import { assertCampPage } from '@/lib/auth/assert'
 import type { ItineraryItem } from '@/lib/types'
 import { randomBytes } from 'crypto'
 
@@ -32,6 +33,7 @@ export async function createItineraryItem(
   campId: string,
   input: CreateItineraryItemInput
 ): Promise<ItineraryItem> {
+  await assertCampPage(orgId, campId, 'itinerary')
   const id = randomBytes(8).toString('hex')
   const now = new Date().toISOString()
   const item: ItineraryItem = {
@@ -55,6 +57,7 @@ export async function updateItineraryItem(
   itemId: string,
   updates: Partial<Pick<ItineraryItem, 'day' | 'start_time' | 'end_time' | 'title' | 'location' | 'description' | 'sort_order'>>
 ): Promise<void> {
+  await assertCampPage(orgId, campId, 'itinerary')
   await itineraryRef(orgId, campId).doc(itemId).update({
     ...updates,
     updated_at: new Date().toISOString(),
@@ -62,6 +65,7 @@ export async function updateItineraryItem(
 }
 
 export async function deleteItineraryItem(orgId: string, campId: string, itemId: string): Promise<void> {
+  await assertCampPage(orgId, campId, 'itinerary')
   await itineraryRef(orgId, campId).doc(itemId).delete()
 }
 
@@ -70,5 +74,6 @@ export async function setItineraryPublished(
   campId: string,
   published: boolean
 ): Promise<void> {
+  await assertCampPage(orgId, campId, 'itinerary')
   await campRef(orgId, campId).update({ itinerary_published: published })
 }

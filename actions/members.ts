@@ -8,12 +8,14 @@ import {
   type OrgInvitation,
 } from '@/lib/types'
 import { buildInviteToken, validateCampPages } from '@/lib/tokens'
+import { assertOrgMember, assertOrgAdmin } from '@/lib/auth/assert'
 
 export async function createInvitation(
   orgId: string,
   email: string,
   role: OrgRole
 ): Promise<OrgInvitation> {
+  await assertOrgAdmin(orgId)
   const token = buildInviteToken()
   const now = new Date()
   const expires = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
@@ -70,6 +72,7 @@ export async function acceptInvitation(
 }
 
 export async function listMembers(orgId: string): Promise<OrgMember[]> {
+  await assertOrgMember(orgId)
   const snap = await adminDb
     .collection('orgs').doc(orgId)
     .collection('members')
@@ -83,6 +86,7 @@ export async function updateStaffCampAccess(
   campId: string,
   pages: string[]
 ): Promise<void> {
+  await assertOrgAdmin(orgId)
   const validPages = validateCampPages(pages)
   await adminDb
     .collection('orgs').doc(orgId)

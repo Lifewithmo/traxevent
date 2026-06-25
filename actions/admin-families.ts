@@ -5,6 +5,7 @@ import type { Family, FamilyMember, FamilyNote, FamilyCsvRow } from '@/lib/types
 import { randomBytes } from 'crypto'
 import { exportFamiliesCsv } from '@/lib/csv'
 import { FieldValue } from 'firebase-admin/firestore'
+import { assertCampPage } from '@/lib/auth/assert'
 
 function familiesRef(orgId: string, campId: string) {
   return adminDb
@@ -14,6 +15,7 @@ function familiesRef(orgId: string, campId: string) {
 }
 
 export async function getAdminFamilies(orgId: string, campId: string): Promise<Family[]> {
+  await assertCampPage(orgId, campId, 'families')
   const snap = await familiesRef(orgId, campId).orderBy('created_at', 'desc').get()
   return snap.docs.map(d => ({ id: d.id, ...d.data() }) as Family)
 }
@@ -23,6 +25,7 @@ export async function getAdminFamily(
   campId: string,
   familyId: string
 ): Promise<{ family: Family; members: FamilyMember[] } | null> {
+  await assertCampPage(orgId, campId, 'families')
   const familySnap = await familiesRef(orgId, campId).doc(familyId).get()
   if (!familySnap.exists) return null
   const membersSnap = await familiesRef(orgId, campId)
@@ -45,6 +48,7 @@ export async function updateAdminFamily(
     | 'amount_due' | 'amount_paid' | 'payment_notes' | 'payment_status'
   >>
 ): Promise<void> {
+  await assertCampPage(orgId, campId, 'families')
   await familiesRef(orgId, campId).doc(familyId).update({
     ...updates,
     updated_at: new Date().toISOString(),
@@ -58,6 +62,7 @@ export async function updateFamilyStatus(
   status: Family['registration_status'],
   adminName: string
 ): Promise<void> {
+  await assertCampPage(orgId, campId, 'families')
   const note: FamilyNote = {
     id: randomBytes(8).toString('hex'),
     text: `Status changed to ${status}`,
@@ -79,6 +84,7 @@ export async function bulkUpdateStatus(
   status: Family['registration_status'],
   adminName: string
 ): Promise<void> {
+  await assertCampPage(orgId, campId, 'families')
   await Promise.all(
     familyIds.map(id => updateFamilyStatus(orgId, campId, id, status, adminName))
   )
@@ -91,6 +97,7 @@ export async function addFamilyNote(
   text: string,
   author: string
 ): Promise<FamilyNote> {
+  await assertCampPage(orgId, campId, 'families')
   const note: FamilyNote = {
     id: randomBytes(8).toString('hex'),
     text,
@@ -111,6 +118,7 @@ export async function updateFamilyMembers(
   familyId: string,
   members: FamilyMember[]
 ): Promise<void> {
+  await assertCampPage(orgId, campId, 'families')
   const batch = adminDb.batch()
   const membersCol = familiesRef(orgId, campId).doc(familyId).collection('family_members')
   const existingSnap = await membersCol.get()
@@ -124,6 +132,7 @@ export async function buildFamiliesCsvAction(
   campId: string,
   familyIds?: string[]
 ): Promise<string> {
+  await assertCampPage(orgId, campId, 'families')
   const families = await getAdminFamilies(orgId, campId)
   const filtered = familyIds ? families.filter(f => familyIds.includes(f.id)) : families
 

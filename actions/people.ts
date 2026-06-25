@@ -1,6 +1,7 @@
 'use server'
 
 import { adminDb } from '@/lib/firebase-admin'
+import { assertOrgMember, assertOrgAdmin, assertCampPage } from '@/lib/auth/assert'
 import { validateCampPages } from '@/lib/tokens'
 import { getBuiltInPermissionTemplates, BUILT_IN_TEMPLATE_IDS } from '@/lib/permission-templates'
 import type { PermissionTemplate, EventPerson, EventPersonKind, CampPage } from '@/lib/types'
@@ -25,6 +26,7 @@ export interface CreatePermissionTemplateInput {
 }
 
 export async function listPermissionTemplates(orgId: string): Promise<PermissionTemplate[]> {
+  await assertOrgMember(orgId)
   const snap = await templatesRef(orgId).orderBy('created_at', 'desc').get()
   const custom = snap.docs.map((d) => d.data() as PermissionTemplate)
   return [...getBuiltInPermissionTemplates(), ...custom]
@@ -34,6 +36,7 @@ export async function createPermissionTemplate(
   orgId: string,
   input: CreatePermissionTemplateInput
 ): Promise<PermissionTemplate> {
+  await assertOrgAdmin(orgId)
   const id = randomBytes(8).toString('hex')
   const now = new Date().toISOString()
   const template: PermissionTemplate = {
@@ -53,6 +56,7 @@ export async function updatePermissionTemplate(
   templateId: string,
   updates: Partial<Pick<PermissionTemplate, 'name' | 'description' | 'pages'>>
 ): Promise<void> {
+  await assertOrgAdmin(orgId)
   if (isBuiltIn(templateId)) throw new Error('Cannot modify a built-in template')
   const patch: Record<string, unknown> = { ...updates, updated_at: new Date().toISOString() }
   if (updates.pages) patch.pages = validateCampPages(updates.pages)
@@ -60,11 +64,13 @@ export async function updatePermissionTemplate(
 }
 
 export async function deletePermissionTemplate(orgId: string, templateId: string): Promise<void> {
+  await assertOrgAdmin(orgId)
   if (isBuiltIn(templateId)) throw new Error('Cannot delete a built-in template')
   await templatesRef(orgId).doc(templateId).delete()
 }
 
 export async function listEventPeople(orgId: string, campId: string): Promise<EventPerson[]> {
+  await assertCampPage(orgId, campId, 'people')
   const snap = await peopleRef(orgId, campId).orderBy('created_at', 'asc').get()
   return snap.docs.map((d) => d.data() as EventPerson)
 }
@@ -83,6 +89,7 @@ export async function addEventPerson(
   campId: string,
   input: AddEventPersonInput
 ): Promise<EventPerson> {
+  await assertCampPage(orgId, campId, 'people')
   const id = randomBytes(8).toString('hex')
   const now = new Date().toISOString()
   const person: EventPerson = {
@@ -106,6 +113,7 @@ export async function updateEventPersonPermissions(
   pages: CampPage[],
   appliedTemplateId?: string
 ): Promise<void> {
+  await assertCampPage(orgId, campId, 'people')
   await peopleRef(orgId, campId).doc(personId).update({
     pages: validateCampPages(pages),
     applied_template_id: appliedTemplateId ?? null,
@@ -118,5 +126,6 @@ export async function removeEventPerson(
   campId: string,
   personId: string
 ): Promise<void> {
+  await assertCampPage(orgId, campId, 'people')
   await peopleRef(orgId, campId).doc(personId).delete()
 }

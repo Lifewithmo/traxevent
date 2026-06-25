@@ -2,6 +2,7 @@
 
 import { randomBytes } from 'crypto'
 import { adminDb } from '@/lib/firebase-admin'
+import { assertOrgMember, assertOrgAdmin } from '@/lib/auth/assert'
 import { FieldValue } from 'firebase-admin/firestore'
 import type { Camp, CampRegistrationType } from '@/lib/types'
 import { buildCampSlug } from '@/lib/slug'
@@ -21,6 +22,7 @@ export async function createCamp(
     department_id?: string | null
   }
 ): Promise<Camp> {
+  await assertOrgAdmin(orgId)
   const campRef = adminDb
     .collection('orgs').doc(orgId)
     .collection('camps').doc()
@@ -52,6 +54,7 @@ export async function createCamp(
 }
 
 export async function listCamps(orgId: string): Promise<Camp[]> {
+  await assertOrgMember(orgId)
   const snap = await adminDb
     .collection('orgs').doc(orgId)
     .collection('camps')
@@ -90,6 +93,7 @@ export async function updateCamp(
     | 'department_id'
   >> & { event_type_terminology?: Terminology | null }
 ): Promise<void> {
+  await assertOrgAdmin(orgId)
   const ref = adminDb
     .collection('orgs').doc(orgId)
     .collection('camps').doc(campId)
@@ -124,6 +128,7 @@ export async function duplicateEvent(
   sourceCampId: string,
   input: DuplicateEventInput
 ): Promise<Camp> {
+  await assertOrgAdmin(orgId)
   const campsCol = adminDb.collection('orgs').doc(orgId).collection('camps')
   const sourceRef = campsCol.doc(sourceCampId)
   const sourceSnap = await sourceRef.get()

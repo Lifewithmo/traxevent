@@ -1,6 +1,7 @@
 'use server'
 
 import { adminDb } from '@/lib/firebase-admin'
+import { assertOrgMember, assertOrgAdmin, assertCampPage } from '@/lib/auth/assert'
 import { FieldValue } from 'firebase-admin/firestore'
 import { headers } from 'next/headers'
 import { sendFormSignedConfirmation } from '@/lib/email'
@@ -28,6 +29,7 @@ export interface CreateFormTemplateInput {
 }
 
 export async function listFormTemplates(orgId: string): Promise<FormTemplate[]> {
+  await assertOrgMember(orgId)
   const snap = await templatesRef(orgId).orderBy('created_at', 'desc').get()
   return snap.docs.map((d) => d.data() as FormTemplate)
 }
@@ -36,6 +38,7 @@ export async function createFormTemplate(
   orgId: string,
   input: CreateFormTemplateInput
 ): Promise<FormTemplate> {
+  await assertOrgAdmin(orgId)
   const id = randomBytes(8).toString('hex')
   const now = new Date().toISOString()
   const template: FormTemplate = {
@@ -56,6 +59,7 @@ export async function updateFormTemplate(
   templateId: string,
   updates: Partial<Pick<FormTemplate, 'name' | 'form_type' | 'audience' | 'fields'>>
 ): Promise<void> {
+  await assertOrgAdmin(orgId)
   await templatesRef(orgId).doc(templateId).update({
     ...updates,
     version: FieldValue.increment(1),
@@ -64,6 +68,7 @@ export async function updateFormTemplate(
 }
 
 export async function deleteFormTemplate(orgId: string, templateId: string): Promise<void> {
+  await assertOrgAdmin(orgId)
   await templatesRef(orgId).doc(templateId).delete()
 }
 
@@ -81,6 +86,7 @@ export async function assignFormToEvent(
   template: FormTemplate,
   required = true
 ): Promise<EventFormAssignment> {
+  await assertCampPage(orgId, campId, 'forms')
   const id = randomBytes(8).toString('hex')
   const now = new Date().toISOString()
   const assignment: EventFormAssignment = {
@@ -102,6 +108,7 @@ export async function removeFormAssignment(
   campId: string,
   assignmentId: string
 ): Promise<void> {
+  await assertCampPage(orgId, campId, 'forms')
   await assignmentsRef(orgId, campId).doc(assignmentId).delete()
 }
 

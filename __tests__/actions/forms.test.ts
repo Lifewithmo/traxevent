@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
+vi.mock('@/lib/auth/assert', () => ({
+  assertOrgMember: vi.fn().mockResolvedValue({ role: 'admin', camp_access: {} }),
+  assertOrgAdmin: vi.fn().mockResolvedValue({ role: 'admin', camp_access: {} }),
+  assertCampPage: vi.fn().mockResolvedValue({ role: 'admin', camp_access: {} }),
+}))
+
 const templateDocSpy = vi.hoisted(() => ({
   set: vi.fn().mockResolvedValue(undefined),
   update: vi.fn().mockResolvedValue(undefined),

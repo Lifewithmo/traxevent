@@ -1,6 +1,7 @@
 'use server'
 
 import { adminDb } from '@/lib/firebase-admin'
+import { assertCampPage, assertOrgMember } from '@/lib/auth/assert'
 import type { Family, FamilyMember, EventFormAssignment, Camp } from '@/lib/types'
 import { summarizeFormCompletion, type FormCompletionRow } from '@/lib/forms'
 import {
@@ -78,6 +79,7 @@ export interface EventReportData {
 }
 
 export async function getEventReportData(orgId: string, campId: string): Promise<EventReportData> {
+  await assertCampPage(orgId, campId, 'reports')
   const { families, members } = await loadFamiliesAndMembers(orgId, campId)
   return {
     summary: buildRegistrationSummary(families),
@@ -93,11 +95,13 @@ export async function buildCustomReportCsv(
   campId: string,
   fields: CustomReportField[]
 ): Promise<string> {
+  await assertCampPage(orgId, campId, 'reports')
   const { members } = await loadFamiliesAndMembers(orgId, campId)
   return buildCustomCsv(members, fields)
 }
 
 export async function getFormSubmissionReport(orgId: string, campId: string): Promise<FormCompletionRow[]> {
+  await assertCampPage(orgId, campId, 'reports')
   const campRef = adminDb.collection('orgs').doc(orgId).collection('camps').doc(campId)
 
   const [familiesSnap, assignmentsSnap, signedSnap] = await Promise.all([
@@ -134,6 +138,7 @@ export async function getFormSubmissionReport(orgId: string, campId: string): Pr
 }
 
 export async function getOrgReportData(orgId: string, departmentId?: string): Promise<OrgReport> {
+  await assertOrgMember(orgId)
   const campsSnap = await adminDb
     .collection('orgs').doc(orgId)
     .collection('camps')
