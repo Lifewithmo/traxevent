@@ -8,7 +8,7 @@ export interface Org {
   id: string
   name: string
   slug: string
-  billing_status: 'active' | 'trialing' | 'inactive'
+  billing_status: 'active' | 'trialing' | 'inactive' | 'network_managed'
   stripe_customer_id?: string
   stripe_account_id?: string
   sending_domain?: string
@@ -26,6 +26,8 @@ export interface Network {
   id: string
   name: string
   slug: string
+  stripe_customer_id?: string
+  billing_status?: 'active' | 'inactive'
   created_at: string
 }
 
