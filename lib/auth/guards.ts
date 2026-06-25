@@ -4,7 +4,7 @@ import { redirect, notFound } from 'next/navigation'
 import { adminDb } from '@/lib/firebase-admin'
 import { getCurrentUser } from '@/lib/auth/session'
 import { canAccessCampPage } from '@/lib/auth/access'
-import type { Org, Camp, OrgMember, CampPage } from '@/lib/types'
+import type { Org, Camp, OrgMember, CampPage, Network, NetworkMember } from '@/lib/types'
 
 // Require a logged-in member of the org identified by orgSlug.
 // Redirects to /login if unauthenticated; notFound() if the caller is not a member of THIS org.
@@ -27,6 +27,24 @@ export async function requireOrgMember(orgSlug: string): Promise<{ org: Org; org
     : { uid: user.uid, role: 'admin', display_name: '', email: '', camp_access: {} }) as OrgMember
 
   return { org, orgId, member }
+}
+
+// Require a logged-in admin of the network identified by networkSlug.
+// Redirects to /login if unauthenticated; notFound() if the caller is not an admin of THIS network.
+export async function requireNetworkAdmin(networkSlug: string): Promise<{ network: Network; networkId: string; member: NetworkMember }> {
+  const user = await getCurrentUser()
+  if (!user) redirect('/login')
+  const snap = await adminDb.collection('networks').where('slug', '==', networkSlug).limit(1).get()
+  if (snap.empty) notFound()
+  const network = snap.docs[0].data() as Network
+  const networkId = snap.docs[0].id
+  if (user.role !== 'platform_admin' && user.networkId !== networkId) notFound()
+  const memberSnap = await adminDb.collection('networks').doc(networkId).collection('members').doc(user.uid).get()
+  if (!memberSnap.exists && user.role !== 'platform_admin') notFound()
+  const member = (memberSnap.exists
+    ? (memberSnap.data() as NetworkMember)
+    : { uid: user.uid, role: 'admin', display_name: '', email: '' }) as NetworkMember
+  return { network, networkId, member }
 }
 
 // Require org membership AND access to a specific camp page. Resolves ids and enforces camp_access.
