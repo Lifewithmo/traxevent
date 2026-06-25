@@ -45,7 +45,7 @@ export async function requireCampPage(
   const camp = campSnap.docs[0].data() as Camp
   const campId = campSnap.docs[0].id
 
-  if (!canAccessCampPage(member, campId, page)) redirect(`/${orgSlug}`)
+  if (!canAccessCampPage(member, campId, page, camp.department_id ?? null)) redirect(`/${orgSlug}`)
 
   return { orgId, campId, camp, member }
 }
@@ -65,7 +65,7 @@ export async function requireCamp(
 }
 
 // List the camp pages a member may access (for nav filtering).
-export function allowedCampPages(member: OrgMember, campId: string, allPages: CampPage[]): CampPage[] {
+export function allowedCampPages(member: OrgMember, campId: string, allPages: CampPage[], departmentId?: string | null): CampPage[] {
   if (member.role === 'owner' || member.role === 'admin') return allPages
-  return allPages.filter((p) => canAccessCampPage(member, campId, p))
+  return allPages.filter((p) => canAccessCampPage(member, campId, p, departmentId ?? null))
 }

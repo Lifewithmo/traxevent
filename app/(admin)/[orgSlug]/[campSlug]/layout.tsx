@@ -13,7 +13,7 @@ export default async function CampLayout({
   const { orgSlug, campSlug } = await params
   const { campId, camp, member } = await requireCamp(orgSlug, campSlug)
   const terminology = resolveTerminology(camp.event_type_id, camp.event_type_terminology)
-  const allowed = allowedCampPages(member, campId, [...CAMP_PAGES])
+  const allowed = allowedCampPages(member, campId, [...CAMP_PAGES], camp.department_id ?? null)
 
   return (
     <div className="flex min-h-screen">
