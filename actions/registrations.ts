@@ -6,6 +6,8 @@ import { sendRegistrationConfirmation } from '@/lib/email'
 import { getVerifiedSendingDomain } from '@/actions/domains'
 import type { Camp, Family, FamilyMember } from '@/lib/types'
 import { buildFamilyId } from '@/lib/tokens'
+import { mergeSavedMembers } from '@/lib/saved-members'
+import { getRegistrantProfile, updateRegistrantProfile } from '@/actions/registrant-auth'
 import { assertFamilyAccess } from '@/lib/auth/family-access'
 import { getCurrentUser } from '@/lib/auth/session'
 import { assertCampPage } from '@/lib/auth/assert'
@@ -88,6 +90,22 @@ export async function createRegistration(
     await familyRef
       .collection('family_members').doc(memberId)
       .set({ id: memberId, family_id: familyId, ...member })
+  }
+
+  // Best-effort: capture this registration's members onto the registrant's saved profile
+  // so they pre-fill next time. Never fail a registration over profile sync.
+  if (input.registrantUid && input.members.length > 0) {
+    try {
+      const profile = await getRegistrantProfile(input.registrantUid)
+      if (profile) {
+        const merged = mergeSavedMembers(profile.saved_members, input.members, () => buildFamilyId())
+        if (merged.length !== profile.saved_members.length) {
+          await updateRegistrantProfile(input.registrantUid, { saved_members: merged })
+        }
+      }
+    } catch {
+      // ignore — profile sync is non-critical
+    }
   }
 
   // Attach signed URL token
@@ -217,4 +235,39 @@ export async function linkRegistrantAccount(
     .collection('camps').doc(campId)
     .collection('families').doc(familyId)
     .update({ registrant_uid: uid, updated_at: new Date().toISOString() })
+}
+
+// A logged-in registrant's prior registrations made under their (verified) profile email
+// that aren't yet linked to their account. Email comes from the caller's OWN profile —
+// never a parameter — so this can't enumerate other people's registrations.
+export async function getClaimableRegistrations(): Promise<Family[]> {
+  const user = await getCurrentUser()
+  if (!user) return []
+  const profile = await getRegistrantProfile(user.uid)
+  const email = profile?.email?.trim().toLowerCase()
+  if (!email) return []
+  const snap = await adminDb.collectionGroup('families').where('email', '==', profile!.email).get()
+  return snap.docs
+    .map((d) => d.data() as Family)
+    .filter((f) => !f.registrant_uid && f.email.trim().toLowerCase() === email)
+    .sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
+}
+
+// Link an unclaimed family to the caller, only if its email matches the caller's profile email.
+export async function claimRegistration(orgId: string, campId: string, familyId: string): Promise<void> {
+  const user = await getCurrentUser()
+  if (!user) throw new Error('Unauthorized')
+  const profile = await getRegistrantProfile(user.uid)
+  const email = profile?.email?.trim().toLowerCase()
+  if (!email) throw new Error('Forbidden')
+  const ref = adminDb
+    .collection('orgs').doc(orgId)
+    .collection('camps').doc(campId)
+    .collection('families').doc(familyId)
+  const snap = await ref.get()
+  if (!snap.exists) throw new Error('Not found')
+  const fam = snap.data() as Family
+  if (fam.registrant_uid) throw new Error('Forbidden')
+  if (fam.email.trim().toLowerCase() !== email) throw new Error('Forbidden')
+  await ref.update({ registrant_uid: user.uid, updated_at: new Date().toISOString() })
 }

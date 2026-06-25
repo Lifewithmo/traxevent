@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useAuth } from '@/hooks/useAuth'
-import { getAllRegistrationsByUid } from '@/actions/registrations'
+import { getAllRegistrationsByUid, getClaimableRegistrations, claimRegistration } from '@/actions/registrations'
 import { RegistrationCard } from '@/components/registrant/RegistrationCard'
 import type { Family } from '@/lib/types'
 import { Button } from '@/components/ui/button'
@@ -11,6 +11,7 @@ import Link from 'next/link'
 export default function MyRegistrationsPage() {
   const { user, loading } = useAuth()
   const [registrations, setRegistrations] = useState<Family[]>([])
+  const [claimable, setClaimable] = useState<Family[]>([])
   const [fetching, setFetching] = useState(false)
 
   useEffect(() => {
@@ -19,8 +20,15 @@ export default function MyRegistrationsPage() {
       getAllRegistrationsByUid(user.uid)
         .then(setRegistrations)
         .finally(() => setFetching(false))
+      getClaimableRegistrations().then(setClaimable).catch(() => setClaimable([]))
     }
   }, [user])
+
+  async function handleClaim(f: Family) {
+    await claimRegistration(f.org_id, f.camp_id, f.id)
+    setClaimable((prev) => prev.filter((c) => c.id !== f.id))
+    setRegistrations((prev) => [f, ...prev])
+  }
 
   if (loading || fetching) {
     return (
@@ -47,6 +55,23 @@ export default function MyRegistrationsPage() {
           All camps you&apos;ve registered for, across every organization.
         </p>
       </div>
+
+      {claimable.length > 0 && (
+        <div className="rounded-xl border border-[#DDD6FE] bg-[#F5F3FF] p-4 space-y-3">
+          <div>
+            <p className="font-semibold text-[#4C1D95]">We found registrations under your email</p>
+            <p className="text-sm text-gray-500">Link them to your account to manage them here.</p>
+          </div>
+          <ul className="space-y-2">
+            {claimable.map((f) => (
+              <li key={f.id} className="flex items-center justify-between gap-3 text-sm">
+                <span>{f.camp_name} <span className="text-gray-400">· {f.org_name}</span></span>
+                <Button size="sm" className="bg-[#7C3AED]" onClick={() => handleClaim(f)}>Claim</Button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {registrations.length === 0 ? (
         <div className="text-center py-12 text-gray-400">
