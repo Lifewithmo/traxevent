@@ -54,7 +54,7 @@ export default function FormFillPage() {
       setFamily(f)
 
       if (f) {
-        const signed = await getSignedForms(o.id, c.id, f.id)
+        const signed = await getSignedForms(o.id, c.id, f.id, token)
         setAlreadySigned(signed.some((s) => s.assignment_id === assignmentId))
       }
 

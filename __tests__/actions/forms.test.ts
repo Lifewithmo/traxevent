@@ -6,6 +6,8 @@ vi.mock('@/lib/auth/assert', () => ({
   assertCampPage: vi.fn().mockResolvedValue({ role: 'admin', camp_access: {} }),
 }))
 
+vi.mock('@/lib/auth/family-access', () => ({ assertFamilyAccess: vi.fn().mockResolvedValue({ id: 'fam' }) }))
+
 const templateDocSpy = vi.hoisted(() => ({
   set: vi.fn().mockResolvedValue(undefined),
   update: vi.fn().mockResolvedValue(undefined),

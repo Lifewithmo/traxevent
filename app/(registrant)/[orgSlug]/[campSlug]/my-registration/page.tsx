@@ -44,7 +44,7 @@ export default async function MyRegistrationPage({
 
   const [formAssignments, signedForms] = await Promise.all([
     listEventFormAssignments(org.id, camp.id),
-    getSignedForms(org.id, camp.id, family.id),
+    getSignedForms(org.id, camp.id, family.id, token),
   ])
   const signedAssignmentIds = new Set(signedForms.map((s) => s.assignment_id))
   const registrantForms = formAssignments.filter((a) => a.audience === 'registrant')
