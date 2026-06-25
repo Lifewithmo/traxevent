@@ -1,7 +1,8 @@
 'use server'
 
 import { adminDb } from '@/lib/firebase-admin'
-import { assertCampPage, assertOrgMember, assertNetworkAdmin } from '@/lib/auth/assert'
+import { assertCampPage, assertOrgMember, assertNetworkMember } from '@/lib/auth/assert'
+import { scopeOrgsToMember } from '@/lib/network-scope'
 import type { Family, FamilyMember, EventFormAssignment, Camp, Org } from '@/lib/types'
 import { summarizeFormCompletion, type FormCompletionRow } from '@/lib/forms'
 import {
@@ -170,9 +171,9 @@ export async function getOrgReportData(orgId: string, departmentId?: string): Pr
 
 // Aggregated report across a network's member orgs. Gated by NETWORK admin (not per-org membership).
 export async function getNetworkReportData(networkId: string): Promise<NetworkReport> {
-  await assertNetworkAdmin(networkId)
+  const member = await assertNetworkMember(networkId)
   const orgsSnap = await adminDb.collection('orgs').where('network_id', '==', networkId).get()
-  const orgs = orgsSnap.docs.map((d) => ({ ...(d.data() as Org), id: d.id }))
+  const orgs = scopeOrgsToMember(member, orgsSnap.docs.map((d) => ({ ...(d.data() as Org), id: d.id })))
 
   const perOrg: NetworkOrgReport[] = await Promise.all(
     orgs.map(async (org) => {

@@ -38,6 +38,7 @@ vi.mock('@/lib/firebase-admin', () => {
 
 vi.mock('@/lib/auth/assert', () => ({
   assertNetworkAdmin: vi.fn().mockResolvedValue({ role: 'admin' }),
+  assertNetworkMember: vi.fn().mockResolvedValue({ uid: 'admin-uid', role: 'admin' }),
 }))
 
 import { getNetworkReportData } from '@/actions/reports'
