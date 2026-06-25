@@ -4,7 +4,9 @@ import { adminDb } from '@/lib/firebase-admin'
 import { setNetworkClaims } from '@/actions/auth'
 import { assertNetworkAdmin, assertOrgAdmin } from '@/lib/auth/assert'
 import { slugify } from '@/lib/slug'
-import type { Network, Org } from '@/lib/types'
+import { buildInviteToken } from '@/lib/tokens'
+import type { Network, Org, OrgInvitation, OrgRole } from '@/lib/types'
+import type { OnboardRow } from '@/lib/bulk-onboard'
 
 export async function createNetwork(uid: string, name: string, displayName: string, email: string): Promise<Network> {
   const slug = slugify(name)
@@ -39,4 +41,64 @@ export async function linkOrgToNetworkBySlug(networkId: string, orgSlug: string)
 export async function unlinkOrgFromNetwork(networkId: string, orgId: string): Promise<void> {
   await assertNetworkAdmin(networkId)
   await adminDb.collection('orgs').doc(orgId).update({ network_id: null, updated_at: new Date().toISOString() })
+}
+
+export interface BulkOnboardResult {
+  orgName: string
+  adminEmail: string
+  slug?: string
+  inviteToken?: string
+  status: 'created' | 'error'
+  error?: string
+}
+
+// Unique org slug: append -2, -3, ... until free (createOrg does NOT dedupe slugs).
+async function uniqueOrgSlug(name: string): Promise<string> {
+  const base = slugify(name)
+  let slug = base
+  let n = 2
+  while (!(await adminDb.collection('orgs').where('slug', '==', slug).limit(1).get()).empty) {
+    slug = `${base}-${n}`
+    n++
+  }
+  return slug
+}
+
+// Create an org + owner invitation per row, auto-linked to the network. The network admin
+// is NOT made a member; the invited admin becomes owner on accepting. Returns per-row results.
+export async function bulkOnboardOrgs(networkId: string, rows: OnboardRow[]): Promise<BulkOnboardResult[]> {
+  await assertNetworkAdmin(networkId)
+  const results: BulkOnboardResult[] = []
+  for (const row of rows) {
+    if (row.error || !row.orgName.trim() || !row.adminEmail.trim()) {
+      results.push({ orgName: row.orgName, adminEmail: row.adminEmail, status: 'error', error: row.error ?? 'Invalid row' })
+      continue
+    }
+    try {
+      const slug = await uniqueOrgSlug(row.orgName)
+      const orgRef = adminDb.collection('orgs').doc()
+      const now = new Date().toISOString()
+      await orgRef.set({
+        id: orgRef.id,
+        name: row.orgName.trim(),
+        slug,
+        billing_status: 'trialing',
+        network_id: networkId,
+        created_at: now,
+      })
+      const token = buildInviteToken()
+      const invitation: OrgInvitation = {
+        token,
+        email: row.adminEmail.trim(),
+        role: 'owner' as OrgRole,
+        created_at: now,
+        expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      }
+      await orgRef.collection('invitations').doc(token).set(invitation)
+      results.push({ orgName: row.orgName, adminEmail: row.adminEmail, slug, inviteToken: token, status: 'created' })
+    } catch (err: unknown) {
+      results.push({ orgName: row.orgName, adminEmail: row.adminEmail, status: 'error', error: err instanceof Error ? err.message : 'Failed' })
+    }
+  }
+  return results
 }
