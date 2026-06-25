@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { LinkOrgForm } from '@/components/network/LinkOrgForm'
-import type { Network, Org } from '@/lib/types'
+import type { Network, NetworkRole, Org } from '@/lib/types'
 import type { NetworkReport } from '@/lib/reports'
 
 interface NetworkDashboardClientProps {
@@ -10,18 +10,20 @@ interface NetworkDashboardClientProps {
   networkId: string
   orgs: Org[]
   report: NetworkReport
+  role: NetworkRole
 }
 
 function money(n: number): string {
   return `$${n.toFixed(2)}`
 }
 
-export function NetworkDashboardClient({ network, networkId, orgs, report }: NetworkDashboardClientProps) {
+export function NetworkDashboardClient({ network, networkId, orgs, report, role }: NetworkDashboardClientProps) {
   return (
     <div className="p-6 max-w-4xl space-y-4">
       <div>
         <h1 className="text-2xl font-bold">{network.name}</h1>
         <p className="text-sm text-muted-foreground">Network dashboard</p>
+        {role === 'coordinator' && <span className="inline-block mt-1 text-xs rounded bg-blue-100 text-blue-800 px-2 py-0.5">Region coordinator</span>}
       </div>
 
       <div className="grid gap-3 sm:grid-cols-3">
@@ -78,7 +80,7 @@ export function NetworkDashboardClient({ network, networkId, orgs, report }: Net
               ))}
             </ul>
           )}
-          <LinkOrgForm networkId={networkId} />
+          {role === 'admin' && <LinkOrgForm networkId={networkId} />}
         </CardContent>
       </Card>
     </div>
