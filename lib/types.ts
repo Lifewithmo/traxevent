@@ -16,10 +16,11 @@ export interface Org {
   sending_domain_status?: SendingDomainStatus
   sending_domain_records?: DomainDnsRecord[]
   network_id?: string | null
+  region_id?: string | null
   created_at: string
 }
 
-export type NetworkRole = 'admin'
+export type NetworkRole = 'admin' | 'coordinator'
 
 export interface Network {
   id: string
@@ -28,11 +29,18 @@ export interface Network {
   created_at: string
 }
 
+export interface Region {
+  id: string
+  name: string
+  created_at: string
+}
+
 export interface NetworkMember {
   uid: string
   role: NetworkRole
   display_name: string
   email: string
+  region_ids?: string[]
 }
 
 export const CAMP_PAGES = [
