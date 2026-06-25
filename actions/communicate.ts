@@ -1,6 +1,7 @@
 'use server'
 
 import { adminDb } from '@/lib/firebase-admin'
+import { assertCampPage } from '@/lib/auth/assert'
 import { getResend, buildFromAddress, deriveLocalPart, resolveSenderEmail } from '@/lib/resend'
 import { getVerifiedSendingDomain } from '@/actions/domains'
 import type { Camp, Family, CommunicationLogEntry, OrgMember } from '@/lib/types'
@@ -18,6 +19,7 @@ export async function sendEmailBlast(
   campId: string,
   input: EmailBlastInput
 ): Promise<{ sent: number }> {
+  await assertCampPage(orgId, campId, 'communicate')
   const campRef = adminDb
     .collection('orgs').doc(orgId)
     .collection('camps').doc(campId)
@@ -101,6 +103,7 @@ export async function getCommunicationLog(
   orgId: string,
   campId: string
 ): Promise<CommunicationLogEntry[]> {
+  await assertCampPage(orgId, campId, 'communicate')
   const snap = await adminDb
     .collection('orgs').doc(orgId)
     .collection('camps').doc(campId)
