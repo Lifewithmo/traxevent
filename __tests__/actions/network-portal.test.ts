@@ -188,6 +188,81 @@ describe('network-portal admin actions', () => {
       // active-camps filter was applied
       expect(campsWhereSpy).toHaveBeenCalledWith('status', '==', 'active')
     })
+
+    it('does not expose stripe_customer_id or billing_status on the public network', async () => {
+      networkSlugGetSpy.mockResolvedValue({
+        empty: false,
+        docs: [
+          {
+            id: 'net-1',
+            data: () => ({
+              name: 'Grace Network',
+              slug: 'grace',
+              display_name: 'Grace',
+              logo_url: 'https://cdn.example.org/logo.png',
+              primary_color: '#2563EB',
+              accent_color: '#059669',
+              portal_domain: 'camps.grace.org',
+              stripe_customer_id: 'cus_SECRET123',
+              billing_status: 'active',
+            }),
+          },
+        ],
+      })
+      orgsByNetworkGetSpy.mockResolvedValue({ docs: [] })
+
+      const result = await getNetworkPortalBySlug('grace')
+      expect(result).not.toBeNull()
+      // public-facing branding is present
+      expect(result!.network).toEqual({
+        id: 'net-1',
+        name: 'Grace Network',
+        slug: 'grace',
+        display_name: 'Grace',
+        logo_url: 'https://cdn.example.org/logo.png',
+        primary_color: '#2563EB',
+        accent_color: '#059669',
+      })
+      // sensitive/internal fields are structurally absent
+      expect('stripe_customer_id' in result!.network).toBe(false)
+      expect('billing_status' in result!.network).toBe(false)
+      expect('portal_domain' in result!.network).toBe(false)
+    })
+
+    it('excludes inactive member orgs and includes active/trialing orgs', async () => {
+      networkSlugGetSpy.mockResolvedValue({
+        empty: false,
+        docs: [{ id: 'net-1', data: () => ({ name: 'Grace Network', slug: 'grace' }) }],
+      })
+      orgsByNetworkGetSpy.mockResolvedValue({
+        docs: [
+          { id: 'org-active', data: () => ({ name: 'Active Org', slug: 'active-org', billing_status: 'active' }) },
+          { id: 'org-trial', data: () => ({ name: 'Trial Org', slug: 'trial-org', billing_status: 'trialing' }) },
+          { id: 'org-inactive', data: () => ({ name: 'Inactive Org', slug: 'inactive-org', billing_status: 'inactive' }) },
+        ],
+      })
+      campsGetSpy.mockImplementation(async () => ({
+        docs: [
+          {
+            data: () => ({
+              name: 'Summer Camp',
+              slug: 'summer',
+              year: 2026,
+              status: 'active',
+              camp_start: '2026-07-01',
+              camp_end: '2026-07-07',
+            }),
+          },
+        ],
+      }))
+
+      const result = await getNetworkPortalBySlug('grace')
+      expect(result).not.toBeNull()
+      const orgNames = result!.events.map((e) => e.orgName)
+      expect(orgNames).toContain('Active Org')
+      expect(orgNames).toContain('Trial Org')
+      expect(orgNames).not.toContain('Inactive Org')
+    })
   })
 
   describe('getNetworkPortalByDomain', () => {

@@ -1,5 +1,5 @@
 import { portalThemeVars } from '@/lib/portal'
-import type { NetworkPortal } from '@/actions/network-portal'
+import type { NetworkPortal, PublicNetwork } from '@/actions/network-portal'
 
 function formatRange(start: string, end: string): string {
   if (start && end && start !== end) return `${start} – ${end}`
@@ -7,7 +7,7 @@ function formatRange(start: string, end: string): string {
 }
 
 export function NetworkPortalView({ portal }: { portal: NetworkPortal }) {
-  const { network, events } = portal
+  const { network, events }: { network: PublicNetwork; events: NetworkPortal['events'] } = portal
   const title = network.display_name || network.name
 
   return (
