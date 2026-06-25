@@ -28,6 +28,11 @@ export interface Network {
   slug: string
   stripe_customer_id?: string
   billing_status?: 'active' | 'inactive'
+  display_name?: string
+  logo_url?: string
+  primary_color?: string
+  accent_color?: string
+  portal_domain?: string | null
   created_at: string
 }
 
