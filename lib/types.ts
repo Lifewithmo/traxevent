@@ -40,6 +40,7 @@ export interface OrgMember {
   display_name: string
   email: string
   camp_access: Record<string, { pages: CampPage[] }>
+  department_access?: Record<string, { pages: CampPage[] }>  // per-department grants, inherited by that dept's events
 }
 
 export interface OrgInvitation {
