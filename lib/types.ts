@@ -15,7 +15,24 @@ export interface Org {
   sending_domain_id?: string
   sending_domain_status?: SendingDomainStatus
   sending_domain_records?: DomainDnsRecord[]
+  network_id?: string | null
   created_at: string
+}
+
+export type NetworkRole = 'admin'
+
+export interface Network {
+  id: string
+  name: string
+  slug: string
+  created_at: string
+}
+
+export interface NetworkMember {
+  uid: string
+  role: NetworkRole
+  display_name: string
+  email: string
 }
 
 export const CAMP_PAGES = [
@@ -87,6 +104,9 @@ export interface AuthClaims {
   orgId: string
   orgSlug: string
   role: OrgRole | 'platform_admin'
+  networkId?: string
+  networkSlug?: string
+  networkRole?: NetworkRole
 }
 
 export interface RegistrantProfile {

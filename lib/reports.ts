@@ -238,3 +238,38 @@ export function aggregateOrgReport(rows: OrgCampReportRow[]): OrgReport {
   )
   return { rows, totals }
 }
+
+export interface NetworkOrgReport {
+  org_id: string
+  org_name: string
+  report: OrgReport
+}
+
+export interface NetworkReport {
+  orgs: NetworkOrgReport[]
+  totals: {
+    orgs: number
+    camps: number
+    registrants: number
+    confirmed: number
+    totalDue: number
+    totalPaid: number
+    outstanding: number
+  }
+}
+
+export function aggregateNetworkReport(orgs: NetworkOrgReport[]): NetworkReport {
+  const totals = orgs.reduce(
+    (acc, o) => ({
+      orgs: acc.orgs + 1,
+      camps: acc.camps + o.report.totals.camps,
+      registrants: acc.registrants + o.report.totals.registrants,
+      confirmed: acc.confirmed + o.report.totals.confirmed,
+      totalDue: acc.totalDue + o.report.totals.totalDue,
+      totalPaid: acc.totalPaid + o.report.totals.totalPaid,
+      outstanding: acc.outstanding + o.report.totals.outstanding,
+    }),
+    { orgs: 0, camps: 0, registrants: 0, confirmed: 0, totalDue: 0, totalPaid: 0, outstanding: 0 }
+  )
+  return { orgs, totals }
+}
