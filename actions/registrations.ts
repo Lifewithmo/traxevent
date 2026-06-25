@@ -236,3 +236,38 @@ export async function linkRegistrantAccount(
     .collection('families').doc(familyId)
     .update({ registrant_uid: uid, updated_at: new Date().toISOString() })
 }
+
+// A logged-in registrant's prior registrations made under their (verified) profile email
+// that aren't yet linked to their account. Email comes from the caller's OWN profile —
+// never a parameter — so this can't enumerate other people's registrations.
+export async function getClaimableRegistrations(): Promise<Family[]> {
+  const user = await getCurrentUser()
+  if (!user) return []
+  const profile = await getRegistrantProfile(user.uid)
+  const email = profile?.email?.trim().toLowerCase()
+  if (!email) return []
+  const snap = await adminDb.collectionGroup('families').where('email', '==', profile!.email).get()
+  return snap.docs
+    .map((d) => d.data() as Family)
+    .filter((f) => !f.registrant_uid && f.email.trim().toLowerCase() === email)
+    .sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
+}
+
+// Link an unclaimed family to the caller, only if its email matches the caller's profile email.
+export async function claimRegistration(orgId: string, campId: string, familyId: string): Promise<void> {
+  const user = await getCurrentUser()
+  if (!user) throw new Error('Unauthorized')
+  const profile = await getRegistrantProfile(user.uid)
+  const email = profile?.email?.trim().toLowerCase()
+  if (!email) throw new Error('Forbidden')
+  const ref = adminDb
+    .collection('orgs').doc(orgId)
+    .collection('camps').doc(campId)
+    .collection('families').doc(familyId)
+  const snap = await ref.get()
+  if (!snap.exists) throw new Error('Not found')
+  const fam = snap.data() as Family
+  if (fam.registrant_uid) throw new Error('Forbidden')
+  if (fam.email.trim().toLowerCase() !== email) throw new Error('Forbidden')
+  await ref.update({ registrant_uid: user.uid, updated_at: new Date().toISOString() })
+}
