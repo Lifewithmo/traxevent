@@ -70,12 +70,13 @@ function BillingContent() {
 
   const statusVariant: 'default' | 'secondary' | 'destructive' =
     org.billing_status === 'active' ? 'default'
-    : org.billing_status === 'trialing' ? 'secondary'
+    : org.billing_status === 'trialing' || org.billing_status === 'network_managed' ? 'secondary'
     : 'destructive'
 
   const statusLabel =
     org.billing_status === 'active' ? 'Active'
     : org.billing_status === 'trialing' ? 'Trial'
+    : org.billing_status === 'network_managed' ? 'Network-managed'
     : 'Inactive'
 
   return (
@@ -98,11 +99,14 @@ function BillingContent() {
             <Badge variant={statusVariant}>{statusLabel}</Badge>
           </div>
           <p className="text-sm text-muted-foreground">$199 / year — unlimited events, unlimited registrants</p>
+          {org.billing_status === 'network_managed' && (
+            <p className="text-sm text-muted-foreground">Covered by your network — billing is managed centrally.</p>
+          )}
           <div aria-live="polite" aria-atomic="true">
             {error && <p className="text-sm text-destructive">{error}</p>}
           </div>
           <div className="flex gap-2 flex-wrap">
-            {org.billing_status !== 'active' && (
+            {org.billing_status !== 'active' && org.billing_status !== 'network_managed' && (
               <Button onClick={handleSubscribe} disabled={loading}>
                 {loading ? 'Redirecting…' : 'Subscribe — $199/year'}
               </Button>
