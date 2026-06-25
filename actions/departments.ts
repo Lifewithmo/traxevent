@@ -4,12 +4,14 @@ import { adminDb } from '@/lib/firebase-admin'
 import { FieldValue } from 'firebase-admin/firestore'
 import type { Department } from '@/lib/types'
 import { randomBytes } from 'crypto'
+import { assertOrgMember, assertOrgAdmin } from '@/lib/auth/assert'
 
 function deptsRef(orgId: string) {
   return adminDb.collection('orgs').doc(orgId).collection('departments')
 }
 
 export async function listDepartments(orgId: string): Promise<Department[]> {
+  await assertOrgMember(orgId)
   const snap = await deptsRef(orgId).orderBy('created_at', 'asc').get()
   return snap.docs.map((d) => d.data() as Department)
 }
@@ -20,6 +22,7 @@ export interface CreateDepartmentInput {
 }
 
 export async function createDepartment(orgId: string, input: CreateDepartmentInput): Promise<Department> {
+  await assertOrgAdmin(orgId)
   const id = randomBytes(8).toString('hex')
   const dept: Department = {
     id,
@@ -36,6 +39,7 @@ export async function updateDepartment(
   deptId: string,
   updates: { name?: string; description?: string | null }
 ): Promise<void> {
+  await assertOrgAdmin(orgId)
   const cleaned: Record<string, unknown> = {}
   for (const [k, v] of Object.entries(updates)) {
     if (v === undefined) continue
@@ -45,6 +49,7 @@ export async function updateDepartment(
 }
 
 export async function deleteDepartment(orgId: string, deptId: string): Promise<void> {
+  await assertOrgAdmin(orgId)
   // Unassign any camps in this department before deleting it.
   const campsSnap = await adminDb
     .collection('orgs').doc(orgId)

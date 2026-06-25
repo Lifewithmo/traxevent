@@ -18,6 +18,12 @@ vi.mock('@/actions/auth', () => ({
   setOrgClaims: vi.fn().mockResolvedValue(undefined),
 }))
 
+vi.mock('@/lib/auth/assert', () => ({
+  assertOrgMember: vi.fn().mockResolvedValue({ role: 'admin', camp_access: {} }),
+  assertOrgAdmin: vi.fn().mockResolvedValue({ role: 'admin', camp_access: {} }),
+  assertCampPage: vi.fn().mockResolvedValue({ role: 'admin', camp_access: {} }),
+}))
+
 import { buildInviteToken, validateCampPages } from '@/lib/tokens'
 import { CAMP_PAGES } from '@/lib/types'
 

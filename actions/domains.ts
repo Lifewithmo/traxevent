@@ -4,6 +4,7 @@ import { adminDb } from '@/lib/firebase-admin'
 import { getResend } from '@/lib/resend'
 import { getOrg } from '@/actions/orgs'
 import type { DomainDnsRecord, SendingDomainStatus } from '@/lib/types'
+import { assertOrgAdmin } from '@/lib/auth/assert'
 
 function orgRef(orgId: string) {
   return adminDb.collection('orgs').doc(orgId)
@@ -48,6 +49,7 @@ export async function createSendingDomain(
   orgId: string,
   domain: string
 ): Promise<{ status: SendingDomainStatus; records: DomainDnsRecord[] }> {
+  await assertOrgAdmin(orgId)
   const resend = getResend()
   const { data, error } = await resend.domains.create({ name: domain })
   if (error || !data) throw new Error(error?.message ?? 'Failed to create domain')
@@ -66,6 +68,7 @@ export async function createSendingDomain(
 }
 
 export async function verifySendingDomain(orgId: string): Promise<{ status: SendingDomainStatus }> {
+  await assertOrgAdmin(orgId)
   const org = await getOrg(orgId)
   if (!org?.sending_domain_id) throw new Error('No sending domain to verify')
 
@@ -81,6 +84,7 @@ export async function verifySendingDomain(orgId: string): Promise<{ status: Send
 }
 
 export async function removeSendingDomain(orgId: string): Promise<void> {
+  await assertOrgAdmin(orgId)
   const org = await getOrg(orgId)
   if (org?.sending_domain_id) {
     const resend = getResend()

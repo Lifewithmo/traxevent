@@ -3,8 +3,10 @@
 
 import { stripe } from '@/lib/stripe'
 import { getOrg } from '@/actions/orgs'
+import { assertOrgAdmin } from '@/lib/auth/assert'
 
 export async function createCheckoutSession(orgId: string, orgSlug: string): Promise<string> {
+  await assertOrgAdmin(orgId)
   const org = await getOrg(orgId)
   if (!org) throw new Error('Organization not found')
 
@@ -26,6 +28,7 @@ export async function createCheckoutSession(orgId: string, orgSlug: string): Pro
 }
 
 export async function createBillingPortalSession(orgId: string, orgSlug: string): Promise<string> {
+  await assertOrgAdmin(orgId)
   const org = await getOrg(orgId)
   if (!org?.stripe_customer_id) throw new Error('No Stripe customer found — subscribe first')
 

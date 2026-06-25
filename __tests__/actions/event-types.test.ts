@@ -16,6 +16,12 @@ vi.mock('@/lib/firebase-admin', () => ({
   },
 }))
 
+vi.mock('@/lib/auth/assert', () => ({
+  assertOrgMember: vi.fn().mockResolvedValue({ role: 'admin', camp_access: {} }),
+  assertOrgAdmin: vi.fn().mockResolvedValue({ role: 'admin', camp_access: {} }),
+  assertCampPage: vi.fn().mockResolvedValue({ role: 'admin', camp_access: {} }),
+}))
+
 import { listOrgEventTypes, createCustomEventType, deleteCustomEventType } from '@/actions/event-types'
 
 const term = {
