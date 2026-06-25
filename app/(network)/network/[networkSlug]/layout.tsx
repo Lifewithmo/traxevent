@@ -10,6 +10,7 @@ export default async function NetworkLayout({ children, params }: { children: Re
         <nav className="flex-1 px-2 py-4 space-y-0.5 text-sm">
           <a href={`/network/${networkSlug}`} className="block px-3 py-2 rounded-md text-gray-300 hover:bg-gray-700 hover:text-white">Dashboard</a>
           <a href={`/network/${networkSlug}/templates`} className="block px-3 py-2 rounded-md text-gray-300 hover:bg-gray-700 hover:text-white">Shared templates</a>
+          <a href={`/network/${networkSlug}/onboard`} className="block px-3 py-2 rounded-md text-gray-300 hover:bg-gray-700 hover:text-white">Onboard orgs</a>
         </nav>
       </aside>
       <main className="flex-1 bg-gray-50 overflow-auto">{children}</main>
