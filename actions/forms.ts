@@ -2,6 +2,7 @@
 
 import { adminDb } from '@/lib/firebase-admin'
 import { assertOrgMember, assertOrgAdmin, assertCampPage } from '@/lib/auth/assert'
+import { assertFamilyAccess } from '@/lib/auth/family-access'
 import { FieldValue } from 'firebase-admin/firestore'
 import { headers } from 'next/headers'
 import { sendFormSignedConfirmation } from '@/lib/email'
@@ -115,8 +116,10 @@ export async function removeFormAssignment(
 export async function getSignedForms(
   orgId: string,
   campId: string,
-  familyId: string
+  familyId: string,
+  token?: string
 ): Promise<SignedForm[]> {
+  await assertFamilyAccess(orgId, campId, familyId, { token, page: 'forms' })
   const snap = await signedFormsRef(orgId, campId, familyId).orderBy('signed_at', 'desc').get()
   return snap.docs.map((d) => d.data() as SignedForm)
 }

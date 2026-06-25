@@ -6,6 +6,9 @@ import { sendRegistrationConfirmation } from '@/lib/email'
 import { getVerifiedSendingDomain } from '@/actions/domains'
 import type { Camp, Family, FamilyMember } from '@/lib/types'
 import { buildFamilyId } from '@/lib/tokens'
+import { assertFamilyAccess } from '@/lib/auth/family-access'
+import { getCurrentUser } from '@/lib/auth/session'
+import { assertCampPage } from '@/lib/auth/assert'
 
 export interface CreateRegistrationInput {
   orgId: string
@@ -142,6 +145,10 @@ export async function getRegistrationByUid(
   campId: string,
   uid: string
 ): Promise<Family | null> {
+  const caller = await getCurrentUser()
+  if (!caller) throw new Error('Unauthorized')
+  if (caller.uid !== uid) await assertCampPage(orgId, campId, 'families')
+
   const snap = await adminDb
     .collection('orgs').doc(orgId)
     .collection('camps').doc(campId)
@@ -167,8 +174,10 @@ export async function getAllRegistrationsByUid(uid: string): Promise<Family[]> {
 export async function getFamilyMembers(
   orgId: string,
   campId: string,
-  familyId: string
+  familyId: string,
+  token?: string
 ): Promise<FamilyMember[]> {
+  await assertFamilyAccess(orgId, campId, familyId, { token, page: 'families' })
   const snap = await adminDb
     .collection('orgs').doc(orgId)
     .collection('camps').doc(campId)
@@ -186,8 +195,10 @@ export async function updateRegistration(
   updates: Partial<Pick<Family,
     'first_name' | 'last_name' | 'email' | 'phone' |
     'address' | 'emergency_contact'
-  >>
+  >>,
+  token?: string
 ): Promise<void> {
+  await assertFamilyAccess(orgId, campId, familyId, { token, page: 'families' })
   await adminDb
     .collection('orgs').doc(orgId)
     .collection('camps').doc(campId)
