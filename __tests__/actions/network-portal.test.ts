@@ -2,6 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const networkUpdateSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const portalDomainGetSpy = vi.hoisted(() => vi.fn())
+const networkSlugGetSpy = vi.hoisted(() => vi.fn())
+const orgsByNetworkGetSpy = vi.hoisted(() => vi.fn())
+const campsGetSpy = vi.hoisted(() => vi.fn())
+const campsWhereSpy = vi.hoisted(() => vi.fn())
 
 vi.mock('@/lib/firebase-admin', () => {
   const networksCol = {
@@ -13,13 +17,34 @@ vi.mock('@/lib/firebase-admin', () => {
       if (field === 'portal_domain') {
         return { limit: vi.fn().mockReturnValue({ get: portalDomainGetSpy }) }
       }
+      if (field === 'slug') {
+        return { limit: vi.fn().mockReturnValue({ get: networkSlugGetSpy }) }
+      }
       return { limit: vi.fn().mockReturnValue({ get: vi.fn() }) }
     }),
+  }
+  const orgsCol = {
+    // orgs.where('network_id','==',id).get()
+    where: vi.fn().mockImplementation((_field: string, _op: string, _value?: string) => ({
+      get: orgsByNetworkGetSpy,
+    })),
+    // orgs.doc(orgId).collection('camps').where('status','==','active').get()
+    doc: vi.fn().mockImplementation((_orgId?: string) => ({
+      collection: vi.fn().mockImplementation((sub: string) => {
+        if (sub === 'camps') {
+          return {
+            where: campsWhereSpy.mockReturnValue({ get: campsGetSpy }),
+          }
+        }
+        return {}
+      }),
+    })),
   }
   return {
     adminDb: {
       collection: vi.fn().mockImplementation((name: string) => {
         if (name === 'networks') return networksCol
+        if (name === 'orgs') return orgsCol
         return {}
       }),
     },
@@ -34,8 +59,11 @@ import {
   updateNetworkBranding,
   setNetworkPortalDomain,
   removeNetworkPortalDomain,
+  getNetworkPortalBySlug,
+  getNetworkPortalByDomain,
 } from '@/actions/network-portal'
 import { assertNetworkAdmin } from '@/lib/auth/assert'
+import { adminDb } from '@/lib/firebase-admin'
 
 describe('network-portal admin actions', () => {
   beforeEach(() => {
@@ -43,6 +71,10 @@ describe('network-portal admin actions', () => {
     networkUpdateSpy.mockResolvedValue(undefined)
     // Default: domain is free.
     portalDomainGetSpy.mockResolvedValue({ empty: true, docs: [] })
+    networkSlugGetSpy.mockResolvedValue({ empty: true, docs: [] })
+    orgsByNetworkGetSpy.mockResolvedValue({ docs: [] })
+    campsGetSpy.mockResolvedValue({ docs: [] })
+    campsWhereSpy.mockReturnValue({ get: campsGetSpy })
   })
 
   describe('updateNetworkBranding', () => {
@@ -111,6 +143,93 @@ describe('network-portal admin actions', () => {
       await removeNetworkPortalDomain('net-1')
       expect(assertNetworkAdmin).toHaveBeenCalledWith('net-1')
       expect(networkUpdateSpy).toHaveBeenCalledWith({ portal_domain: null })
+    })
+  })
+
+  describe('getNetworkPortalBySlug', () => {
+    it('returns null for an unknown slug', async () => {
+      networkSlugGetSpy.mockResolvedValue({ empty: true, docs: [] })
+      const result = await getNetworkPortalBySlug('nope')
+      expect(result).toBeNull()
+    })
+
+    it('returns { network, events } built from member orgs active camps', async () => {
+      networkSlugGetSpy.mockResolvedValue({
+        empty: false,
+        docs: [{ id: 'net-1', data: () => ({ name: 'Grace Network', slug: 'grace' }) }],
+      })
+      orgsByNetworkGetSpy.mockResolvedValue({
+        docs: [{ id: 'org-1', data: () => ({ name: 'First Baptist', slug: 'fbc' }) }],
+      })
+      campsGetSpy.mockResolvedValue({
+        docs: [
+          {
+            data: () => ({
+              name: 'Summer Camp',
+              slug: 'summer',
+              year: 2026,
+              status: 'active',
+              camp_start: '2026-07-01',
+              camp_end: '2026-07-07',
+            }),
+          },
+        ],
+      })
+
+      const result = await getNetworkPortalBySlug('grace')
+      expect(result).not.toBeNull()
+      expect(result!.network).toMatchObject({ id: 'net-1', name: 'Grace Network', slug: 'grace' })
+      expect(result!.events).toHaveLength(1)
+      expect(result!.events[0]).toMatchObject({
+        orgName: 'First Baptist',
+        campName: 'Summer Camp',
+        registerPath: '/fbc/summer/register',
+      })
+      // active-camps filter was applied
+      expect(campsWhereSpy).toHaveBeenCalledWith('status', '==', 'active')
+    })
+  })
+
+  describe('getNetworkPortalByDomain', () => {
+    it('returns null for an unknown host', async () => {
+      portalDomainGetSpy.mockResolvedValue({ empty: true, docs: [] })
+      const result = await getNetworkPortalByDomain('Camps.Unknown.ORG')
+      expect(result).toBeNull()
+    })
+
+    it('lowercases the host and returns { network, events } when known', async () => {
+      portalDomainGetSpy.mockResolvedValue({
+        empty: false,
+        docs: [{ id: 'net-1', data: () => ({ name: 'Grace Network', slug: 'grace', portal_domain: 'camps.grace.org' }) }],
+      })
+      orgsByNetworkGetSpy.mockResolvedValue({
+        docs: [{ id: 'org-1', data: () => ({ name: 'First Baptist', slug: 'fbc' }) }],
+      })
+      campsGetSpy.mockResolvedValue({
+        docs: [
+          {
+            data: () => ({
+              name: 'Summer Camp',
+              slug: 'summer',
+              year: 2026,
+              status: 'active',
+              camp_start: '2026-07-01',
+              camp_end: '2026-07-07',
+            }),
+          },
+        ],
+      })
+
+      const result = await getNetworkPortalByDomain('  Camps.Grace.ORG  ')
+      // host was normalized (trimmed + lowercased) before the lookup
+      expect(adminDb.collection).toHaveBeenCalledWith('networks')
+      const networksCol = (adminDb.collection as ReturnType<typeof vi.fn>).mock.results.find(
+        (r) => r.value && typeof r.value.where === 'function' && r.value.doc
+      )!.value
+      expect(networksCol.where).toHaveBeenCalledWith('portal_domain', '==', 'camps.grace.org')
+      expect(result).not.toBeNull()
+      expect(result!.network).toMatchObject({ id: 'net-1', slug: 'grace' })
+      expect(result!.events[0]).toMatchObject({ registerPath: '/fbc/summer/register' })
     })
   })
 })

@@ -2,6 +2,8 @@
 
 import { adminDb } from '@/lib/firebase-admin'
 import { assertNetworkAdmin } from '@/lib/auth/assert'
+import type { Network, Org, Camp } from '@/lib/types'
+import { buildPortalEvents, type PortalEvent } from '@/lib/portal'
 
 const HEX = /^#[0-9a-fA-F]{6}$/
 
@@ -44,4 +46,36 @@ export async function setNetworkPortalDomain(networkId: string, domain: string):
 export async function removeNetworkPortalDomain(networkId: string): Promise<void> {
   await assertNetworkAdmin(networkId)
   await adminDb.collection('networks').doc(networkId).update({ portal_domain: null })
+}
+
+export interface NetworkPortal {
+  network: Network
+  events: PortalEvent[]
+}
+
+async function loadPortal(network: Network | null): Promise<NetworkPortal | null> {
+  if (!network) return null
+  const orgsSnap = await adminDb.collection('orgs').where('network_id', '==', network.id).get()
+  const orgs = orgsSnap.docs.map((d) => ({ ...(d.data() as Org), id: d.id }))
+  const perOrg = await Promise.all(
+    orgs.map(async (org) => {
+      const campsSnap = await adminDb
+        .collection('orgs').doc(org.id).collection('camps')
+        .where('status', '==', 'active').get()
+      return { org, camps: campsSnap.docs.map((d) => d.data() as Camp) }
+    })
+  )
+  return { network, events: buildPortalEvents(perOrg) }
+}
+
+// PUBLIC (no auth): only exposes a network's public-facing name/branding + active camps.
+export async function getNetworkPortalBySlug(networkSlug: string): Promise<NetworkPortal | null> {
+  const snap = await adminDb.collection('networks').where('slug', '==', networkSlug).limit(1).get()
+  return loadPortal(snap.empty ? null : ({ ...(snap.docs[0].data() as Network), id: snap.docs[0].id }))
+}
+
+export async function getNetworkPortalByDomain(host: string): Promise<NetworkPortal | null> {
+  const normalized = host.trim().toLowerCase()
+  const snap = await adminDb.collection('networks').where('portal_domain', '==', normalized).limit(1).get()
+  return loadPortal(snap.empty ? null : ({ ...(snap.docs[0].data() as Network), id: snap.docs[0].id }))
 }
