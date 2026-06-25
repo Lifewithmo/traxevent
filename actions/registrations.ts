@@ -6,6 +6,8 @@ import { sendRegistrationConfirmation } from '@/lib/email'
 import { getVerifiedSendingDomain } from '@/actions/domains'
 import type { Camp, Family, FamilyMember } from '@/lib/types'
 import { buildFamilyId } from '@/lib/tokens'
+import { mergeSavedMembers } from '@/lib/saved-members'
+import { getRegistrantProfile, updateRegistrantProfile } from '@/actions/registrant-auth'
 import { assertFamilyAccess } from '@/lib/auth/family-access'
 import { getCurrentUser } from '@/lib/auth/session'
 import { assertCampPage } from '@/lib/auth/assert'
@@ -88,6 +90,22 @@ export async function createRegistration(
     await familyRef
       .collection('family_members').doc(memberId)
       .set({ id: memberId, family_id: familyId, ...member })
+  }
+
+  // Best-effort: capture this registration's members onto the registrant's saved profile
+  // so they pre-fill next time. Never fail a registration over profile sync.
+  if (input.registrantUid && input.members.length > 0) {
+    try {
+      const profile = await getRegistrantProfile(input.registrantUid)
+      if (profile) {
+        const merged = mergeSavedMembers(profile.saved_members, input.members, () => buildFamilyId())
+        if (merged.length !== profile.saved_members.length) {
+          await updateRegistrantProfile(input.registrantUid, { saved_members: merged })
+        }
+      }
+    } catch {
+      // ignore — profile sync is non-critical
+    }
   }
 
   // Attach signed URL token
