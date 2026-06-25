@@ -2,6 +2,7 @@
 
 import { adminDb } from '@/lib/firebase-admin'
 import type { CheckinRecord, EventMember, Family, FamilyMember } from '@/lib/types'
+import { assertCampPage } from '@/lib/auth/assert'
 
 function campRef(orgId: string, campId: string) {
   return adminDb.collection('orgs').doc(orgId).collection('camps').doc(campId)
@@ -12,6 +13,7 @@ function checkinsRef(orgId: string, campId: string) {
 }
 
 export async function listAllEventMembers(orgId: string, campId: string): Promise<EventMember[]> {
+  await assertCampPage(orgId, campId, 'checkin')
   const familiesSnap = await campRef(orgId, campId).collection('families').get()
 
   const perFamily = await Promise.all(
@@ -43,6 +45,7 @@ export async function getCheckinsForDate(
   campId: string,
   date: string
 ): Promise<CheckinRecord[]> {
+  await assertCampPage(orgId, campId, 'checkin')
   const snap = await checkinsRef(orgId, campId).where('date', '==', date).get()
   return snap.docs.map((d) => d.data() as CheckinRecord)
 }
@@ -60,6 +63,7 @@ export async function checkInMember(
   campId: string,
   input: CheckInMemberInput
 ): Promise<CheckinRecord> {
+  await assertCampPage(orgId, campId, 'checkin')
   const id = `${input.date}_${input.memberId}`
   const now = new Date().toISOString()
   const record: CheckinRecord = {
@@ -84,6 +88,7 @@ export async function checkOutMember(
   recordId: string,
   guardianPickupName?: string
 ): Promise<void> {
+  await assertCampPage(orgId, campId, 'checkin')
   const ref = checkinsRef(orgId, campId).doc(recordId)
   const snap = await ref.get()
   if (!snap.exists) throw new Error('Check-in record not found')
@@ -105,6 +110,7 @@ export async function getCheckinSummary(
   campId: string,
   date: string
 ): Promise<CheckinSummary> {
+  await assertCampPage(orgId, campId, 'checkin')
   const snap = await checkinsRef(orgId, campId).where('date', '==', date).get()
   let checkedIn = 0
   let checkedOut = 0
