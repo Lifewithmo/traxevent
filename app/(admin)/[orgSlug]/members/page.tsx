@@ -1,8 +1,10 @@
 import { getOrgBySlug } from '@/actions/orgs'
 import { listMembers } from '@/actions/members'
 import { listCamps } from '@/actions/camps'
+import { listDepartments } from '@/actions/departments'
 import { InviteMemberModal } from '@/components/members/InviteMemberModal'
 import { PermissionMatrix } from '@/components/members/PermissionMatrix'
+import { DepartmentPermissionMatrix } from '@/components/members/DepartmentPermissionMatrix'
 import { Badge } from '@/components/ui/badge'
 import { redirect } from 'next/navigation'
 
@@ -15,7 +17,7 @@ export default async function MembersPage({
   const org = await getOrgBySlug(orgSlug)
   if (!org) redirect('/login')
 
-  const [members, camps] = await Promise.all([listMembers(org.id), listCamps(org.id)])
+  const [members, camps, departments] = await Promise.all([listMembers(org.id), listCamps(org.id), listDepartments(org.id)])
 
   const admins = members.filter((m) => m.role !== 'staff')
   const staff = members.filter((m) => m.role === 'staff')
@@ -56,6 +58,14 @@ export default async function MembersPage({
         </p>
         <PermissionMatrix orgId={org.id} staff={staff} camps={camps} />
       </section>
+
+      {departments.length > 0 && (
+        <section className="mt-8">
+          <h2 className="text-lg font-semibold mb-3">Department Permissions</h2>
+          <p className="text-sm text-gray-500 mb-4">Grant a staff member access across every event in a department. Combined with the per-event permissions above.</p>
+          <DepartmentPermissionMatrix orgId={org.id} staff={staff} departments={departments} />
+        </section>
+      )}
     </div>
   )
 }

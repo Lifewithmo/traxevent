@@ -2,17 +2,21 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const getCurrentUserSpy = vi.hoisted(() => vi.fn())
 const memberGetSpy = vi.hoisted(() => vi.fn())
+// assertCampPage now also reads the camp doc to resolve its department; default to a null-department camp.
+const campGetSpy = vi.hoisted(() => vi.fn(() => Promise.resolve({ exists: true, data: () => ({ department_id: null }) })))
 
 vi.mock('@/lib/auth/session', () => ({ getCurrentUser: getCurrentUserSpy }))
-vi.mock('@/lib/firebase-admin', () => ({
-  adminDb: {
-    collection: vi.fn().mockReturnValue({
-      doc: vi.fn().mockReturnValue({
-        collection: vi.fn().mockReturnValue({ doc: vi.fn().mockReturnValue({ get: memberGetSpy }) }),
-      }),
+vi.mock('@/lib/firebase-admin', () => {
+  const membersChain = { doc: vi.fn().mockReturnValue({ get: memberGetSpy }) }
+  const campsChain = { doc: vi.fn().mockReturnValue({ get: campGetSpy }) }
+  const orgDoc = {
+    collection: vi.fn().mockImplementation((sub: string) => {
+      if (sub === 'camps') return campsChain
+      return membersChain
     }),
-  },
-}))
+  }
+  return { adminDb: { collection: vi.fn().mockReturnValue({ doc: vi.fn().mockReturnValue(orgDoc) }) } }
+})
 
 import { assertOrgMember, assertOrgAdmin, assertCampPage } from '@/lib/auth/assert'
 

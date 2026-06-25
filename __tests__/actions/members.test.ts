@@ -26,6 +26,14 @@ vi.mock('@/lib/auth/assert', () => ({
 
 import { buildInviteToken, validateCampPages } from '@/lib/tokens'
 import { CAMP_PAGES } from '@/lib/types'
+import { adminDb } from '@/lib/firebase-admin'
+import {
+  updateStaffCampAccess,
+  updateStaffDepartmentAccess,
+} from '@/actions/members'
+
+// adminDb is mocked above; cast to reach the mocked .update spy.
+const updateSpy = (adminDb as unknown as { update: ReturnType<typeof vi.fn> }).update
 
 describe('buildInviteToken', () => {
   it('returns a 32-char hex string', () => {
@@ -49,5 +57,25 @@ describe('validateCampPages', () => {
   it('passes all valid pages through unchanged', () => {
     const all = [...CAMP_PAGES]
     expect(validateCampPages(all)).toEqual(all)
+  })
+})
+
+describe('updateStaffCampAccess', () => {
+  it('updates the camp_access pages field with validated pages', async () => {
+    updateSpy.mockClear()
+    await updateStaffCampAccess('org1', 'uid1', 'camp1', ['dashboard', 'bogus', 'teams'])
+    expect(updateSpy).toHaveBeenCalledWith({
+      'camp_access.camp1.pages': ['dashboard', 'teams'],
+    })
+  })
+})
+
+describe('updateStaffDepartmentAccess', () => {
+  it('updates the department_access pages field with validated pages', async () => {
+    updateSpy.mockClear()
+    await updateStaffDepartmentAccess('org1', 'uid1', 'dept1', ['dashboard', 'bogus', 'teams'])
+    expect(updateSpy).toHaveBeenCalledWith({
+      'department_access.dept1.pages': ['dashboard', 'teams'],
+    })
   })
 })

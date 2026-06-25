@@ -93,3 +93,17 @@ export async function updateStaffCampAccess(
     .collection('members').doc(uid)
     .update({ [`camp_access.${campId}.pages`]: validPages })
 }
+
+export async function updateStaffDepartmentAccess(
+  orgId: string,
+  uid: string,
+  departmentId: string,
+  pages: string[]
+): Promise<void> {
+  await assertOrgAdmin(orgId)
+  const validPages = validateCampPages(pages)
+  await adminDb
+    .collection('orgs').doc(orgId)
+    .collection('members').doc(uid)
+    .update({ [`department_access.${departmentId}.pages`]: validPages })
+}

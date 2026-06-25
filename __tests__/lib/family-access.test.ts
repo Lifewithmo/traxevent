@@ -9,7 +9,9 @@ vi.mock('@/lib/firebase-admin', () => {
   // orgs/{orgId} → doc; .collection('camps').doc(campId).collection('families').doc(familyId).get() = famGetSpy
   //              ; .collection('members').doc(uid).get() = memberGetSpy
   const familiesChain = { doc: vi.fn().mockReturnValue({ get: famGetSpy }) }
-  const campDoc = { collection: vi.fn().mockReturnValue(familiesChain) }
+  // assertFamilyAccess now also reads the camp doc (camps/{campId}.get()) to resolve its department.
+  const campGet = vi.fn(() => Promise.resolve({ exists: true, data: () => ({ department_id: null }) }))
+  const campDoc = { collection: vi.fn().mockReturnValue(familiesChain), get: campGet }
   const campsChain = { doc: vi.fn().mockReturnValue(campDoc) }
   const membersChain = { doc: vi.fn().mockReturnValue({ get: memberGetSpy }) }
   const orgDoc = {

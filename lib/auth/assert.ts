@@ -3,7 +3,7 @@ import 'server-only'
 import { adminDb } from '@/lib/firebase-admin'
 import { getCurrentUser } from '@/lib/auth/session'
 import { canAccessCampPage } from '@/lib/auth/access'
-import type { OrgMember, CampPage } from '@/lib/types'
+import type { Camp, OrgMember, CampPage } from '@/lib/types'
 
 // Throw-based guards for SERVER ACTIONS (pages use the redirect-based guards in guards.ts).
 // assertOrgMember: caller must be a verified member of orgId. Returns the member.
@@ -30,6 +30,8 @@ export async function assertOrgAdmin(orgId: string): Promise<OrgMember> {
 // Camp-scoped: caller must be an org member AND have access to `page` for `campId`.
 export async function assertCampPage(orgId: string, campId: string, page: CampPage): Promise<OrgMember> {
   const member = await assertOrgMember(orgId)
-  if (!canAccessCampPage(member, campId, page)) throw new Error('Forbidden')
+  const campSnap = await adminDb.collection('orgs').doc(orgId).collection('camps').doc(campId).get()
+  const departmentId = campSnap.exists ? ((campSnap.data() as Camp).department_id ?? null) : null
+  if (!canAccessCampPage(member, campId, page, departmentId)) throw new Error('Forbidden')
   return member
 }

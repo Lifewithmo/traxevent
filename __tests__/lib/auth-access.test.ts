@@ -23,3 +23,29 @@ describe('canAccessCampPage', () => {
     expect(canAccessCampPage(m, 'camp-1', 'families')).toBe(false)
   })
 })
+
+describe('canAccessCampPage — department inheritance', () => {
+  it('grants access when the member has a department grant for the camp\'s department', () => {
+    const m = member({ role: 'staff', camp_access: {}, department_access: { 'dept-1': { pages: ['forms', 'families'] } } })
+    expect(canAccessCampPage(m, 'camp-1', 'forms', 'dept-1')).toBe(true)
+    expect(canAccessCampPage(m, 'camp-1', 'budget', 'dept-1')).toBe(false)
+  })
+
+  it('does not grant a department page when the camp is in a different/absent department', () => {
+    const m = member({ role: 'staff', department_access: { 'dept-1': { pages: ['forms'] } } })
+    expect(canAccessCampPage(m, 'camp-1', 'forms', 'dept-2')).toBe(false)
+    expect(canAccessCampPage(m, 'camp-1', 'forms', null)).toBe(false)
+    expect(canAccessCampPage(m, 'camp-1', 'forms')).toBe(false)
+  })
+
+  it('explicit camp grant still works regardless of department', () => {
+    const m = member({ role: 'staff', camp_access: { 'camp-1': { pages: ['families'] } } })
+    expect(canAccessCampPage(m, 'camp-1', 'families', 'dept-1')).toBe(true)
+  })
+
+  it('camp grant OR department grant (union)', () => {
+    const m = member({ role: 'staff', camp_access: { 'camp-1': { pages: ['families'] } }, department_access: { 'dept-1': { pages: ['forms'] } } })
+    expect(canAccessCampPage(m, 'camp-1', 'families', 'dept-1')).toBe(true)
+    expect(canAccessCampPage(m, 'camp-1', 'forms', 'dept-1')).toBe(true)
+  })
+})
