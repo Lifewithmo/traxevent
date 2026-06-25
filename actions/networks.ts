@@ -30,6 +30,12 @@ export async function linkOrgToNetwork(networkId: string, orgId: string): Promis
   await adminDb.collection('orgs').doc(orgId).update({ network_id: networkId, updated_at: new Date().toISOString() })
 }
 
+export async function linkOrgToNetworkBySlug(networkId: string, orgSlug: string): Promise<void> {
+  const snap = await adminDb.collection('orgs').where('slug', '==', orgSlug).limit(1).get()
+  if (snap.empty) throw new Error('No organization found with that slug')
+  await linkOrgToNetwork(networkId, snap.docs[0].id)
+}
+
 export async function unlinkOrgFromNetwork(networkId: string, orgId: string): Promise<void> {
   await assertNetworkAdmin(networkId)
   await adminDb.collection('orgs').doc(orgId).update({ network_id: null, updated_at: new Date().toISOString() })

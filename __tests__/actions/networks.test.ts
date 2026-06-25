@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 const networkDocSetSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const memberDocSetSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const orgsWhereGetSpy = vi.hoisted(() => vi.fn())
+const orgsSlugGetSpy = vi.hoisted(() => vi.fn())
 const orgDocUpdateSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 
 vi.mock('@/lib/firebase-admin', () => {
@@ -17,7 +18,10 @@ vi.mock('@/lib/firebase-admin', () => {
     })),
   }
   const orgsCol = {
-    where: vi.fn().mockReturnValue({ get: orgsWhereGetSpy }),
+    where: vi.fn().mockImplementation((field: string) => {
+      if (field === 'slug') return { limit: vi.fn().mockReturnValue({ get: orgsSlugGetSpy }) }
+      return { get: orgsWhereGetSpy }
+    }),
     doc: vi.fn().mockReturnValue({ update: orgDocUpdateSpy }),
   }
   return {
@@ -42,7 +46,7 @@ vi.mock('@/actions/auth', () => ({
   setNetworkClaims: setNetworkClaimsSpy,
 }))
 
-import { createNetwork, listNetworkOrgs, linkOrgToNetwork } from '@/actions/networks'
+import { createNetwork, listNetworkOrgs, linkOrgToNetwork, linkOrgToNetworkBySlug } from '@/actions/networks'
 import { assertNetworkAdmin, assertOrgAdmin } from '@/lib/auth/assert'
 
 describe('networks actions', () => {
@@ -74,6 +78,22 @@ describe('networks actions', () => {
     await linkOrgToNetwork('net-1', 'org-1')
     expect(assertNetworkAdmin).toHaveBeenCalledWith('net-1')
     expect(assertOrgAdmin).toHaveBeenCalledWith('org-1')
+    expect(orgDocUpdateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ network_id: 'net-1', updated_at: expect.any(String) })
+    )
+  })
+
+  it('linkOrgToNetworkBySlug throws when no org matches the slug', async () => {
+    orgsSlugGetSpy.mockResolvedValue({ empty: true, docs: [] })
+    await expect(linkOrgToNetworkBySlug('net-1', 'nope')).rejects.toThrow('No organization found')
+    expect(orgDocUpdateSpy).not.toHaveBeenCalled()
+  })
+
+  it('linkOrgToNetworkBySlug resolves the slug then links through to the org update', async () => {
+    orgsSlugGetSpy.mockResolvedValue({ empty: false, docs: [{ id: 'org-99' }] })
+    await linkOrgToNetworkBySlug('net-1', 'my-org')
+    expect(assertNetworkAdmin).toHaveBeenCalledWith('net-1')
+    expect(assertOrgAdmin).toHaveBeenCalledWith('org-99')
     expect(orgDocUpdateSpy).toHaveBeenCalledWith(
       expect.objectContaining({ network_id: 'net-1', updated_at: expect.any(String) })
     )
