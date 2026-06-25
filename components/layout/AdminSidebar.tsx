@@ -111,6 +111,9 @@ export function AdminSidebar({ orgSlug, campSlug, terminology, allowedCampPages 
         <Link href={`/${orgSlug}/registrants`} className={navClass(`/${orgSlug}/registrants`)}>
           Registrants
         </Link>
+        <Link href={`/${orgSlug}/leads`} className={navClass(`/${orgSlug}/leads`)}>
+          Pipeline
+        </Link>
         <button
           onClick={handleSignOut}
           className="block w-full text-left px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:bg-gray-700 hover:text-white"
