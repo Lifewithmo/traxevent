@@ -12,6 +12,16 @@ export async function setOrgClaims(
   await adminAuth.setCustomUserClaims(uid, { orgId, orgSlug, role })
 }
 
+// setCustomUserClaims REPLACES all claims; merge so existing (e.g. org) claims survive.
+export async function mergeCustomUserClaims(uid: string, add: Record<string, unknown>): Promise<void> {
+  const user = await adminAuth.getUser(uid)
+  await adminAuth.setCustomUserClaims(uid, { ...(user.customClaims ?? {}), ...add })
+}
+
+export async function setNetworkClaims(uid: string, networkId: string, networkSlug: string): Promise<void> {
+  await mergeCustomUserClaims(uid, { networkId, networkSlug, networkRole: 'admin' })
+}
+
 export async function setPlatformAdminClaim(uid: string): Promise<void> {
   await adminAuth.setCustomUserClaims(uid, { role: 'platform_admin' })
 }

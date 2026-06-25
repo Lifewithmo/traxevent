@@ -12,6 +12,9 @@ export interface CurrentUser {
   orgId?: string
   orgSlug?: string
   role?: string
+  networkId?: string
+  networkSlug?: string
+  networkRole?: string
 }
 
 // Mint a session cookie value from a fresh Firebase ID token.
@@ -31,6 +34,9 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
       orgId: decoded.orgId as string | undefined,
       orgSlug: decoded.orgSlug as string | undefined,
       role: decoded.role as string | undefined,
+      networkId: decoded.networkId as string | undefined,
+      networkSlug: decoded.networkSlug as string | undefined,
+      networkRole: decoded.networkRole as string | undefined,
     }
   } catch {
     return null
