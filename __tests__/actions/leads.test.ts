@@ -114,8 +114,8 @@ describe('leads actions', () => {
   it('updateLead skips undefined, maps null to FieldValue.delete, and always sets updated_at', async () => {
     await updateLead('org-1', 'l1', {
       name: 'New',
-      // email cleared via null → FieldValue.delete() at runtime; type allows only string | undefined
-      email: null as unknown as string,
+      // email cleared via null → FieldValue.delete() at runtime
+      email: null,
       phone: undefined,
     })
     const written = leadDocUpdateSpy.mock.calls[0][0]

@@ -58,10 +58,22 @@ export async function createLead(orgId: string, input: CreateLeadInput): Promise
   return lead
 }
 
+export interface LeadUpdate {
+  name?: string
+  email?: string | null
+  phone?: string | null
+  organization?: string | null
+  event_type?: string | null
+  event_date?: string | null
+  estimated_value?: number | null
+  stage?: LeadStage
+  notes?: string | null
+}
+
 export async function updateLead(
   orgId: string,
   leadId: string,
-  updates: Partial<Omit<Lead, 'id' | 'created_at'>>
+  updates: LeadUpdate
 ): Promise<void> {
   await assertOrgAdmin(orgId)
   if (updates.stage && !LEAD_STAGES.includes(updates.stage)) throw new Error('Invalid stage')
