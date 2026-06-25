@@ -259,6 +259,9 @@ export interface FormTemplate {
   version: number
   created_at: string
   updated_at?: string
+  network_template_id?: string   // set on an org copy pushed from a network template (provenance)
+  network_id?: string            // the network that pushed this copy
+  pushed_at?: string             // last push timestamp
 }
 
 export interface EventFormAssignment {
