@@ -45,6 +45,9 @@ vi.mock('@/lib/firebase-admin', () => ({
   },
 }))
 
+vi.mock('@/lib/auth/family-access', () => ({ assertFamilyAccess: vi.fn().mockResolvedValue({ id: 'fam', registrant_uid: null }) }))
+vi.mock('@/lib/auth/session', () => ({ getCurrentUser: vi.fn().mockResolvedValue({ uid: 'u1' }) }))
+vi.mock('@/lib/auth/assert', () => ({ assertCampPage: vi.fn().mockResolvedValue({ role: 'admin', camp_access: {} }), assertOrgMember: vi.fn().mockResolvedValue({}), assertOrgAdmin: vi.fn().mockResolvedValue({}) }))
 vi.mock('@/actions/access-tokens', () => ({ attachAccessToken: attachAccessTokenSpy }))
 vi.mock('@/lib/email', () => ({ sendRegistrationConfirmation: sendEmailSpy }))
 vi.mock('@/actions/domains', () => ({ getVerifiedSendingDomain: vi.fn().mockResolvedValue(undefined) }))

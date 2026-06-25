@@ -40,7 +40,7 @@ export default async function MyRegistrationPage({
     )
   }
 
-  const members = await getFamilyMembers(org.id, camp.id, family.id)
+  const members = await getFamilyMembers(org.id, camp.id, family.id, token)
 
   const [formAssignments, signedForms] = await Promise.all([
     listEventFormAssignments(org.id, camp.id),

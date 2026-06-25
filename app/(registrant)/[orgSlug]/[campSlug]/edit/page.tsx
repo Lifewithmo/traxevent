@@ -34,7 +34,7 @@ export default function EditRegistrationPage() {
       if (!c) { setError('Camp not found'); setLoading(false); return }
       const f = await getRegistrationByToken(o.id, c.id, token)
       if (!f) { setError('Registration not found or link expired'); setLoading(false); return }
-      const ms = await getFamilyMembers(o.id, c.id, f.id)
+      const ms = await getFamilyMembers(o.id, c.id, f.id, token)
       setOrg(o); setCamp(c); setFamily(f)
       setMembers(ms.map(({ id: _id, family_id: _fid, ...m }) => m))
       setLoading(false)
@@ -45,7 +45,7 @@ export default function EditRegistrationPage() {
 
   async function handleContactSave(data: ContactData) {
     if (!org || !camp || !family) return
-    await updateRegistration(org.id, camp.id, family.id, data)
+    await updateRegistration(org.id, camp.id, family.id, data, token)
     setStep('members')
   }
 
