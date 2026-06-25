@@ -29,9 +29,8 @@ export async function requireOrgMember(orgSlug: string): Promise<{ org: Org; org
   return { org, orgId, member }
 }
 
-// Require a logged-in admin of the network identified by networkSlug.
-// Redirects to /login if unauthenticated; notFound() if the caller is not an admin of THIS network.
-export async function requireNetworkAdmin(networkSlug: string): Promise<{ network: Network; networkId: string; member: NetworkMember }> {
+// Require a logged-in member of the network (any role). Redirects/notFound like the org guard.
+export async function requireNetworkMember(networkSlug: string): Promise<{ network: Network; networkId: string; member: NetworkMember }> {
   const user = await getCurrentUser()
   if (!user) redirect('/login')
   const snap = await adminDb.collection('networks').where('slug', '==', networkSlug).limit(1).get()
@@ -45,6 +44,13 @@ export async function requireNetworkAdmin(networkSlug: string): Promise<{ networ
     ? (memberSnap.data() as NetworkMember)
     : { uid: user.uid, role: 'admin', display_name: '', email: '' }) as NetworkMember
   return { network, networkId, member }
+}
+
+// Require a logged-in ADMIN of the network. notFound() for coordinators / non-admins.
+export async function requireNetworkAdmin(networkSlug: string): Promise<{ network: Network; networkId: string; member: NetworkMember }> {
+  const result = await requireNetworkMember(networkSlug)
+  if (result.member.role !== 'admin') notFound()
+  return result
 }
 
 // Require org membership AND access to a specific camp page. Resolves ids and enforces camp_access.

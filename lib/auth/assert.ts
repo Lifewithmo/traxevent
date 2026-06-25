@@ -27,8 +27,8 @@ export async function assertOrgAdmin(orgId: string): Promise<OrgMember> {
   return member
 }
 
-// Network-scoped: caller must be an admin of networkId. Returns the member.
-export async function assertNetworkAdmin(networkId: string): Promise<NetworkMember> {
+// Network-scoped: caller must be a member of networkId (any role). Returns the member.
+export async function assertNetworkMember(networkId: string): Promise<NetworkMember> {
   const user = await getCurrentUser()
   if (!user) throw new Error('Unauthorized')
   if (user.role === 'platform_admin') {
@@ -39,6 +39,13 @@ export async function assertNetworkAdmin(networkId: string): Promise<NetworkMemb
   const snap = await adminDb.collection('networks').doc(networkId).collection('members').doc(user.uid).get()
   if (!snap.exists) throw new Error('Forbidden')
   return snap.data() as NetworkMember
+}
+
+// Network-scoped: caller must be an ADMIN of networkId. Returns the member.
+export async function assertNetworkAdmin(networkId: string): Promise<NetworkMember> {
+  const member = await assertNetworkMember(networkId)
+  if (member.role !== 'admin') throw new Error('Forbidden')
+  return member
 }
 
 // Camp-scoped: caller must be an org member AND have access to `page` for `campId`.
