@@ -49,32 +49,96 @@ beforeEach(() => {
 })
 
 describe('getPublicProposal', () => {
+  // A full Firestore doc as it exists at rest, including the secret/internal
+  // fields that must NEVER reach a public caller.
+  function fullDoc(status: string) {
+    return {
+      id: 'p1',
+      org_id: 'org-1',
+      lead_id: 'lead-1',
+      token: 'super-secret-token',
+      title: 'Wedding Package',
+      status,
+      line_items: [{ description: 'Venue', quantity: 1, unit_price: 5000 }],
+      notes: 'Deposit due on signing',
+      client_response_at: '2026-06-01T00:00:00.000Z',
+      created_at: '2026-05-01T00:00:00.000Z',
+      updated_at: '2026-05-15T00:00:00.000Z',
+    }
+  }
+
   it('returns null for an unknown token (empty snapshot)', async () => {
     mockSnapshot(null)
     expect(await getPublicProposal('nope')).toBeNull()
   })
 
   it('returns null for a draft proposal (drafts are never exposed)', async () => {
-    mockSnapshot({ id: 'p1', lead_id: 'lead-1', status: 'draft' })
+    mockSnapshot(fullDoc('draft'))
     expect(await getPublicProposal('tok')).toBeNull()
   })
 
-  it('returns the proposal for a sent proposal', async () => {
-    const p = { id: 'p1', lead_id: 'lead-1', status: 'sent' }
-    mockSnapshot(p)
-    expect(await getPublicProposal('tok')).toEqual(p)
+  it('projects only public-safe fields for a sent proposal', async () => {
+    const doc = fullDoc('sent')
+    mockSnapshot(doc)
+    expect(await getPublicProposal('tok')).toEqual({
+      title: 'Wedding Package',
+      status: 'sent',
+      line_items: [{ description: 'Venue', quantity: 1, unit_price: 5000 }],
+      notes: 'Deposit due on signing',
+      client_response_at: '2026-06-01T00:00:00.000Z',
+      created_at: '2026-05-01T00:00:00.000Z',
+    })
   })
 
-  it('returns the proposal for an accepted proposal', async () => {
-    const p = { id: 'p1', lead_id: 'lead-1', status: 'accepted' }
-    mockSnapshot(p)
-    expect(await getPublicProposal('tok')).toEqual(p)
+  it('projects only public-safe fields for an accepted proposal', async () => {
+    mockSnapshot(fullDoc('accepted'))
+    const result = await getPublicProposal('tok')
+    expect(result?.status).toBe('accepted')
+    expect(result?.title).toBe('Wedding Package')
   })
 
-  it('returns the proposal for a rejected proposal', async () => {
-    const p = { id: 'p1', lead_id: 'lead-1', status: 'rejected' }
-    mockSnapshot(p)
-    expect(await getPublicProposal('tok')).toEqual(p)
+  it('projects only public-safe fields for a rejected proposal', async () => {
+    mockSnapshot(fullDoc('rejected'))
+    const result = await getPublicProposal('tok')
+    expect(result?.status).toBe('rejected')
+  })
+
+  it('never leaks the secret token or internal ids in the DTO', async () => {
+    mockSnapshot(fullDoc('sent'))
+    const result = await getPublicProposal('tok')
+    expect(result).not.toBeNull()
+    // These fields are seeded on the mocked doc; the DTO must strip them.
+    expect('token' in (result as object)).toBe(false)
+    expect('org_id' in (result as object)).toBe(false)
+    expect('lead_id' in (result as object)).toBe(false)
+    expect('id' in (result as object)).toBe(false)
+    // No stray internal fields either.
+    expect('updated_at' in (result as object)).toBe(false)
+    expect(Object.keys(result as object).sort()).toEqual(
+      ['client_response_at', 'created_at', 'line_items', 'notes', 'status', 'title'].sort(),
+    )
+  })
+
+  it('omits optional fields that are absent on the doc', async () => {
+    // Minimal doc: no title/notes/client_response_at, but still carries
+    // secret fields that must be stripped.
+    mockSnapshot({
+      id: 'p1',
+      org_id: 'org-1',
+      lead_id: 'lead-1',
+      token: 'super-secret-token',
+      status: 'sent',
+      line_items: [],
+      created_at: '2026-05-01T00:00:00.000Z',
+    })
+    const result = await getPublicProposal('tok')
+    expect(result).toEqual({
+      status: 'sent',
+      line_items: [],
+      created_at: '2026-05-01T00:00:00.000Z',
+    })
+    expect('token' in (result as object)).toBe(false)
+    expect('org_id' in (result as object)).toBe(false)
   })
 })
 
@@ -93,6 +157,22 @@ describe('respondToProposal', () => {
 
     expect(leadDocSpy).toHaveBeenCalledWith('lead-1')
     expect(leadUpdateSpy).toHaveBeenCalledTimes(1)
+    expect(leadUpdateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ stage: 'booked' }),
+    )
+  })
+
+  // M-4: cross-tenant isolation. The org/lead advanced on accept must be
+  // resolved from the found doc's own path (doc.ref.parent.parent) and its
+  // stored lead_id — never from any caller-supplied identifier.
+  it('advances the lead via the org from the doc path and the doc lead_id (isolation)', async () => {
+    mockSnapshot({ id: 'p1', lead_id: 'lead-from-doc', status: 'sent' })
+    await respondToProposal('tok', 'accepted')
+
+    // orgRef.collection('leads').doc(...) was called with the lead_id from
+    // the found doc's data, proving the lead is scoped to the doc's own org.
+    expect(leadDocSpy).toHaveBeenCalledTimes(1)
+    expect(leadDocSpy).toHaveBeenCalledWith('lead-from-doc')
     expect(leadUpdateSpy).toHaveBeenCalledWith(
       expect.objectContaining({ stage: 'booked' }),
     )
