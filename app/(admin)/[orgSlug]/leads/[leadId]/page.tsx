@@ -8,6 +8,7 @@ import { listInvoices } from '@/actions/invoices'
 import { LeadDetailClient } from '@/components/admin/LeadDetailClient'
 import { LeadProposalsClient } from '@/components/admin/LeadProposalsClient'
 import { LeadInvoicesClient } from '@/components/admin/LeadInvoicesClient'
+import { ClientPortalLinkClient } from '@/components/admin/ClientPortalLinkClient'
 
 export default async function LeadDetailPage({ params }: { params: Promise<{ orgSlug: string; leadId: string }> }) {
   const { orgSlug, leadId } = await params
@@ -23,6 +24,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ org
       <LeadDetailClient orgId={orgId} orgSlug={orgSlug} lead={lead} />
       <LeadProposalsClient orgId={orgId} orgSlug={orgSlug} leadId={leadId} proposals={proposals} />
       <LeadInvoicesClient orgId={orgId} orgSlug={orgSlug} leadId={leadId} invoices={invoices} />
+      <ClientPortalLinkClient orgId={orgId} leadId={leadId} />
     </>
   )
 }
