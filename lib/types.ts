@@ -465,3 +465,20 @@ export interface Invoice {
   created_at: string
   updated_at?: string
 }
+
+export type ContractStatus = 'draft' | 'sent' | 'signed'
+
+export interface Contract {
+  id: string
+  org_id: string       // denormalized for collectionGroup token lookups
+  lead_id: string
+  token: string        // unguessable public link token
+  title?: string
+  body?: string        // contract terms (plain text)
+  document_url?: string // optional link to an externally-hosted document (PDF/Doc)
+  status: ContractStatus
+  signed_by?: string   // typed signer name (e-signature)
+  signed_at?: string   // ISO, set when signed
+  created_at: string
+  updated_at?: string
+}
