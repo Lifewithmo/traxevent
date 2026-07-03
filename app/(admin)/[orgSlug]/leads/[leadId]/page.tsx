@@ -6,10 +6,12 @@ import { getLead } from '@/actions/leads'
 import { listProposals } from '@/actions/proposals'
 import { listInvoices } from '@/actions/invoices'
 import { listContracts } from '@/actions/contracts'
+import { listVendors } from '@/actions/vendors'
 import { LeadDetailClient } from '@/components/admin/LeadDetailClient'
 import { LeadProposalsClient } from '@/components/admin/LeadProposalsClient'
 import { LeadInvoicesClient } from '@/components/admin/LeadInvoicesClient'
 import { LeadContractsClient } from '@/components/admin/LeadContractsClient'
+import { LeadVendorsClient } from '@/components/admin/LeadVendorsClient'
 import { ClientPortalLinkClient } from '@/components/admin/ClientPortalLinkClient'
 
 export default async function LeadDetailPage({ params }: { params: Promise<{ orgSlug: string; leadId: string }> }) {
@@ -22,12 +24,14 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ org
   const proposals = await listProposals(orgId, leadId)
   const invoices = await listInvoices(orgId, leadId)
   const contracts = await listContracts(orgId, leadId)
+  const vendors = await listVendors(orgId, leadId)
   return (
     <>
       <LeadDetailClient orgId={orgId} orgSlug={orgSlug} lead={lead} />
       <LeadProposalsClient orgId={orgId} orgSlug={orgSlug} leadId={leadId} proposals={proposals} />
       <LeadInvoicesClient orgId={orgId} orgSlug={orgSlug} leadId={leadId} invoices={invoices} />
       <LeadContractsClient orgId={orgId} orgSlug={orgSlug} leadId={leadId} contracts={contracts} />
+      <LeadVendorsClient orgId={orgId} leadId={leadId} vendors={vendors} />
       <ClientPortalLinkClient orgId={orgId} leadId={leadId} />
     </>
   )
