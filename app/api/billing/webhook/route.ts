@@ -42,7 +42,12 @@ export async function POST(req: Request) {
       }
       const orgId = session.metadata?.orgId
       if (!orgId) break
-      await orgRef(orgId).update({ billing_status: 'active', stripe_customer_id: customerId })
+      const plan = session.metadata?.plan
+      await orgRef(orgId).update({
+        billing_status: 'active',
+        stripe_customer_id: customerId,
+        ...(plan ? { plan } : {}),
+      })
       break
     }
     case 'customer.subscription.deleted': {

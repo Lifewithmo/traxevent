@@ -99,6 +99,29 @@ describe('POST /api/billing/webhook', () => {
     })
   })
 
+  it('records plan on the org when checkout metadata includes a plan', async () => {
+    constructEventSpy.mockReturnValue({
+      type: 'checkout.session.completed',
+      data: {
+        object: {
+          metadata: { orgId: 'org-1', plan: 'business' },
+          customer: 'cus_abc123',
+        },
+      },
+    })
+    const req = new Request('http://localhost/api/billing/webhook', {
+      method: 'POST',
+      body: '{"type":"checkout.session.completed"}',
+    })
+    const res = await POST(req)
+    expect(res.status).toBe(200)
+    expect(orgUpdateSpy).toHaveBeenCalledWith({
+      billing_status: 'active',
+      stripe_customer_id: 'cus_abc123',
+      plan: 'business',
+    })
+  })
+
   it('sets billing_status inactive on customer.subscription.deleted', async () => {
     constructEventSpy.mockReturnValue({
       type: 'customer.subscription.deleted',
