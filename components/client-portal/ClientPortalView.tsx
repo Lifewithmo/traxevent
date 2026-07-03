@@ -1,6 +1,7 @@
 import type { ClientPortal } from '@/actions/client-portal-public'
 import { PROPOSAL_STATUS_LABELS } from '@/lib/proposals'
 import { INVOICE_STATUS_LABELS } from '@/lib/invoices'
+import { CONTRACT_STATUS_LABELS } from '@/lib/contracts'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
@@ -134,6 +135,37 @@ export function ClientPortalView({ portal }: { portal: ClientPortal }) {
                     className="inline-flex h-8 items-center rounded-md border border-gray-200 bg-white px-3 text-sm font-medium text-gray-900 hover:bg-gray-100"
                   >
                     View invoice
+                  </a>
+                </div>
+              ))
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Contracts</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {portal.contracts.length === 0 ? (
+              <p className="text-sm text-gray-500">No contracts yet.</p>
+            ) : (
+              portal.contracts.map((c) => (
+                <div
+                  key={c.token}
+                  className="flex items-center justify-between gap-3 rounded-md border border-gray-200 px-3 py-2"
+                >
+                  <div className="flex-1 space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-gray-900">{c.title || 'Contract'}</span>
+                      <Badge variant="secondary">{CONTRACT_STATUS_LABELS[c.status]}</Badge>
+                    </div>
+                  </div>
+                  <a
+                    href={`/contracts/${c.token}`}
+                    className="inline-flex h-8 items-center rounded-md border border-gray-200 bg-white px-3 text-sm font-medium text-gray-900 hover:bg-gray-100"
+                  >
+                    View contract
                   </a>
                 </div>
               ))
