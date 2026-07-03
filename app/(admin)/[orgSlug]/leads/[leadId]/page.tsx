@@ -4,8 +4,10 @@ import { notFound } from 'next/navigation'
 import { adminDb } from '@/lib/firebase-admin'
 import { getLead } from '@/actions/leads'
 import { listProposals } from '@/actions/proposals'
+import { listInvoices } from '@/actions/invoices'
 import { LeadDetailClient } from '@/components/admin/LeadDetailClient'
 import { LeadProposalsClient } from '@/components/admin/LeadProposalsClient'
+import { LeadInvoicesClient } from '@/components/admin/LeadInvoicesClient'
 
 export default async function LeadDetailPage({ params }: { params: Promise<{ orgSlug: string; leadId: string }> }) {
   const { orgSlug, leadId } = await params
@@ -15,10 +17,12 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ org
   const lead = await getLead(orgId, leadId)
   if (!lead) notFound()
   const proposals = await listProposals(orgId, leadId)
+  const invoices = await listInvoices(orgId, leadId)
   return (
     <>
       <LeadDetailClient orgId={orgId} orgSlug={orgSlug} lead={lead} />
       <LeadProposalsClient orgId={orgId} orgSlug={orgSlug} leadId={leadId} proposals={proposals} />
+      <LeadInvoicesClient orgId={orgId} orgSlug={orgSlug} leadId={leadId} invoices={invoices} />
     </>
   )
 }

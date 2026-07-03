@@ -433,3 +433,34 @@ export interface Proposal {
   created_at: string
   updated_at?: string
 }
+
+export type InvoiceStatus = 'draft' | 'sent' | 'partial' | 'paid' | 'void'
+
+export interface InvoiceLineItem {
+  description: string
+  quantity: number
+  unit_price: number   // dollars
+}
+
+export interface InvoicePayment {
+  amount: number       // dollars
+  method?: string      // e.g. 'cash' | 'check' | 'card' | free text
+  note?: string
+  recorded_at: string  // ISO
+}
+
+export interface Invoice {
+  id: string
+  org_id: string       // denormalized for collectionGroup token lookups
+  lead_id: string
+  token: string        // unguessable public link token
+  number?: string      // human-facing invoice number, optional
+  title?: string
+  status: InvoiceStatus
+  line_items: InvoiceLineItem[]
+  payments: InvoicePayment[]
+  notes?: string
+  due_date?: string    // ISO date, optional
+  created_at: string
+  updated_at?: string
+}
