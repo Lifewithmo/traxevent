@@ -408,6 +408,7 @@ export interface Lead {
   estimated_value?: number     // dollars
   stage: LeadStage
   notes?: string
+  portal_token?: string   // lazily generated; powers the login-free client portal link
   created_at: string
   updated_at?: string
 }
