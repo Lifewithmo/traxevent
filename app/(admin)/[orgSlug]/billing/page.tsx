@@ -7,7 +7,8 @@ import { getOrgBySlug } from '@/actions/orgs'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import type { Org } from '@/lib/types'
+import { BILLING_PLANS, BILLING_PLAN_IDS } from '@/lib/billing-plans'
+import type { Org, BillingPlan } from '@/lib/types'
 
 function BillingContent() {
   const { orgSlug } = useParams<{ orgSlug: string }>()
@@ -26,7 +27,7 @@ function BillingContent() {
       .catch(() => setError('Failed to load organisation'))
   }, [orgSlug])
 
-  async function handleSubscribe() {
+  async function handleSubscribe(plan: BillingPlan) {
     if (!org) return
     setLoading(true)
     setError(null)
@@ -34,7 +35,7 @@ function BillingContent() {
       const res = await fetch('/api/billing/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orgId: org.id, orgSlug: org.slug }),
+        body: JSON.stringify({ orgId: org.id, orgSlug: org.slug, plan }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
@@ -98,19 +99,36 @@ function BillingContent() {
             <span className="text-sm text-muted-foreground">Status</span>
             <Badge variant={statusVariant}>{statusLabel}</Badge>
           </div>
-          <p className="text-sm text-muted-foreground">$199 / year — unlimited events, unlimited registrants</p>
+          {org.billing_status === 'active' && (
+            <p className="text-sm text-muted-foreground">
+              Current plan: {BILLING_PLANS[org.plan ?? 'standard'].name} — {BILLING_PLANS[org.plan ?? 'standard'].priceLabel}
+            </p>
+          )}
           {org.billing_status === 'network_managed' && (
             <p className="text-sm text-muted-foreground">Covered by your network — billing is managed centrally.</p>
+          )}
+          {org.billing_status !== 'active' && org.billing_status !== 'network_managed' && (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {BILLING_PLAN_IDS.map((id) => (
+                <div key={id} className="rounded-lg border p-4 space-y-2">
+                  <p className="text-sm font-medium">{BILLING_PLANS[id].name}</p>
+                  <p className="text-sm text-muted-foreground">{BILLING_PLANS[id].priceLabel}</p>
+                  <p className="text-xs text-muted-foreground">{BILLING_PLANS[id].blurb}</p>
+                  <Button
+                    className="w-full"
+                    onClick={() => handleSubscribe(id)}
+                    disabled={loading}
+                  >
+                    {loading ? 'Redirecting…' : `Choose ${BILLING_PLANS[id].name}`}
+                  </Button>
+                </div>
+              ))}
+            </div>
           )}
           <div aria-live="polite" aria-atomic="true">
             {error && <p className="text-sm text-destructive">{error}</p>}
           </div>
           <div className="flex gap-2 flex-wrap">
-            {org.billing_status !== 'active' && org.billing_status !== 'network_managed' && (
-              <Button onClick={handleSubscribe} disabled={loading}>
-                {loading ? 'Redirecting…' : 'Subscribe — $199/year'}
-              </Button>
-            )}
             {org.stripe_customer_id && (
               <Button variant="outline" onClick={handleManage} disabled={loading}>
                 {loading ? 'Opening…' : 'Manage subscription'}
