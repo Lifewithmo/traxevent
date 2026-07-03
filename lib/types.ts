@@ -4,11 +4,14 @@ export type OrgRole = 'owner' | 'admin' | 'staff'
 
 export type CampRegistrationType = 'family' | 'individual' | 'child'
 
+export type BillingPlan = 'standard' | 'business'
+
 export interface Org {
   id: string
   name: string
   slug: string
   billing_status: 'active' | 'trialing' | 'inactive' | 'network_managed'
+  plan?: BillingPlan
   stripe_customer_id?: string
   stripe_account_id?: string
   sending_domain?: string
