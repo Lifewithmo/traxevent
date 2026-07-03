@@ -482,3 +482,20 @@ export interface Contract {
   created_at: string
   updated_at?: string
 }
+
+export type VendorStatus = 'potential' | 'confirmed' | 'declined'
+
+export interface Vendor {
+  id: string
+  lead_id: string
+  name: string
+  service?: string       // e.g. Florist, Catering, DJ, Photography
+  contact_name?: string
+  email?: string
+  phone?: string
+  cost?: number          // dollars
+  status: VendorStatus
+  notes?: string
+  created_at: string
+  updated_at?: string
+}
