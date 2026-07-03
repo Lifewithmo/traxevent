@@ -411,3 +411,25 @@ export interface Lead {
   created_at: string
   updated_at?: string
 }
+
+export type ProposalStatus = 'draft' | 'sent' | 'accepted' | 'rejected'
+
+export interface ProposalLineItem {
+  description: string
+  quantity: number
+  unit_price: number   // dollars (may be decimal)
+}
+
+export interface Proposal {
+  id: string
+  org_id: string        // denormalized for collectionGroup token lookups
+  lead_id: string
+  token: string         // unguessable public link token
+  title?: string
+  status: ProposalStatus
+  line_items: ProposalLineItem[]
+  notes?: string
+  client_response_at?: string   // set when the client accepts/rejects
+  created_at: string
+  updated_at?: string
+}
