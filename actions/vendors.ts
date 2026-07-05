@@ -28,6 +28,12 @@ export async function listVendors(orgId: string, leadId: string): Promise<Vendor
   return snap.docs.map((d) => d.data() as Vendor)
 }
 
+export async function listAllVendors(orgId: string): Promise<Vendor[]> {
+  await assertOrgMember(orgId)
+  const snap = await vendorsRef(orgId).orderBy('created_at', 'asc').get()
+  return snap.docs.map((d) => d.data() as Vendor)
+}
+
 export async function createVendor(orgId: string, leadId: string, input: CreateVendorInput): Promise<Vendor> {
   await assertOrgAdmin(orgId)
   if (!input.name?.trim()) throw new Error('Name is required')

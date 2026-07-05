@@ -4,6 +4,7 @@ const vendorDocSetSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const vendorDocUpdateSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const vendorDocDeleteSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const listVendorsSpy = vi.hoisted(() => vi.fn())
+const listAllVendorsSpy = vi.hoisted(() => vi.fn())
 const fieldValueDeleteSentinel = vi.hoisted(() => ({ __op: 'delete' }))
 
 vi.mock('@/lib/firebase-admin', () => {
@@ -17,6 +18,7 @@ vi.mock('@/lib/firebase-admin', () => {
     where: vi.fn().mockReturnValue({
       orderBy: vi.fn().mockReturnValue({ get: listVendorsSpy }),
     }),
+    orderBy: vi.fn().mockReturnValue({ get: listAllVendorsSpy }),
   }
   const orgDoc = {
     collection: vi.fn().mockImplementation((sub: string) => {
@@ -42,6 +44,7 @@ vi.mock('firebase-admin/firestore', () => ({
 
 import {
   listVendors,
+  listAllVendors,
   createVendor,
   updateVendor,
   deleteVendor,
@@ -116,6 +119,19 @@ describe('vendors actions', () => {
     const list = await listVendors('org-1', 'lead-1')
     expect(list).toHaveLength(1)
     expect(list[0].name).toBe('A')
+  })
+
+  it('listAllVendors returns every vendor across leads ordered by created_at asc (no lead filter)', async () => {
+    listAllVendorsSpy.mockResolvedValue({
+      docs: [
+        { data: () => ({ id: 'v1', lead_id: 'lead-1', name: 'A', status: 'potential', created_at: 'a' }) },
+        { data: () => ({ id: 'v2', lead_id: 'lead-2', name: 'B', status: 'confirmed', created_at: 'b' }) },
+      ],
+    })
+    const list = await listAllVendors('org-1')
+    expect(list).toHaveLength(2)
+    expect(list.map((v) => v.id)).toEqual(['v1', 'v2'])
+    expect(list.map((v) => v.lead_id)).toEqual(['lead-1', 'lead-2'])
   })
 
   it('updateVendor skips undefined, maps null to FieldValue.delete, and always sets updated_at', async () => {

@@ -25,6 +25,12 @@ export async function listInvoices(orgId: string, leadId: string): Promise<Invoi
   return snap.docs.map((d) => d.data() as Invoice)
 }
 
+export async function listAllInvoices(orgId: string): Promise<Invoice[]> {
+  await assertOrgMember(orgId)
+  const snap = await invoicesRef(orgId).orderBy('created_at', 'desc').get()
+  return snap.docs.map((d) => d.data() as Invoice)
+}
+
 export async function getInvoice(orgId: string, invoiceId: string): Promise<Invoice | null> {
   await assertOrgMember(orgId)
   const snap = await invoicesRef(orgId).doc(invoiceId).get()

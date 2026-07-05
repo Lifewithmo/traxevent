@@ -5,6 +5,7 @@ const contractDocGetSpy = vi.hoisted(() => vi.fn())
 const contractDocUpdateSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const contractDocDeleteSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const listContractsSpy = vi.hoisted(() => vi.fn())
+const listAllContractsSpy = vi.hoisted(() => vi.fn())
 
 vi.mock('@/lib/firebase-admin', () => {
   const contractsCol = {
@@ -18,6 +19,7 @@ vi.mock('@/lib/firebase-admin', () => {
     where: vi.fn().mockReturnValue({
       orderBy: vi.fn().mockReturnValue({ get: listContractsSpy }),
     }),
+    orderBy: vi.fn().mockReturnValue({ get: listAllContractsSpy }),
   }
   const orgDoc = {
     collection: vi.fn().mockImplementation((sub: string) => {
@@ -43,6 +45,7 @@ vi.mock('@/lib/tokens', () => ({
 
 import {
   listContracts,
+  listAllContracts,
   getContract,
   createContract,
   updateContract,
@@ -110,6 +113,19 @@ describe('contracts actions', () => {
     const list = await listContracts('org-1', 'lead-1')
     expect(list).toHaveLength(1)
     expect(list[0].id).toBe('c1')
+  })
+
+  it('listAllContracts returns every contract across leads ordered by created_at desc (no lead filter)', async () => {
+    listAllContractsSpy.mockResolvedValue({
+      docs: [
+        { data: () => ({ id: 'c1', lead_id: 'lead-1', status: 'draft', created_at: 'b' }) },
+        { data: () => ({ id: 'c2', lead_id: 'lead-2', status: 'sent', created_at: 'a' }) },
+      ],
+    })
+    const list = await listAllContracts('org-1')
+    expect(list).toHaveLength(2)
+    expect(list.map((c) => c.id)).toEqual(['c1', 'c2'])
+    expect(list.map((c) => c.lead_id)).toEqual(['lead-1', 'lead-2'])
   })
 
   it('getContract returns null when the doc does not exist', async () => {
