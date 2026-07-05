@@ -55,6 +55,12 @@ export function AdminSidebar({ orgSlug, campSlug, terminology, allowedCampPages 
   const pathname = usePathname()
   const router = useRouter()
 
+  // Hooks must run unconditionally before any early return (rules of hooks).
+  const settingsActive = SETTINGS_SLUGS.some(
+    (s) => pathname === `/${orgSlug}/${s}` || pathname.startsWith(`/${orgSlug}/${s}/`)
+  )
+  const [settingsOpen, setSettingsOpen] = useState(settingsActive)
+
   // Rendered by BOTH the org layout (no campSlug) and the camp layout (with campSlug).
   // On a camp route the camp layout renders the contextual event sidebar, so the
   // org-layout instance hides itself to avoid a doubled sidebar.
@@ -73,11 +79,6 @@ export function AdminSidebar({ orgSlug, campSlug, terminology, allowedCampPages 
           allowedCampPages.includes(n.key as CampPage)
       )
     : campNav
-
-  const settingsActive = SETTINGS_SLUGS.some(
-    (s) => pathname === `/${orgSlug}/${s}` || pathname.startsWith(`/${orgSlug}/${s}/`)
-  )
-  const [settingsOpen, setSettingsOpen] = useState(settingsActive)
 
   async function handleSignOut() {
     await endSession()
