@@ -23,6 +23,12 @@ export async function listProposals(orgId: string, leadId: string): Promise<Prop
   return snap.docs.map((d) => d.data() as Proposal)
 }
 
+export async function listAllProposals(orgId: string): Promise<Proposal[]> {
+  await assertOrgMember(orgId)
+  const snap = await proposalsRef(orgId).orderBy('created_at', 'desc').get()
+  return snap.docs.map((d) => d.data() as Proposal)
+}
+
 export async function getProposal(orgId: string, proposalId: string): Promise<Proposal | null> {
   await assertOrgMember(orgId)
   const snap = await proposalsRef(orgId).doc(proposalId).get()

@@ -27,6 +27,12 @@ export async function listContracts(orgId: string, leadId: string): Promise<Cont
   return snap.docs.map((d) => d.data() as Contract)
 }
 
+export async function listAllContracts(orgId: string): Promise<Contract[]> {
+  await assertOrgMember(orgId)
+  const snap = await contractsRef(orgId).orderBy('created_at', 'desc').get()
+  return snap.docs.map((d) => d.data() as Contract)
+}
+
 export async function getContract(orgId: string, contractId: string): Promise<Contract | null> {
   await assertOrgMember(orgId)
   const snap = await contractsRef(orgId).doc(contractId).get()

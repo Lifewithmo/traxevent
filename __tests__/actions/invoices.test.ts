@@ -5,6 +5,7 @@ const invoiceDocGetSpy = vi.hoisted(() => vi.fn())
 const invoiceDocUpdateSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const invoiceDocDeleteSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const listInvoicesSpy = vi.hoisted(() => vi.fn())
+const listAllInvoicesSpy = vi.hoisted(() => vi.fn())
 
 vi.mock('@/lib/firebase-admin', () => {
   const invoicesCol = {
@@ -18,6 +19,7 @@ vi.mock('@/lib/firebase-admin', () => {
     where: vi.fn().mockReturnValue({
       orderBy: vi.fn().mockReturnValue({ get: listInvoicesSpy }),
     }),
+    orderBy: vi.fn().mockReturnValue({ get: listAllInvoicesSpy }),
   }
   const orgDoc = {
     collection: vi.fn().mockImplementation((sub: string) => {
@@ -43,6 +45,7 @@ vi.mock('@/lib/tokens', () => ({
 
 import {
   listInvoices,
+  listAllInvoices,
   getInvoice,
   createInvoice,
   updateInvoice,
@@ -103,6 +106,19 @@ describe('invoices actions', () => {
     const list = await listInvoices('org-1', 'lead-1')
     expect(list).toHaveLength(1)
     expect(list[0].id).toBe('i1')
+  })
+
+  it('listAllInvoices returns every invoice across leads ordered by created_at desc (no lead filter)', async () => {
+    listAllInvoicesSpy.mockResolvedValue({
+      docs: [
+        { data: () => ({ id: 'i1', lead_id: 'lead-1', status: 'draft', created_at: 'b' }) },
+        { data: () => ({ id: 'i2', lead_id: 'lead-2', status: 'sent', created_at: 'a' }) },
+      ],
+    })
+    const list = await listAllInvoices('org-1')
+    expect(list).toHaveLength(2)
+    expect(list.map((i) => i.id)).toEqual(['i1', 'i2'])
+    expect(list.map((i) => i.lead_id)).toEqual(['lead-1', 'lead-2'])
   })
 
   it('getInvoice returns null when the doc does not exist', async () => {
