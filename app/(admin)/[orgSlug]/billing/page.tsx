@@ -71,13 +71,12 @@ function BillingContent() {
 
   const statusVariant: 'default' | 'secondary' | 'destructive' =
     org.billing_status === 'active' ? 'default'
-    : org.billing_status === 'trialing' || org.billing_status === 'network_managed' ? 'secondary'
+    : org.billing_status === 'trialing' ? 'secondary'
     : 'destructive'
 
   const statusLabel =
     org.billing_status === 'active' ? 'Active'
     : org.billing_status === 'trialing' ? 'Trial'
-    : org.billing_status === 'network_managed' ? 'Network-managed'
     : 'Inactive'
 
   return (
@@ -104,10 +103,7 @@ function BillingContent() {
               Current plan: {BILLING_PLANS[org.plan ?? 'standard'].name} — {BILLING_PLANS[org.plan ?? 'standard'].priceLabel}
             </p>
           )}
-          {org.billing_status === 'network_managed' && (
-            <p className="text-sm text-muted-foreground">Covered by your network — billing is managed centrally.</p>
-          )}
-          {org.billing_status !== 'active' && org.billing_status !== 'network_managed' && (
+          {org.billing_status !== 'active' && (
             <div className="grid gap-3 sm:grid-cols-2">
               {BILLING_PLAN_IDS.map((id) => (
                 <div key={id} className="rounded-lg border p-4 space-y-2">
