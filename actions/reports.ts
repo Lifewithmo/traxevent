@@ -1,9 +1,8 @@
 'use server'
 
 import { adminDb } from '@/lib/firebase-admin'
-import { assertCampPage, assertOrgMember, assertNetworkMember } from '@/lib/auth/assert'
-import { scopeOrgsToMember } from '@/lib/network-scope'
-import type { Family, FamilyMember, EventFormAssignment, Camp, Org } from '@/lib/types'
+import { assertCampPage, assertOrgMember } from '@/lib/auth/assert'
+import type { Family, FamilyMember, EventFormAssignment, Camp } from '@/lib/types'
 import { summarizeFormCompletion, type FormCompletionRow } from '@/lib/forms'
 import {
   buildRegistrationSummary,
@@ -14,9 +13,6 @@ import {
   buildCustomCsv,
   buildOrgCampRow,
   aggregateOrgReport,
-  aggregateNetworkReport,
-  type NetworkReport,
-  type NetworkOrgReport,
   type MemberWithFamily,
   type RegistrationSummary,
   type FinancialReport,
@@ -167,28 +163,4 @@ export async function getOrgReportData(orgId: string, departmentId?: string): Pr
   )
 
   return aggregateOrgReport(rows)
-}
-
-// Aggregated report across a network's member orgs. Gated by NETWORK admin (not per-org membership).
-export async function getNetworkReportData(networkId: string): Promise<NetworkReport> {
-  const member = await assertNetworkMember(networkId)
-  const orgsSnap = await adminDb.collection('orgs').where('network_id', '==', networkId).get()
-  const orgs = scopeOrgsToMember(member, orgsSnap.docs.map((d) => ({ ...(d.data() as Org), id: d.id })))
-
-  const perOrg: NetworkOrgReport[] = await Promise.all(
-    orgs.map(async (org) => {
-      const campsSnap = await adminDb.collection('orgs').doc(org.id).collection('camps').orderBy('created_at', 'desc').get()
-      const camps = campsSnap.docs.map((d) => d.data() as Camp)
-      const rows = await Promise.all(
-        camps.map(async (camp) => {
-          const famSnap = await adminDb.collection('orgs').doc(org.id).collection('camps').doc(camp.id).collection('families').get()
-          const families = famSnap.docs.map((d) => d.data() as Family).filter((f) => f.registration_status !== 'cancelled')
-          return buildOrgCampRow(camp, families)
-        })
-      )
-      return { org_id: org.id, org_name: org.name, report: aggregateOrgReport(rows) }
-    })
-  )
-
-  return aggregateNetworkReport(perOrg)
 }
