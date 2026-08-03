@@ -7,12 +7,14 @@ import { getEventType, DEFAULT_EVENT_TYPE_ID } from '@/lib/event-types'
 import { endSession } from '@/lib/auth/establish-session'
 import type { Terminology } from '@/lib/event-types'
 import type { CampPage } from '@/lib/types'
+import type { ModuleId } from '@/lib/industry-packs'
 
 interface AdminSidebarProps {
   orgSlug: string
   campSlug?: string
   terminology?: Terminology
   allowedCampPages?: CampPage[]
+  enabledModules?: ModuleId[]
 }
 
 const ORG_PAGE_SLUGS = new Set([
@@ -51,7 +53,7 @@ function Section({ label, children }: { label: string; children: React.ReactNode
   )
 }
 
-export function AdminSidebar({ orgSlug, campSlug, terminology, allowedCampPages }: AdminSidebarProps) {
+export function AdminSidebar({ orgSlug, campSlug, terminology, allowedCampPages, enabledModules }: AdminSidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
 
@@ -70,6 +72,23 @@ export function AdminSidebar({ orgSlug, campSlug, terminology, allowedCampPages 
   }
 
   const t = terminology ?? DEFAULT_TERMINOLOGY
+
+  const has = (m: ModuleId) => !enabledModules || enabledModules.includes(m)
+
+  const salesLinks = [
+    { module: 'leads' as ModuleId, label: 'Pipeline', slug: 'leads' },
+    { module: 'clients' as ModuleId, label: 'Clients', slug: 'clients' },
+    { module: 'proposals' as ModuleId, label: 'Proposals', slug: 'proposals' },
+    { module: 'contracts' as ModuleId, label: 'Contracts', slug: 'contracts' },
+    { module: 'invoices' as ModuleId, label: 'Invoices', slug: 'invoices' },
+  ].filter((l) => has(l.module))
+
+  const eventLinks = [
+    { module: 'registrants' as ModuleId, label: 'Registrants', slug: 'registrants' },
+    { module: 'vendors' as ModuleId, label: 'Vendors', slug: 'vendors' },
+    { module: 'calendar' as ModuleId, label: 'Calendar', slug: 'calendar' },
+  ].filter((l) => has(l.module))
+
   const campNav = getCampNav(t)
   const visibleCampNav = allowedCampPages
     ? campNav.filter(
@@ -132,44 +151,38 @@ export function AdminSidebar({ orgSlug, campSlug, terminology, allowedCampPages 
         </nav>
       ) : (
         <nav className="flex-1" aria-label="Workspace navigation">
-          <Section label="Sales">
-            <Link href={`/${orgSlug}/leads`} className={navClass(`/${orgSlug}/leads`)}>
-              Pipeline
-            </Link>
-            <Link href={`/${orgSlug}/clients`} className={navClass(`/${orgSlug}/clients`)}>
-              Clients
-            </Link>
-            <Link href={`/${orgSlug}/proposals`} className={navClass(`/${orgSlug}/proposals`)}>
-              Proposals
-            </Link>
-            <Link href={`/${orgSlug}/contracts`} className={navClass(`/${orgSlug}/contracts`)}>
-              Contracts
-            </Link>
-            <Link href={`/${orgSlug}/invoices`} className={navClass(`/${orgSlug}/invoices`)}>
-              Invoices
-            </Link>
-          </Section>
+          {salesLinks.length > 0 && (
+            <Section label="Sales">
+              {salesLinks.map((l) => (
+                <Link key={l.slug} href={`/${orgSlug}/${l.slug}`} className={navClass(`/${orgSlug}/${l.slug}`)}>
+                  {l.label}
+                </Link>
+              ))}
+            </Section>
+          )}
 
-          <Section label="Events">
-            <Link href={`/${orgSlug}`} className={exactNavClass(`/${orgSlug}`)}>
-              Events
-            </Link>
-            <Link href={`/${orgSlug}/registrants`} className={navClass(`/${orgSlug}/registrants`)}>
-              Registrants
-            </Link>
-            <Link href={`/${orgSlug}/vendors`} className={navClass(`/${orgSlug}/vendors`)}>
-              Vendors
-            </Link>
-            <Link href={`/${orgSlug}/calendar`} className={navClass(`/${orgSlug}/calendar`)}>
-              Calendar
-            </Link>
-          </Section>
+          {(has('events') || eventLinks.length > 0) && (
+            <Section label="Events">
+              {has('events') && (
+                <Link href={`/${orgSlug}`} className={exactNavClass(`/${orgSlug}`)}>
+                  Events
+                </Link>
+              )}
+              {eventLinks.map((l) => (
+                <Link key={l.slug} href={`/${orgSlug}/${l.slug}`} className={navClass(`/${orgSlug}/${l.slug}`)}>
+                  {l.label}
+                </Link>
+              ))}
+            </Section>
+          )}
 
-          <Section label="Insights">
-            <Link href={`/${orgSlug}/reports`} className={navClass(`/${orgSlug}/reports`)}>
-              Reports
-            </Link>
-          </Section>
+          {has('reports') && (
+            <Section label="Insights">
+              <Link href={`/${orgSlug}/reports`} className={navClass(`/${orgSlug}/reports`)}>
+                Reports
+              </Link>
+            </Section>
+          )}
 
           <div className="px-2 py-3">
             <button
@@ -182,24 +195,12 @@ export function AdminSidebar({ orgSlug, campSlug, terminology, allowedCampPages 
             </button>
             {settingsOpen && (
               <div className="space-y-0.5">
-                <Link href={`/${orgSlug}/members`} className={navClass(`/${orgSlug}/members`)}>
-                  Members
-                </Link>
-                <Link href={`/${orgSlug}/permissions`} className={navClass(`/${orgSlug}/permissions`)}>
-                  Permissions
-                </Link>
-                <Link href={`/${orgSlug}/billing`} className={navClass(`/${orgSlug}/billing`)}>
-                  Billing
-                </Link>
-                <Link href={`/${orgSlug}/email-domain`} className={navClass(`/${orgSlug}/email-domain`)}>
-                  Email domain
-                </Link>
-                <Link href={`/${orgSlug}/event-types`} className={navClass(`/${orgSlug}/event-types`)}>
-                  Event types
-                </Link>
-                <Link href={`/${orgSlug}/departments`} className={navClass(`/${orgSlug}/departments`)}>
-                  Departments
-                </Link>
+                <Link href={`/${orgSlug}/members`} className={navClass(`/${orgSlug}/members`)}>Members</Link>
+                <Link href={`/${orgSlug}/permissions`} className={navClass(`/${orgSlug}/permissions`)}>Permissions</Link>
+                <Link href={`/${orgSlug}/billing`} className={navClass(`/${orgSlug}/billing`)}>Billing</Link>
+                <Link href={`/${orgSlug}/email-domain`} className={navClass(`/${orgSlug}/email-domain`)}>Email domain</Link>
+                <Link href={`/${orgSlug}/event-types`} className={navClass(`/${orgSlug}/event-types`)}>Event types</Link>
+                <Link href={`/${orgSlug}/departments`} className={navClass(`/${orgSlug}/departments`)}>Departments</Link>
               </div>
             )}
           </div>
