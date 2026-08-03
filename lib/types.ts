@@ -12,6 +12,7 @@ export interface Org {
   slug: string
   billing_status: 'active' | 'trialing' | 'inactive' | 'network_managed'
   plan?: BillingPlan
+  industry_pack_id?: string          // selected industry pack; absent = 'general'
   stripe_customer_id?: string
   stripe_account_id?: string
   sending_domain?: string

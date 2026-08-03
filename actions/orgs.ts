@@ -4,6 +4,8 @@ import { adminDb } from '@/lib/firebase-admin'
 import { setOrgClaims } from '@/actions/auth'
 import type { Org, OrgRole } from '@/lib/types'
 import { slugify } from '@/lib/slug'
+import { assertOrgAdmin } from '@/lib/auth/assert'
+import { getAllIndustryPacks } from '@/lib/industry-packs'
 
 export async function createOrg(
   uid: string,
@@ -50,4 +52,11 @@ export async function getOrgBySlug(slug: string): Promise<Org | null> {
     .get()
   if (snap.empty) return null
   return snap.docs[0].data() as Org
+}
+
+export async function setOrgIndustry(orgId: string, industryPackId: string): Promise<void> {
+  await assertOrgAdmin(orgId)
+  const known = getAllIndustryPacks().some((p) => p.id === industryPackId)
+  if (!known) throw new Error('Unknown industry pack')
+  await adminDb.collection('orgs').doc(orgId).update({ industry_pack_id: industryPackId })
 }
