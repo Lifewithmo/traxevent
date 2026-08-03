@@ -199,16 +199,22 @@ git commit -m "refactor: remove network billing cascade and network_managed stat
 
 ---
 
-### Task 5: Remove network types and Firestore rules
+### Task 5: Remove network routing, types, and Firestore rules
 
 **Files:**
+- Modify: `proxy.ts` — remove `portalRewritePath` (lines ~23-26) and the `portalPath` rewrite block inside `proxy()` (lines ~42-47) that sent custom denomination domains to the deleted `/portal` route; remove `isPlatformHost` (lines ~16-19) **only if** nothing else imports it (grep first — see Step 1). Keep `extractOrgSlug` and the org-subdomain rewrite (those are the org feature, not the network tier).
+- Modify: `__tests__/middleware.test.ts` — remove the `portalRewritePath`/`isPlatformHost` cases (the `camps.denomination.org` custom-domain-portal tests); keep the `extractOrgSlug` / org-subdomain tests. Delete cases, don't skip.
 - Modify: `lib/types.ts` — remove interfaces `Network`, `Region`, `NetworkMember`, and type `NetworkRole`; remove `Org.network_id` and `Org.region_id` (lines ~22-23); change `Org.billing_status` (line 13) to `'active' | 'trialing' | 'inactive'` (drop `'network_managed'`); remove `FormTemplate.network_template_id`, `FormTemplate.network_id`, `FormTemplate.pushed_at` (lines ~281-283)
 - Modify: `firestore.rules`, `firestore.indexes.json` — remove any `networks`/`regions` collection rules or indexes if present
-- Modify (tests): any test still referencing the removed type fields (the prior tasks should have cleared these; this task confirms)
 
 **Interfaces:**
 - Consumes: the removals from Tasks 1-4 (no runtime code references these types anymore).
-- Produces: `lib/types.ts` describes only the org + event product.
+- Produces: `lib/types.ts` describes only the org + event product; `proxy.ts` no longer routes to the deleted network portal.
+
+- [ ] **Step 0: Remove the network portal routing from `proxy.ts` + its tests**
+
+Run: `grep -rn "isPlatformHost\|portalRewritePath" --include=*.ts --include=*.tsx . | grep -v node_modules`
+This confirms who uses them. Remove `portalRewritePath` and the `portalPath` block in `proxy()`. If the grep shows `isPlatformHost` is used only by `portalRewritePath` and the test, remove `isPlatformHost` too; if anything else imports it, keep it. Then in `__tests__/middleware.test.ts` delete the `portalRewritePath`/`isPlatformHost` describe/it blocks (the `camps.denomination.org` cases), keeping the `extractOrgSlug` and org-subdomain-rewrite tests. Run `npx vitest run __tests__/middleware.test.ts` — expected: the remaining org-routing tests pass.
 
 - [ ] **Step 1: Confirm every consumer is already gone**
 
