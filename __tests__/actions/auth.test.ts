@@ -12,7 +12,7 @@ vi.mock('@/lib/firebase-admin', () => ({
   },
 }))
 
-import { setOrgClaims, setNetworkClaims } from '@/actions/auth'
+import { setOrgClaims } from '@/actions/auth'
 import { adminAuth } from '@/lib/firebase-admin'
 
 describe('setOrgClaims', () => {
@@ -25,16 +25,6 @@ describe('setOrgClaims', () => {
       orgId: 'org-abc',
       orgSlug: 'first-hills',
       role: 'admin',
-    })
-  })
-})
-
-describe('setNetworkClaims (merge)', () => {
-  it('adds network claims without clobbering existing org claims', async () => {
-    await setNetworkClaims('uid-1', 'net-1', 'first-network')
-    expect(adminAuth.setCustomUserClaims).toHaveBeenCalledWith('uid-1', {
-      orgId: 'o1', orgSlug: 'org', role: 'owner',
-      networkId: 'net-1', networkSlug: 'first-network', networkRole: 'admin',
     })
   })
 })

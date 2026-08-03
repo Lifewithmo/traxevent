@@ -1,7 +1,7 @@
 'use server'
 
 import { adminAuth, adminDb } from '@/lib/firebase-admin'
-import type { NetworkRole, OrgRole } from '@/lib/types'
+import type { OrgRole } from '@/lib/types'
 
 export async function setOrgClaims(
   uid: string,
@@ -16,15 +16,6 @@ export async function setOrgClaims(
 export async function mergeCustomUserClaims(uid: string, add: Record<string, unknown>): Promise<void> {
   const user = await adminAuth.getUser(uid)
   await adminAuth.setCustomUserClaims(uid, { ...(user.customClaims ?? {}), ...add })
-}
-
-export async function setNetworkClaims(
-  uid: string,
-  networkId: string,
-  networkSlug: string,
-  role: NetworkRole = 'admin'
-): Promise<void> {
-  await mergeCustomUserClaims(uid, { networkId, networkSlug, networkRole: role })
 }
 
 export async function setPlatformAdminClaim(uid: string): Promise<void> {
