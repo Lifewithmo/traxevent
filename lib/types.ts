@@ -10,7 +10,7 @@ export interface Org {
   id: string
   name: string
   slug: string
-  billing_status: 'active' | 'trialing' | 'inactive' | 'network_managed'
+  billing_status: 'active' | 'trialing' | 'inactive'
   plan?: BillingPlan
   industry_pack_id?: string          // selected industry pack; absent = 'general'
   stripe_customer_id?: string
@@ -19,39 +19,7 @@ export interface Org {
   sending_domain_id?: string
   sending_domain_status?: SendingDomainStatus
   sending_domain_records?: DomainDnsRecord[]
-  network_id?: string | null
-  region_id?: string | null
   created_at: string
-}
-
-export type NetworkRole = 'admin' | 'coordinator'
-
-export interface Network {
-  id: string
-  name: string
-  slug: string
-  stripe_customer_id?: string
-  billing_status?: 'active' | 'inactive'
-  display_name?: string
-  logo_url?: string
-  primary_color?: string
-  accent_color?: string
-  portal_domain?: string | null
-  created_at: string
-}
-
-export interface Region {
-  id: string
-  name: string
-  created_at: string
-}
-
-export interface NetworkMember {
-  uid: string
-  role: NetworkRole
-  display_name: string
-  email: string
-  region_ids?: string[]
 }
 
 export const CAMP_PAGES = [
@@ -123,9 +91,6 @@ export interface AuthClaims {
   orgId: string
   orgSlug: string
   role: OrgRole | 'platform_admin'
-  networkId?: string
-  networkSlug?: string
-  networkRole?: NetworkRole
 }
 
 export interface RegistrantProfile {
@@ -278,9 +243,6 @@ export interface FormTemplate {
   version: number
   created_at: string
   updated_at?: string
-  network_template_id?: string   // set on an org copy pushed from a network template (provenance)
-  network_id?: string            // the network that pushed this copy
-  pushed_at?: string             // last push timestamp
 }
 
 export interface EventFormAssignment {
