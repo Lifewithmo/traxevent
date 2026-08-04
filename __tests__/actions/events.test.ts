@@ -105,4 +105,17 @@ describe('updateEvent', () => {
     await expect(updateEvent('org-1', 'camp-999', {})).rejects.toThrow('Camp not found')
     expect(eventUpdateSpy).not.toHaveBeenCalled()
   })
+
+  it('persists headcount and key_contacts', async () => {
+    await updateEvent('org-1', 'camp-1', {
+      headcount: 120,
+      key_contacts: [{ name: 'Sam', role: 'Coordinator' }],
+    })
+    expect(eventUpdateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        headcount: 120,
+        key_contacts: [{ name: 'Sam', role: 'Coordinator' }],
+      })
+    )
+  })
 })

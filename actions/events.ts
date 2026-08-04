@@ -91,6 +91,8 @@ export async function updateEvent(
     | 'from_display_name'
     | 'reply_to_email'
     | 'department_id'
+    | 'headcount'
+    | 'key_contacts'
   >> & { event_type_terminology?: Terminology | null }
 ): Promise<void> {
   await assertOrgAdmin(orgId)

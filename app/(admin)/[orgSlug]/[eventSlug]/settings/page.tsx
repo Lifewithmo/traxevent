@@ -9,11 +9,12 @@ import type { EventType } from '@/lib/event-types'
 import { listOrgEventTypes } from '@/actions/event-types'
 import { listDepartments } from '@/actions/departments'
 import type { Department } from '@/lib/types'
+import { resolveEnabledModules, type ModuleId } from '@/lib/industry-packs'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import type { Event } from '@/lib/types'
+import type { Event, EventKeyContact } from '@/lib/types'
 
 export default function EventSettingsPage() {
   const { orgSlug, eventSlug } = useParams<{ orgSlug: string; eventSlug: string }>()
@@ -37,12 +38,16 @@ export default function EventSettingsPage() {
   const [eventTypes, setEventTypes] = useState<EventType[]>([])
   const [departments, setDepartments] = useState<Department[]>([])
   const [departmentId, setDepartmentId] = useState<string>('')
+  const [enabledModules, setEnabledModules] = useState<ModuleId[]>([])
+  const [headcount, setHeadcount] = useState<string>('')
+  const [keyContacts, setKeyContacts] = useState<EventKeyContact[]>([])
 
   useEffect(() => {
     async function load() {
       const org = await getOrgBySlug(orgSlug)
       if (!org) return
       setOrgId(org.id)
+      setEnabledModules(resolveEnabledModules(org.industry_pack_id))
       listOrgEventTypes(org.id).then(setEventTypes).catch(() => setError('Failed to load event types'))
       listDepartments(org.id).then(setDepartments).catch(() => setError('Failed to load departments'))
       const c = await getEventBySlug(org.id, eventSlug)
@@ -60,9 +65,27 @@ export default function EventSettingsPage() {
       setPaymentAmount(c.payment_amount != null ? String(c.payment_amount) : '')
       setFromDisplayName(c.from_display_name ?? '')
       setReplyToEmail(c.reply_to_email ?? '')
+      setHeadcount(c.headcount != null ? String(c.headcount) : '')
+      setKeyContacts(c.key_contacts ?? [])
     }
     load()
   }, [orgSlug, eventSlug])
+
+  const showHeadcountSection = !enabledModules.includes('attendee-roster')
+
+  function updateKeyContact(index: number, patch: Partial<EventKeyContact>) {
+    setKeyContacts((rows) => rows.map((row, i) => (i === index ? { ...row, ...patch } : row)))
+    setSaved(false)
+  }
+
+  function addKeyContact() {
+    setKeyContacts((rows) => [...rows, { name: '', role: '' }])
+  }
+
+  function removeKeyContact(index: number) {
+    setKeyContacts((rows) => rows.filter((_, i) => i !== index))
+    setSaved(false)
+  }
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
@@ -89,6 +112,12 @@ export default function EventSettingsPage() {
         payment_amount: paymentAmount ? Number(paymentAmount) : undefined,
         from_display_name: fromDisplayName || undefined,
         reply_to_email: replyToEmail || undefined,
+        ...(showHeadcountSection
+          ? {
+              headcount: headcount ? Number(headcount) : undefined,
+              key_contacts: keyContacts.filter((c) => c.name.trim() || c.role.trim()),
+            }
+          : {}),
       })
       setSaved(true)
     } catch (err: unknown) {
@@ -276,6 +305,90 @@ export default function EventSettingsPage() {
           </form>
         </CardContent>
       </Card>
+
+      {showHeadcountSection && (
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle className="text-base">Headcount &amp; key contacts</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSave} className="space-y-4">
+              <div className="space-y-1">
+                <Label htmlFor="headcount">Expected headcount</Label>
+                <Input
+                  id="headcount"
+                  type="number"
+                  min={0}
+                  value={headcount}
+                  onChange={(e) => { setHeadcount(e.target.value); setSaved(false) }}
+                  placeholder="Number of guests"
+                />
+                <p className="text-xs text-muted-foreground">
+                  A single expected guest count, instead of a per-person attendee roster.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Key contacts</Label>
+                {keyContacts.map((contact, i) => (
+                  <div key={i} className="grid grid-cols-2 gap-2 border rounded-md p-3">
+                    <div className="space-y-1">
+                      <Label htmlFor={`contactName-${i}`}>Name</Label>
+                      <Input
+                        id={`contactName-${i}`}
+                        value={contact.name}
+                        onChange={(e) => updateKeyContact(i, { name: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor={`contactRole-${i}`}>Role</Label>
+                      <Input
+                        id={`contactRole-${i}`}
+                        value={contact.role}
+                        onChange={(e) => updateKeyContact(i, { role: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor={`contactPhone-${i}`}>Phone (optional)</Label>
+                      <Input
+                        id={`contactPhone-${i}`}
+                        value={contact.phone ?? ''}
+                        onChange={(e) => updateKeyContact(i, { phone: e.target.value || undefined })}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor={`contactEmail-${i}`}>Email (optional)</Label>
+                      <Input
+                        id={`contactEmail-${i}`}
+                        type="email"
+                        value={contact.email ?? ''}
+                        onChange={(e) => updateKeyContact(i, { email: e.target.value || undefined })}
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => removeKeyContact(i)}
+                      >
+                        Remove contact
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+                <Button type="button" variant="outline" size="sm" onClick={addKeyContact}>
+                  Add contact
+                </Button>
+              </div>
+
+              <Button type="submit" disabled={saving}>
+                {saving ? 'Saving…' : 'Save settings'}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }
