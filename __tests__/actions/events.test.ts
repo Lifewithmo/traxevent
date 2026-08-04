@@ -118,4 +118,14 @@ describe('updateEvent', () => {
       })
     )
   })
+
+  it('strips undefined phone/email out of key_contacts before writing (Firestore rejects nested undefined)', async () => {
+    await updateEvent('org-1', 'camp-1', {
+      key_contacts: [{ name: 'Sam', role: 'Coordinator', phone: undefined, email: undefined }],
+    })
+    const payload = eventUpdateSpy.mock.calls[0][0]
+    // toEqual() ignores keys whose value is `undefined`, which would mask the bug —
+    // use toStrictEqual() so an explicit `phone: undefined` key fails the assertion.
+    expect(payload.key_contacts).toStrictEqual([{ name: 'Sam', role: 'Coordinator' }])
+  })
 })

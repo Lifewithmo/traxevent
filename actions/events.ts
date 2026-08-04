@@ -106,10 +106,22 @@ export async function updateEvent(
   // Firestore rejects `undefined` (ignoreUndefinedProperties is off). Convention:
   //   undefined  → leave the field unchanged (callers pass it for blank optionals)
   //   null       → explicitly clear the field (FieldValue.delete())
+  // Note: this only strips `undefined` at the top level. `key_contacts` is an array —
+  // Firestore also rejects `undefined` nested inside array elements (e.g. a contact
+  // whose optional `phone`/`email` was cleared), so normalize those below.
   const cleaned: Record<string, unknown> = {}
   for (const [k, v] of Object.entries(updates)) {
     if (v === undefined) continue
     cleaned[k] = v === null ? FieldValue.delete() : v
+  }
+
+  if (updates.key_contacts) {
+    cleaned.key_contacts = updates.key_contacts.map((contact) => ({
+      name: contact.name,
+      role: contact.role,
+      ...(contact.phone !== undefined ? { phone: contact.phone } : {}),
+      ...(contact.email !== undefined ? { email: contact.email } : {}),
+    }))
   }
 
   await ref.update({
