@@ -53,7 +53,7 @@ export async function deleteDepartment(orgId: string, deptId: string): Promise<v
   // Unassign any camps in this department before deleting it.
   const campsSnap = await adminDb
     .collection('orgs').doc(orgId)
-    .collection('camps')
+    .collection('events')
     .where('department_id', '==', deptId)
     .get()
   if (!campsSnap.empty) {

@@ -6,7 +6,7 @@ import type { ItineraryItem } from '@/lib/types'
 import { randomBytes } from 'crypto'
 
 function campRef(orgId: string, campId: string) {
-  return adminDb.collection('orgs').doc(orgId).collection('camps').doc(campId)
+  return adminDb.collection('orgs').doc(orgId).collection('events').doc(campId)
 }
 
 function itineraryRef(orgId: string, campId: string) {

@@ -10,14 +10,14 @@ export async function getOrgHouseholds(orgId: string): Promise<Household[]> {
 
   const campsSnap = await adminDb
     .collection('orgs').doc(orgId)
-    .collection('camps').orderBy('created_at', 'desc').get()
+    .collection('events').orderBy('created_at', 'desc').get()
   const camps = campsSnap.docs.map((d) => d.data() as Camp)
 
   const rowsPerCamp = await Promise.all(
     camps.map(async (camp) => {
       const famSnap = await adminDb
         .collection('orgs').doc(orgId)
-        .collection('camps').doc(camp.id)
+        .collection('events').doc(camp.id)
         .collection('families').get()
       return famSnap.docs.map((d) => {
         const f = d.data() as Family

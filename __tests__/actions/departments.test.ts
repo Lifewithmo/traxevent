@@ -22,7 +22,7 @@ vi.mock('@/lib/firebase-admin', () => {
   const orgDoc = {
     collection: vi.fn().mockImplementation((sub: string) => {
       if (sub === 'departments') return deptsCol
-      if (sub === 'camps') return campsCol
+      if (sub === 'events') return campsCol
       return {}
     }),
   }

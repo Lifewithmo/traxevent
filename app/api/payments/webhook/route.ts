@@ -58,7 +58,7 @@ export async function POST(req: Request) {
       // Fetch camp for sender config
       const campSnap = await adminDb
         .collection('orgs').doc(familyData.org_id)
-        .collection('camps').doc(familyData.camp_id)
+        .collection('events').doc(familyData.camp_id)
         .get()
       const campSenderConfig = campSnap.exists
         ? campSnap.data() as { from_display_name?: string; reply_to_email?: string }

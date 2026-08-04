@@ -15,11 +15,11 @@ function templatesRef(orgId: string) {
 }
 
 function assignmentsRef(orgId: string, campId: string) {
-  return adminDb.collection('orgs').doc(orgId).collection('camps').doc(campId).collection('form_assignments')
+  return adminDb.collection('orgs').doc(orgId).collection('events').doc(campId).collection('form_assignments')
 }
 
 function signedFormsRef(orgId: string, campId: string, familyId: string) {
-  return adminDb.collection('orgs').doc(orgId).collection('camps').doc(campId).collection('families').doc(familyId).collection('signed_forms')
+  return adminDb.collection('orgs').doc(orgId).collection('events').doc(campId).collection('families').doc(familyId).collection('signed_forms')
 }
 
 export interface CreateFormTemplateInput {

@@ -12,7 +12,7 @@ function templatesRef(orgId: string) {
 }
 
 function peopleRef(orgId: string, campId: string) {
-  return adminDb.collection('orgs').doc(orgId).collection('camps').doc(campId).collection('event_people')
+  return adminDb.collection('orgs').doc(orgId).collection('events').doc(campId).collection('event_people')
 }
 
 function isBuiltIn(templateId: string): boolean {

@@ -42,7 +42,7 @@ vi.mock('@/lib/firebase-admin', () => ({
               if (sub === 'members') {
                 return { doc: vi.fn().mockReturnValue({ get: getMemberSpy }) }
               }
-              if (sub === 'camps') {
+              if (sub === 'events') {
                 return {
                   doc: vi.fn().mockReturnValue({
                     get: getCampSpy,

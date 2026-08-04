@@ -18,7 +18,7 @@ export async function assertFamilyAccess(
 ): Promise<Family> {
   const snap = await adminDb
     .collection('orgs').doc(orgId)
-    .collection('camps').doc(campId)
+    .collection('events').doc(campId)
     .collection('families').doc(familyId)
     .get()
   if (!snap.exists) throw new Error('Not found')
@@ -38,7 +38,7 @@ export async function assertFamilyAccess(
     if (user.orgId === orgId) {
       const m = await adminDb.collection('orgs').doc(orgId).collection('members').doc(user.uid).get()
       if (m.exists) {
-        const campSnap = await adminDb.collection('orgs').doc(orgId).collection('camps').doc(campId).get()
+        const campSnap = await adminDb.collection('orgs').doc(orgId).collection('events').doc(campId).get()
         const deptId = campSnap.exists ? ((campSnap.data() as Camp).department_id ?? null) : null
         if (canAccessCampPage(m.data() as OrgMember, campId, opts.page ?? 'families', deptId)) return family
       }

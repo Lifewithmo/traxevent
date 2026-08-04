@@ -11,7 +11,7 @@ vi.mock('@/lib/firebase-admin', () => {
   const campsChain = { doc: vi.fn().mockReturnValue({ get: campGetSpy }) }
   const orgDoc = {
     collection: vi.fn().mockImplementation((sub: string) => {
-      if (sub === 'camps') return campsChain
+      if (sub === 'events') return campsChain
       return membersChain
     }),
   }

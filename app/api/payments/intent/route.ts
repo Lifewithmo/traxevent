@@ -25,7 +25,7 @@ export async function POST(req: Request) {
   // Look up camp by slug
   const campSnap = await adminDb
     .collection('orgs').doc(org.id)
-    .collection('camps').where('slug', '==', campSlug).limit(1)
+    .collection('events').where('slug', '==', campSlug).limit(1)
     .get()
   if (campSnap.empty) return NextResponse.json({ error: 'Camp not found' }, { status: 404 })
   const camp = campSnap.docs[0].data() as Camp

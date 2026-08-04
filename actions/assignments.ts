@@ -6,11 +6,11 @@ import { randomBytes } from 'crypto'
 import { assertCampPage } from '@/lib/auth/assert'
 
 function slotsRef(orgId: string, campId: string) {
-  return adminDb.collection('orgs').doc(orgId).collection('camps').doc(campId).collection('assignment_slots')
+  return adminDb.collection('orgs').doc(orgId).collection('events').doc(campId).collection('assignment_slots')
 }
 
 function familiesRef(orgId: string, campId: string) {
-  return adminDb.collection('orgs').doc(orgId).collection('camps').doc(campId).collection('families')
+  return adminDb.collection('orgs').doc(orgId).collection('events').doc(campId).collection('families')
 }
 
 export interface CreateSlotInput {

@@ -16,7 +16,7 @@ export async function attachAccessToken(
 
   await adminDb
     .collection('orgs').doc(orgId)
-    .collection('camps').doc(campId)
+    .collection('events').doc(campId)
     .collection('families').doc(familyId)
     .update({ access_token: token, access_token_expires_at: expiresAt })
 
@@ -31,7 +31,7 @@ export async function validateAccessToken(
 ): Promise<string | null> {
   const snap = await adminDb
     .collection('orgs').doc(orgId)
-    .collection('camps').doc(campId)
+    .collection('events').doc(campId)
     .collection('families')
     .where('access_token', '==', token)
     .limit(1)

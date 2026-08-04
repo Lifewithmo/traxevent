@@ -24,7 +24,7 @@ import {
 } from '@/lib/reports'
 
 function familiesRef(orgId: string, campId: string) {
-  return adminDb.collection('orgs').doc(orgId).collection('camps').doc(campId).collection('families')
+  return adminDb.collection('orgs').doc(orgId).collection('events').doc(campId).collection('families')
 }
 
 // Loads ALL families (for status/financial summaries which should count cancellations)
@@ -102,7 +102,7 @@ export async function buildCustomReportCsv(
 
 export async function getFormSubmissionReport(orgId: string, campId: string): Promise<FormCompletionRow[]> {
   await assertCampPage(orgId, campId, 'reports')
-  const campRef = adminDb.collection('orgs').doc(orgId).collection('camps').doc(campId)
+  const campRef = adminDb.collection('orgs').doc(orgId).collection('events').doc(campId)
 
   const [familiesSnap, assignmentsSnap, signedSnap] = await Promise.all([
     campRef.collection('families').get(),
@@ -141,7 +141,7 @@ export async function getOrgReportData(orgId: string, departmentId?: string): Pr
   await assertOrgMember(orgId)
   const campsSnap = await adminDb
     .collection('orgs').doc(orgId)
-    .collection('camps')
+    .collection('events')
     .orderBy('created_at', 'desc')
     .get()
 
@@ -152,7 +152,7 @@ export async function getOrgReportData(orgId: string, departmentId?: string): Pr
     camps.map(async (camp) => {
       const famSnap = await adminDb
         .collection('orgs').doc(orgId)
-        .collection('camps').doc(camp.id)
+        .collection('events').doc(camp.id)
         .collection('families')
         .get()
       const families = famSnap.docs

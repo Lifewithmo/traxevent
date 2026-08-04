@@ -5,7 +5,7 @@ import type { CheckinRecord, EventMember, Family, FamilyMember } from '@/lib/typ
 import { assertCampPage } from '@/lib/auth/assert'
 
 function campRef(orgId: string, campId: string) {
-  return adminDb.collection('orgs').doc(orgId).collection('camps').doc(campId)
+  return adminDb.collection('orgs').doc(orgId).collection('events').doc(campId)
 }
 
 function checkinsRef(orgId: string, campId: string) {

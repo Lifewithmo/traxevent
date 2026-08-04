@@ -20,7 +20,7 @@ async function getMembersForFamily(
 ): Promise<FamilyMember[]> {
   const snap = await adminDb
     .collection('orgs').doc(orgId)
-    .collection('camps').doc(campId)
+    .collection('events').doc(campId)
     .collection('families').doc(familyId)
     .collection('family_members')
     .get()

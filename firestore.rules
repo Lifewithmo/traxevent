@@ -39,7 +39,7 @@ service cloud.firestore {
     }
 
     // Cross-org collectionGroup query — registrant reads their own family records
-    // across all orgs and camps. Scoped strictly to their uid.
+    // across all orgs and events. Scoped strictly to their uid.
     match /{path=**}/families/{id} {
       allow read: if request.auth != null
         && resource.data.registrant_uid == request.auth.uid;
@@ -70,10 +70,10 @@ service cloud.firestore {
         allow read, write: if isOrgAdmin(orgId);
       }
 
-      // Camps and all sub-collections
+      // Events and all sub-collections
       // Staff access is enforced at the Server Action layer, not here,
       // because per-page granularity cannot be expressed in security rules.
-      match /camps/{campId} {
+      match /events/{eventId} {
         allow read, write: if isOrgAdmin(orgId) || isPlatformAdmin();
 
         match /{collection}/{docId} {

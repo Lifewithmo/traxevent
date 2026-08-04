@@ -6,7 +6,7 @@ import type { VolunteerHoursEntry } from '@/lib/types'
 import { randomBytes } from 'crypto'
 
 function hoursRef(orgId: string, campId: string) {
-  return adminDb.collection('orgs').doc(orgId).collection('camps').doc(campId).collection('volunteer_hours')
+  return adminDb.collection('orgs').doc(orgId).collection('events').doc(campId).collection('volunteer_hours')
 }
 
 export async function listVolunteerHours(orgId: string, campId: string): Promise<VolunteerHoursEntry[]> {

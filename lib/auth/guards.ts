@@ -40,7 +40,7 @@ export async function requireCampPage(
 
   const campSnap = await adminDb
     .collection('orgs').doc(orgId)
-    .collection('camps').where('slug', '==', campSlug).limit(1).get()
+    .collection('events').where('slug', '==', campSlug).limit(1).get()
   if (campSnap.empty) notFound()
   const camp = campSnap.docs[0].data() as Camp
   const campId = campSnap.docs[0].id
@@ -59,7 +59,7 @@ export async function requireCamp(
   const { orgId, member } = await requireOrgMember(orgSlug)
   const campSnap = await adminDb
     .collection('orgs').doc(orgId)
-    .collection('camps').where('slug', '==', campSlug).limit(1).get()
+    .collection('events').where('slug', '==', campSlug).limit(1).get()
   if (campSnap.empty) notFound()
   return { orgId, campId: campSnap.docs[0].id, camp: campSnap.docs[0].data() as Camp, member }
 }

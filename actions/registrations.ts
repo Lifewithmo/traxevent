@@ -41,7 +41,7 @@ export async function createRegistration(
 
   const campRef = adminDb
     .collection('orgs').doc(input.orgId)
-    .collection('camps').doc(input.campId)
+    .collection('events').doc(input.campId)
 
   const campSnap = await campRef.get()
   const camp = campSnap.exists ? (campSnap.data() as Camp) : null
@@ -139,7 +139,7 @@ export async function getRegistrationByToken(
 ): Promise<Family | null> {
   const snap = await adminDb
     .collection('orgs').doc(orgId)
-    .collection('camps').doc(campId)
+    .collection('events').doc(campId)
     .collection('families')
     .where('access_token', '==', token)
     .limit(1)
@@ -169,7 +169,7 @@ export async function getRegistrationByUid(
 
   const snap = await adminDb
     .collection('orgs').doc(orgId)
-    .collection('camps').doc(campId)
+    .collection('events').doc(campId)
     .collection('families')
     .where('registrant_uid', '==', uid)
     .limit(1)
@@ -198,7 +198,7 @@ export async function getFamilyMembers(
   await assertFamilyAccess(orgId, campId, familyId, { token, page: 'families' })
   const snap = await adminDb
     .collection('orgs').doc(orgId)
-    .collection('camps').doc(campId)
+    .collection('events').doc(campId)
     .collection('families').doc(familyId)
     .collection('family_members')
     .get()
@@ -219,7 +219,7 @@ export async function updateRegistration(
   await assertFamilyAccess(orgId, campId, familyId, { token, page: 'families' })
   await adminDb
     .collection('orgs').doc(orgId)
-    .collection('camps').doc(campId)
+    .collection('events').doc(campId)
     .collection('families').doc(familyId)
     .update({ ...updates, updated_at: new Date().toISOString() })
 }
@@ -232,7 +232,7 @@ export async function linkRegistrantAccount(
 ): Promise<void> {
   await adminDb
     .collection('orgs').doc(orgId)
-    .collection('camps').doc(campId)
+    .collection('events').doc(campId)
     .collection('families').doc(familyId)
     .update({ registrant_uid: uid, updated_at: new Date().toISOString() })
 }
@@ -262,7 +262,7 @@ export async function claimRegistration(orgId: string, campId: string, familyId:
   if (!email) throw new Error('Forbidden')
   const ref = adminDb
     .collection('orgs').doc(orgId)
-    .collection('camps').doc(campId)
+    .collection('events').doc(campId)
     .collection('families').doc(familyId)
   const snap = await ref.get()
   if (!snap.exists) throw new Error('Not found')

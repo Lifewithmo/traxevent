@@ -37,7 +37,7 @@ vi.mock('@/lib/firebase-admin', () => ({
                   orderBy: vi.fn().mockReturnValue({ get: getTemplatesSpy }),
                 }
               }
-              if (sub === 'camps') {
+              if (sub === 'events') {
                 return {
                   doc: vi.fn().mockReturnValue({
                     collection: vi.fn().mockImplementation((sub2: string) => {

@@ -22,7 +22,7 @@ export async function sendEmailBlast(
   await assertCampPage(orgId, campId, 'communicate')
   const campRef = adminDb
     .collection('orgs').doc(orgId)
-    .collection('camps').doc(campId)
+    .collection('events').doc(campId)
 
   const campSnap = await campRef.get()
   if (!campSnap.exists) throw new Error(`Camp not found: ${campId}`)
@@ -106,7 +106,7 @@ export async function getCommunicationLog(
   await assertCampPage(orgId, campId, 'communicate')
   const snap = await adminDb
     .collection('orgs').doc(orgId)
-    .collection('camps').doc(campId)
+    .collection('events').doc(campId)
     .collection('communication_log')
     .orderBy('sent_at', 'desc')
     .limit(50)

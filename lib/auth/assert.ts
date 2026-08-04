@@ -30,7 +30,7 @@ export async function assertOrgAdmin(orgId: string): Promise<OrgMember> {
 // Camp-scoped: caller must be an org member AND have access to `page` for `campId`.
 export async function assertCampPage(orgId: string, campId: string, page: CampPage): Promise<OrgMember> {
   const member = await assertOrgMember(orgId)
-  const campSnap = await adminDb.collection('orgs').doc(orgId).collection('camps').doc(campId).get()
+  const campSnap = await adminDb.collection('orgs').doc(orgId).collection('events').doc(campId).get()
   const departmentId = campSnap.exists ? ((campSnap.data() as Camp).department_id ?? null) : null
   if (!canAccessCampPage(member, campId, page, departmentId)) throw new Error('Forbidden')
   return member

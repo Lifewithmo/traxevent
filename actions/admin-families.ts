@@ -10,7 +10,7 @@ import { assertCampPage } from '@/lib/auth/assert'
 function familiesRef(orgId: string, campId: string) {
   return adminDb
     .collection('orgs').doc(orgId)
-    .collection('camps').doc(campId)
+    .collection('events').doc(campId)
     .collection('families')
 }
 

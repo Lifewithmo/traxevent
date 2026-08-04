@@ -25,7 +25,7 @@ export async function createCamp(
   await assertOrgAdmin(orgId)
   const campRef = adminDb
     .collection('orgs').doc(orgId)
-    .collection('camps').doc()
+    .collection('events').doc()
 
   const camp: Camp = {
     id: campRef.id,
@@ -57,7 +57,7 @@ export async function listCamps(orgId: string): Promise<Camp[]> {
   await assertOrgMember(orgId)
   const snap = await adminDb
     .collection('orgs').doc(orgId)
-    .collection('camps')
+    .collection('events')
     .orderBy('created_at', 'desc')
     .get()
   return snap.docs.map((d) => d.data() as Camp)
@@ -66,7 +66,7 @@ export async function listCamps(orgId: string): Promise<Camp[]> {
 export async function getCampBySlug(orgId: string, slug: string): Promise<Camp | null> {
   const snap = await adminDb
     .collection('orgs').doc(orgId)
-    .collection('camps')
+    .collection('events')
     .where('slug', '==', slug)
     .limit(1)
     .get()
@@ -96,7 +96,7 @@ export async function updateCamp(
   await assertOrgAdmin(orgId)
   const ref = adminDb
     .collection('orgs').doc(orgId)
-    .collection('camps').doc(campId)
+    .collection('events').doc(campId)
 
   const snap = await ref.get()
   if (!snap.exists) throw new Error('Camp not found')
@@ -129,7 +129,7 @@ export async function duplicateEvent(
   input: DuplicateEventInput
 ): Promise<Camp> {
   await assertOrgAdmin(orgId)
-  const campsCol = adminDb.collection('orgs').doc(orgId).collection('camps')
+  const campsCol = adminDb.collection('orgs').doc(orgId).collection('events')
   const sourceRef = campsCol.doc(sourceCampId)
   const sourceSnap = await sourceRef.get()
   if (!sourceSnap.exists) throw new Error('Source event not found')
