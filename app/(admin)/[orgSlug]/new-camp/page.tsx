@@ -56,8 +56,8 @@ export default function NewEventPage() {
         registration_type: selectedType.registrationUnit,
         event_type_id: eventTypeId,
         ...(selectedType.is_custom ? { event_type_terminology: selectedType.terminology } : {}),
-        camp_start: campStart,
-        camp_end: campEnd,
+        event_start: campStart,
+        event_end: campEnd,
       })
       router.push(`/${orgSlug}/${camp.slug}/dashboard`)
     } catch (err: unknown) {

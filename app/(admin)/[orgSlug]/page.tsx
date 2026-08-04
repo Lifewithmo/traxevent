@@ -38,7 +38,7 @@ export default async function OrgHomePage({
             <Badge variant="outline">{resolveTerminology(camp.event_type_id ?? DEFAULT_EVENT_TYPE_ID, camp.event_type_terminology).eventLabel}</Badge>
           </div>
           <p className="mt-2 text-xs text-muted-foreground">
-            {camp.camp_start} → {camp.camp_end}
+            {camp.event_start} → {camp.event_end}
           </p>
         </CardContent>
       </Link>

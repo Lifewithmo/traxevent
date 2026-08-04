@@ -174,8 +174,8 @@ export function buildCustomCsv(members: MemberWithFamily[], fields: CustomReport
 }
 
 export interface OrgCampReportRow {
-  camp_id: string
-  camp_name: string
+  event_id: string
+  event_name: string
   year: number
   status: string
   department_id: string | null
@@ -209,8 +209,8 @@ export function buildOrgCampRow(
   const summary = buildRegistrationSummary(families)
   const fin = buildFinancialReport(families)
   return {
-    camp_id: camp.id,
-    camp_name: camp.name,
+    event_id: camp.id,
+    event_name: camp.name,
     year: camp.year,
     status: camp.status,
     department_id: camp.department_id ?? null,

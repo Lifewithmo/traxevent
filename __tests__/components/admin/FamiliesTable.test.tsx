@@ -8,10 +8,10 @@ import type { Family } from '@/lib/types'
 const makeFam = (overrides: Partial<Family> = {}): Family => ({
   id: 'fam-1',
   org_id: 'org-1',
-  camp_id: 'camp-1',
+  event_id: 'camp-1',
   org_slug: 'acme',
-  camp_slug: 'summer-2025',
-  camp_name: 'Summer Camp',
+  event_slug: 'summer-2025',
+  event_name: 'Summer Camp',
   org_name: 'Acme',
   first_name: 'Lisa',
   last_name: 'Chen',

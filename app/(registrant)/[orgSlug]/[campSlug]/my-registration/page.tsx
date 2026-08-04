@@ -61,7 +61,7 @@ export default async function MyRegistrationPage({
       <div>
         <p className="text-sm text-[#7C3AED] font-semibold">{org.name}</p>
         <h1 className="text-2xl font-bold text-[#4C1D95]">{camp.name}</h1>
-        <p className="text-sm text-gray-500">{camp.camp_start} → {camp.camp_end}</p>
+        <p className="text-sm text-gray-500">{camp.event_start} → {camp.event_end}</p>
       </div>
 
       <div className="bg-white rounded-xl border border-[#DDD6FE] p-5 space-y-4">

@@ -17,8 +17,8 @@ export async function createCamp(
     registration_type: EventRegistrationType
     event_type_id?: string
     event_type_terminology?: Terminology
-    camp_start: string
-    camp_end: string
+    event_start: string
+    event_end: string
     department_id?: string | null
   }
 ): Promise<Event> {
@@ -44,8 +44,8 @@ export async function createCamp(
       itinerary: true,
       communicate: true,
     },
-    camp_start: input.camp_start,
-    camp_end: input.camp_end,
+    event_start: input.event_start,
+    event_end: input.event_end,
     created_at: new Date().toISOString(),
   }
 
@@ -82,8 +82,8 @@ export async function updateCamp(
     | 'event_type_id'
     // note: registration_type and event_type_id should be updated together — they are coupled
     | 'registration_type'
-    | 'camp_start'
-    | 'camp_end'
+    | 'event_start'
+    | 'event_end'
     | 'registration_open'
     | 'registration_close'
     | 'capacity'
@@ -119,8 +119,8 @@ export async function updateCamp(
 export interface DuplicateEventInput {
   name: string
   year: number
-  camp_start: string
-  camp_end: string
+  event_start: string
+  event_end: string
 }
 
 export async function duplicateEvent(
@@ -154,8 +154,8 @@ export async function duplicateEvent(
     event_type_id: source.event_type_id,
     ...(source.event_type_terminology ? { event_type_terminology: source.event_type_terminology } : {}),
     features: source.features,
-    camp_start: input.camp_start,
-    camp_end: input.camp_end,
+    event_start: input.event_start,
+    event_end: input.event_end,
     ...(source.capacity != null ? { capacity: source.capacity } : {}),
     ...(source.payment_amount != null ? { payment_amount: source.payment_amount } : {}),
     ...(source.from_display_name ? { from_display_name: source.from_display_name } : {}),

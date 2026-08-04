@@ -34,8 +34,8 @@ const mockCamp = {
   registration_type: 'family' as const,
   event_type_id: 'summer-camp',
   features: { accommodations: true, teams: true, budget: true, itinerary: true, communicate: true },
-  camp_start: '2026-07-10',
-  camp_end: '2026-07-13',
+  event_start: '2026-07-10',
+  event_end: '2026-07-13',
   created_at: '2026-01-01',
 }
 
@@ -56,8 +56,8 @@ const mockIndividualCamp = {
   registration_type: 'individual' as const,
   event_type_id: 'retreat',
   features: { accommodations: true, teams: true, budget: true, itinerary: true, communicate: true },
-  camp_start: '2026-09-01',
-  camp_end: '2026-09-03',
+  event_start: '2026-09-01',
+  event_end: '2026-09-03',
   created_at: '2026-01-01',
 }
 

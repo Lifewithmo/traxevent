@@ -15,7 +15,7 @@ describe('getOrgCalendar', () => {
 
   it('asserts membership then returns the merged, date-sorted calendar', async () => {
     listCampsSpy.mockResolvedValue([
-      { id: 'c1', name: 'Summer Camp', slug: 'summer-camp', camp_start: '2026-07-10' },
+      { id: 'c1', name: 'Summer Camp', slug: 'summer-camp', event_start: '2026-07-10' },
     ])
     listLeadsSpy.mockResolvedValue([
       { id: 'l1', name: 'Acme Wedding', stage: 'inquiry', event_date: '2026-07-05', created_at: 'x' },

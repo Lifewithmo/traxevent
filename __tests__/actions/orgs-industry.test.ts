@@ -11,7 +11,7 @@ vi.mock('@/lib/firebase-admin', () => ({
 }))
 
 vi.mock('@/lib/auth/assert', () => ({
-  assertOrgAdmin: vi.fn().mockResolvedValue({ role: 'admin', camp_access: {} }),
+  assertOrgAdmin: vi.fn().mockResolvedValue({ role: 'admin', event_access: {} }),
 }))
 
 // orgs.ts imports setOrgClaims from '@/actions/auth'; stub it so the module graph

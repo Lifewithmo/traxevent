@@ -20,8 +20,8 @@ export interface CreateRegistrationInput {
   campName: string
   orgName: string
   family: Omit<Family,
-    | 'id' | 'org_id' | 'camp_id' | 'org_slug' | 'camp_slug'
-    | 'camp_name' | 'org_name' | 'registration_status' | 'payment_status'
+    | 'id' | 'org_id' | 'event_id' | 'org_slug' | 'event_slug'
+    | 'event_name' | 'org_name' | 'registration_status' | 'payment_status'
     | 'registrant_uid' | 'pco_household_id' | 'access_token'
     | 'access_token_expires_at' | 'created_at' | 'updated_at'
   >
@@ -65,10 +65,10 @@ export async function createRegistration(
   const family: Family = {
     id: familyId,
     org_id: input.orgId,
-    camp_id: input.campId,
+    event_id: input.campId,
     org_slug: input.orgSlug,
-    camp_slug: input.campSlug,
-    camp_name: input.campName,
+    event_slug: input.campSlug,
+    event_name: input.campName,
     org_name: input.orgName,
     ...input.family,
     registration_status: registrationStatus,

@@ -24,12 +24,12 @@ export async function requireOrgMember(orgSlug: string): Promise<{ org: Org; org
   if (!memberSnap.exists && user.role !== 'platform_admin') notFound()
   const member = (memberSnap.exists
     ? (memberSnap.data() as OrgMember)
-    : { uid: user.uid, role: 'admin', display_name: '', email: '', camp_access: {} }) as OrgMember
+    : { uid: user.uid, role: 'admin', display_name: '', email: '', event_access: {} }) as OrgMember
 
   return { org, orgId, member }
 }
 
-// Require org membership AND access to a specific camp page. Resolves ids and enforces camp_access.
+// Require org membership AND access to a specific camp page. Resolves ids and enforces event_access.
 // Redirects to the org home if the member lacks access to the page.
 export async function requireCampPage(
   orgSlug: string,

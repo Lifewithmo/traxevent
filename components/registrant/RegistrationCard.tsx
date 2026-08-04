@@ -15,11 +15,11 @@ const statusColor: Record<string, string> = {
 
 export function RegistrationCard({ family }: RegistrationCardProps) {
   return (
-    <Link href={`/${family.org_slug}/${family.camp_slug}/my-registration`}>
+    <Link href={`/${family.org_slug}/${family.event_slug}/my-registration`}>
       <Card className="border-[#DDD6FE] hover:shadow-md transition-shadow cursor-pointer">
         <CardContent className="py-4 flex items-start justify-between gap-3">
           <div>
-            <p className="font-semibold text-[#4C1D95]">{family.camp_name}</p>
+            <p className="font-semibold text-[#4C1D95]">{family.event_name}</p>
             <p className="text-xs text-gray-500 mt-0.5">{family.org_name}</p>
           </div>
           <span className={`text-xs font-semibold px-2 py-1 rounded-full whitespace-nowrap ${statusColor[family.registration_status]}`}>

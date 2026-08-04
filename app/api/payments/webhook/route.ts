@@ -45,20 +45,20 @@ export async function POST(req: Request) {
       const familyData = snap.docs[0].data() as {
         first_name: string
         email: string
-        camp_name: string
+        event_name: string
         org_name: string
         org_slug: string
-        camp_slug: string
+        event_slug: string
         id: string
         org_id: string
-        camp_id: string
+        event_id: string
         access_token: string | null
       }
 
       // Fetch camp for sender config
       const campSnap = await adminDb
         .collection('orgs').doc(familyData.org_id)
-        .collection('events').doc(familyData.camp_id)
+        .collection('events').doc(familyData.event_id)
         .get()
       const campSenderConfig = campSnap.exists
         ? campSnap.data() as { from_display_name?: string; reply_to_email?: string }
@@ -70,10 +70,10 @@ export async function POST(req: Request) {
         await sendRegistrationConfirmation({
           to: familyData.email,
           firstName: familyData.first_name,
-          campName: familyData.camp_name,
+          campName: familyData.event_name,
           orgName: familyData.org_name,
           orgSlug: familyData.org_slug,
-          campSlug: familyData.camp_slug,
+          campSlug: familyData.event_slug,
           familyId: familyData.id,
           accessToken: familyData.access_token ?? '',
           fromDisplayName: campSenderConfig.from_display_name,

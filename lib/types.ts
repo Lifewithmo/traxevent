@@ -43,7 +43,7 @@ export interface OrgMember {
   role: OrgRole
   display_name: string
   email: string
-  camp_access: Record<string, { pages: EventPage[] }>
+  event_access: Record<string, { pages: EventPage[] }>
   department_access?: Record<string, { pages: EventPage[] }>  // per-department grants, inherited by that dept's events
 }
 
@@ -71,8 +71,8 @@ export interface Event {
     itinerary: boolean
     communicate: boolean
   }
-  camp_start: string
-  camp_end: string
+  event_start: string
+  event_end: string
   registration_open?: string         // ISO date, optional
   registration_close?: string        // ISO date, optional
   capacity?: number                  // max registrants, optional
@@ -125,10 +125,10 @@ export interface SavedFamilyMember {
 export interface Family {
   id: string
   org_id: string
-  camp_id: string
+  event_id: string
   org_slug: string
-  camp_slug: string
-  camp_name: string
+  event_slug: string
+  event_name: string
   org_name: string
   first_name: string
   last_name: string
@@ -259,7 +259,7 @@ export interface EventFormAssignment {
 export interface SignedForm {
   id: string
   org_id: string    // denormalized for cross-org safety in collectionGroup queries
-  camp_id: string   // denormalized for consistency
+  event_id: string   // denormalized for consistency
   assignment_id: string
   template_id: string
   template_version: number

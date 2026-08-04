@@ -37,9 +37,9 @@ vi.mock('@/lib/firebase-admin', () => ({
 }))
 
 vi.mock('@/lib/auth/assert', () => ({
-  assertOrgMember: vi.fn().mockResolvedValue({ role: 'admin', camp_access: {} }),
-  assertOrgAdmin: vi.fn().mockResolvedValue({ role: 'admin', camp_access: {} }),
-  assertCampPage: vi.fn().mockResolvedValue({ role: 'admin', camp_access: {} }),
+  assertOrgMember: vi.fn().mockResolvedValue({ role: 'admin', event_access: {} }),
+  assertOrgAdmin: vi.fn().mockResolvedValue({ role: 'admin', event_access: {} }),
+  assertCampPage: vi.fn().mockResolvedValue({ role: 'admin', event_access: {} }),
 }))
 
 import type { Family, FamilyNote } from '@/lib/types'
@@ -54,10 +54,10 @@ import {
 const baseFamily: Family = {
   id: 'fam-1',
   org_id: 'org-1',
-  camp_id: 'camp-1',
+  event_id: 'camp-1',
   org_slug: 'acme',
-  camp_slug: 'summer-2025',
-  camp_name: 'Summer Camp',
+  event_slug: 'summer-2025',
+  event_name: 'Summer Camp',
   org_name: 'Acme',
   first_name: 'Lisa',
   last_name: 'Chen',

@@ -4,7 +4,7 @@ import { buildHouseholds, type HouseholdRow } from '@/lib/households'
 function row(o: Partial<HouseholdRow>): HouseholdRow {
   return {
     email: 'a@x.org', first_name: 'Ann', last_name: 'Lee', phone: '555', registrant_uid: null,
-    created_at: '2026-01-01T00:00:00.000Z', camp_id: 'c1', camp_name: 'Summer 2026', year: 2026,
+    created_at: '2026-01-01T00:00:00.000Z', event_id: 'c1', event_name: 'Summer 2026', year: 2026,
     registration_status: 'confirmed', payment_status: 'paid', ...o,
   }
 }
@@ -12,8 +12,8 @@ function row(o: Partial<HouseholdRow>): HouseholdRow {
 describe('buildHouseholds', () => {
   it('dedupes by normalized email into one household with an events history', () => {
     const hs = buildHouseholds([
-      row({ email: 'ann@x.org', camp_id: 'c1', camp_name: 'Summer 2025', year: 2025, created_at: '2025-01-01T00:00:00.000Z' }),
-      row({ email: 'ANN@x.org ', camp_id: 'c2', camp_name: 'Summer 2026', year: 2026, created_at: '2026-01-01T00:00:00.000Z', last_name: 'Lee-Smith' }),
+      row({ email: 'ann@x.org', event_id: 'c1', event_name: 'Summer 2025', year: 2025, created_at: '2025-01-01T00:00:00.000Z' }),
+      row({ email: 'ANN@x.org ', event_id: 'c2', event_name: 'Summer 2026', year: 2026, created_at: '2026-01-01T00:00:00.000Z', last_name: 'Lee-Smith' }),
     ])
     expect(hs).toHaveLength(1)
     expect(hs[0].email).toBe('ann@x.org')

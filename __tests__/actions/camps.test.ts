@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 vi.mock('@/lib/auth/assert', () => ({
-  assertOrgMember: vi.fn().mockResolvedValue({ role: 'admin', camp_access: {} }),
-  assertOrgAdmin: vi.fn().mockResolvedValue({ role: 'admin', camp_access: {} }),
-  assertCampPage: vi.fn().mockResolvedValue({ role: 'admin', camp_access: {} }),
+  assertOrgMember: vi.fn().mockResolvedValue({ role: 'admin', event_access: {} }),
+  assertOrgAdmin: vi.fn().mockResolvedValue({ role: 'admin', event_access: {} }),
+  assertCampPage: vi.fn().mockResolvedValue({ role: 'admin', event_access: {} }),
 }))
 
 const { campUpdateSpy, campDocGetSpy } = vi.hoisted(() => ({
@@ -47,8 +47,8 @@ describe('createCamp — event_type_id', () => {
       year: 2026,
       registration_type: 'family',
       event_type_id: 'gala',
-      camp_start: '2026-06-01',
-      camp_end: '2026-06-07',
+      event_start: '2026-06-01',
+      event_end: '2026-06-07',
     })
     expect(camp.event_type_id).toBe('gala')
   })
@@ -58,8 +58,8 @@ describe('createCamp — event_type_id', () => {
       name: 'Summer Camp',
       year: 2026,
       registration_type: 'family',
-      camp_start: '2026-06-01',
-      camp_end: '2026-06-07',
+      event_start: '2026-06-01',
+      event_end: '2026-06-07',
     })
     expect(camp.event_type_id).toBe('summer-camp')
   })

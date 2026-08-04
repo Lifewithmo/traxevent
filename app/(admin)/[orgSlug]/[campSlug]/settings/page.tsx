@@ -52,8 +52,8 @@ export default function EventSettingsPage() {
       setStatus(c.status)
       setEventTypeId(c.event_type_id ?? DEFAULT_EVENT_TYPE_ID)
       setDepartmentId(c.department_id ?? '')
-      setCampStart(c.camp_start)
-      setCampEnd(c.camp_end)
+      setCampStart(c.event_start)
+      setCampEnd(c.event_end)
       setRegistrationOpen(c.registration_open ?? '')
       setRegistrationClose(c.registration_close ?? '')
       setCapacity(c.capacity != null ? String(c.capacity) : '')
@@ -81,8 +81,8 @@ export default function EventSettingsPage() {
         event_type_terminology: selectedType
           ? (selectedType.is_custom ? selectedType.terminology : null)
           : undefined,
-        camp_start: campStart,
-        camp_end: campEnd,
+        event_start: campStart,
+        event_end: campEnd,
         registration_open: registrationOpen || undefined,
         registration_close: registrationClose || undefined,
         capacity: capacity ? Number(capacity) : undefined,

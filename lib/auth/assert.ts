@@ -12,7 +12,7 @@ export async function assertOrgMember(orgId: string): Promise<OrgMember> {
   if (!user) throw new Error('Unauthorized')
   if (user.role === 'platform_admin') {
     const snap = await adminDb.collection('orgs').doc(orgId).collection('members').doc(user.uid).get()
-    return (snap.exists ? snap.data() : { uid: user.uid, role: 'admin', display_name: '', email: '', camp_access: {} }) as OrgMember
+    return (snap.exists ? snap.data() : { uid: user.uid, role: 'admin', display_name: '', email: '', event_access: {} }) as OrgMember
   }
   if (user.orgId !== orgId) throw new Error('Forbidden')
   const snap = await adminDb.collection('orgs').doc(orgId).collection('members').doc(user.uid).get()

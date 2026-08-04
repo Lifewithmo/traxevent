@@ -19,9 +19,9 @@ vi.mock('@/actions/auth', () => ({
 }))
 
 vi.mock('@/lib/auth/assert', () => ({
-  assertOrgMember: vi.fn().mockResolvedValue({ role: 'admin', camp_access: {} }),
-  assertOrgAdmin: vi.fn().mockResolvedValue({ role: 'admin', camp_access: {} }),
-  assertCampPage: vi.fn().mockResolvedValue({ role: 'admin', camp_access: {} }),
+  assertOrgMember: vi.fn().mockResolvedValue({ role: 'admin', event_access: {} }),
+  assertOrgAdmin: vi.fn().mockResolvedValue({ role: 'admin', event_access: {} }),
+  assertCampPage: vi.fn().mockResolvedValue({ role: 'admin', event_access: {} }),
 }))
 
 import { buildInviteToken, validateCampPages } from '@/lib/tokens'
@@ -61,11 +61,11 @@ describe('validateCampPages', () => {
 })
 
 describe('updateStaffCampAccess', () => {
-  it('updates the camp_access pages field with validated pages', async () => {
+  it('updates the event_access pages field with validated pages', async () => {
     updateSpy.mockClear()
     await updateStaffCampAccess('org1', 'uid1', 'camp1', ['dashboard', 'bogus', 'teams'])
     expect(updateSpy).toHaveBeenCalledWith({
-      'camp_access.camp1.pages': ['dashboard', 'teams'],
+      'event_access.camp1.pages': ['dashboard', 'teams'],
     })
   })
 })

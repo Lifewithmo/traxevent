@@ -159,7 +159,7 @@ export async function submitSignedForm(
   const signed: SignedForm = {
     id,
     org_id: orgId,
-    camp_id: campId,
+    event_id: campId,
     assignment_id: input.assignmentId,
     template_id: input.templateId,
     template_version: input.templateVersion,

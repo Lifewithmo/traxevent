@@ -25,7 +25,7 @@ export default function MyRegistrationsPage() {
   }, [user])
 
   async function handleClaim(f: Family) {
-    await claimRegistration(f.org_id, f.camp_id, f.id)
+    await claimRegistration(f.org_id, f.event_id, f.id)
     setClaimable((prev) => prev.filter((c) => c.id !== f.id))
     setRegistrations((prev) => [f, ...prev])
   }
@@ -65,7 +65,7 @@ export default function MyRegistrationsPage() {
           <ul className="space-y-2">
             {claimable.map((f) => (
               <li key={f.id} className="flex items-center justify-between gap-3 text-sm">
-                <span>{f.camp_name} <span className="text-gray-400">· {f.org_name}</span></span>
+                <span>{f.event_name} <span className="text-gray-400">· {f.org_name}</span></span>
                 <Button size="sm" className="bg-[#7C3AED]" onClick={() => handleClaim(f)}>Claim</Button>
               </li>
             ))}

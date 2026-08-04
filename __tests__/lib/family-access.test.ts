@@ -63,7 +63,7 @@ describe('assertFamilyAccess', () => {
   it('allows an org member with the camp-page grant', async () => {
     famGetSpy.mockResolvedValue(fam({ registrant_uid: 'other' }))
     getCurrentUserSpy.mockResolvedValue({ uid: 'admin1', orgId: 'o', role: 'admin' })
-    memberGetSpy.mockResolvedValue({ exists: true, data: () => ({ uid: 'admin1', role: 'admin', camp_access: {} }) })
+    memberGetSpy.mockResolvedValue({ exists: true, data: () => ({ uid: 'admin1', role: 'admin', event_access: {} }) })
     await expect(assertFamilyAccess('o', 'c', 'fam1', { page: 'families' })).resolves.toBeTruthy()
   })
 })

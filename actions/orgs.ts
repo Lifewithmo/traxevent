@@ -31,7 +31,7 @@ export async function createOrg(
   await adminDb
     .collection('orgs').doc(orgId)
     .collection('members').doc(uid)
-    .set({ uid, role: 'owner' as OrgRole, display_name: displayName, email, camp_access: {} })
+    .set({ uid, role: 'owner' as OrgRole, display_name: displayName, email, event_access: {} })
 
   // Set JWT claims (orgSlug included so login redirect works without extra lookup)
   await setOrgClaims(uid, orgId, slug, 'owner')

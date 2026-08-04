@@ -3,7 +3,7 @@ import { canAccessCampPage } from '@/lib/auth/access'
 import type { OrgMember } from '@/lib/types'
 
 function member(o: Partial<OrgMember>): OrgMember {
-  return { uid: 'u', role: 'staff', display_name: 'S', email: 's@x.org', camp_access: {}, ...o }
+  return { uid: 'u', role: 'staff', display_name: 'S', email: 's@x.org', event_access: {}, ...o }
 }
 
 describe('canAccessCampPage', () => {
@@ -13,20 +13,20 @@ describe('canAccessCampPage', () => {
   })
 
   it('staff can access only granted pages for the specific camp', () => {
-    const m = member({ role: 'staff', camp_access: { 'camp-1': { pages: ['families', 'forms'] } } })
+    const m = member({ role: 'staff', event_access: { 'camp-1': { pages: ['families', 'forms'] } } })
     expect(canAccessCampPage(m, 'camp-1', 'families')).toBe(true)
     expect(canAccessCampPage(m, 'camp-1', 'budget')).toBe(false)
   })
 
   it('staff with no entry for the camp is denied', () => {
-    const m = member({ role: 'staff', camp_access: { 'camp-2': { pages: ['families'] } } })
+    const m = member({ role: 'staff', event_access: { 'camp-2': { pages: ['families'] } } })
     expect(canAccessCampPage(m, 'camp-1', 'families')).toBe(false)
   })
 })
 
 describe('canAccessCampPage — department inheritance', () => {
   it('grants access when the member has a department grant for the camp\'s department', () => {
-    const m = member({ role: 'staff', camp_access: {}, department_access: { 'dept-1': { pages: ['forms', 'families'] } } })
+    const m = member({ role: 'staff', event_access: {}, department_access: { 'dept-1': { pages: ['forms', 'families'] } } })
     expect(canAccessCampPage(m, 'camp-1', 'forms', 'dept-1')).toBe(true)
     expect(canAccessCampPage(m, 'camp-1', 'budget', 'dept-1')).toBe(false)
   })
@@ -39,12 +39,12 @@ describe('canAccessCampPage — department inheritance', () => {
   })
 
   it('explicit camp grant still works regardless of department', () => {
-    const m = member({ role: 'staff', camp_access: { 'camp-1': { pages: ['families'] } } })
+    const m = member({ role: 'staff', event_access: { 'camp-1': { pages: ['families'] } } })
     expect(canAccessCampPage(m, 'camp-1', 'families', 'dept-1')).toBe(true)
   })
 
   it('camp grant OR department grant (union)', () => {
-    const m = member({ role: 'staff', camp_access: { 'camp-1': { pages: ['families'] } }, department_access: { 'dept-1': { pages: ['forms'] } } })
+    const m = member({ role: 'staff', event_access: { 'camp-1': { pages: ['families'] } }, department_access: { 'dept-1': { pages: ['forms'] } } })
     expect(canAccessCampPage(m, 'camp-1', 'families', 'dept-1')).toBe(true)
     expect(canAccessCampPage(m, 'camp-1', 'forms', 'dept-1')).toBe(true)
   })

@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 vi.mock('@/lib/auth/assert', () => ({
-  assertOrgMember: vi.fn().mockResolvedValue({ role: 'admin', camp_access: {} }),
-  assertOrgAdmin: vi.fn().mockResolvedValue({ role: 'admin', camp_access: {} }),
-  assertCampPage: vi.fn().mockResolvedValue({ role: 'admin', camp_access: {} }),
+  assertOrgMember: vi.fn().mockResolvedValue({ role: 'admin', event_access: {} }),
+  assertOrgAdmin: vi.fn().mockResolvedValue({ role: 'admin', event_access: {} }),
+  assertCampPage: vi.fn().mockResolvedValue({ role: 'admin', event_access: {} }),
 }))
 
 const newCampSetSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
@@ -55,7 +55,7 @@ const sourceCamp = {
   id: 'src', name: 'Summer Camp 2025', slug: 'summer-camp-2025', year: 2025, status: 'active',
   registration_type: 'family', event_type_id: 'summer-camp',
   features: { accommodations: true, teams: true, budget: true, itinerary: true, communicate: true },
-  camp_start: '2025-07-10', camp_end: '2025-07-13', capacity: 100, payment_amount: 150,
+  event_start: '2025-07-10', event_end: '2025-07-13', capacity: 100, payment_amount: 150,
   from_display_name: 'Summer Camp', reply_to_email: 'd@x.org', created_at: '2025-01-01',
 }
 
@@ -70,7 +70,7 @@ describe('duplicateEvent', () => {
 
   it('creates a new draft camp copying settings with the new name/year/dates', async () => {
     const camp = await duplicateEvent('org-1', 'src', {
-      name: 'Summer Camp 2026', year: 2026, camp_start: '2026-07-10', camp_end: '2026-07-13',
+      name: 'Summer Camp 2026', year: 2026, event_start: '2026-07-10', event_end: '2026-07-13',
     })
     expect(newCampSetSpy).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -81,8 +81,8 @@ describe('duplicateEvent', () => {
         event_type_id: 'summer-camp',
         capacity: 100,
         payment_amount: 150,
-        camp_start: '2026-07-10',
-        camp_end: '2026-07-13',
+        event_start: '2026-07-10',
+        event_end: '2026-07-13',
       })
     )
     expect(camp.status).toBe('draft')
@@ -90,7 +90,7 @@ describe('duplicateEvent', () => {
   })
 
   it('copies assignment slots and form assignments to the new event', async () => {
-    await duplicateEvent('org-1', 'src', { name: 'X', year: 2026, camp_start: '2026-07-10', camp_end: '2026-07-13' })
+    await duplicateEvent('org-1', 'src', { name: 'X', year: 2026, event_start: '2026-07-10', event_end: '2026-07-13' })
     expect(newSlotSetSpy).toHaveBeenCalledTimes(1)
     expect(newAssignmentSetSpy).toHaveBeenCalledTimes(1)
   })
@@ -98,7 +98,7 @@ describe('duplicateEvent', () => {
   it('throws when the source camp does not exist', async () => {
     getSourceCampSpy.mockResolvedValue({ exists: false })
     await expect(
-      duplicateEvent('org-1', 'missing', { name: 'X', year: 2026, camp_start: '2026-07-10', camp_end: '2026-07-13' })
+      duplicateEvent('org-1', 'missing', { name: 'X', year: 2026, event_start: '2026-07-10', event_end: '2026-07-13' })
     ).rejects.toThrow('Source event not found')
   })
 
@@ -108,7 +108,7 @@ describe('duplicateEvent', () => {
       .mockResolvedValueOnce({ empty: false })
       .mockResolvedValueOnce({ empty: true })
     const camp = await duplicateEvent('org-1', 'src', {
-      name: 'Summer Camp', year: 2026, camp_start: '2026-07-10', camp_end: '2026-07-13',
+      name: 'Summer Camp', year: 2026, event_start: '2026-07-10', event_end: '2026-07-13',
     })
     expect(camp.slug).toBe('summer-camp-2026-2')
   })

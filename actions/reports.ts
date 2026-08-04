@@ -110,7 +110,7 @@ export async function getFormSubmissionReport(orgId: string, campId: string): Pr
     adminDb
       .collectionGroup('signed_forms')
       .where('org_id', '==', orgId)
-      .where('camp_id', '==', campId)
+      .where('event_id', '==', campId)
       .get(),
   ])
 

@@ -15,8 +15,8 @@ import type { Family } from '@/lib/types'
 
 function fam(overrides: Partial<Family>): Family {
   return {
-    id: 'f1', org_id: 'o', camp_id: 'c', org_slug: 'o', camp_slug: 'c',
-    camp_name: 'Camp', org_name: 'Org', first_name: 'Jane', last_name: 'Smith',
+    id: 'f1', org_id: 'o', event_id: 'c', org_slug: 'o', event_slug: 'c',
+    event_name: 'Camp', org_name: 'Org', first_name: 'Jane', last_name: 'Smith',
     email: 'jane@example.com', phone: '555', address: { street: '', city: '', state: '', zip: '' },
     emergency_contact: { name: '', phone: '', relationship: '' },
     registration_status: 'confirmed', payment_status: 'paid',
@@ -170,7 +170,7 @@ describe('buildOrgCampRow', () => {
     ]
     const row = buildOrgCampRow(camp, families)
     expect(row).toMatchObject({
-      camp_id: 'c1', camp_name: 'Summer', year: 2026, status: 'active', department_id: 'd1',
+      event_id: 'c1', event_name: 'Summer', year: 2026, status: 'active', department_id: 'd1',
       registrants: 2, confirmed: 1, pending: 1, waitlisted: 0,
       totalDue: 200, totalPaid: 100, outstanding: 100,
     })

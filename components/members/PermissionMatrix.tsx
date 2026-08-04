@@ -64,7 +64,7 @@ export function PermissionMatrix({ orgId, staff, camps }: PermissionMatrixProps)
               </thead>
               <tbody>
                 {staff.map((member) => {
-                  const pages = member.camp_access?.[camp.id]?.pages ?? []
+                  const pages = member.event_access?.[camp.id]?.pages ?? []
                   return (
                     <tr key={member.uid} className="border-t">
                       <td className="py-3 pr-6">

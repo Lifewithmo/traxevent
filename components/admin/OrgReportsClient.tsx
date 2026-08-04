@@ -21,7 +21,7 @@ function downloadCsv(rows: OrgReport['rows']) {
   const esc = (s: string) => `"${s.replace(/"/g, '""')}"`
   const header = 'Event,Year,Status,Registrants,Confirmed,Pending,Waitlisted,Total Due,Total Paid,Outstanding'
   const lines = rows.map((r) =>
-    [esc(r.camp_name), r.year, esc(r.status), r.registrants, r.confirmed, r.pending, r.waitlisted, r.totalDue.toFixed(2), r.totalPaid.toFixed(2), r.outstanding.toFixed(2)].join(',')
+    [esc(r.event_name), r.year, esc(r.status), r.registrants, r.confirmed, r.pending, r.waitlisted, r.totalDue.toFixed(2), r.totalPaid.toFixed(2), r.outstanding.toFixed(2)].join(',')
   )
   const blob = new Blob([[header, ...lines].join('\n')], { type: 'text/csv' })
   const url = URL.createObjectURL(blob)
@@ -93,8 +93,8 @@ export function OrgReportsClient({ report, departments }: OrgReportsClientProps)
               <tr><td colSpan={7} className="px-3 py-4 text-center text-muted-foreground">No events.</td></tr>
             ) : (
               rows.map((r) => (
-                <tr key={r.camp_id} className="border-b last:border-0">
-                  <td className="px-3 py-2 font-medium">{r.camp_name}</td>
+                <tr key={r.event_id} className="border-b last:border-0">
+                  <td className="px-3 py-2 font-medium">{r.event_name}</td>
                   <td className="px-3 py-2 text-right">{r.year}</td>
                   <td className="px-3 py-2 text-right">{r.registrants}</td>
                   <td className="px-3 py-2 text-right">{r.confirmed}</td>

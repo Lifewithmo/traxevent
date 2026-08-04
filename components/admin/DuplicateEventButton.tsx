@@ -29,7 +29,7 @@ export function DuplicateEventButton({ orgId, orgSlug, sourceCampId, sourceName 
     setBusy(true)
     setError(null)
     try {
-      const camp = await duplicateEvent(orgId, sourceCampId, { name: name.trim(), year, camp_start: start, camp_end: end })
+      const camp = await duplicateEvent(orgId, sourceCampId, { name: name.trim(), year, event_start: start, event_end: end })
       router.push(`/${orgSlug}/${camp.slug}/dashboard`)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to duplicate')

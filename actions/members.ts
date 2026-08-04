@@ -65,7 +65,7 @@ export async function acceptInvitation(
   await adminDb
     .collection('orgs').doc(orgId)
     .collection('members').doc(uid)
-    .set({ uid, role: inv.role, display_name: displayName, email, camp_access: {} })
+    .set({ uid, role: inv.role, display_name: displayName, email, event_access: {} })
 
   await invRef.update({ accepted_at: new Date().toISOString() })
   await setOrgClaims(uid, orgId, orgSlug, inv.role)
@@ -91,7 +91,7 @@ export async function updateStaffCampAccess(
   await adminDb
     .collection('orgs').doc(orgId)
     .collection('members').doc(uid)
-    .update({ [`camp_access.${campId}.pages`]: validPages })
+    .update({ [`event_access.${campId}.pages`]: validPages })
 }
 
 export async function updateStaffDepartmentAccess(

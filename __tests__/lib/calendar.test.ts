@@ -7,7 +7,7 @@ function camp(overrides: Partial<Event>): Event {
     id: 'c1',
     name: 'Summer Camp',
     slug: 'summer-camp',
-    camp_start: '2026-07-10',
+    event_start: '2026-07-10',
     ...overrides,
   } as Event
 }
@@ -27,17 +27,17 @@ describe('buildCalendar', () => {
   it('merges camps and leads sorted ascending by date', () => {
     const items = buildCalendar(
       'my-org',
-      [camp({ id: 'c1', name: 'Summer Camp', slug: 'summer-camp', camp_start: '2026-07-10' })],
+      [camp({ id: 'c1', name: 'Summer Camp', slug: 'summer-camp', event_start: '2026-07-10' })],
       [lead({ id: 'l1', name: 'Acme Wedding', event_date: '2026-07-05' })]
     )
     expect(items.map((i) => i.date)).toEqual(['2026-07-05', '2026-07-10'])
     expect(items.map((i) => i.id)).toEqual(['l1', 'c1'])
   })
 
-  it('omits items missing camp_start or event_date', () => {
+  it('omits items missing event_start or event_date', () => {
     const items = buildCalendar(
       'my-org',
-      [camp({ id: 'c1', camp_start: '' }), camp({ id: 'c2', camp_start: '2026-08-01' })],
+      [camp({ id: 'c1', event_start: '' }), camp({ id: 'c2', event_start: '2026-08-01' })],
       [lead({ id: 'l1', event_date: undefined }), lead({ id: 'l2', event_date: '2026-07-01' })]
     )
     expect(items.map((i) => i.id)).toEqual(['l2', 'c2'])
@@ -46,7 +46,7 @@ describe('buildCalendar', () => {
   it('sets kind and href correctly for camps (event) and leads (lead)', () => {
     const items = buildCalendar(
       'my-org',
-      [camp({ id: 'c1', slug: 'summer-camp', camp_start: '2026-07-10' })],
+      [camp({ id: 'c1', slug: 'summer-camp', event_start: '2026-07-10' })],
       [lead({ id: 'l1', event_date: '2026-07-05' })]
     )
     const evt = items.find((i) => i.id === 'c1')!

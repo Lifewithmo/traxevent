@@ -10,7 +10,7 @@ function downloadCsv(households: Household[]) {
   const esc = (s: string) => `"${String(s).replace(/"/g, '""')}"`
   const header = 'Name,Email,Phone,Events,Most recent event'
   const lines = households.map((h) =>
-    [esc(h.name), esc(h.email), esc(h.phone), h.event_count, esc(h.events[0]?.camp_name ?? '')].join(',')
+    [esc(h.name), esc(h.email), esc(h.phone), h.event_count, esc(h.events[0]?.event_name ?? '')].join(',')
   )
   const blob = new Blob([[header, ...lines].join('\n')], { type: 'text/csv' })
   const url = URL.createObjectURL(blob)
@@ -63,8 +63,8 @@ export function RegistrantsClient({ households }: { households: Household[] }) {
               {open === h.email && (
                 <ul className="px-4 pb-3 space-y-1">
                   {h.events.map((ev, i) => (
-                    <li key={`${ev.camp_id}-${i}`} className="flex items-center justify-between text-sm">
-                      <span>{ev.camp_name} <span className="text-muted-foreground">({ev.year})</span></span>
+                    <li key={`${ev.event_id}-${i}`} className="flex items-center justify-between text-sm">
+                      <span>{ev.event_name} <span className="text-muted-foreground">({ev.year})</span></span>
                       <span className="flex gap-1">
                         <Badge variant="secondary" className="capitalize">{ev.registration_status}</Badge>
                         <Badge variant="outline" className="capitalize">{ev.payment_status}</Badge>

@@ -67,9 +67,9 @@ vi.mock('@/lib/firebase-admin', () => ({
 }))
 
 vi.mock('@/lib/auth/assert', () => ({
-  assertOrgMember: vi.fn().mockResolvedValue({ role: 'admin', camp_access: {} }),
-  assertOrgAdmin: vi.fn().mockResolvedValue({ role: 'admin', camp_access: {} }),
-  assertCampPage: vi.fn().mockResolvedValue({ role: 'admin', camp_access: {} }),
+  assertOrgMember: vi.fn().mockResolvedValue({ role: 'admin', event_access: {} }),
+  assertOrgAdmin: vi.fn().mockResolvedValue({ role: 'admin', event_access: {} }),
+  assertCampPage: vi.fn().mockResolvedValue({ role: 'admin', event_access: {} }),
 }))
 
 import { sendEmailBlast } from '@/actions/communicate'
@@ -196,7 +196,7 @@ describe('sendEmailBlast', () => {
     getVerifiedDomainSpy.mockResolvedValue('mail.firsthills.org')
     getMemberSpy.mockResolvedValue({
       exists: true,
-      data: () => ({ uid: 'u1', display_name: 'John Smith', email: 'john.smith@personal.com', role: 'staff', camp_access: {} }),
+      data: () => ({ uid: 'u1', display_name: 'John Smith', email: 'john.smith@personal.com', role: 'staff', event_access: {} }),
     })
     getFamiliesSpy.mockResolvedValue({ docs: [makeFamily('confirmed', 'a@test.com')] })
     await sendEmailBlast('org-1', 'camp-1', {
