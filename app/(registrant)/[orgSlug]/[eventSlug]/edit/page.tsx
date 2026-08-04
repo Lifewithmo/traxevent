@@ -31,7 +31,7 @@ export default function EditRegistrationPage() {
       const o = await getOrgBySlug(params.orgSlug)
       if (!o) { setError('Organization not found'); setLoading(false); return }
       const c = await getEventBySlug(o.id, params.eventSlug)
-      if (!c) { setError('Camp not found'); setLoading(false); return }
+      if (!c) { setError('Event not found'); setLoading(false); return }
       const f = await getRegistrationByToken(o.id, c.id, token)
       if (!f) { setError('Registration not found or link expired'); setLoading(false); return }
       const ms = await getFamilyMembers(o.id, c.id, f.id, token)

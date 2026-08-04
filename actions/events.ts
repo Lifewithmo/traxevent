@@ -101,7 +101,7 @@ export async function updateEvent(
     .collection('events').doc(eventId)
 
   const snap = await ref.get()
-  if (!snap.exists) throw new Error('Camp not found')
+  if (!snap.exists) throw new Error('Event not found')
 
   // Firestore rejects `undefined` (ignoreUndefinedProperties is off). Convention:
   //   undefined  → leave the field unchanged (callers pass it for blank optionals)

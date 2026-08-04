@@ -90,7 +90,7 @@ export default function NewEventPage() {
             </div>
             <div className="space-y-1">
               <Label htmlFor="name">Event name</Label>
-              <Input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Summer Camp 2026" required />
+              <Input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Summer Gala 2026" required />
             </div>
             <div className="space-y-1">
               <Label htmlFor="year">Year</Label>

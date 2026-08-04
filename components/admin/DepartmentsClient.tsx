@@ -67,7 +67,7 @@ export function DepartmentsClient({ orgId, departments: initial }: DepartmentsCl
         {!creating && <Button onClick={() => { setCreating(true); setError(null) }}>New department</Button>}
       </div>
       <p className="text-sm text-muted-foreground">
-        Departments are an optional way to group your events (e.g. by ministry or program). Assign an event to a
+        Departments are an optional way to group your events (e.g. by team or program). Assign an event to a
         department in its settings. Grouping shows up on your events list and the org-level report.
       </p>
 

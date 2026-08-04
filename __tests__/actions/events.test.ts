@@ -100,9 +100,9 @@ describe('updateEvent', () => {
     expect(payload).not.toHaveProperty('event_type_terminology')
   })
 
-  it('throws "Camp not found" if the camp document does not exist', async () => {
+  it('throws "Event not found" if the event document does not exist', async () => {
     eventDocGetSpy.mockResolvedValue({ exists: false })
-    await expect(updateEvent('org-1', 'camp-999', {})).rejects.toThrow('Camp not found')
+    await expect(updateEvent('org-1', 'camp-999', {})).rejects.toThrow('Event not found')
     expect(eventUpdateSpy).not.toHaveBeenCalled()
   })
 

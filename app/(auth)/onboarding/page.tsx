@@ -50,13 +50,13 @@ export default function OnboardingPage() {
           <div className="space-y-1">
             <Label htmlFor="orgName">Organization name</Label>
             <p className="text-xs text-gray-500">
-              E.g. &quot;First Hills Fellowship&quot; or &quot;Riverside Youth Ministry&quot;
+              E.g. &quot;Riverside Catering&quot; or &quot;Summit Event Co.&quot;
             </p>
             <Input
               id="orgName"
               value={orgName}
               onChange={(e) => setOrgName(e.target.value)}
-              placeholder="Your church or organization"
+              placeholder="Your business or organization"
               required
             />
           </div>

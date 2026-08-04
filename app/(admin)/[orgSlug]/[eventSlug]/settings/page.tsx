@@ -273,7 +273,7 @@ export default function EventSettingsPage() {
                 id="fromDisplayName"
                 value={fromDisplayName}
                 onChange={(e) => { setFromDisplayName(e.target.value); setSaved(false) }}
-                placeholder={`${event.name} at Your Church`}
+                placeholder={`${event.name} at Your Business`}
               />
               <p className="text-xs text-muted-foreground">
                 How your org appears in the "From" field of emails. Defaults to TraxEvent if left blank.
@@ -287,7 +287,7 @@ export default function EventSettingsPage() {
                 type="email"
                 value={replyToEmail}
                 onChange={(e) => { setReplyToEmail(e.target.value); setSaved(false) }}
-                placeholder="director@yourchurch.org"
+                placeholder="you@yourbusiness.com"
               />
               <p className="text-xs text-muted-foreground">
                 Replies from registrants are routed to this address instead of TraxEvent.

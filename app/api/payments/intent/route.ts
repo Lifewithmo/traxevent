@@ -27,7 +27,7 @@ export async function POST(req: Request) {
     .collection('orgs').doc(org.id)
     .collection('events').where('slug', '==', eventSlug).limit(1)
     .get()
-  if (eventSnap.empty) return NextResponse.json({ error: 'Camp not found' }, { status: 404 })
+  if (eventSnap.empty) return NextResponse.json({ error: 'Event not found' }, { status: 404 })
   const event = eventSnap.docs[0].data() as Event
 
   if (!event.payment_amount || event.payment_amount <= 0) {

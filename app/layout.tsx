@@ -7,7 +7,7 @@ const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
   title: 'TraxEvent',
-  description: 'Camp registration and management platform',
+  description: 'Event registration and management platform',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

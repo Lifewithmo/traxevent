@@ -122,10 +122,10 @@ export function EmailDomainClient({
                 id="domain"
                 value={domain}
                 onChange={(e) => setDomain(e.target.value)}
-                placeholder="mail.yourchurch.org"
+                placeholder="mail.yourbusiness.com"
               />
               <p className="text-xs text-muted-foreground">
-                Use a subdomain like <span className="font-mono">mail.yourchurch.org</span> dedicated to sending.
+                Use a subdomain like <span className="font-mono">mail.yourbusiness.com</span> dedicated to sending.
               </p>
             </div>
             <Button onClick={handleCreate} disabled={busy || !domain.trim()}>
