@@ -55,13 +55,13 @@ export async function POST(req: Request) {
         access_token: string | null
       }
 
-      // Fetch camp for sender config
-      const campSnap = await adminDb
+      // Fetch event for sender config
+      const eventSnap = await adminDb
         .collection('orgs').doc(familyData.org_id)
         .collection('events').doc(familyData.event_id)
         .get()
-      const campSenderConfig = campSnap.exists
-        ? campSnap.data() as { from_display_name?: string; reply_to_email?: string }
+      const eventSenderConfig = eventSnap.exists
+        ? eventSnap.data() as { from_display_name?: string; reply_to_email?: string }
         : {}
 
       // Send confirmation email (best-effort — don't fail the webhook if email fails)
@@ -70,14 +70,14 @@ export async function POST(req: Request) {
         await sendRegistrationConfirmation({
           to: familyData.email,
           firstName: familyData.first_name,
-          campName: familyData.event_name,
+          eventName: familyData.event_name,
           orgName: familyData.org_name,
           orgSlug: familyData.org_slug,
           campSlug: familyData.event_slug,
           familyId: familyData.id,
           accessToken: familyData.access_token ?? '',
-          fromDisplayName: campSenderConfig.from_display_name,
-          replyTo: campSenderConfig.reply_to_email,
+          fromDisplayName: eventSenderConfig.from_display_name,
+          replyTo: eventSenderConfig.reply_to_email,
           fromDomain,
         })
       } catch {

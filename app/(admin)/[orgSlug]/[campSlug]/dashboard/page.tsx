@@ -1,4 +1,4 @@
-import { requireCamp } from '@/lib/auth/guards'
+import { requireEvent } from '@/lib/auth/guards'
 
 export default async function DashboardPage({
   params,
@@ -6,7 +6,7 @@ export default async function DashboardPage({
   params: Promise<{ orgSlug: string; campSlug: string }>
 }) {
   const { orgSlug, campSlug } = await params
-  await requireCamp(orgSlug, campSlug)
+  await requireEvent(orgSlug, campSlug)
   return (
     <div className="p-6">
       <h1 className="text-2xl font-bold mb-2">Dashboard</h1>

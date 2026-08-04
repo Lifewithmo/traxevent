@@ -3,7 +3,7 @@ import { getResend, buildFromAddress } from '@/lib/resend'
 interface RegistrationConfirmationParams {
   to: string
   firstName: string
-  campName: string
+  eventName: string
   orgName: string
   orgSlug: string
   campSlug: string
@@ -26,12 +26,12 @@ export async function sendRegistrationConfirmation(
     from,
     to: params.to,
     ...(params.replyTo ? { replyTo: params.replyTo } : {}),
-    subject: `Registration confirmed — ${params.campName}`,
+    subject: `Registration confirmed — ${params.eventName}`,
     html: `
       <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
         <h1 style="color:#7C3AED;margin-bottom:8px">You're registered!</h1>
         <p style="color:#4C1D95;font-size:16px;margin-bottom:24px">
-          Hi ${params.firstName}, your registration for <strong>${params.campName}</strong>
+          Hi ${params.firstName}, your registration for <strong>${params.eventName}</strong>
           at ${params.orgName} has been received.
         </p>
         <a href="${portalUrl}"
@@ -57,7 +57,7 @@ interface FormSignedConfirmationParams {
   to: string
   firstName: string
   formName: string
-  campName: string
+  eventName: string
   orgName: string
   signedAt: string
   fromDisplayName?: string
@@ -74,13 +74,13 @@ export async function sendFormSignedConfirmation(
     from,
     to: params.to,
     ...(params.replyTo ? { replyTo: params.replyTo } : {}),
-    subject: `Form signed — ${params.formName} (${params.campName})`,
+    subject: `Form signed — ${params.formName} (${params.eventName})`,
     html: `
       <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
         <h1 style="color:#7C3AED;margin-bottom:8px">Form signed</h1>
         <p style="color:#4C1D95;font-size:16px;margin-bottom:24px">
           Hi ${params.firstName}, your electronic signature has been recorded for
-          <strong>${params.formName}</strong> — ${params.campName} at ${params.orgName}.
+          <strong>${params.formName}</strong> — ${params.eventName} at ${params.orgName}.
         </p>
         <p style="color:#64748B;font-size:13px;margin-bottom:8px">
           Signed: ${new Date(params.signedAt).toLocaleString()}

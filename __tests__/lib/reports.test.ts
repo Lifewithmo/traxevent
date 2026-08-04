@@ -7,7 +7,7 @@ import {
   buildTshirtReport,
   buildCustomCsv,
   CUSTOM_REPORT_FIELDS,
-  buildOrgCampRow,
+  buildOrgEventRow,
   aggregateOrgReport,
   type MemberWithFamily,
 } from '@/lib/reports'
@@ -163,12 +163,12 @@ describe('buildCustomCsv', () => {
 
 describe('buildOrgCampRow', () => {
   it('collapses one camp\'s (active) families into a row', () => {
-    const camp = { id: 'c1', name: 'Summer', year: 2026, status: 'active', department_id: 'd1' }
+    const event = { id: 'c1', name: 'Summer', year: 2026, status: 'active', department_id: 'd1' }
     const families = [
       fam({ registration_status: 'confirmed', amount_due: 100, amount_paid: 100 }),
       fam({ registration_status: 'pending', amount_due: 100, amount_paid: 0, payment_status: 'unpaid' }),
     ]
-    const row = buildOrgCampRow(camp, families)
+    const row = buildOrgEventRow(event, families)
     expect(row).toMatchObject({
       event_id: 'c1', event_name: 'Summer', year: 2026, status: 'active', department_id: 'd1',
       registrants: 2, confirmed: 1, pending: 1, waitlisted: 0,
@@ -177,7 +177,7 @@ describe('buildOrgCampRow', () => {
   })
 
   it('defaults department_id to null when absent', () => {
-    const row = buildOrgCampRow({ id: 'c2', name: 'X', year: 2026, status: 'draft' }, [])
+    const row = buildOrgEventRow({ id: 'c2', name: 'X', year: 2026, status: 'draft' }, [])
     expect(row.department_id).toBeNull()
     expect(row.registrants).toBe(0)
   })
@@ -186,15 +186,15 @@ describe('buildOrgCampRow', () => {
 describe('aggregateOrgReport', () => {
   it('sums rows into org totals', () => {
     const rows = [
-      buildOrgCampRow({ id: 'c1', name: 'A', year: 2026, status: 'active' }, [fam({ amount_due: 100, amount_paid: 50, payment_status: 'partial' })]),
-      buildOrgCampRow({ id: 'c2', name: 'B', year: 2026, status: 'active' }, [fam({ amount_due: 100, amount_paid: 100 })]),
+      buildOrgEventRow({ id: 'c1', name: 'A', year: 2026, status: 'active' }, [fam({ amount_due: 100, amount_paid: 50, payment_status: 'partial' })]),
+      buildOrgEventRow({ id: 'c2', name: 'B', year: 2026, status: 'active' }, [fam({ amount_due: 100, amount_paid: 100 })]),
     ]
     const report = aggregateOrgReport(rows)
     expect(report.rows).toHaveLength(2)
-    expect(report.totals).toMatchObject({ camps: 2, registrants: 2, confirmed: 2, totalDue: 200, totalPaid: 150, outstanding: 50 })
+    expect(report.totals).toMatchObject({ events: 2, registrants: 2, confirmed: 2, totalDue: 200, totalPaid: 150, outstanding: 50 })
   })
 
   it('returns zero totals for no rows', () => {
-    expect(aggregateOrgReport([]).totals).toMatchObject({ camps: 0, registrants: 0, totalDue: 0 })
+    expect(aggregateOrgReport([]).totals).toMatchObject({ events: 0, registrants: 0, totalDue: 0 })
   })
 })

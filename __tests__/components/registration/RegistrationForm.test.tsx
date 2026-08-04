@@ -25,7 +25,7 @@ vi.mock('@/actions/registrant-auth', () => ({
   getRegistrantProfile: vi.fn().mockResolvedValue(null),
 }))
 
-const mockCamp = {
+const mockEvent = {
   id: 'camp-1',
   name: 'Family Camp 2026',
   slug: 'family-camp-2026',
@@ -47,7 +47,7 @@ const mockOrg = {
   created_at: '2026-01-01',
 }
 
-const mockIndividualCamp = {
+const mockIndividualEvent = {
   id: 'camp-2',
   name: 'Grace Retreat 2026',
   slug: 'grace-retreat-2026',
@@ -63,13 +63,13 @@ const mockIndividualCamp = {
 
 describe('RegistrationForm', () => {
   it('renders the first step heading', () => {
-    render(<RegistrationForm camp={mockCamp} org={mockOrg} />)
+    render(<RegistrationForm event={mockEvent} org={mockOrg} />)
     expect(screen.getByText(/Step 1 of 3/i)).toBeInTheDocument()
     expect(screen.getByText(/Contact Information/i)).toBeInTheDocument()
   })
 
   it('shows Step 2 after completing Step 1', async () => {
-    render(<RegistrationForm camp={mockCamp} org={mockOrg} />)
+    render(<RegistrationForm event={mockEvent} org={mockOrg} />)
     await userEvent.type(screen.getByLabelText(/First name/i), 'Jane')
     await userEvent.type(screen.getByLabelText(/Last name/i), 'Smith')
     await userEvent.type(screen.getByLabelText(/Email/i), 'jane@example.com')
@@ -84,12 +84,12 @@ describe('RegistrationForm', () => {
   })
 
   it('shows Step 1 of 2 for individual event types (no members step)', () => {
-    render(<RegistrationForm camp={mockIndividualCamp} org={mockOrg} />)
+    render(<RegistrationForm event={mockIndividualEvent} org={mockOrg} />)
     expect(screen.getByText(/Step 1 of 2/i)).toBeInTheDocument()
   })
 
   it('uses terminology memberPlural as members step label for summer-camp', () => {
-    render(<RegistrationForm camp={mockCamp} org={mockOrg} />)
+    render(<RegistrationForm event={mockEvent} org={mockOrg} />)
     expect(screen.getByText(/Step 1 of 3/i)).toBeInTheDocument()
   })
 
@@ -117,7 +117,7 @@ describe('RegistrationForm', () => {
       updated_at: '2026-01-01',
     })
 
-    render(<RegistrationForm camp={mockCamp} org={mockOrg} />)
+    render(<RegistrationForm event={mockEvent} org={mockOrg} />)
 
     await screen.findByDisplayValue('Jane')
     expect(screen.getByDisplayValue('Smith')).toBeInTheDocument()

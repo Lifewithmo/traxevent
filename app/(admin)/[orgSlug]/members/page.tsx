@@ -1,6 +1,6 @@
 import { getOrgBySlug } from '@/actions/orgs'
 import { listMembers } from '@/actions/members'
-import { listCamps } from '@/actions/camps'
+import { listEvents } from '@/actions/events'
 import { listDepartments } from '@/actions/departments'
 import { InviteMemberModal } from '@/components/members/InviteMemberModal'
 import { PermissionMatrix } from '@/components/members/PermissionMatrix'
@@ -17,7 +17,7 @@ export default async function MembersPage({
   const org = await getOrgBySlug(orgSlug)
   if (!org) redirect('/login')
 
-  const [members, camps, departments] = await Promise.all([listMembers(org.id), listCamps(org.id), listDepartments(org.id)])
+  const [members, events, departments] = await Promise.all([listMembers(org.id), listEvents(org.id), listDepartments(org.id)])
 
   const admins = members.filter((m) => m.role !== 'staff')
   const staff = members.filter((m) => m.role === 'staff')
@@ -56,7 +56,7 @@ export default async function MembersPage({
         <p className="text-sm text-gray-500 mb-4">
           Toggle which pages each staff member can access, per camp.
         </p>
-        <PermissionMatrix orgId={org.id} staff={staff} camps={camps} />
+        <PermissionMatrix orgId={org.id} staff={staff} events={events} />
       </section>
 
       {departments.length > 0 && (

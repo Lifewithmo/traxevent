@@ -6,7 +6,7 @@ import { generateAccessToken, isTokenExpired } from '@/lib/tokens'
 // Attaches a signed access token to a family record. Called after createRegistration.
 export async function attachAccessToken(
   orgId: string,
-  campId: string,
+  eventId: string,
   familyId: string
 ): Promise<string> {
   const token = generateAccessToken()
@@ -16,7 +16,7 @@ export async function attachAccessToken(
 
   await adminDb
     .collection('orgs').doc(orgId)
-    .collection('events').doc(campId)
+    .collection('events').doc(eventId)
     .collection('families').doc(familyId)
     .update({ access_token: token, access_token_expires_at: expiresAt })
 
@@ -26,12 +26,12 @@ export async function attachAccessToken(
 // Validates a token against a family record. Returns the family id if valid, null if not.
 export async function validateAccessToken(
   orgId: string,
-  campId: string,
+  eventId: string,
   token: string
 ): Promise<string | null> {
   const snap = await adminDb
     .collection('orgs').doc(orgId)
-    .collection('events').doc(campId)
+    .collection('events').doc(eventId)
     .collection('families')
     .where('access_token', '==', token)
     .limit(1)

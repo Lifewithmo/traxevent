@@ -13,7 +13,7 @@ interface AdminSidebarProps {
   orgSlug: string
   campSlug?: string
   terminology?: Terminology
-  allowedCampPages?: EventPage[]
+  allowedEventPages?: EventPage[]
   enabledModules?: ModuleId[]
 }
 
@@ -23,7 +23,7 @@ const ORG_PAGE_SLUGS = new Set([
   'contracts', 'invoices', 'vendors', 'calendar', 'new-camp',
 ])
 
-function getCampNav(terminology: Terminology) {
+function getEventNav(terminology: Terminology) {
   return [
     { key: 'dashboard', label: 'Dashboard' },
     { key: 'families', label: terminology.registrantPlural },
@@ -53,7 +53,7 @@ function Section({ label, children }: { label: string; children: React.ReactNode
   )
 }
 
-export function AdminSidebar({ orgSlug, campSlug, terminology, allowedCampPages, enabledModules }: AdminSidebarProps) {
+export function AdminSidebar({ orgSlug, campSlug, terminology, allowedEventPages, enabledModules }: AdminSidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
 
@@ -63,8 +63,8 @@ export function AdminSidebar({ orgSlug, campSlug, terminology, allowedCampPages,
   )
   const [settingsOpen, setSettingsOpen] = useState(settingsActive)
 
-  // Rendered by BOTH the org layout (no campSlug) and the camp layout (with campSlug).
-  // On a camp route the camp layout renders the contextual event sidebar, so the
+  // Rendered by BOTH the org layout (no campSlug) and the event layout (with campSlug).
+  // On an event route the event layout renders the contextual event sidebar, so the
   // org-layout instance hides itself to avoid a doubled sidebar.
   if (!campSlug) {
     const seg = pathname.split('/').filter(Boolean)
@@ -89,15 +89,15 @@ export function AdminSidebar({ orgSlug, campSlug, terminology, allowedCampPages,
     { module: 'calendar' as ModuleId, label: 'Calendar', slug: 'calendar' },
   ].filter((l) => has(l.module))
 
-  const campNav = getCampNav(t)
-  const visibleCampNav = allowedCampPages
-    ? campNav.filter(
+  const eventNav = getEventNav(t)
+  const visibleEventNav = allowedEventPages
+    ? eventNav.filter(
         (n) =>
           n.key === 'dashboard' ||
           n.key === 'settings' ||
-          allowedCampPages.includes(n.key as EventPage)
+          allowedEventPages.includes(n.key as EventPage)
       )
-    : campNav
+    : eventNav
 
   async function handleSignOut() {
     await endSession()
@@ -140,7 +140,7 @@ export function AdminSidebar({ orgSlug, campSlug, terminology, allowedCampPages,
           >
             &larr; Events
           </Link>
-          {visibleCampNav.map(({ key, label }) => {
+          {visibleEventNav.map(({ key, label }) => {
             const href = `/${orgSlug}/${campSlug}/${key}`
             return (
               <Link key={key} href={href} className={navClass(href)}>

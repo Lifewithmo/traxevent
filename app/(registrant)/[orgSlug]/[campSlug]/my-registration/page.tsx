@@ -1,5 +1,5 @@
 import { getOrgBySlug } from '@/actions/orgs'
-import { getCampBySlug } from '@/actions/camps'
+import { getEventBySlug } from '@/actions/events'
 import { getRegistrationByToken, getFamilyMembers } from '@/actions/registrations'
 import { listEventFormAssignments, getSignedForms } from '@/actions/forms'
 import { notFound } from 'next/navigation'
@@ -20,13 +20,13 @@ export default async function MyRegistrationPage({
   const org = await getOrgBySlug(orgSlug)
   if (!org) notFound()
 
-  const camp = await getCampBySlug(org.id, campSlug)
-  if (!camp) notFound()
+  const event = await getEventBySlug(org.id, campSlug)
+  if (!event) notFound()
 
   let family = null
 
   if (token) {
-    family = await getRegistrationByToken(org.id, camp.id, token)
+    family = await getRegistrationByToken(org.id, event.id, token)
   }
 
   if (!family) {
@@ -40,11 +40,11 @@ export default async function MyRegistrationPage({
     )
   }
 
-  const members = await getFamilyMembers(org.id, camp.id, family.id, token)
+  const members = await getFamilyMembers(org.id, event.id, family.id, token)
 
   const [formAssignments, signedForms] = await Promise.all([
-    listEventFormAssignments(org.id, camp.id),
-    getSignedForms(org.id, camp.id, family.id, token),
+    listEventFormAssignments(org.id, event.id),
+    getSignedForms(org.id, event.id, family.id, token),
   ])
   const signedAssignmentIds = new Set(signedForms.map((s) => s.assignment_id))
   const registrantForms = formAssignments.filter((a) => a.audience === 'registrant')
@@ -60,8 +60,8 @@ export default async function MyRegistrationPage({
     <div className="space-y-6">
       <div>
         <p className="text-sm text-[#7C3AED] font-semibold">{org.name}</p>
-        <h1 className="text-2xl font-bold text-[#4C1D95]">{camp.name}</h1>
-        <p className="text-sm text-gray-500">{camp.event_start} → {camp.event_end}</p>
+        <h1 className="text-2xl font-bold text-[#4C1D95]">{event.name}</h1>
+        <p className="text-sm text-gray-500">{event.event_start} → {event.event_end}</p>
       </div>
 
       <div className="bg-white rounded-xl border border-[#DDD6FE] p-5 space-y-4">
@@ -118,7 +118,7 @@ export default async function MyRegistrationPage({
         </div>
       )}
 
-      {camp.itinerary_published && (
+      {event.itinerary_published && (
         <Link
           href={`/${orgSlug}/${campSlug}/schedule${token ? `?token=${token}` : ''}`}
         >

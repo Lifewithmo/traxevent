@@ -15,7 +15,7 @@ interface FamilySlideOverProps {
   familyId: string | null
   families: Family[]
   orgId: string
-  campId: string
+  eventId: string
   onClose: () => void
   onNavigate: (familyId: string) => void
   onStatusChange: (familyId: string, status: Family['registration_status']) => void
@@ -25,7 +25,7 @@ export function FamilySlideOver({
   familyId,
   families,
   orgId,
-  campId,
+  eventId,
   onClose,
   onNavigate,
   onStatusChange,
@@ -40,7 +40,7 @@ export function FamilySlideOver({
     setLoading(true)
     ;(async () => {
       try {
-        const result = await getAdminFamily(orgId, campId, familyId)
+        const result = await getAdminFamily(orgId, eventId, familyId)
         if (result) {
           setFamily(result.family)
           setMembers(result.members)
@@ -49,7 +49,7 @@ export function FamilySlideOver({
         setLoading(false)
       }
     })()
-  }, [familyId, orgId, campId])
+  }, [familyId, orgId, eventId])
 
   // Keyboard: Escape closes
   useEffect(() => {
@@ -72,7 +72,7 @@ export function FamilySlideOver({
     onStatusChange(familyId, status)
     setFamily(prev => prev ? { ...prev, registration_status: status } : prev)
     try {
-      await updateFamilyStatus(orgId, campId, familyId, status, 'Admin')
+      await updateFamilyStatus(orgId, eventId, familyId, status, 'Admin')
     } catch {
       // Revert on failure
       onStatusChange(familyId, previousStatus)
@@ -161,7 +161,7 @@ export function FamilySlideOver({
                   key={family.id}
                   family={family}
                   orgId={orgId}
-                  campId={campId}
+                  eventId={eventId}
                   onSaved={updated => setFamily(prev => prev ? { ...prev, ...updated } : prev)}
                 />
               )}
@@ -171,7 +171,7 @@ export function FamilySlideOver({
                   members={members}
                   familyId={family.id}
                   orgId={orgId}
-                  campId={campId}
+                  eventId={eventId}
                   onSaved={setMembers}
                 />
               )}
@@ -180,7 +180,7 @@ export function FamilySlideOver({
                   key={family.id}
                   family={family}
                   orgId={orgId}
-                  campId={campId}
+                  eventId={eventId}
                   onSaved={updated => setFamily(prev => prev ? { ...prev, ...updated } : prev)}
                 />
               )}
@@ -189,7 +189,7 @@ export function FamilySlideOver({
                   key={family.id}
                   family={family}
                   orgId={orgId}
-                  campId={campId}
+                  eventId={eventId}
                   onNoteAdded={note =>
                     setFamily(prev =>
                       prev ? { ...prev, notes: [...(prev.notes ?? []), note] } : prev

@@ -17,15 +17,15 @@ type MemberInput = Omit<FamilyMember, 'id' | 'family_id'>
 type StepName = 'contact' | 'members' | 'review' | 'payment'
 
 interface RegistrationFormProps {
-  camp: Event
+  event: Event
   org: Org
 }
 
-export function RegistrationForm({ camp, org }: RegistrationFormProps) {
+export function RegistrationForm({ event, org }: RegistrationFormProps) {
   const router = useRouter()
-  const registrationUnit = camp.registration_type
-  const terminology = resolveTerminology(camp.event_type_id, camp.event_type_terminology)
-  const hasFee = (camp.payment_amount ?? 0) > 0
+  const registrationUnit = event.registration_type
+  const terminology = resolveTerminology(event.event_type_id, event.event_type_terminology)
+  const hasFee = (event.payment_amount ?? 0) > 0
 
   const steps = useMemo<StepName[]>(
     () => [
@@ -94,10 +94,10 @@ export function RegistrationForm({ camp, org }: RegistrationFormProps) {
   async function handleReviewSubmit() {
     const result = await createRegistration({
       orgId: org.id,
-      campId: camp.id,
+      eventId: event.id,
       orgSlug: org.slug,
-      campSlug: camp.slug,
-      campName: camp.name,
+      campSlug: event.slug,
+      eventName: event.name,
       orgName: org.name,
       family: contact as ContactData,
       members,
@@ -111,13 +111,13 @@ export function RegistrationForm({ camp, org }: RegistrationFormProps) {
     } else {
       const query = new URLSearchParams({ email: (contact as ContactData).email })
       if (result.waitlisted) query.set('status', 'waitlisted')
-      router.push(`/${org.slug}/${camp.slug}/register/confirmation?${query.toString()}`)
+      router.push(`/${org.slug}/${event.slug}/register/confirmation?${query.toString()}`)
     }
   }
 
   function handlePaymentSuccess() {
     router.push(
-      `/${org.slug}/${camp.slug}/register/confirmation?email=${encodeURIComponent((contact as ContactData).email)}`
+      `/${org.slug}/${event.slug}/register/confirmation?email=${encodeURIComponent((contact as ContactData).email)}`
     )
   }
 
@@ -126,7 +126,7 @@ export function RegistrationForm({ camp, org }: RegistrationFormProps) {
       <div className="max-w-xl mx-auto">
         <div className="mb-6">
           <p className="text-xs font-semibold text-[#7C3AED] uppercase tracking-wide mb-1">{org.name}</p>
-          <h1 className="text-2xl font-bold text-[#4C1D95]">{camp.name}</h1>
+          <h1 className="text-2xl font-bold text-[#4C1D95]">{event.name}</h1>
           <p className="text-sm text-gray-500 mt-1">Step {stepIndex + 1} of {steps.length}</p>
           <div className="mt-3 h-1.5 bg-[#DDD6FE] rounded-full overflow-hidden">
             <div
@@ -155,7 +155,7 @@ export function RegistrationForm({ camp, org }: RegistrationFormProps) {
             <ReviewStep
               contact={contact as ContactData}
               members={members}
-              campName={camp.name}
+              eventName={event.name}
               onSubmit={handleReviewSubmit}
               onBack={() => setStepIndex((i) => i - 1)}
             />
@@ -163,9 +163,9 @@ export function RegistrationForm({ camp, org }: RegistrationFormProps) {
           {currentStep === 'payment' && hasFee && (
             <PaymentStep
               orgSlug={org.slug}
-              campSlug={camp.slug}
+              campSlug={event.slug}
               familyId={familyId}
-              paymentAmount={camp.payment_amount!}
+              paymentAmount={event.payment_amount!}
               onSuccess={handlePaymentSuccess}
               onBack={() => setStepIndex((i) => i - 1)}
             />

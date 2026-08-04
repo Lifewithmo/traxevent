@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import { getRegistrationByToken, getFamilyMembers, updateRegistration } from '@/actions/registrations'
 import { getOrgBySlug } from '@/actions/orgs'
-import { getCampBySlug } from '@/actions/camps'
+import { getEventBySlug } from '@/actions/events'
 import { ContactStep } from '@/components/registration/steps/ContactStep'
 import { FamilyMembersStep } from '@/components/registration/steps/FamilyMembersStep'
 import type { Family, FamilyMember, Event, Org } from '@/lib/types'
@@ -19,7 +19,7 @@ export default function EditRegistrationPage() {
   const token = searchParams.get('token') ?? ''
 
   const [family, setFamily] = useState<Family | null>(null)
-  const [camp, setCamp] = useState<Event | null>(null)
+  const [event, setEvent] = useState<Event | null>(null)
   const [org, setOrg] = useState<Org | null>(null)
   const [members, setMembers] = useState<MemberInput[]>([])
   const [step, setStep] = useState<'contact' | 'members'>('contact')
@@ -30,12 +30,12 @@ export default function EditRegistrationPage() {
     async function load() {
       const o = await getOrgBySlug(params.orgSlug)
       if (!o) { setError('Organization not found'); setLoading(false); return }
-      const c = await getCampBySlug(o.id, params.campSlug)
+      const c = await getEventBySlug(o.id, params.campSlug)
       if (!c) { setError('Camp not found'); setLoading(false); return }
       const f = await getRegistrationByToken(o.id, c.id, token)
       if (!f) { setError('Registration not found or link expired'); setLoading(false); return }
       const ms = await getFamilyMembers(o.id, c.id, f.id, token)
-      setOrg(o); setCamp(c); setFamily(f)
+      setOrg(o); setEvent(c); setFamily(f)
       setMembers(ms.map(({ id: _id, family_id: _fid, ...m }) => m))
       setLoading(false)
     }
@@ -44,20 +44,20 @@ export default function EditRegistrationPage() {
   }, [params.orgSlug, params.campSlug, token])
 
   async function handleContactSave(data: ContactData) {
-    if (!org || !camp || !family) return
-    await updateRegistration(org.id, camp.id, family.id, data, token)
+    if (!org || !event || !family) return
+    await updateRegistration(org.id, event.id, family.id, data, token)
     setStep('members')
   }
 
   if (loading) return <div className="py-12 text-center text-gray-400">Loading…</div>
   if (error) return <div className="py-12 text-center text-red-500">{error}</div>
-  if (!family || !org || !camp) return null
+  if (!family || !org || !event) return null
 
   return (
     <div className="space-y-4">
       <div>
         <h1 className="text-2xl font-bold text-[#4C1D95]">Edit registration</h1>
-        <p className="text-sm text-gray-500">{camp.name}</p>
+        <p className="text-sm text-gray-500">{event.name}</p>
       </div>
       <div className="bg-white rounded-xl border border-[#DDD6FE] p-6">
         {step === 'contact' && (
@@ -69,7 +69,7 @@ export default function EditRegistrationPage() {
         {step === 'members' && (
           <FamilyMembersStep
             initial={members}
-            onNext={() => router.push(`/${org.slug}/${camp.slug}/my-registration?token=${token}`)}
+            onNext={() => router.push(`/${org.slug}/${event.slug}/my-registration?token=${token}`)}
             onBack={() => setStep('contact')}
           />
         )}

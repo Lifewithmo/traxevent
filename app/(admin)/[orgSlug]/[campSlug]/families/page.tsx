@@ -1,7 +1,7 @@
 export const dynamic = 'force-dynamic'
 
 import { Suspense } from 'react'
-import { requireCampPage } from '@/lib/auth/guards'
+import { requireEventPage } from '@/lib/auth/guards'
 import { getAdminFamilies } from '@/actions/admin-families'
 import { FamiliesClient } from '@/components/admin/FamiliesClient'
 
@@ -11,8 +11,8 @@ export default async function FamiliesPage({
   params: Promise<{ orgSlug: string; campSlug: string }>
 }) {
   const { orgSlug, campSlug } = await params
-  const { orgId, campId } = await requireCampPage(orgSlug, campSlug, 'families')
-  const families = await getAdminFamilies(orgId, campId)
+  const { orgId, eventId } = await requireEventPage(orgSlug, campSlug, 'families')
+  const families = await getAdminFamilies(orgId, eventId)
 
   return (
     <div className="flex flex-col h-screen">
@@ -27,7 +27,7 @@ export default async function FamiliesPage({
           <FamiliesClient
             families={families}
             orgId={orgId}
-            campId={campId}
+            eventId={eventId}
           />
         </Suspense>
       </div>

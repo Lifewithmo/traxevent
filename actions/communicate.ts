@@ -1,7 +1,7 @@
 'use server'
 
 import { adminDb } from '@/lib/firebase-admin'
-import { assertCampPage } from '@/lib/auth/assert'
+import { assertEventPage } from '@/lib/auth/assert'
 import { getResend, buildFromAddress, deriveLocalPart, resolveSenderEmail } from '@/lib/resend'
 import { getVerifiedSendingDomain } from '@/actions/domains'
 import type { Event, Family, CommunicationLogEntry, OrgMember } from '@/lib/types'
@@ -16,19 +16,19 @@ export interface EmailBlastInput {
 
 export async function sendEmailBlast(
   orgId: string,
-  campId: string,
+  eventId: string,
   input: EmailBlastInput
 ): Promise<{ sent: number }> {
-  await assertCampPage(orgId, campId, 'communicate')
-  const campRef = adminDb
+  await assertEventPage(orgId, eventId, 'communicate')
+  const eventRef = adminDb
     .collection('orgs').doc(orgId)
-    .collection('events').doc(campId)
+    .collection('events').doc(eventId)
 
-  const campSnap = await campRef.get()
-  if (!campSnap.exists) throw new Error(`Camp not found: ${campId}`)
-  const camp = campSnap.data() as Event
+  const eventSnap = await eventRef.get()
+  if (!eventSnap.exists) throw new Error(`Camp not found: ${eventId}`)
+  const event = eventSnap.data() as Event
 
-  const familiesSnap = await campRef.collection('families').get()
+  const familiesSnap = await eventRef.collection('families').get()
   const families = familiesSnap.docs
     .map((d) => d.data() as Family)
     .filter((f) => {
@@ -39,7 +39,7 @@ export async function sendEmailBlast(
 
   if (families.length === 0) {
     const logId = randomBytes(8).toString('hex')
-    await campRef.collection('communication_log').doc(logId).set({
+    await eventRef.collection('communication_log').doc(logId).set({
       id: logId,
       subject: input.subject,
       html_body: input.htmlBody,
@@ -52,10 +52,10 @@ export async function sendEmailBlast(
   }
 
   const sendingDomain = await getVerifiedSendingDomain(orgId)
-  // Default: the camp identity. If the blast is sent as a specific org member AND the
+  // Default: the event identity. If the blast is sent as a specific org member AND the
   // org has a verified domain, reconstruct the sender address authoritatively from the
   // member record — never trust a client-supplied address.
-  let from = buildFromAddress({ displayName: camp.from_display_name, domain: sendingDomain })
+  let from = buildFromAddress({ displayName: event.from_display_name, domain: sendingDomain })
   if (input.sentByUid && sendingDomain) {
     const memberSnap = await adminDb
       .collection('orgs').doc(orgId)
@@ -75,7 +75,7 @@ export async function sendEmailBlast(
     to: f.email,
     subject: input.subject,
     html: input.htmlBody,
-    ...(camp.reply_to_email ? { replyTo: camp.reply_to_email } : {}),
+    ...(event.reply_to_email ? { replyTo: event.reply_to_email } : {}),
   }))
 
   // Before sending, write the log (records the attempt even if delivery partially fails):
@@ -89,7 +89,7 @@ export async function sendEmailBlast(
     sent_at: new Date().toISOString(),
     ...(input.sentByUid ? { sent_by_uid: input.sentByUid } : {}),
   }
-  await campRef.collection('communication_log').doc(logId).set(entry)
+  await eventRef.collection('communication_log').doc(logId).set(entry)
 
   const resend = getResend()
   for (let i = 0; i < emailPayloads.length; i += 100) {
@@ -101,12 +101,12 @@ export async function sendEmailBlast(
 
 export async function getCommunicationLog(
   orgId: string,
-  campId: string
+  eventId: string
 ): Promise<CommunicationLogEntry[]> {
-  await assertCampPage(orgId, campId, 'communicate')
+  await assertEventPage(orgId, eventId, 'communicate')
   const snap = await adminDb
     .collection('orgs').doc(orgId)
-    .collection('events').doc(campId)
+    .collection('events').doc(eventId)
     .collection('communication_log')
     .orderBy('sent_at', 'desc')
     .limit(50)

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const batchSendSpy = vi.hoisted(() => vi.fn().mockResolvedValue({ data: [], error: null }))
 const logSetSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
-const getCampSpy = vi.hoisted(() => vi.fn())
+const getEventSpy = vi.hoisted(() => vi.fn())
 const getFamiliesSpy = vi.hoisted(() => vi.fn())
 const getVerifiedDomainSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const getMemberSpy = vi.hoisted(() => vi.fn())
@@ -45,7 +45,7 @@ vi.mock('@/lib/firebase-admin', () => ({
               if (sub === 'events') {
                 return {
                   doc: vi.fn().mockReturnValue({
-                    get: getCampSpy,
+                    get: getEventSpy,
                     collection: vi.fn().mockImplementation((sub2: string) => {
                       if (sub2 === 'families') return { get: getFamiliesSpy }
                       if (sub2 === 'communication_log') {
@@ -69,12 +69,12 @@ vi.mock('@/lib/firebase-admin', () => ({
 vi.mock('@/lib/auth/assert', () => ({
   assertOrgMember: vi.fn().mockResolvedValue({ role: 'admin', event_access: {} }),
   assertOrgAdmin: vi.fn().mockResolvedValue({ role: 'admin', event_access: {} }),
-  assertCampPage: vi.fn().mockResolvedValue({ role: 'admin', event_access: {} }),
+  assertEventPage: vi.fn().mockResolvedValue({ role: 'admin', event_access: {} }),
 }))
 
 import { sendEmailBlast } from '@/actions/communicate'
 
-const mockCamp = {
+const mockEvent = {
   id: 'camp-1',
   name: 'Summer Camp 2026',
   from_display_name: 'Summer Camp at First Hills',
@@ -88,7 +88,7 @@ const makeFamily = (status: string, email: string) => ({
 describe('sendEmailBlast', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    getCampSpy.mockResolvedValue({ exists: true, data: () => mockCamp })
+    getEventSpy.mockResolvedValue({ exists: true, data: () => mockEvent })
     getVerifiedDomainSpy.mockResolvedValue(undefined)
     getMemberSpy.mockResolvedValue({ exists: false })
   })

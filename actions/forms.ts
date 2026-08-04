@@ -1,7 +1,7 @@
 'use server'
 
 import { adminDb } from '@/lib/firebase-admin'
-import { assertOrgMember, assertOrgAdmin, assertCampPage } from '@/lib/auth/assert'
+import { assertOrgMember, assertOrgAdmin, assertEventPage } from '@/lib/auth/assert'
 import { assertFamilyAccess } from '@/lib/auth/family-access'
 import { FieldValue } from 'firebase-admin/firestore'
 import { headers } from 'next/headers'
@@ -14,12 +14,12 @@ function templatesRef(orgId: string) {
   return adminDb.collection('orgs').doc(orgId).collection('form_templates')
 }
 
-function assignmentsRef(orgId: string, campId: string) {
-  return adminDb.collection('orgs').doc(orgId).collection('events').doc(campId).collection('form_assignments')
+function assignmentsRef(orgId: string, eventId: string) {
+  return adminDb.collection('orgs').doc(orgId).collection('events').doc(eventId).collection('form_assignments')
 }
 
-function signedFormsRef(orgId: string, campId: string, familyId: string) {
-  return adminDb.collection('orgs').doc(orgId).collection('events').doc(campId).collection('families').doc(familyId).collection('signed_forms')
+function signedFormsRef(orgId: string, eventId: string, familyId: string) {
+  return adminDb.collection('orgs').doc(orgId).collection('events').doc(eventId).collection('families').doc(familyId).collection('signed_forms')
 }
 
 export interface CreateFormTemplateInput {
@@ -75,19 +75,19 @@ export async function deleteFormTemplate(orgId: string, templateId: string): Pro
 
 export async function listEventFormAssignments(
   orgId: string,
-  campId: string
+  eventId: string
 ): Promise<EventFormAssignment[]> {
-  const snap = await assignmentsRef(orgId, campId).orderBy('created_at', 'asc').get()
+  const snap = await assignmentsRef(orgId, eventId).orderBy('created_at', 'asc').get()
   return snap.docs.map((d) => d.data() as EventFormAssignment)
 }
 
 export async function assignFormToEvent(
   orgId: string,
-  campId: string,
+  eventId: string,
   template: FormTemplate,
   required = true
 ): Promise<EventFormAssignment> {
-  await assertCampPage(orgId, campId, 'forms')
+  await assertEventPage(orgId, eventId, 'forms')
   const id = randomBytes(8).toString('hex')
   const now = new Date().toISOString()
   const assignment: EventFormAssignment = {
@@ -100,27 +100,27 @@ export async function assignFormToEvent(
     required,
     created_at: now,
   }
-  await assignmentsRef(orgId, campId).doc(id).set(assignment)
+  await assignmentsRef(orgId, eventId).doc(id).set(assignment)
   return assignment
 }
 
 export async function removeFormAssignment(
   orgId: string,
-  campId: string,
+  eventId: string,
   assignmentId: string
 ): Promise<void> {
-  await assertCampPage(orgId, campId, 'forms')
-  await assignmentsRef(orgId, campId).doc(assignmentId).delete()
+  await assertEventPage(orgId, eventId, 'forms')
+  await assignmentsRef(orgId, eventId).doc(assignmentId).delete()
 }
 
 export async function getSignedForms(
   orgId: string,
-  campId: string,
+  eventId: string,
   familyId: string,
   token?: string
 ): Promise<SignedForm[]> {
-  await assertFamilyAccess(orgId, campId, familyId, { token, page: 'forms' })
-  const snap = await signedFormsRef(orgId, campId, familyId).orderBy('signed_at', 'desc').get()
+  await assertFamilyAccess(orgId, eventId, familyId, { token, page: 'forms' })
+  const snap = await signedFormsRef(orgId, eventId, familyId).orderBy('signed_at', 'desc').get()
   return snap.docs.map((d) => d.data() as SignedForm)
 }
 
@@ -133,7 +133,7 @@ export interface SubmitSignedFormInput {
   signatureName: string
   signerEmail: string
   signerFirstName: string
-  campName: string
+  eventName: string
   orgName: string
   orgSlug: string
   campSlug: string
@@ -143,7 +143,7 @@ export interface SubmitSignedFormInput {
 
 export async function submitSignedForm(
   orgId: string,
-  campId: string,
+  eventId: string,
   familyId: string,
   input: SubmitSignedFormInput
 ): Promise<SignedForm> {
@@ -159,7 +159,7 @@ export async function submitSignedForm(
   const signed: SignedForm = {
     id,
     org_id: orgId,
-    event_id: campId,
+    event_id: eventId,
     assignment_id: input.assignmentId,
     template_id: input.templateId,
     template_version: input.templateVersion,
@@ -171,14 +171,14 @@ export async function submitSignedForm(
     created_at: now,
   }
 
-  await signedFormsRef(orgId, campId, familyId).doc(id).set(signed)
+  await signedFormsRef(orgId, eventId, familyId).doc(id).set(signed)
 
   const fromDomain = await getVerifiedSendingDomain(orgId)
   await sendFormSignedConfirmation({
     to: input.signerEmail,
     firstName: input.signerFirstName,
     formName: input.templateName,
-    campName: input.campName,
+    eventName: input.eventName,
     orgName: input.orgName,
     signedAt: now,
     fromDisplayName: input.fromDisplayName,

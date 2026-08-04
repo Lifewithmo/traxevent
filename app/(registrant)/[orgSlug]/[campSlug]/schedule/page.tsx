@@ -1,5 +1,5 @@
 import { getOrgBySlug } from '@/actions/orgs'
-import { getCampBySlug } from '@/actions/camps'
+import { getEventBySlug } from '@/actions/events'
 import { listItinerary } from '@/actions/itinerary'
 import { groupItineraryByDay, formatTime } from '@/lib/itinerary'
 import { notFound } from 'next/navigation'
@@ -18,26 +18,26 @@ export default async function RegistrantItineraryPage({
   const { orgSlug, campSlug } = await params
   const org = await getOrgBySlug(orgSlug)
   if (!org) notFound()
-  const camp = await getCampBySlug(org.id, campSlug)
-  if (!camp) notFound()
+  const event = await getEventBySlug(org.id, campSlug)
+  if (!event) notFound()
 
-  if (!camp.itinerary_published) {
+  if (!event.itinerary_published) {
     return (
       <div className="space-y-3">
-        <h1 className="text-2xl font-bold text-[#4C1D95]">{camp.name}</h1>
+        <h1 className="text-2xl font-bold text-[#4C1D95]">{event.name}</h1>
         <p className="text-sm text-gray-500">The schedule for this event hasn&apos;t been published yet. Check back soon.</p>
       </div>
     )
   }
 
-  const items = await listItinerary(org.id, camp.id)
+  const items = await listItinerary(org.id, event.id)
   const days = groupItineraryByDay(items)
 
   return (
     <div className="space-y-6">
       <div>
         <p className="text-sm text-[#7C3AED] font-semibold">{org.name}</p>
-        <h1 className="text-2xl font-bold text-[#4C1D95]">{camp.name} — Schedule</h1>
+        <h1 className="text-2xl font-bold text-[#4C1D95]">{event.name} — Schedule</h1>
       </div>
 
       {days.length === 0 ? (

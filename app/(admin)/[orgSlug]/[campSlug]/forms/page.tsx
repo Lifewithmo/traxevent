@@ -1,7 +1,7 @@
 export const dynamic = 'force-dynamic'
 
 import { adminDb } from '@/lib/firebase-admin'
-import { requireCampPage } from '@/lib/auth/guards'
+import { requireEventPage } from '@/lib/auth/guards'
 import { listFormTemplates, listEventFormAssignments } from '@/actions/forms'
 import { getAdminFamilies } from '@/actions/admin-families'
 import { EventFormsClient } from '@/components/admin/EventFormsClient'
@@ -12,12 +12,12 @@ export default async function EventFormsPage({
   params: Promise<{ orgSlug: string; campSlug: string }>
 }) {
   const { orgSlug, campSlug } = await params
-  const { orgId, campId } = await requireCampPage(orgSlug, campSlug, 'forms')
+  const { orgId, eventId } = await requireEventPage(orgSlug, campSlug, 'forms')
 
   const [templates, assignments, families] = await Promise.all([
     listFormTemplates(orgId),
-    listEventFormAssignments(orgId, campId),
-    getAdminFamilies(orgId, campId),
+    listEventFormAssignments(orgId, eventId),
+    getAdminFamilies(orgId, eventId),
   ])
 
   // Count signed forms per assignment.
@@ -42,7 +42,7 @@ export default async function EventFormsPage({
   return (
     <EventFormsClient
       orgId={orgId}
-      campId={campId}
+      eventId={eventId}
       templates={templates}
       assignments={assignments}
       signedCounts={signedCountsByAssignment}

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const familyUpdateSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
-const campGetSpy = vi.hoisted(() => vi.fn().mockResolvedValue({ exists: false, data: () => ({}) }))
+const eventGetSpy = vi.hoisted(() => vi.fn().mockResolvedValue({ exists: false, data: () => ({}) }))
 const constructEventSpy = vi.hoisted(() => vi.fn())
 const getHeadersSpy = vi.hoisted(() => vi.fn())
 
@@ -36,7 +36,7 @@ vi.mock('@/lib/firebase-admin', () => ({
       doc: vi.fn().mockReturnValue({
         collection: vi.fn().mockReturnValue({
           doc: vi.fn().mockReturnValue({
-            get: campGetSpy,
+            get: eventGetSpy,
           }),
         }),
       }),

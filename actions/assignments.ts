@@ -3,14 +3,14 @@
 import { adminDb } from '@/lib/firebase-admin'
 import type { AssignmentSlot, Family } from '@/lib/types'
 import { randomBytes } from 'crypto'
-import { assertCampPage } from '@/lib/auth/assert'
+import { assertEventPage } from '@/lib/auth/assert'
 
-function slotsRef(orgId: string, campId: string) {
-  return adminDb.collection('orgs').doc(orgId).collection('events').doc(campId).collection('assignment_slots')
+function slotsRef(orgId: string, eventId: string) {
+  return adminDb.collection('orgs').doc(orgId).collection('events').doc(eventId).collection('assignment_slots')
 }
 
-function familiesRef(orgId: string, campId: string) {
-  return adminDb.collection('orgs').doc(orgId).collection('events').doc(campId).collection('families')
+function familiesRef(orgId: string, eventId: string) {
+  return adminDb.collection('orgs').doc(orgId).collection('events').doc(eventId).collection('families')
 }
 
 export interface CreateSlotInput {
@@ -20,18 +20,18 @@ export interface CreateSlotInput {
   sort_order?: number
 }
 
-export async function listSlots(orgId: string, campId: string): Promise<AssignmentSlot[]> {
-  await assertCampPage(orgId, campId, 'assignments')
-  const snap = await slotsRef(orgId, campId).orderBy('sort_order', 'asc').get()
+export async function listSlots(orgId: string, eventId: string): Promise<AssignmentSlot[]> {
+  await assertEventPage(orgId, eventId, 'assignments')
+  const snap = await slotsRef(orgId, eventId).orderBy('sort_order', 'asc').get()
   return snap.docs.map((d) => d.data() as AssignmentSlot)
 }
 
 export async function createSlot(
   orgId: string,
-  campId: string,
+  eventId: string,
   input: CreateSlotInput
 ): Promise<AssignmentSlot> {
-  await assertCampPage(orgId, campId, 'assignments')
+  await assertEventPage(orgId, eventId, 'assignments')
   const id = randomBytes(8).toString('hex')
   const now = new Date().toISOString()
   const slot: AssignmentSlot = {
@@ -42,29 +42,29 @@ export async function createSlot(
     sort_order: input.sort_order ?? 0,  // always write; default 0 so new slots appear first
     created_at: now,
   }
-  await slotsRef(orgId, campId).doc(id).set(slot)
+  await slotsRef(orgId, eventId).doc(id).set(slot)
   return slot
 }
 
 export async function updateSlot(
   orgId: string,
-  campId: string,
+  eventId: string,
   slotId: string,
   updates: Partial<Pick<AssignmentSlot, 'name' | 'capacity' | 'notes' | 'sort_order'>>
 ): Promise<void> {
-  await assertCampPage(orgId, campId, 'assignments')
-  await slotsRef(orgId, campId).doc(slotId).update({
+  await assertEventPage(orgId, eventId, 'assignments')
+  await slotsRef(orgId, eventId).doc(slotId).update({
     ...updates,
     updated_at: new Date().toISOString(),
   })
 }
 
-export async function deleteSlot(orgId: string, campId: string, slotId: string): Promise<void> {
-  await assertCampPage(orgId, campId, 'assignments')
+export async function deleteSlot(orgId: string, eventId: string, slotId: string): Promise<void> {
+  await assertEventPage(orgId, eventId, 'assignments')
   const batch = adminDb.batch()
-  batch.delete(slotsRef(orgId, campId).doc(slotId))
+  batch.delete(slotsRef(orgId, eventId).doc(slotId))
 
-  const affected = await familiesRef(orgId, campId)
+  const affected = await familiesRef(orgId, eventId)
     .where('assignment_slot_id', '==', slotId)
     .get()
   const now = new Date().toISOString()
@@ -77,12 +77,12 @@ export async function deleteSlot(orgId: string, campId: string, slotId: string):
 
 export async function assignFamily(
   orgId: string,
-  campId: string,
+  eventId: string,
   familyId: string,
   slotId: string | null
 ): Promise<void> {
-  await assertCampPage(orgId, campId, 'assignments')
-  await familiesRef(orgId, campId).doc(familyId).update({
+  await assertEventPage(orgId, eventId, 'assignments')
+  await familiesRef(orgId, eventId).doc(familyId).update({
     assignment_slot_id: slotId,
     updated_at: new Date().toISOString(),
   })
@@ -90,12 +90,12 @@ export async function assignFamily(
 
 export async function autoAssign(
   orgId: string,
-  campId: string
+  eventId: string
 ): Promise<{ assigned: number }> {
-  await assertCampPage(orgId, campId, 'assignments')
+  await assertEventPage(orgId, eventId, 'assignments')
   const [slotsSnap, familiesSnap] = await Promise.all([
-    slotsRef(orgId, campId).orderBy('sort_order', 'asc').get(),
-    familiesRef(orgId, campId).get(),
+    slotsRef(orgId, eventId).orderBy('sort_order', 'asc').get(),
+    familiesRef(orgId, eventId).get(),
   ])
 
   const slots = slotsSnap.docs.map((d) => d.data() as AssignmentSlot)
@@ -129,7 +129,7 @@ export async function autoAssign(
     available.sort((a, b) => (occupancy.get(a.id) ?? 0) - (occupancy.get(b.id) ?? 0))
     const target = available[0]
 
-    await familiesRef(orgId, campId).doc(family.id).update({
+    await familiesRef(orgId, eventId).doc(family.id).update({
       assignment_slot_id: target.id,
       updated_at: new Date().toISOString(),
     })

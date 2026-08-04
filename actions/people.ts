@@ -1,8 +1,8 @@
 'use server'
 
 import { adminDb } from '@/lib/firebase-admin'
-import { assertOrgMember, assertOrgAdmin, assertCampPage } from '@/lib/auth/assert'
-import { validateCampPages } from '@/lib/tokens'
+import { assertOrgMember, assertOrgAdmin, assertEventPage } from '@/lib/auth/assert'
+import { validateEventPages } from '@/lib/tokens'
 import { getBuiltInPermissionTemplates, BUILT_IN_TEMPLATE_IDS } from '@/lib/permission-templates'
 import type { PermissionTemplate, EventPerson, EventPersonKind, EventPage } from '@/lib/types'
 import { randomBytes } from 'crypto'
@@ -11,8 +11,8 @@ function templatesRef(orgId: string) {
   return adminDb.collection('orgs').doc(orgId).collection('permission_templates')
 }
 
-function peopleRef(orgId: string, campId: string) {
-  return adminDb.collection('orgs').doc(orgId).collection('events').doc(campId).collection('event_people')
+function peopleRef(orgId: string, eventId: string) {
+  return adminDb.collection('orgs').doc(orgId).collection('events').doc(eventId).collection('event_people')
 }
 
 function isBuiltIn(templateId: string): boolean {
@@ -43,7 +43,7 @@ export async function createPermissionTemplate(
     id,
     name: input.name,
     ...(input.description ? { description: input.description } : {}),
-    pages: validateCampPages(input.pages),
+    pages: validateEventPages(input.pages),
     is_built_in: false,
     created_at: now,
   }
@@ -59,7 +59,7 @@ export async function updatePermissionTemplate(
   await assertOrgAdmin(orgId)
   if (isBuiltIn(templateId)) throw new Error('Cannot modify a built-in template')
   const patch: Record<string, unknown> = { ...updates, updated_at: new Date().toISOString() }
-  if (updates.pages) patch.pages = validateCampPages(updates.pages)
+  if (updates.pages) patch.pages = validateEventPages(updates.pages)
   await templatesRef(orgId).doc(templateId).update(patch)
 }
 
@@ -69,9 +69,9 @@ export async function deletePermissionTemplate(orgId: string, templateId: string
   await templatesRef(orgId).doc(templateId).delete()
 }
 
-export async function listEventPeople(orgId: string, campId: string): Promise<EventPerson[]> {
-  await assertCampPage(orgId, campId, 'people')
-  const snap = await peopleRef(orgId, campId).orderBy('created_at', 'asc').get()
+export async function listEventPeople(orgId: string, eventId: string): Promise<EventPerson[]> {
+  await assertEventPage(orgId, eventId, 'people')
+  const snap = await peopleRef(orgId, eventId).orderBy('created_at', 'asc').get()
   return snap.docs.map((d) => d.data() as EventPerson)
 }
 
@@ -86,10 +86,10 @@ export interface AddEventPersonInput {
 
 export async function addEventPerson(
   orgId: string,
-  campId: string,
+  eventId: string,
   input: AddEventPersonInput
 ): Promise<EventPerson> {
-  await assertCampPage(orgId, campId, 'people')
+  await assertEventPage(orgId, eventId, 'people')
   const id = randomBytes(8).toString('hex')
   const now = new Date().toISOString()
   const person: EventPerson = {
@@ -98,24 +98,24 @@ export async function addEventPerson(
     name: input.name,
     email: input.email,
     role: input.role,
-    pages: validateCampPages(input.pages),
+    pages: validateEventPages(input.pages),
     ...(input.appliedTemplateId ? { applied_template_id: input.appliedTemplateId } : {}),
     created_at: now,
   }
-  await peopleRef(orgId, campId).doc(id).set(person)
+  await peopleRef(orgId, eventId).doc(id).set(person)
   return person
 }
 
 export async function updateEventPersonPermissions(
   orgId: string,
-  campId: string,
+  eventId: string,
   personId: string,
   pages: EventPage[],
   appliedTemplateId?: string
 ): Promise<void> {
-  await assertCampPage(orgId, campId, 'people')
-  await peopleRef(orgId, campId).doc(personId).update({
-    pages: validateCampPages(pages),
+  await assertEventPage(orgId, eventId, 'people')
+  await peopleRef(orgId, eventId).doc(personId).update({
+    pages: validateEventPages(pages),
     applied_template_id: appliedTemplateId ?? null,
     updated_at: new Date().toISOString(),
   })
@@ -123,9 +123,9 @@ export async function updateEventPersonPermissions(
 
 export async function removeEventPerson(
   orgId: string,
-  campId: string,
+  eventId: string,
   personId: string
 ): Promise<void> {
-  await assertCampPage(orgId, campId, 'people')
-  await peopleRef(orgId, campId).doc(personId).delete()
+  await assertEventPage(orgId, eventId, 'people')
+  await peopleRef(orgId, eventId).doc(personId).delete()
 }

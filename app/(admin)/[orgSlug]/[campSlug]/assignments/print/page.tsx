@@ -3,24 +3,24 @@ import type { Metadata } from 'next'
 import { adminDb } from '@/lib/firebase-admin'
 import { listSlots } from '@/actions/assignments'
 import { getAdminFamilies } from '@/actions/admin-families'
-import { requireCampPage } from '@/lib/auth/guards'
+import { requireEventPage } from '@/lib/auth/guards'
 import { resolveTerminology } from '@/lib/event-types'
 import type { FamilyMember } from '@/lib/types'
 
 // Enforce the 'assignments' grant (same as the main assignments page) before
 // rendering the roster's PII. cache() dedupes the guard within a single request.
 const resolveCtx = cache((orgSlug: string, campSlug: string) =>
-  requireCampPage(orgSlug, campSlug, 'assignments')
+  requireEventPage(orgSlug, campSlug, 'assignments')
 )
 
 async function getMembersForFamily(
   orgId: string,
-  campId: string,
+  eventId: string,
   familyId: string
 ): Promise<FamilyMember[]> {
   const snap = await adminDb
     .collection('orgs').doc(orgId)
-    .collection('events').doc(campId)
+    .collection('events').doc(eventId)
     .collection('families').doc(familyId)
     .collection('family_members')
     .get()
@@ -33,9 +33,9 @@ export async function generateMetadata({
   params: Promise<{ orgSlug: string; campSlug: string }>
 }): Promise<Metadata> {
   const { orgSlug, campSlug } = await params
-  const { camp } = await resolveCtx(orgSlug, campSlug)
-  const terminology = resolveTerminology(camp.event_type_id, camp.event_type_terminology)
-  return { title: `${camp.name} — ${terminology.assignmentPlural} Roster` }
+  const { event } = await resolveCtx(orgSlug, campSlug)
+  const terminology = resolveTerminology(event.event_type_id, event.event_type_terminology)
+  return { title: `${event.name} — ${terminology.assignmentPlural} Roster` }
 }
 
 export default async function AssignmentsPrintPage({
@@ -44,13 +44,13 @@ export default async function AssignmentsPrintPage({
   params: Promise<{ orgSlug: string; campSlug: string }>
 }) {
   const { orgSlug, campSlug } = await params
-  const { orgId, campId, camp } = await resolveCtx(orgSlug, campSlug)
+  const { orgId, eventId, event } = await resolveCtx(orgSlug, campSlug)
   const [slots, families] = await Promise.all([
-    listSlots(orgId, campId),
-    getAdminFamilies(orgId, campId),
+    listSlots(orgId, eventId),
+    getAdminFamilies(orgId, eventId),
   ])
-  const terminology = resolveTerminology(camp.event_type_id, camp.event_type_terminology)
-  const registrationUnit = camp.registration_type
+  const terminology = resolveTerminology(event.event_type_id, event.event_type_terminology)
+  const registrationUnit = event.registration_type
 
   // Group assigned families by slot
   const familiesBySlot = new Map<string, typeof families>()
@@ -67,7 +67,7 @@ export default async function AssignmentsPrintPage({
     const assigned = families.filter((f) => f.assignment_slot_id)
     await Promise.all(
       assigned.map(async (f) => {
-        const members = await getMembersForFamily(orgId, campId, f.id)
+        const members = await getMembersForFamily(orgId, eventId, f.id)
         membersByFamily.set(f.id, members)
       })
     )
@@ -102,7 +102,7 @@ export default async function AssignmentsPrintPage({
         }
       `}</style>
       <div className="print-root">
-        <h1>{camp.name}</h1>
+        <h1>{event.name}</h1>
         <p className="meta">
           {terminology.assignmentPlural} Roster &middot; Printed {printedAt}
         </p>

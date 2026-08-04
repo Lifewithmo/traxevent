@@ -5,7 +5,7 @@ const memberSetSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const attachAccessTokenSpy = vi.hoisted(() => vi.fn().mockResolvedValue('tok_abc'))
 const sendEmailSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const getFamiliesSpy = vi.hoisted(() => vi.fn())
-const getCampSpy = vi.hoisted(() => vi.fn())
+const getEventSpy = vi.hoisted(() => vi.fn())
 
 vi.mock('@/lib/firebase-admin', () => ({
   adminDb: {
@@ -17,7 +17,7 @@ vi.mock('@/lib/firebase-admin', () => ({
               if (sub === 'events') {
                 return {
                   doc: vi.fn().mockReturnValue({
-                    get: getCampSpy,
+                    get: getEventSpy,
                     collection: vi.fn().mockImplementation((sub2: string) => {
                       if (sub2 === 'families') {
                         return {
@@ -47,7 +47,7 @@ vi.mock('@/lib/firebase-admin', () => ({
 
 vi.mock('@/lib/auth/family-access', () => ({ assertFamilyAccess: vi.fn().mockResolvedValue({ id: 'fam', registrant_uid: null }) }))
 vi.mock('@/lib/auth/session', () => ({ getCurrentUser: vi.fn().mockResolvedValue({ uid: 'u1' }) }))
-vi.mock('@/lib/auth/assert', () => ({ assertCampPage: vi.fn().mockResolvedValue({ role: 'admin', event_access: {} }), assertOrgMember: vi.fn().mockResolvedValue({}), assertOrgAdmin: vi.fn().mockResolvedValue({}) }))
+vi.mock('@/lib/auth/assert', () => ({ assertEventPage: vi.fn().mockResolvedValue({ role: 'admin', event_access: {} }), assertOrgMember: vi.fn().mockResolvedValue({}), assertOrgAdmin: vi.fn().mockResolvedValue({}) }))
 vi.mock('@/actions/access-tokens', () => ({ attachAccessToken: attachAccessTokenSpy }))
 vi.mock('@/lib/email', () => ({ sendRegistrationConfirmation: sendEmailSpy }))
 vi.mock('@/actions/domains', () => ({ getVerifiedSendingDomain: vi.fn().mockResolvedValue(undefined) }))
@@ -57,10 +57,10 @@ import type { CreateRegistrationInput } from '@/actions/registrations'
 
 const baseInput: CreateRegistrationInput = {
   orgId: 'org-1',
-  campId: 'camp-1',
+  eventId: 'camp-1',
   orgSlug: 'acme',
   campSlug: 'summer-2026',
-  campName: 'Summer Camp 2026',
+  eventName: 'Summer Camp 2026',
   orgName: 'Acme Org',
   family: {
     first_name: 'Jane',
@@ -83,7 +83,7 @@ describe('createRegistration — waitlist', () => {
   })
 
   it('sets registration_status pending when no capacity configured', async () => {
-    getCampSpy.mockResolvedValue({ exists: true, data: () => ({ id: 'camp-1', capacity: undefined }) })
+    getEventSpy.mockResolvedValue({ exists: true, data: () => ({ id: 'camp-1', capacity: undefined }) })
     getFamiliesSpy.mockResolvedValue({ docs: [] })
 
     const result = await createRegistration(baseInput)
@@ -94,7 +94,7 @@ describe('createRegistration — waitlist', () => {
   })
 
   it('sets registration_status pending when under capacity', async () => {
-    getCampSpy.mockResolvedValue({ exists: true, data: () => ({ id: 'camp-1', capacity: 10 }) })
+    getEventSpy.mockResolvedValue({ exists: true, data: () => ({ id: 'camp-1', capacity: 10 }) })
     getFamiliesSpy.mockResolvedValue({
       docs: Array(5).fill(null).map(() => ({ data: () => ({ registration_status: 'confirmed' }) })),
     })
@@ -107,7 +107,7 @@ describe('createRegistration — waitlist', () => {
   })
 
   it('sets registration_status waitlisted when at capacity', async () => {
-    getCampSpy.mockResolvedValue({ exists: true, data: () => ({ id: 'camp-1', capacity: 5 }) })
+    getEventSpy.mockResolvedValue({ exists: true, data: () => ({ id: 'camp-1', capacity: 5 }) })
     getFamiliesSpy.mockResolvedValue({
       docs: Array(5).fill(null).map(() => ({ data: () => ({ registration_status: 'confirmed' }) })),
     })
@@ -120,7 +120,7 @@ describe('createRegistration — waitlist', () => {
   })
 
   it('counts only pending and confirmed toward capacity (not cancelled or waitlisted)', async () => {
-    getCampSpy.mockResolvedValue({ exists: true, data: () => ({ id: 'camp-1', capacity: 3 }) })
+    getEventSpy.mockResolvedValue({ exists: true, data: () => ({ id: 'camp-1', capacity: 3 }) })
     getFamiliesSpy.mockResolvedValue({
       docs: [
         { data: () => ({ registration_status: 'confirmed' }) },
@@ -139,7 +139,7 @@ describe('createRegistration — waitlist', () => {
   })
 
   it('skips confirmation email when skipConfirmationEmail is true', async () => {
-    getCampSpy.mockResolvedValue({ exists: true, data: () => ({ id: 'camp-1', capacity: undefined }) })
+    getEventSpy.mockResolvedValue({ exists: true, data: () => ({ id: 'camp-1', capacity: undefined }) })
     getFamiliesSpy.mockResolvedValue({ docs: [] })
 
     await createRegistration({ ...baseInput, skipConfirmationEmail: true })

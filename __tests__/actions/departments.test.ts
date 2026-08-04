@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 const deptDocSetSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const deptDocDeleteSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const listDeptsSpy = vi.hoisted(() => vi.fn())
-const campsWhereGetSpy = vi.hoisted(() => vi.fn())
+const eventsWhereGetSpy = vi.hoisted(() => vi.fn())
 const batchUpdateSpy = vi.hoisted(() => vi.fn())
 const batchCommitSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 
@@ -16,13 +16,13 @@ vi.mock('@/lib/firebase-admin', () => {
     })),
     orderBy: vi.fn().mockReturnValue({ get: listDeptsSpy }),
   }
-  const campsCol = {
-    where: vi.fn().mockReturnValue({ get: campsWhereGetSpy }),
+  const eventsCol = {
+    where: vi.fn().mockReturnValue({ get: eventsWhereGetSpy }),
   }
   const orgDoc = {
     collection: vi.fn().mockImplementation((sub: string) => {
       if (sub === 'departments') return deptsCol
-      if (sub === 'events') return campsCol
+      if (sub === 'events') return eventsCol
       return {}
     }),
   }
@@ -37,7 +37,7 @@ vi.mock('@/lib/firebase-admin', () => {
 vi.mock('@/lib/auth/assert', () => ({
   assertOrgMember: vi.fn().mockResolvedValue({ role: 'admin', event_access: {} }),
   assertOrgAdmin: vi.fn().mockResolvedValue({ role: 'admin', event_access: {} }),
-  assertCampPage: vi.fn().mockResolvedValue({ role: 'admin', event_access: {} }),
+  assertEventPage: vi.fn().mockResolvedValue({ role: 'admin', event_access: {} }),
 }))
 
 import { listDepartments, createDepartment, updateDepartment, deleteDepartment } from '@/actions/departments'
@@ -67,7 +67,7 @@ describe('departments actions', () => {
   })
 
   it('deleteDepartment unassigns its camps then deletes the department', async () => {
-    campsWhereGetSpy.mockResolvedValue({
+    eventsWhereGetSpy.mockResolvedValue({
       docs: [
         { ref: { id: 'c1' } },
         { ref: { id: 'c2' } },

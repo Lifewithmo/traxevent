@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter, useParams } from 'next/navigation'
-import { createCamp } from '@/actions/camps'
+import { createEvent } from '@/actions/events'
 import { getOrgBySlug } from '@/actions/orgs'
 import { listOrgEventTypes } from '@/actions/event-types'
 import { DEFAULT_EVENT_TYPE_ID } from '@/lib/event-types'
@@ -18,8 +18,8 @@ export default function NewEventPage() {
   const [name, setName] = useState('')
   const [year, setYear] = useState(new Date().getFullYear())
   const [eventTypeId, setEventTypeId] = useState<string>(DEFAULT_EVENT_TYPE_ID)
-  const [campStart, setCampStart] = useState('')
-  const [campEnd, setCampEnd] = useState('')
+  const [eventStart, setEventStart] = useState('')
+  const [eventEnd, setEventEnd] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [eventTypes, setEventTypes] = useState<EventType[]>([])
@@ -50,16 +50,16 @@ export default function NewEventPage() {
       if (!orgId) throw new Error('Organization not found')
       const selectedType = eventTypes.find((t) => t.id === eventTypeId)
       if (!selectedType) throw new Error('Select an event type')
-      const camp = await createCamp(orgId, {
+      const event = await createEvent(orgId, {
         name,
         year,
         registration_type: selectedType.registrationUnit,
         event_type_id: eventTypeId,
         ...(selectedType.is_custom ? { event_type_terminology: selectedType.terminology } : {}),
-        event_start: campStart,
-        event_end: campEnd,
+        event_start: eventStart,
+        event_end: eventEnd,
       })
-      router.push(`/${orgSlug}/${camp.slug}/dashboard`)
+      router.push(`/${orgSlug}/${event.slug}/dashboard`)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to create event')
     } finally {
@@ -99,11 +99,11 @@ export default function NewEventPage() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1">
                 <Label htmlFor="campStart">Start date</Label>
-                <Input id="campStart" type="date" value={campStart} onChange={(e) => setCampStart(e.target.value)} required />
+                <Input id="campStart" type="date" value={eventStart} onChange={(e) => setEventStart(e.target.value)} required />
               </div>
               <div className="space-y-1">
                 <Label htmlFor="campEnd">End date</Label>
-                <Input id="campEnd" type="date" value={campEnd} onChange={(e) => setCampEnd(e.target.value)} required />
+                <Input id="campEnd" type="date" value={eventEnd} onChange={(e) => setEventEnd(e.target.value)} required />
               </div>
             </div>
             {error && <p className="text-sm text-destructive">{error}</p>}

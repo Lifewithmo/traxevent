@@ -173,7 +173,7 @@ export function buildCustomCsv(members: MemberWithFamily[], fields: CustomReport
   return [header, ...lines].join('\n')
 }
 
-export interface OrgCampReportRow {
+export interface OrgEventReportRow {
   event_id: string
   event_name: string
   year: number
@@ -189,9 +189,9 @@ export interface OrgCampReportRow {
 }
 
 export interface OrgReport {
-  rows: OrgCampReportRow[]
+  rows: OrgEventReportRow[]
   totals: {
-    camps: number
+    events: number
     registrants: number
     confirmed: number
     totalDue: number
@@ -200,20 +200,20 @@ export interface OrgReport {
   }
 }
 
-// Collapse one camp's active families into a single report row. `families` should
+// Collapse one event's active families into a single report row. `families` should
 // already exclude cancelled registrations (the action filters them out).
-export function buildOrgCampRow(
-  camp: { id: string; name: string; year: number; status: string; department_id?: string | null },
+export function buildOrgEventRow(
+  event: { id: string; name: string; year: number; status: string; department_id?: string | null },
   families: Family[]
-): OrgCampReportRow {
+): OrgEventReportRow {
   const summary = buildRegistrationSummary(families)
   const fin = buildFinancialReport(families)
   return {
-    event_id: camp.id,
-    event_name: camp.name,
-    year: camp.year,
-    status: camp.status,
-    department_id: camp.department_id ?? null,
+    event_id: event.id,
+    event_name: event.name,
+    year: event.year,
+    status: event.status,
+    department_id: event.department_id ?? null,
     registrants: summary.total,
     confirmed: summary.byStatus['confirmed'] ?? 0,
     pending: summary.byStatus['pending'] ?? 0,
@@ -224,17 +224,17 @@ export function buildOrgCampRow(
   }
 }
 
-export function aggregateOrgReport(rows: OrgCampReportRow[]): OrgReport {
+export function aggregateOrgReport(rows: OrgEventReportRow[]): OrgReport {
   const totals = rows.reduce(
     (acc, r) => ({
-      camps: acc.camps + 1,
+      events: acc.events + 1,
       registrants: acc.registrants + r.registrants,
       confirmed: acc.confirmed + r.confirmed,
       totalDue: acc.totalDue + r.totalDue,
       totalPaid: acc.totalPaid + r.totalPaid,
       outstanding: acc.outstanding + r.outstanding,
     }),
-    { camps: 0, registrants: 0, confirmed: 0, totalDue: 0, totalPaid: 0, outstanding: 0 }
+    { events: 0, registrants: 0, confirmed: 0, totalDue: 0, totalPaid: 0, outstanding: 0 }
   )
   return { rows, totals }
 }

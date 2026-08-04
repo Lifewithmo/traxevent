@@ -6,17 +6,17 @@ const memberGetSpy = vi.hoisted(() => vi.fn())
 
 vi.mock('@/lib/auth/session', () => ({ getCurrentUser: getCurrentUserSpy }))
 vi.mock('@/lib/firebase-admin', () => {
-  // orgs/{orgId} → doc; .collection('events').doc(campId).collection('families').doc(familyId).get() = famGetSpy
+  // orgs/{orgId} → doc; .collection('events').doc(eventId).collection('families').doc(familyId).get() = famGetSpy
   //              ; .collection('members').doc(uid).get() = memberGetSpy
   const familiesChain = { doc: vi.fn().mockReturnValue({ get: famGetSpy }) }
-  // assertFamilyAccess now also reads the camp doc (events/{campId}.get()) to resolve its department.
-  const campGet = vi.fn(() => Promise.resolve({ exists: true, data: () => ({ department_id: null }) }))
-  const campDoc = { collection: vi.fn().mockReturnValue(familiesChain), get: campGet }
-  const campsChain = { doc: vi.fn().mockReturnValue(campDoc) }
+  // assertFamilyAccess now also reads the event doc (events/{eventId}.get()) to resolve its department.
+  const eventGet = vi.fn(() => Promise.resolve({ exists: true, data: () => ({ department_id: null }) }))
+  const eventDoc = { collection: vi.fn().mockReturnValue(familiesChain), get: eventGet }
+  const eventsChain = { doc: vi.fn().mockReturnValue(eventDoc) }
   const membersChain = { doc: vi.fn().mockReturnValue({ get: memberGetSpy }) }
   const orgDoc = {
     collection: vi.fn().mockImplementation((sub: string) => {
-      if (sub === 'events') return campsChain
+      if (sub === 'events') return eventsChain
       if (sub === 'members') return membersChain
       return { doc: vi.fn() }
     }),
@@ -25,7 +25,7 @@ vi.mock('@/lib/firebase-admin', () => {
 })
 
 import { assertFamilyAccess } from '@/lib/auth/family-access'
-import { canAccessCampPage } from '@/lib/auth/access' // real — pure
+import { canAccessEventPage } from '@/lib/auth/access' // real — pure
 
 const FUTURE = '2099-01-01T00:00:00.000Z'
 const PAST = '2000-01-01T00:00:00.000Z'

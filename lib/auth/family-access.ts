@@ -2,23 +2,23 @@ import 'server-only'
 
 import { adminDb } from '@/lib/firebase-admin'
 import { getCurrentUser } from '@/lib/auth/session'
-import { canAccessCampPage } from '@/lib/auth/access'
+import { canAccessEventPage } from '@/lib/auth/access'
 import type { Event, Family, OrgMember, EventPage } from '@/lib/types'
 
 // Authorize access to ONE family's data via any of:
 //  1. a valid, unexpired access token matching the family (anonymous registrant from an email link)
 //  2. the logged-in owning registrant (family.registrant_uid === caller.uid)
-//  3. an org member of orgId with the given camp-page grant, or a platform admin
+//  3. an org member of orgId with the given event-page grant, or a platform admin
 // Throws 'Not found' / 'Forbidden' otherwise. Returns the family on success.
 export async function assertFamilyAccess(
   orgId: string,
-  campId: string,
+  eventId: string,
   familyId: string,
   opts: { token?: string; page?: EventPage } = {}
 ): Promise<Family> {
   const snap = await adminDb
     .collection('orgs').doc(orgId)
-    .collection('events').doc(campId)
+    .collection('events').doc(eventId)
     .collection('families').doc(familyId)
     .get()
   if (!snap.exists) throw new Error('Not found')
@@ -38,9 +38,9 @@ export async function assertFamilyAccess(
     if (user.orgId === orgId) {
       const m = await adminDb.collection('orgs').doc(orgId).collection('members').doc(user.uid).get()
       if (m.exists) {
-        const campSnap = await adminDb.collection('orgs').doc(orgId).collection('events').doc(campId).get()
-        const deptId = campSnap.exists ? ((campSnap.data() as Event).department_id ?? null) : null
-        if (canAccessCampPage(m.data() as OrgMember, campId, opts.page ?? 'families', deptId)) return family
+        const eventSnap = await adminDb.collection('orgs').doc(orgId).collection('events').doc(eventId).get()
+        const deptId = eventSnap.exists ? ((eventSnap.data() as Event).department_id ?? null) : null
+        if (canAccessEventPage(m.data() as OrgMember, eventId, opts.page ?? 'families', deptId)) return family
       }
     }
   }

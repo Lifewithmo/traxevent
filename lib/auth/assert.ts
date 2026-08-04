@@ -2,7 +2,7 @@ import 'server-only'
 
 import { adminDb } from '@/lib/firebase-admin'
 import { getCurrentUser } from '@/lib/auth/session'
-import { canAccessCampPage } from '@/lib/auth/access'
+import { canAccessEventPage } from '@/lib/auth/access'
 import type { Event, OrgMember, EventPage } from '@/lib/types'
 
 // Throw-based guards for SERVER ACTIONS (pages use the redirect-based guards in guards.ts).
@@ -27,11 +27,11 @@ export async function assertOrgAdmin(orgId: string): Promise<OrgMember> {
   return member
 }
 
-// Camp-scoped: caller must be an org member AND have access to `page` for `campId`.
-export async function assertCampPage(orgId: string, campId: string, page: EventPage): Promise<OrgMember> {
+// Event-scoped: caller must be an org member AND have access to `page` for `eventId`.
+export async function assertEventPage(orgId: string, eventId: string, page: EventPage): Promise<OrgMember> {
   const member = await assertOrgMember(orgId)
-  const campSnap = await adminDb.collection('orgs').doc(orgId).collection('events').doc(campId).get()
-  const departmentId = campSnap.exists ? ((campSnap.data() as Event).department_id ?? null) : null
-  if (!canAccessCampPage(member, campId, page, departmentId)) throw new Error('Forbidden')
+  const eventSnap = await adminDb.collection('orgs').doc(orgId).collection('events').doc(eventId).get()
+  const departmentId = eventSnap.exists ? ((eventSnap.data() as Event).department_id ?? null) : null
+  if (!canAccessEventPage(member, eventId, page, departmentId)) throw new Error('Forbidden')
   return member
 }

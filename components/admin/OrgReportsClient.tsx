@@ -70,7 +70,7 @@ export function OrgReportsClient({ report, departments }: OrgReportsClientProps)
       )}
 
       <div className="grid gap-3 sm:grid-cols-3">
-        <Card><CardHeader className="pb-1"><CardTitle className="text-xs uppercase text-muted-foreground">Events</CardTitle></CardHeader><CardContent className="text-2xl font-bold">{totals.camps}</CardContent></Card>
+        <Card><CardHeader className="pb-1"><CardTitle className="text-xs uppercase text-muted-foreground">Events</CardTitle></CardHeader><CardContent className="text-2xl font-bold">{totals.events}</CardContent></Card>
         <Card><CardHeader className="pb-1"><CardTitle className="text-xs uppercase text-muted-foreground">Registrants</CardTitle></CardHeader><CardContent className="text-2xl font-bold">{totals.registrants}</CardContent></Card>
         <Card><CardHeader className="pb-1"><CardTitle className="text-xs uppercase text-muted-foreground">Outstanding</CardTitle></CardHeader><CardContent className="text-2xl font-bold">{money(totals.outstanding)}</CardContent></Card>
       </div>

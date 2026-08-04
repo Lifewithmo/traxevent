@@ -7,11 +7,11 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { addEventPerson, updateEventPersonPermissions, removeEventPerson } from '@/actions/people'
-import { CAMP_PAGES, type EventPerson, type EventPersonKind, type PermissionTemplate, type EventPage } from '@/lib/types'
+import { EVENT_PAGES, type EventPerson, type EventPersonKind, type PermissionTemplate, type EventPage } from '@/lib/types'
 
 interface EventPeopleClientProps {
   orgId: string
-  campId: string
+  eventId: string
   people: EventPerson[]
   templates: PermissionTemplate[]
 }
@@ -66,7 +66,7 @@ function PersonCard({
             </select>
           </div>
           <div className="grid grid-cols-3 gap-2">
-            {CAMP_PAGES.map((page) => {
+            {EVENT_PAGES.map((page) => {
               const id = `${person.id}-${page}`
               return (
                 <label key={page} htmlFor={id} className="flex items-center gap-2 text-sm capitalize cursor-pointer">
@@ -90,7 +90,7 @@ function PersonCard({
 
 export function EventPeopleClient({
   orgId,
-  campId,
+  eventId,
   people: initialPeople,
   templates,
 }: EventPeopleClientProps) {
@@ -122,7 +122,7 @@ export function EventPeopleClient({
     setSaving(true)
     setError(null)
     try {
-      const person = await addEventPerson(orgId, campId, {
+      const person = await addEventPerson(orgId, eventId, {
         kind,
         name: name.trim(),
         email: email.trim(),
@@ -145,7 +145,7 @@ export function EventPeopleClient({
     setSaving(true)
     setError(null)
     try {
-      await removeEventPerson(orgId, campId, personId)
+      await removeEventPerson(orgId, eventId, personId)
       setPeople((prev) => prev.filter((p) => p.id !== personId))
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to remove')
@@ -163,7 +163,7 @@ export function EventPeopleClient({
       list.map((p) => (p.id === person.id ? { ...p, pages: nextPages, applied_template_id: null } : p))
     )
     try {
-      await updateEventPersonPermissions(orgId, campId, person.id, nextPages)
+      await updateEventPersonPermissions(orgId, eventId, person.id, nextPages)
     } catch (err: unknown) {
       setPeople((list) => list.map((p) => (p.id === person.id ? prev : p)))  // rollback
       setError(err instanceof Error ? err.message : 'Failed to update permissions')
@@ -179,7 +179,7 @@ export function EventPeopleClient({
       list.map((p) => (p.id === person.id ? { ...p, pages: nextPages, applied_template_id: tid } : p))
     )
     try {
-      await updateEventPersonPermissions(orgId, campId, person.id, nextPages, tid)
+      await updateEventPersonPermissions(orgId, eventId, person.id, nextPages, tid)
     } catch (err: unknown) {
       setPeople((list) => list.map((p) => (p.id === person.id ? prev : p)))  // rollback
       setError(err instanceof Error ? err.message : 'Failed to apply template')
@@ -245,7 +245,7 @@ export function EventPeopleClient({
                 </select>
               </div>
               <div className="grid grid-cols-3 gap-2">
-                {CAMP_PAGES.map((page) => {
+                {EVENT_PAGES.map((page) => {
                   const id = `add-${page}`
                   return (
                     <label key={page} htmlFor={id} className="flex items-center gap-2 text-sm capitalize cursor-pointer">

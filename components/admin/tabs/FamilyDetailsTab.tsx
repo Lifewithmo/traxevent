@@ -7,7 +7,7 @@ import { updateAdminFamily } from '@/actions/admin-families'
 interface FamilyDetailsTabProps {
   family: Family
   orgId: string
-  campId: string
+  eventId: string
   onSaved: (updates: Partial<Family>) => void
 }
 
@@ -64,7 +64,7 @@ function Field({
   )
 }
 
-export function FamilyDetailsTab({ family, orgId, campId, onSaved }: FamilyDetailsTabProps) {
+export function FamilyDetailsTab({ family, orgId, eventId, onSaved }: FamilyDetailsTabProps) {
   const [clean, setClean] = useState<DraftFields>(() => toDraft(family))
   const [draft, setDraft] = useState<DraftFields>(() => toDraft(family))
   const [saving, setSaving] = useState(false)
@@ -94,7 +94,7 @@ export function FamilyDetailsTab({ family, orgId, campId, onSaved }: FamilyDetai
       },
     }
     try {
-      await updateAdminFamily(orgId, campId, family.id, updates)
+      await updateAdminFamily(orgId, eventId, family.id, updates)
       setClean(draft)
       onSaved(updates)
     } catch {

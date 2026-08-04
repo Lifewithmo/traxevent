@@ -7,11 +7,11 @@ import { updateAdminFamily } from '@/actions/admin-families'
 interface FamilyPaymentTabProps {
   family: Family
   orgId: string
-  campId: string
+  eventId: string
   onSaved: (updates: Partial<Family>) => void
 }
 
-export function FamilyPaymentTab({ family, orgId, campId, onSaved }: FamilyPaymentTabProps) {
+export function FamilyPaymentTab({ family, orgId, eventId, onSaved }: FamilyPaymentTabProps) {
   const [amountDue, setAmountDue] = useState(String(family.amount_due ?? 0))
   const [amountPaid, setAmountPaid] = useState(String(family.amount_paid ?? 0))
   const [paymentNotes, setPaymentNotes] = useState(family.payment_notes ?? '')
@@ -36,7 +36,7 @@ export function FamilyPaymentTab({ family, orgId, campId, onSaved }: FamilyPayme
         paid === 0 ? 'unpaid' : paid >= due ? 'paid' : 'partial',
     }
     try {
-      await updateAdminFamily(orgId, campId, family.id, updates)
+      await updateAdminFamily(orgId, eventId, family.id, updates)
       onSaved(updates)
     } catch {
       alert('Failed to save. Please try again.')

@@ -50,15 +50,15 @@ export async function updateDepartment(
 
 export async function deleteDepartment(orgId: string, deptId: string): Promise<void> {
   await assertOrgAdmin(orgId)
-  // Unassign any camps in this department before deleting it.
-  const campsSnap = await adminDb
+  // Unassign any events in this department before deleting it.
+  const eventsSnap = await adminDb
     .collection('orgs').doc(orgId)
     .collection('events')
     .where('department_id', '==', deptId)
     .get()
-  if (!campsSnap.empty) {
+  if (!eventsSnap.empty) {
     const batch = adminDb.batch()
-    for (const doc of campsSnap.docs) {
+    for (const doc of eventsSnap.docs) {
       batch.update(doc.ref, { department_id: FieldValue.delete() })
     }
     await batch.commit()

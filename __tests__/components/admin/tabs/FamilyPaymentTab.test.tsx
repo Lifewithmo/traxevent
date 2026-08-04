@@ -42,7 +42,7 @@ describe('FamilyPaymentTab', () => {
       <FamilyPaymentTab
         family={mockFamily}
         orgId="org-1"
-        campId="camp-1"
+        eventId="camp-1"
         onSaved={vi.fn()}
       />
     )
@@ -54,7 +54,7 @@ describe('FamilyPaymentTab', () => {
       <FamilyPaymentTab
         family={{ ...mockFamily, amount_paid: 700 }}
         orgId="org-1"
-        campId="camp-1"
+        eventId="camp-1"
         onSaved={vi.fn()}
       />
     )
@@ -67,7 +67,7 @@ describe('FamilyPaymentTab', () => {
       <FamilyPaymentTab
         family={mockFamily}
         orgId="org-1"
-        campId="camp-1"
+        eventId="camp-1"
         onSaved={vi.fn()}
       />
     )

@@ -1,30 +1,30 @@
 'use client'
 
 import { useState } from 'react'
-import { updateStaffCampAccess } from '@/actions/members'
-import { CAMP_PAGES, type OrgMember, type Event } from '@/lib/types'
+import { updateStaffEventAccess } from '@/actions/members'
+import { EVENT_PAGES, type OrgMember, type Event } from '@/lib/types'
 
 interface PermissionMatrixProps {
   orgId: string
   staff: OrgMember[]
-  camps: Event[]
+  events: Event[]
 }
 
-export function PermissionMatrix({ orgId, staff, camps }: PermissionMatrixProps) {
+export function PermissionMatrix({ orgId, staff, events }: PermissionMatrixProps) {
   const [saving, setSaving] = useState<string | null>(null)
 
   async function toggle(
     uid: string,
-    campId: string,
+    eventId: string,
     page: string,
     current: string[]
   ) {
-    const key = `${uid}-${campId}-${page}`
+    const key = `${uid}-${eventId}-${page}`
     setSaving(key)
     const next = current.includes(page)
       ? current.filter((p) => p !== page)
       : [...current, page]
-    await updateStaffCampAccess(orgId, uid, campId, next)
+    await updateStaffEventAccess(orgId, uid, eventId, next)
     setSaving(null)
   }
 
@@ -38,9 +38,9 @@ export function PermissionMatrix({ orgId, staff, camps }: PermissionMatrixProps)
 
   return (
     <div className="space-y-8">
-      {camps.map((camp) => (
-        <div key={camp.id}>
-          <h3 className="font-semibold mb-3 text-gray-700">{camp.name}</h3>
+      {events.map((event) => (
+        <div key={event.id}>
+          <h3 className="font-semibold mb-3 text-gray-700">{event.name}</h3>
           <div className="overflow-x-auto">
             <table className="text-sm border-collapse w-full">
               <thead>
@@ -51,7 +51,7 @@ export function PermissionMatrix({ orgId, staff, camps }: PermissionMatrixProps)
                   >
                     Staff member
                   </th>
-                  {CAMP_PAGES.map((page) => (
+                  {EVENT_PAGES.map((page) => (
                     <th
                       key={page}
                       scope="col"
@@ -64,15 +64,15 @@ export function PermissionMatrix({ orgId, staff, camps }: PermissionMatrixProps)
               </thead>
               <tbody>
                 {staff.map((member) => {
-                  const pages = member.event_access?.[camp.id]?.pages ?? []
+                  const pages = member.event_access?.[event.id]?.pages ?? []
                   return (
                     <tr key={member.uid} className="border-t">
                       <td className="py-3 pr-6">
                         <div className="font-medium">{member.display_name}</div>
                         <div className="text-xs text-gray-400">{member.email}</div>
                       </td>
-                      {CAMP_PAGES.map((page) => {
-                        const key = `${member.uid}-${camp.id}-${page}`
+                      {EVENT_PAGES.map((page) => {
+                        const key = `${member.uid}-${event.id}-${page}`
                         const checked = pages.includes(page)
                         return (
                           <td key={page} className="py-3 px-3 text-center">
@@ -80,7 +80,7 @@ export function PermissionMatrix({ orgId, staff, camps }: PermissionMatrixProps)
                               type="checkbox"
                               checked={checked}
                               disabled={saving === key}
-                              onChange={() => toggle(member.uid, camp.id, page, pages)}
+                              onChange={() => toggle(member.uid, event.id, page, pages)}
                               className="h-4 w-4 cursor-pointer disabled:opacity-40"
                               aria-label={`${member.display_name} — ${page}`}
                             />

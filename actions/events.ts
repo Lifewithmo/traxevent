@@ -9,7 +9,7 @@ import { buildCampSlug } from '@/lib/slug'
 import { DEFAULT_EVENT_TYPE_ID } from '@/lib/event-types'
 import type { Terminology } from '@/lib/event-types'
 
-export async function createCamp(
+export async function createEvent(
   orgId: string,
   input: {
     name: string
@@ -23,12 +23,12 @@ export async function createCamp(
   }
 ): Promise<Event> {
   await assertOrgAdmin(orgId)
-  const campRef = adminDb
+  const eventRef = adminDb
     .collection('orgs').doc(orgId)
     .collection('events').doc()
 
-  const camp: Event = {
-    id: campRef.id,
+  const event: Event = {
+    id: eventRef.id,
     name: input.name,
     slug: buildCampSlug(input.name, input.year),
     year: input.year,
@@ -49,11 +49,11 @@ export async function createCamp(
     created_at: new Date().toISOString(),
   }
 
-  await campRef.set(camp)
-  return camp
+  await eventRef.set(event)
+  return event
 }
 
-export async function listCamps(orgId: string): Promise<Event[]> {
+export async function listEvents(orgId: string): Promise<Event[]> {
   await assertOrgMember(orgId)
   const snap = await adminDb
     .collection('orgs').doc(orgId)
@@ -63,7 +63,7 @@ export async function listCamps(orgId: string): Promise<Event[]> {
   return snap.docs.map((d) => d.data() as Event)
 }
 
-export async function getCampBySlug(orgId: string, slug: string): Promise<Event | null> {
+export async function getEventBySlug(orgId: string, slug: string): Promise<Event | null> {
   const snap = await adminDb
     .collection('orgs').doc(orgId)
     .collection('events')
@@ -73,9 +73,9 @@ export async function getCampBySlug(orgId: string, slug: string): Promise<Event 
   return snap.empty ? null : (snap.docs[0].data() as Event)
 }
 
-export async function updateCamp(
+export async function updateEvent(
   orgId: string,
-  campId: string,
+  eventId: string,
   updates: Partial<Pick<Event,
     | 'name'
     | 'status'
@@ -96,7 +96,7 @@ export async function updateCamp(
   await assertOrgAdmin(orgId)
   const ref = adminDb
     .collection('orgs').doc(orgId)
-    .collection('events').doc(campId)
+    .collection('events').doc(eventId)
 
   const snap = await ref.get()
   if (!snap.exists) throw new Error('Camp not found')
@@ -125,12 +125,12 @@ export interface DuplicateEventInput {
 
 export async function duplicateEvent(
   orgId: string,
-  sourceCampId: string,
+  sourceEventId: string,
   input: DuplicateEventInput
 ): Promise<Event> {
   await assertOrgAdmin(orgId)
-  const campsCol = adminDb.collection('orgs').doc(orgId).collection('events')
-  const sourceRef = campsCol.doc(sourceCampId)
+  const eventsCol = adminDb.collection('orgs').doc(orgId).collection('events')
+  const sourceRef = eventsCol.doc(sourceEventId)
   const sourceSnap = await sourceRef.get()
   if (!sourceSnap.exists) throw new Error('Source event not found')
   const source = sourceSnap.data() as Event
@@ -138,13 +138,13 @@ export async function duplicateEvent(
   const baseSlug = buildCampSlug(input.name, input.year)
   let slug = baseSlug
   let suffix = 2
-  while (!(await campsCol.where('slug', '==', slug).limit(1).get()).empty) {
+  while (!(await eventsCol.where('slug', '==', slug).limit(1).get()).empty) {
     slug = `${baseSlug}-${suffix}`
     suffix++
   }
 
-  const newRef = campsCol.doc()
-  const newCamp: Event = {
+  const newRef = eventsCol.doc()
+  const newEvent: Event = {
     id: newRef.id,
     name: input.name,
     slug,
@@ -162,7 +162,7 @@ export async function duplicateEvent(
     ...(source.reply_to_email ? { reply_to_email: source.reply_to_email } : {}),
     created_at: new Date().toISOString(),
   }
-  await newRef.set(newCamp)
+  await newRef.set(newEvent)
 
   try {
     const [slotsSnap, formsSnap] = await Promise.all([
@@ -186,5 +186,5 @@ export async function duplicateEvent(
     throw err
   }
 
-  return newCamp
+  return newEvent
 }

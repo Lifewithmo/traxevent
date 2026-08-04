@@ -1,9 +1,9 @@
 import { AdminSidebar } from '@/components/layout/AdminSidebar'
-import { requireCamp, allowedCampPages } from '@/lib/auth/guards'
+import { requireEvent, allowedEventPages } from '@/lib/auth/guards'
 import { resolveTerminology } from '@/lib/event-types'
-import { CAMP_PAGES } from '@/lib/types'
+import { EVENT_PAGES } from '@/lib/types'
 
-export default async function CampLayout({
+export default async function EventLayout({
   children,
   params,
 }: {
@@ -11,13 +11,13 @@ export default async function CampLayout({
   params: Promise<{ orgSlug: string; campSlug: string }>
 }) {
   const { orgSlug, campSlug } = await params
-  const { campId, camp, member } = await requireCamp(orgSlug, campSlug)
-  const terminology = resolveTerminology(camp.event_type_id, camp.event_type_terminology)
-  const allowed = allowedCampPages(member, campId, [...CAMP_PAGES], camp.department_id ?? null)
+  const { eventId, event, member } = await requireEvent(orgSlug, campSlug)
+  const terminology = resolveTerminology(event.event_type_id, event.event_type_terminology)
+  const allowed = allowedEventPages(member, eventId, [...EVENT_PAGES], event.department_id ?? null)
 
   return (
     <div className="flex min-h-screen">
-      <AdminSidebar orgSlug={orgSlug} campSlug={campSlug} terminology={terminology} allowedCampPages={allowed} />
+      <AdminSidebar orgSlug={orgSlug} campSlug={campSlug} terminology={terminology} allowedEventPages={allowed} />
       <main className="flex-1 bg-gray-50 overflow-auto">{children}</main>
     </div>
   )

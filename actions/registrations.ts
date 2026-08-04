@@ -10,14 +10,14 @@ import { mergeSavedMembers } from '@/lib/saved-members'
 import { getRegistrantProfile, updateRegistrantProfile } from '@/actions/registrant-auth'
 import { assertFamilyAccess } from '@/lib/auth/family-access'
 import { getCurrentUser } from '@/lib/auth/session'
-import { assertCampPage } from '@/lib/auth/assert'
+import { assertEventPage } from '@/lib/auth/assert'
 
 export interface CreateRegistrationInput {
   orgId: string
-  campId: string
+  eventId: string
   orgSlug: string
   campSlug: string
-  campName: string
+  eventName: string
   orgName: string
   family: Omit<Family,
     | 'id' | 'org_id' | 'event_id' | 'org_slug' | 'event_slug'
@@ -36,26 +36,26 @@ export async function createRegistration(
   const familyId = buildFamilyId()
   const now = new Date().toISOString()
 
-  // Determine registration status — check capacity if set on the camp
+  // Determine registration status — check capacity if set on the event
   let registrationStatus: Family['registration_status'] = 'pending'
 
-  const campRef = adminDb
+  const eventRef = adminDb
     .collection('orgs').doc(input.orgId)
-    .collection('events').doc(input.campId)
+    .collection('events').doc(input.eventId)
 
-  const campSnap = await campRef.get()
-  const camp = campSnap.exists ? (campSnap.data() as Event) : null
-  if (!camp) throw new Error(`Camp not found: ${input.campId}`)
+  const eventSnap = await eventRef.get()
+  const event = eventSnap.exists ? (eventSnap.data() as Event) : null
+  if (!event) throw new Error(`Camp not found: ${input.eventId}`)
 
-  if (camp?.capacity) {
-    const familiesSnap = await campRef.collection('families').get()
+  if (event?.capacity) {
+    const familiesSnap = await eventRef.collection('families').get()
     const activeCount = familiesSnap.docs.reduce((count, doc) => {
       const status = (doc.data() as Family).registration_status
       return status === 'pending' || status === 'confirmed' ? count + 1 : count
     }, 0)
     // TODO: replace with Firestore transaction for strict capacity enforcement
     // Current read-then-write has a small TOCTOU window under concurrent submissions
-    if (activeCount >= camp.capacity) {
+    if (activeCount >= event.capacity) {
       registrationStatus = 'waitlisted'
     }
   }
@@ -65,10 +65,10 @@ export async function createRegistration(
   const family: Family = {
     id: familyId,
     org_id: input.orgId,
-    event_id: input.campId,
+    event_id: input.eventId,
     org_slug: input.orgSlug,
     event_slug: input.campSlug,
-    event_name: input.campName,
+    event_name: input.eventName,
     org_name: input.orgName,
     ...input.family,
     registration_status: registrationStatus,
@@ -81,7 +81,7 @@ export async function createRegistration(
     updated_at: now,
   }
 
-  const familyRef = campRef.collection('families').doc(familyId)
+  const familyRef = eventRef.collection('families').doc(familyId)
   await familyRef.set(family)
 
   // Write each family member
@@ -109,7 +109,7 @@ export async function createRegistration(
   }
 
   // Attach signed URL token
-  const accessToken = await attachAccessToken(input.orgId, input.campId, familyId)
+  const accessToken = await attachAccessToken(input.orgId, input.eventId, familyId)
 
   // Send confirmation email (skipped for paid registrations; sent after payment webhook confirms payment)
   if (!input.skipConfirmationEmail) {
@@ -117,14 +117,14 @@ export async function createRegistration(
     await sendRegistrationConfirmation({
       to: input.family.email,
       firstName: input.family.first_name,
-      campName: input.campName,
+      eventName: input.eventName,
       orgName: input.orgName,
       orgSlug: input.orgSlug,
       campSlug: input.campSlug,
       familyId,
       accessToken,
-      fromDisplayName: camp.from_display_name,
-      replyTo: camp.reply_to_email,
+      fromDisplayName: event.from_display_name,
+      replyTo: event.reply_to_email,
       fromDomain,
     })
   }
@@ -134,12 +134,12 @@ export async function createRegistration(
 
 export async function getRegistrationByToken(
   orgId: string,
-  campId: string,
+  eventId: string,
   token: string
 ): Promise<Family | null> {
   const snap = await adminDb
     .collection('orgs').doc(orgId)
-    .collection('events').doc(campId)
+    .collection('events').doc(eventId)
     .collection('families')
     .where('access_token', '==', token)
     .limit(1)
@@ -160,16 +160,16 @@ export async function getRegistrationByToken(
 
 export async function getRegistrationByUid(
   orgId: string,
-  campId: string,
+  eventId: string,
   uid: string
 ): Promise<Family | null> {
   const caller = await getCurrentUser()
   if (!caller) throw new Error('Unauthorized')
-  if (caller.uid !== uid) await assertCampPage(orgId, campId, 'families')
+  if (caller.uid !== uid) await assertEventPage(orgId, eventId, 'families')
 
   const snap = await adminDb
     .collection('orgs').doc(orgId)
-    .collection('events').doc(campId)
+    .collection('events').doc(eventId)
     .collection('families')
     .where('registrant_uid', '==', uid)
     .limit(1)
@@ -191,14 +191,14 @@ export async function getAllRegistrationsByUid(uid: string): Promise<Family[]> {
 
 export async function getFamilyMembers(
   orgId: string,
-  campId: string,
+  eventId: string,
   familyId: string,
   token?: string
 ): Promise<FamilyMember[]> {
-  await assertFamilyAccess(orgId, campId, familyId, { token, page: 'families' })
+  await assertFamilyAccess(orgId, eventId, familyId, { token, page: 'families' })
   const snap = await adminDb
     .collection('orgs').doc(orgId)
-    .collection('events').doc(campId)
+    .collection('events').doc(eventId)
     .collection('families').doc(familyId)
     .collection('family_members')
     .get()
@@ -208,7 +208,7 @@ export async function getFamilyMembers(
 
 export async function updateRegistration(
   orgId: string,
-  campId: string,
+  eventId: string,
   familyId: string,
   updates: Partial<Pick<Family,
     'first_name' | 'last_name' | 'email' | 'phone' |
@@ -216,23 +216,23 @@ export async function updateRegistration(
   >>,
   token?: string
 ): Promise<void> {
-  await assertFamilyAccess(orgId, campId, familyId, { token, page: 'families' })
+  await assertFamilyAccess(orgId, eventId, familyId, { token, page: 'families' })
   await adminDb
     .collection('orgs').doc(orgId)
-    .collection('events').doc(campId)
+    .collection('events').doc(eventId)
     .collection('families').doc(familyId)
     .update({ ...updates, updated_at: new Date().toISOString() })
 }
 
 export async function linkRegistrantAccount(
   orgId: string,
-  campId: string,
+  eventId: string,
   familyId: string,
   uid: string
 ): Promise<void> {
   await adminDb
     .collection('orgs').doc(orgId)
-    .collection('events').doc(campId)
+    .collection('events').doc(eventId)
     .collection('families').doc(familyId)
     .update({ registrant_uid: uid, updated_at: new Date().toISOString() })
 }
@@ -254,7 +254,7 @@ export async function getClaimableRegistrations(): Promise<Family[]> {
 }
 
 // Link an unclaimed family to the caller, only if its email matches the caller's profile email.
-export async function claimRegistration(orgId: string, campId: string, familyId: string): Promise<void> {
+export async function claimRegistration(orgId: string, eventId: string, familyId: string): Promise<void> {
   const user = await getCurrentUser()
   if (!user) throw new Error('Unauthorized')
   const profile = await getRegistrantProfile(user.uid)
@@ -262,7 +262,7 @@ export async function claimRegistration(orgId: string, campId: string, familyId:
   if (!email) throw new Error('Forbidden')
   const ref = adminDb
     .collection('orgs').doc(orgId)
-    .collection('events').doc(campId)
+    .collection('events').doc(eventId)
     .collection('families').doc(familyId)
   const snap = await ref.get()
   if (!snap.exists) throw new Error('Not found')

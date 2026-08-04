@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { createPermissionTemplate, updatePermissionTemplate, deletePermissionTemplate } from '@/actions/people'
-import { CAMP_PAGES, type PermissionTemplate, type EventPage } from '@/lib/types'
+import { EVENT_PAGES, type PermissionTemplate, type EventPage } from '@/lib/types'
 
 interface PermissionTemplatesClientProps {
   orgId: string
@@ -25,7 +25,7 @@ function PageCheckboxes({
 }) {
   return (
     <div className="grid grid-cols-3 gap-2">
-      {CAMP_PAGES.map((page) => {
+      {EVENT_PAGES.map((page) => {
         const id = `${idPrefix}-${page}`
         return (
           <label key={page} htmlFor={id} className="flex items-center gap-2 text-sm capitalize cursor-pointer">

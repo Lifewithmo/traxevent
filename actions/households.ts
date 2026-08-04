@@ -8,16 +8,16 @@ import type { Event, Family } from '@/lib/types'
 export async function getOrgHouseholds(orgId: string): Promise<Household[]> {
   await assertOrgMember(orgId)
 
-  const campsSnap = await adminDb
+  const eventsSnap = await adminDb
     .collection('orgs').doc(orgId)
     .collection('events').orderBy('created_at', 'desc').get()
-  const camps = campsSnap.docs.map((d) => d.data() as Event)
+  const events = eventsSnap.docs.map((d) => d.data() as Event)
 
-  const rowsPerCamp = await Promise.all(
-    camps.map(async (camp) => {
+  const rowsPerEvent = await Promise.all(
+    events.map(async (event) => {
       const famSnap = await adminDb
         .collection('orgs').doc(orgId)
-        .collection('events').doc(camp.id)
+        .collection('events').doc(event.id)
         .collection('families').get()
       return famSnap.docs.map((d) => {
         const f = d.data() as Family
@@ -28,9 +28,9 @@ export async function getOrgHouseholds(orgId: string): Promise<Household[]> {
           phone: f.phone,
           registrant_uid: f.registrant_uid,
           created_at: f.created_at,
-          event_id: camp.id,
-          event_name: camp.name,
-          year: camp.year,
+          event_id: event.id,
+          event_name: event.name,
+          year: event.year,
           registration_status: f.registration_status,
           payment_status: f.payment_status,
         }
@@ -39,5 +39,5 @@ export async function getOrgHouseholds(orgId: string): Promise<Household[]> {
     })
   )
 
-  return buildHouseholds(rowsPerCamp.flat())
+  return buildHouseholds(rowsPerEvent.flat())
 }

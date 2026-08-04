@@ -1,17 +1,17 @@
 'use server'
 
 import { adminDb } from '@/lib/firebase-admin'
-import { assertCampPage } from '@/lib/auth/assert'
+import { assertEventPage } from '@/lib/auth/assert'
 import type { VolunteerHoursEntry } from '@/lib/types'
 import { randomBytes } from 'crypto'
 
-function hoursRef(orgId: string, campId: string) {
-  return adminDb.collection('orgs').doc(orgId).collection('events').doc(campId).collection('volunteer_hours')
+function hoursRef(orgId: string, eventId: string) {
+  return adminDb.collection('orgs').doc(orgId).collection('events').doc(eventId).collection('volunteer_hours')
 }
 
-export async function listVolunteerHours(orgId: string, campId: string): Promise<VolunteerHoursEntry[]> {
-  await assertCampPage(orgId, campId, 'people')
-  const snap = await hoursRef(orgId, campId).orderBy('date', 'desc').get()
+export async function listVolunteerHours(orgId: string, eventId: string): Promise<VolunteerHoursEntry[]> {
+  await assertEventPage(orgId, eventId, 'people')
+  const snap = await hoursRef(orgId, eventId).orderBy('date', 'desc').get()
   return snap.docs.map((d) => d.data() as VolunteerHoursEntry)
 }
 
@@ -25,10 +25,10 @@ export interface LogVolunteerHoursInput {
 
 export async function logVolunteerHours(
   orgId: string,
-  campId: string,
+  eventId: string,
   input: LogVolunteerHoursInput
 ): Promise<VolunteerHoursEntry> {
-  await assertCampPage(orgId, campId, 'people')
+  await assertEventPage(orgId, eventId, 'people')
   const id = randomBytes(8).toString('hex')
   const entry: VolunteerHoursEntry = {
     id,
@@ -39,11 +39,11 @@ export async function logVolunteerHours(
     ...(input.note ? { note: input.note } : {}),
     created_at: new Date().toISOString(),
   }
-  await hoursRef(orgId, campId).doc(id).set(entry)
+  await hoursRef(orgId, eventId).doc(id).set(entry)
   return entry
 }
 
-export async function deleteVolunteerHours(orgId: string, campId: string, entryId: string): Promise<void> {
-  await assertCampPage(orgId, campId, 'people')
-  await hoursRef(orgId, campId).doc(entryId).delete()
+export async function deleteVolunteerHours(orgId: string, eventId: string, entryId: string): Promise<void> {
+  await assertEventPage(orgId, eventId, 'people')
+  await hoursRef(orgId, eventId).doc(entryId).delete()
 }

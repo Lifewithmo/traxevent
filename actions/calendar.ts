@@ -1,12 +1,12 @@
 'use server'
 
 import { assertOrgMember } from '@/lib/auth/assert'
-import { listCamps } from '@/actions/camps'
+import { listEvents } from '@/actions/events'
 import { listLeads } from '@/actions/leads'
 import { buildCalendar, type CalendarItem } from '@/lib/calendar'
 
 export async function getOrgCalendar(orgId: string, orgSlug: string): Promise<CalendarItem[]> {
   await assertOrgMember(orgId)
-  const [camps, leads] = await Promise.all([listCamps(orgId), listLeads(orgId)])
-  return buildCalendar(orgSlug, camps, leads)
+  const [events, leads] = await Promise.all([listEvents(orgId), listLeads(orgId)])
+  return buildCalendar(orgSlug, events, leads)
 }

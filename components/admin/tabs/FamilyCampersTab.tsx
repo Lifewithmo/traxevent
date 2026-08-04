@@ -8,7 +8,7 @@ interface FamilyCampersTabProps {
   members: FamilyMember[]
   familyId: string
   orgId: string
-  campId: string
+  eventId: string
   onSaved: (members: FamilyMember[]) => void
 }
 
@@ -53,7 +53,7 @@ export function FamilyCampersTab({
   members: initialMembers,
   familyId,
   orgId,
-  campId,
+  eventId,
   onSaved,
 }: FamilyCampersTabProps) {
   const [members, setMembers] = useState<FamilyMember[]>(initialMembers)
@@ -82,7 +82,7 @@ export function FamilyCampersTab({
   async function handleSave() {
     setSaving(true)
     try {
-      await updateFamilyMembers(orgId, campId, familyId, members)
+      await updateFamilyMembers(orgId, eventId, familyId, members)
       onSaved(members)
     } catch {
       alert('Failed to save. Please try again.')

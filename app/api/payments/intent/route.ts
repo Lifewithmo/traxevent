@@ -22,22 +22,22 @@ export async function POST(req: Request) {
     )
   }
 
-  // Look up camp by slug
-  const campSnap = await adminDb
+  // Look up event by slug
+  const eventSnap = await adminDb
     .collection('orgs').doc(org.id)
     .collection('events').where('slug', '==', campSlug).limit(1)
     .get()
-  if (campSnap.empty) return NextResponse.json({ error: 'Camp not found' }, { status: 404 })
-  const camp = campSnap.docs[0].data() as Event
+  if (eventSnap.empty) return NextResponse.json({ error: 'Camp not found' }, { status: 404 })
+  const event = eventSnap.docs[0].data() as Event
 
-  if (!camp.payment_amount || camp.payment_amount <= 0) {
+  if (!event.payment_amount || event.payment_amount <= 0) {
     return NextResponse.json(
       { error: 'This event has no payment amount configured' },
       { status: 400 }
     )
   }
 
-  const amountCents = Math.round(camp.payment_amount * 100)
+  const amountCents = Math.round(event.payment_amount * 100)
   const applicationFeeCents = Math.round(amountCents * 0.01) // 1% platform fee
 
   let paymentIntent: Awaited<ReturnType<typeof stripe.paymentIntents.create>>

@@ -12,7 +12,7 @@ import type { EventPerson, VolunteerHoursEntry } from '@/lib/types'
 
 interface VolunteerHoursClientProps {
   orgId: string
-  campId: string
+  eventId: string
   volunteers: EventPerson[]
   entries: VolunteerHoursEntry[]
 }
@@ -20,7 +20,7 @@ interface VolunteerHoursClientProps {
 const selectClass =
   'w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50'
 
-export function VolunteerHoursClient({ orgId, campId, volunteers, entries: initialEntries }: VolunteerHoursClientProps) {
+export function VolunteerHoursClient({ orgId, eventId, volunteers, entries: initialEntries }: VolunteerHoursClientProps) {
   const [entries, setEntries] = useState<VolunteerHoursEntry[]>(initialEntries)
   const [personId, setPersonId] = useState('')
   const [date, setDate] = useState('')
@@ -47,7 +47,7 @@ export function VolunteerHoursClient({ orgId, campId, volunteers, entries: initi
     setSaving(true)
     setError(null)
     try {
-      const entry = await logVolunteerHours(orgId, campId, {
+      const entry = await logVolunteerHours(orgId, eventId, {
         personId: v.id, personName: v.name, date, hours: h, note: note.trim() || undefined,
       })
       setEntries((prev) => [entry, ...prev])
@@ -63,7 +63,7 @@ export function VolunteerHoursClient({ orgId, campId, volunteers, entries: initi
     setSaving(true)
     setError(null)
     try {
-      await deleteVolunteerHours(orgId, campId, id)
+      await deleteVolunteerHours(orgId, eventId, id)
       setEntries((prev) => prev.filter((e) => e.id !== id))
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to delete')

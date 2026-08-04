@@ -7,7 +7,7 @@ const signedGroupGetSpy = vi.hoisted(() => vi.fn())
 vi.mock('@/lib/firebase-admin', () => {
   const familiesCol = { get: getFamiliesSpy }
   const assignmentsCol = { get: getAssignmentsSpy }
-  const campDoc = {
+  const eventDoc = {
     collection: vi.fn().mockImplementation((sub: string) => {
       if (sub === 'families') return familiesCol
       if (sub === 'form_assignments') return assignmentsCol
@@ -16,7 +16,7 @@ vi.mock('@/lib/firebase-admin', () => {
   }
   return {
     adminDb: {
-      collection: vi.fn().mockReturnValue({ doc: vi.fn().mockReturnValue({ collection: vi.fn().mockReturnValue({ doc: vi.fn().mockReturnValue(campDoc) }) }) }),
+      collection: vi.fn().mockReturnValue({ doc: vi.fn().mockReturnValue({ collection: vi.fn().mockReturnValue({ doc: vi.fn().mockReturnValue(eventDoc) }) }) }),
       collectionGroup: vi.fn().mockReturnValue({
         where: vi.fn().mockReturnValue({ where: vi.fn().mockReturnValue({ get: signedGroupGetSpy }) }),
       }),
@@ -27,7 +27,7 @@ vi.mock('@/lib/firebase-admin', () => {
 vi.mock('@/lib/auth/assert', () => ({
   assertOrgMember: vi.fn().mockResolvedValue({ role: 'admin', event_access: {} }),
   assertOrgAdmin: vi.fn().mockResolvedValue({ role: 'admin', event_access: {} }),
-  assertCampPage: vi.fn().mockResolvedValue({ role: 'admin', event_access: {} }),
+  assertEventPage: vi.fn().mockResolvedValue({ role: 'admin', event_access: {} }),
 }))
 
 import { getFormSubmissionReport } from '@/actions/reports'

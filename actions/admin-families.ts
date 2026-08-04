@@ -5,30 +5,30 @@ import type { Family, FamilyMember, FamilyNote, FamilyCsvRow } from '@/lib/types
 import { randomBytes } from 'crypto'
 import { exportFamiliesCsv } from '@/lib/csv'
 import { FieldValue } from 'firebase-admin/firestore'
-import { assertCampPage } from '@/lib/auth/assert'
+import { assertEventPage } from '@/lib/auth/assert'
 
-function familiesRef(orgId: string, campId: string) {
+function familiesRef(orgId: string, eventId: string) {
   return adminDb
     .collection('orgs').doc(orgId)
-    .collection('events').doc(campId)
+    .collection('events').doc(eventId)
     .collection('families')
 }
 
-export async function getAdminFamilies(orgId: string, campId: string): Promise<Family[]> {
-  await assertCampPage(orgId, campId, 'families')
-  const snap = await familiesRef(orgId, campId).orderBy('created_at', 'desc').get()
+export async function getAdminFamilies(orgId: string, eventId: string): Promise<Family[]> {
+  await assertEventPage(orgId, eventId, 'families')
+  const snap = await familiesRef(orgId, eventId).orderBy('created_at', 'desc').get()
   return snap.docs.map(d => ({ id: d.id, ...d.data() }) as Family)
 }
 
 export async function getAdminFamily(
   orgId: string,
-  campId: string,
+  eventId: string,
   familyId: string
 ): Promise<{ family: Family; members: FamilyMember[] } | null> {
-  await assertCampPage(orgId, campId, 'families')
-  const familySnap = await familiesRef(orgId, campId).doc(familyId).get()
+  await assertEventPage(orgId, eventId, 'families')
+  const familySnap = await familiesRef(orgId, eventId).doc(familyId).get()
   if (!familySnap.exists) return null
-  const membersSnap = await familiesRef(orgId, campId)
+  const membersSnap = await familiesRef(orgId, eventId)
     .doc(familyId)
     .collection('family_members')
     .get()
@@ -40,7 +40,7 @@ export async function getAdminFamily(
 
 export async function updateAdminFamily(
   orgId: string,
-  campId: string,
+  eventId: string,
   familyId: string,
   updates: Partial<Pick<Family,
     | 'first_name' | 'last_name' | 'email' | 'phone'
@@ -48,8 +48,8 @@ export async function updateAdminFamily(
     | 'amount_due' | 'amount_paid' | 'payment_notes' | 'payment_status'
   >>
 ): Promise<void> {
-  await assertCampPage(orgId, campId, 'families')
-  await familiesRef(orgId, campId).doc(familyId).update({
+  await assertEventPage(orgId, eventId, 'families')
+  await familiesRef(orgId, eventId).doc(familyId).update({
     ...updates,
     updated_at: new Date().toISOString(),
   })
@@ -57,12 +57,12 @@ export async function updateAdminFamily(
 
 export async function updateFamilyStatus(
   orgId: string,
-  campId: string,
+  eventId: string,
   familyId: string,
   status: Family['registration_status'],
   adminName: string
 ): Promise<void> {
-  await assertCampPage(orgId, campId, 'families')
+  await assertEventPage(orgId, eventId, 'families')
   const note: FamilyNote = {
     id: randomBytes(8).toString('hex'),
     text: `Status changed to ${status}`,
@@ -70,7 +70,7 @@ export async function updateFamilyStatus(
     created_at: new Date().toISOString(),
     type: 'system',
   }
-  await familiesRef(orgId, campId).doc(familyId).update({
+  await familiesRef(orgId, eventId).doc(familyId).update({
     registration_status: status,
     notes: FieldValue.arrayUnion(note),
     updated_at: new Date().toISOString(),
@@ -79,25 +79,25 @@ export async function updateFamilyStatus(
 
 export async function bulkUpdateStatus(
   orgId: string,
-  campId: string,
+  eventId: string,
   familyIds: string[],
   status: Family['registration_status'],
   adminName: string
 ): Promise<void> {
-  await assertCampPage(orgId, campId, 'families')
+  await assertEventPage(orgId, eventId, 'families')
   await Promise.all(
-    familyIds.map(id => updateFamilyStatus(orgId, campId, id, status, adminName))
+    familyIds.map(id => updateFamilyStatus(orgId, eventId, id, status, adminName))
   )
 }
 
 export async function addFamilyNote(
   orgId: string,
-  campId: string,
+  eventId: string,
   familyId: string,
   text: string,
   author: string
 ): Promise<FamilyNote> {
-  await assertCampPage(orgId, campId, 'families')
+  await assertEventPage(orgId, eventId, 'families')
   const note: FamilyNote = {
     id: randomBytes(8).toString('hex'),
     text,
@@ -105,7 +105,7 @@ export async function addFamilyNote(
     created_at: new Date().toISOString(),
     type: 'admin',
   }
-  await familiesRef(orgId, campId).doc(familyId).update({
+  await familiesRef(orgId, eventId).doc(familyId).update({
     notes: FieldValue.arrayUnion(note),
     updated_at: new Date().toISOString(),
   })
@@ -114,13 +114,13 @@ export async function addFamilyNote(
 
 export async function updateFamilyMembers(
   orgId: string,
-  campId: string,
+  eventId: string,
   familyId: string,
   members: FamilyMember[]
 ): Promise<void> {
-  await assertCampPage(orgId, campId, 'families')
+  await assertEventPage(orgId, eventId, 'families')
   const batch = adminDb.batch()
-  const membersCol = familiesRef(orgId, campId).doc(familyId).collection('family_members')
+  const membersCol = familiesRef(orgId, eventId).doc(familyId).collection('family_members')
   const existingSnap = await membersCol.get()
   existingSnap.docs.forEach(d => batch.delete(d.ref))
   members.forEach(m => batch.set(membersCol.doc(m.id), m))
@@ -129,17 +129,17 @@ export async function updateFamilyMembers(
 
 export async function buildFamiliesCsvAction(
   orgId: string,
-  campId: string,
+  eventId: string,
   familyIds?: string[]
 ): Promise<string> {
-  await assertCampPage(orgId, campId, 'families')
-  const families = await getAdminFamilies(orgId, campId)
+  await assertEventPage(orgId, eventId, 'families')
+  const families = await getAdminFamilies(orgId, eventId)
   const filtered = familyIds ? families.filter(f => familyIds.includes(f.id)) : families
 
   const membersMap = new Map<string, FamilyMember[]>()
   await Promise.all(
     filtered.map(async f => {
-      const snap = await familiesRef(orgId, campId)
+      const snap = await familiesRef(orgId, eventId)
         .doc(f.id)
         .collection('family_members')
         .get()

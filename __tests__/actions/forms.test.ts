@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 vi.mock('@/lib/auth/assert', () => ({
   assertOrgMember: vi.fn().mockResolvedValue({ role: 'admin', event_access: {} }),
   assertOrgAdmin: vi.fn().mockResolvedValue({ role: 'admin', event_access: {} }),
-  assertCampPage: vi.fn().mockResolvedValue({ role: 'admin', event_access: {} }),
+  assertEventPage: vi.fn().mockResolvedValue({ role: 'admin', event_access: {} }),
 }))
 
 vi.mock('@/lib/auth/family-access', () => ({ assertFamilyAccess: vi.fn().mockResolvedValue({ id: 'fam' }) }))
@@ -210,7 +210,7 @@ describe('submitSignedForm', () => {
       signatureName: 'Jane Smith',
       signerEmail: 'jane@example.com',
       signerFirstName: 'Jane',
-      campName: 'Summer Camp 2026',
+      eventName: 'Summer Camp 2026',
       orgName: 'First Hills',
       orgSlug: 'firsthills',
       campSlug: 'summer-2026',
@@ -238,7 +238,7 @@ describe('submitSignedForm', () => {
       signatureName: 'Jane Smith',
       signerEmail: 'jane@example.com',
       signerFirstName: 'Jane',
-      campName: 'Summer Camp 2026',
+      eventName: 'Summer Camp 2026',
       orgName: 'First Hills',
       orgSlug: 'firsthills',
       campSlug: 'summer-2026',
@@ -248,7 +248,7 @@ describe('submitSignedForm', () => {
         to: 'jane@example.com',
         firstName: 'Jane',
         formName: 'Liability Waiver',
-        campName: 'Summer Camp 2026',
+        eventName: 'Summer Camp 2026',
       })
     )
   })

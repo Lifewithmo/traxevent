@@ -1,6 +1,6 @@
 export const dynamic = 'force-dynamic'
 
-import { requireCampPage } from '@/lib/auth/guards'
+import { requireEventPage } from '@/lib/auth/guards'
 import { listSlots } from '@/actions/assignments'
 import { getAdminFamilies } from '@/actions/admin-families'
 import { resolveTerminology } from '@/lib/event-types'
@@ -12,17 +12,17 @@ export default async function AssignmentsPage({
   params: Promise<{ orgSlug: string; campSlug: string }>
 }) {
   const { orgSlug, campSlug } = await params
-  const { orgId, campId, camp } = await requireCampPage(orgSlug, campSlug, 'assignments')
+  const { orgId, eventId, event } = await requireEventPage(orgSlug, campSlug, 'assignments')
   const [slots, families] = await Promise.all([
-    listSlots(orgId, campId),
-    getAdminFamilies(orgId, campId),
+    listSlots(orgId, eventId),
+    getAdminFamilies(orgId, eventId),
   ])
-  const terminology = resolveTerminology(camp.event_type_id, camp.event_type_terminology)
+  const terminology = resolveTerminology(event.event_type_id, event.event_type_terminology)
 
   return (
     <AssignmentsClient
       orgId={orgId}
-      campId={campId}
+      eventId={eventId}
       campSlug={campSlug}
       orgSlug={orgSlug}
       slots={slots}

@@ -1,6 +1,6 @@
 export const dynamic = 'force-dynamic'
 
-import { requireCampPage } from '@/lib/auth/guards'
+import { requireEventPage } from '@/lib/auth/guards'
 import { listAllEventMembers, getCheckinsForDate } from '@/actions/checkins'
 import type { CheckinRecord } from '@/lib/types'
 
@@ -10,8 +10,8 @@ export async function generateMetadata({
   params: Promise<{ orgSlug: string; campSlug: string }>
 }) {
   const { orgSlug, campSlug } = await params
-  const { camp } = await requireCampPage(orgSlug, campSlug, 'checkin')
-  return { title: `${camp.name} — Attendance Manifest` }
+  const { event } = await requireEventPage(orgSlug, campSlug, 'checkin')
+  return { title: `${event.name} — Attendance Manifest` }
 }
 
 export default async function CheckinManifestPage({
@@ -23,13 +23,13 @@ export default async function CheckinManifestPage({
 }) {
   const { orgSlug, campSlug } = await params
   const { date } = await searchParams
-  const { orgId, campId, camp } = await requireCampPage(orgSlug, campSlug, 'checkin')
+  const { orgId, eventId, event } = await requireEventPage(orgSlug, campSlug, 'checkin')
 
   const activeDate = date ?? new Date().toISOString().slice(0, 10)
 
   const [members, checkins] = await Promise.all([
-    listAllEventMembers(orgId, campId),
-    getCheckinsForDate(orgId, campId, activeDate),
+    listAllEventMembers(orgId, eventId),
+    getCheckinsForDate(orgId, eventId, activeDate),
   ])
 
   const byMember = new Map<string, CheckinRecord>(checkins.map((c) => [c.member_id, c]))
@@ -58,7 +58,7 @@ export default async function CheckinManifestPage({
         }
       `}</style>
 
-      <h1>{camp.name} — Attendance Manifest</h1>
+      <h1>{event.name} — Attendance Manifest</h1>
       <p className="meta">{activeDate} · {members.length} registered · printed {new Date().toLocaleDateString()}</p>
 
       <table>

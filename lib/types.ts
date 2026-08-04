@@ -22,7 +22,7 @@ export interface Org {
   created_at: string
 }
 
-export const CAMP_PAGES = [
+export const EVENT_PAGES = [
   'dashboard',
   'families',
   'assignments',
@@ -36,7 +36,7 @@ export const CAMP_PAGES = [
   'reports',
 ] as const
 
-export type EventPage = typeof CAMP_PAGES[number]
+export type EventPage = typeof EVENT_PAGES[number]
 
 export interface OrgMember {
   uid: string
@@ -77,7 +77,7 @@ export interface Event {
   registration_close?: string        // ISO date, optional
   capacity?: number                  // max registrants, optional
   created_at: string
-  updated_at?: string                // set on every updateCamp call
+  updated_at?: string                // set on every updateEvent call
   payment_amount?: number            // registration fee in dollars (e.g. 150 = $150.00); omit or 0 for free events
   from_display_name?: string  // display name in email "from" field, e.g. "Summer Camp 2026 at First Baptist"
   reply_to_email?: string     // reply-to address; replies route to this address instead of TraxEvent

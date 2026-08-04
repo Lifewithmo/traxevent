@@ -19,7 +19,7 @@ import type { Terminology } from '@/lib/event-types'
 
 interface AssignmentsClientProps {
   orgId: string
-  campId: string
+  eventId: string
   campSlug: string
   orgSlug: string
   slots: AssignmentSlot[]
@@ -29,7 +29,7 @@ interface AssignmentsClientProps {
 
 export function AssignmentsClient({
   orgId,
-  campId,
+  eventId,
   campSlug,
   orgSlug,
   slots: initialSlots,
@@ -74,7 +74,7 @@ export function AssignmentsClient({
     setSaving(true)
     setSlotError(null)
     try {
-      const slot = await createSlot(orgId, campId, {
+      const slot = await createSlot(orgId, eventId, {
         name: newSlotName.trim(),
         ...(newSlotCapacity ? { capacity: Number(newSlotCapacity) } : {}),
         sort_order: slots.length,
@@ -93,7 +93,7 @@ export function AssignmentsClient({
     setSaving(true)
     setSlotError(null)
     try {
-      await updateSlot(orgId, campId, slotId, {
+      await updateSlot(orgId, eventId, slotId, {
         name: editSlotName.trim(),
         ...(editSlotCapacity ? { capacity: Number(editSlotCapacity) } : { capacity: undefined }),
       })
@@ -120,7 +120,7 @@ export function AssignmentsClient({
     setSaving(true)
     setSlotError(null)
     try {
-      await deleteSlot(orgId, campId, slotId)
+      await deleteSlot(orgId, eventId, slotId)
       setSlots((prev) => prev.filter((s) => s.id !== slotId))
       setFamilies((prev) =>
         prev.map((f) =>
@@ -136,7 +136,7 @@ export function AssignmentsClient({
 
   async function handleAssign(familyId: string, slotId: string | null) {
     try {
-      await assignFamily(orgId, campId, familyId, slotId)
+      await assignFamily(orgId, eventId, familyId, slotId)
       setFamilies((prev) =>
         prev.map((f) =>
           f.id === familyId ? { ...f, assignment_slot_id: slotId ?? undefined } : f
@@ -151,7 +151,7 @@ export function AssignmentsClient({
     setAutoAssigning(true)
     setAutoAssignResult(null)
     try {
-      const result = await autoAssign(orgId, campId)
+      const result = await autoAssign(orgId, eventId)
       setAutoAssignResult(
         `Auto-assigned ${result.assigned} registrant${result.assigned !== 1 ? 's' : ''}.`
       )

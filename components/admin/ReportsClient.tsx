@@ -23,8 +23,8 @@ const TABS: { key: TabKey; label: string }[] = [
 
 interface ReportsClientProps {
   orgId: string
-  campId: string
-  campName: string
+  eventId: string
+  eventName: string
   registrationType: string
   data: EventReportData
   formSubmissions: FormCompletionRow[]
@@ -46,7 +46,7 @@ function downloadMissingCsv(row: { template_name: string; missing: { name: strin
   URL.revokeObjectURL(url)
 }
 
-export function ReportsClient({ orgId, campId, campName, registrationType, data, formSubmissions }: ReportsClientProps) {
+export function ReportsClient({ orgId, eventId, eventName, registrationType, data, formSubmissions }: ReportsClientProps) {
   const [tab, setTab] = useState<TabKey>('summary')
   const [selectedFields, setSelectedFields] = useState<CustomReportField[]>([
     'family_last_name',
@@ -67,12 +67,12 @@ export function ReportsClient({ orgId, campId, campName, registrationType, data,
     setDownloading(true)
     setError(null)
     try {
-      const csv = await buildCustomReportCsv(orgId, campId, selectedFields)
+      const csv = await buildCustomReportCsv(orgId, eventId, selectedFields)
       const blob = new Blob([csv], { type: 'text/csv' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `${campName.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-report.csv`
+      a.download = `${eventName.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-report.csv`
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)
@@ -88,7 +88,7 @@ export function ReportsClient({ orgId, campId, campName, registrationType, data,
     <div className="p-6 max-w-3xl space-y-4">
       <div>
         <h1 className="text-2xl font-bold">Reports</h1>
-        <p className="text-sm text-muted-foreground">{campName} · {registrationType} registration</p>
+        <p className="text-sm text-muted-foreground">{eventName} · {registrationType} registration</p>
       </div>
 
       <div role="tablist" aria-label="Report views" className="flex gap-1 border-b flex-wrap">

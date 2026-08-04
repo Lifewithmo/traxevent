@@ -8,11 +8,11 @@ export interface CalendarItem {
   href: string
 }
 
-// Merge camps (by event_start) and leads (by event_date) into one date-sorted agenda.
+// Merge events (by event_start) and leads (by event_date) into one date-sorted agenda.
 // Items without a date are omitted. `orgSlug` builds the links.
-export function buildCalendar(orgSlug: string, camps: Event[], leads: Lead[]): CalendarItem[] {
+export function buildCalendar(orgSlug: string, events: Event[], leads: Lead[]): CalendarItem[] {
   const items: CalendarItem[] = []
-  for (const c of camps) {
+  for (const c of events) {
     if (c.event_start) {
       items.push({ id: c.id, title: c.name, date: c.event_start, kind: 'event', href: `/${orgSlug}/${c.slug}/dashboard` })
     }

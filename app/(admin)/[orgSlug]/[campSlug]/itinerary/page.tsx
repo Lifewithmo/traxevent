@@ -1,6 +1,6 @@
 export const dynamic = 'force-dynamic'
 
-import { requireCampPage } from '@/lib/auth/guards'
+import { requireEventPage } from '@/lib/auth/guards'
 import { listItinerary } from '@/actions/itinerary'
 import { ItineraryClient } from '@/components/admin/ItineraryClient'
 
@@ -10,15 +10,15 @@ export default async function ItineraryPage({
   params: Promise<{ orgSlug: string; campSlug: string }>
 }) {
   const { orgSlug, campSlug } = await params
-  const { orgId, campId, camp } = await requireCampPage(orgSlug, campSlug, 'itinerary')
-  const items = await listItinerary(orgId, campId)
+  const { orgId, eventId, event } = await requireEventPage(orgSlug, campSlug, 'itinerary')
+  const items = await listItinerary(orgId, eventId)
 
   return (
     <ItineraryClient
       orgId={orgId}
-      campId={campId}
+      eventId={eventId}
       items={items}
-      published={camp.itinerary_published ?? false}
+      published={event.itinerary_published ?? false}
     />
   )
 }

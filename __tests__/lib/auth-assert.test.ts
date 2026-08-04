@@ -2,16 +2,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const getCurrentUserSpy = vi.hoisted(() => vi.fn())
 const memberGetSpy = vi.hoisted(() => vi.fn())
-// assertCampPage now also reads the camp doc to resolve its department; default to a null-department camp.
-const campGetSpy = vi.hoisted(() => vi.fn(() => Promise.resolve({ exists: true, data: () => ({ department_id: null }) })))
+// assertEventPage now also reads the event doc to resolve its department; default to a null-department event.
+const eventGetSpy = vi.hoisted(() => vi.fn(() => Promise.resolve({ exists: true, data: () => ({ department_id: null }) })))
 
 vi.mock('@/lib/auth/session', () => ({ getCurrentUser: getCurrentUserSpy }))
 vi.mock('@/lib/firebase-admin', () => {
   const membersChain = { doc: vi.fn().mockReturnValue({ get: memberGetSpy }) }
-  const campsChain = { doc: vi.fn().mockReturnValue({ get: campGetSpy }) }
+  const eventsChain = { doc: vi.fn().mockReturnValue({ get: eventGetSpy }) }
   const orgDoc = {
     collection: vi.fn().mockImplementation((sub: string) => {
-      if (sub === 'events') return campsChain
+      if (sub === 'events') return eventsChain
       return membersChain
     }),
   }
@@ -22,7 +22,7 @@ vi.mock('@/lib/firebase-admin', () => {
   }
 })
 
-import { assertOrgMember, assertOrgAdmin, assertCampPage } from '@/lib/auth/assert'
+import { assertOrgMember, assertOrgAdmin, assertEventPage } from '@/lib/auth/assert'
 
 const member = (o = {}) => ({ exists: true, data: () => ({ uid: 'u1', role: 'staff', display_name: 'S', email: 's@x.org', event_access: {}, ...o }) })
 
@@ -68,11 +68,11 @@ describe('assertCampPage', () => {
   it('throws Forbidden when staff lacks the page grant', async () => {
     getCurrentUserSpy.mockResolvedValue({ uid: 'u1', orgId: 'org-1', role: 'staff' })
     memberGetSpy.mockResolvedValue(member({ event_access: { 'camp-1': { pages: ['families'] } } }))
-    await expect(assertCampPage('org-1', 'camp-1', 'budget')).rejects.toThrow('Forbidden')
+    await expect(assertEventPage('org-1', 'camp-1', 'budget')).rejects.toThrow('Forbidden')
   })
   it('allows staff with the page grant', async () => {
     getCurrentUserSpy.mockResolvedValue({ uid: 'u1', orgId: 'org-1', role: 'staff' })
     memberGetSpy.mockResolvedValue(member({ event_access: { 'camp-1': { pages: ['families'] } } }))
-    await expect(assertCampPage('org-1', 'camp-1', 'families')).resolves.toBeTruthy()
+    await expect(assertEventPage('org-1', 'camp-1', 'families')).resolves.toBeTruthy()
   })
 })

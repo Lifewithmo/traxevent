@@ -39,7 +39,7 @@ describe('FamilyDetailsTab', () => {
       <FamilyDetailsTab
         family={mockFamily}
         orgId="org-1"
-        campId="camp-1"
+        eventId="camp-1"
         onSaved={vi.fn()}
       />
     )
@@ -53,7 +53,7 @@ describe('FamilyDetailsTab', () => {
       <FamilyDetailsTab
         family={mockFamily}
         orgId="org-1"
-        campId="camp-1"
+        eventId="camp-1"
         onSaved={vi.fn()}
       />
     )
@@ -65,7 +65,7 @@ describe('FamilyDetailsTab', () => {
       <FamilyDetailsTab
         family={mockFamily}
         orgId="org-1"
-        campId="camp-1"
+        eventId="camp-1"
         onSaved={vi.fn()}
       />
     )
@@ -81,7 +81,7 @@ describe('FamilyDetailsTab', () => {
       <FamilyDetailsTab
         family={mockFamily}
         orgId="org-1"
-        campId="camp-1"
+        eventId="camp-1"
         onSaved={vi.fn()}
       />
     )
@@ -103,7 +103,7 @@ describe('FamilyDetailsTab', () => {
       <FamilyDetailsTab
         family={mockFamily}
         orgId="org-1"
-        campId="camp-1"
+        eventId="camp-1"
         onSaved={onSaved}
       />
     )

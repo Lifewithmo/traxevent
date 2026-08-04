@@ -32,7 +32,7 @@ vi.mock('@/actions/orgs', () => ({ getOrg: getOrgSpy }))
 vi.mock('@/lib/auth/assert', () => ({
   assertOrgMember: vi.fn().mockResolvedValue({ role: 'admin', event_access: {} }),
   assertOrgAdmin: vi.fn().mockResolvedValue({ role: 'admin', event_access: {} }),
-  assertCampPage: vi.fn().mockResolvedValue({ role: 'admin', event_access: {} }),
+  assertEventPage: vi.fn().mockResolvedValue({ role: 'admin', event_access: {} }),
 }))
 
 import {

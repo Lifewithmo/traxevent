@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { duplicateEvent } from '@/actions/camps'
+import { duplicateEvent } from '@/actions/events'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -10,11 +10,11 @@ import { Label } from '@/components/ui/label'
 interface DuplicateEventButtonProps {
   orgId: string
   orgSlug: string
-  sourceCampId: string
+  sourceEventId: string
   sourceName: string
 }
 
-export function DuplicateEventButton({ orgId, orgSlug, sourceCampId, sourceName }: DuplicateEventButtonProps) {
+export function DuplicateEventButton({ orgId, orgSlug, sourceEventId, sourceName }: DuplicateEventButtonProps) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [name, setName] = useState(sourceName)
@@ -29,8 +29,8 @@ export function DuplicateEventButton({ orgId, orgSlug, sourceCampId, sourceName 
     setBusy(true)
     setError(null)
     try {
-      const camp = await duplicateEvent(orgId, sourceCampId, { name: name.trim(), year, event_start: start, event_end: end })
-      router.push(`/${orgSlug}/${camp.slug}/dashboard`)
+      const event = await duplicateEvent(orgId, sourceEventId, { name: name.trim(), year, event_start: start, event_end: end })
+      router.push(`/${orgSlug}/${event.slug}/dashboard`)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to duplicate')
       setBusy(false)
@@ -48,21 +48,21 @@ export function DuplicateEventButton({ orgId, orgSlug, sourceCampId, sourceName 
   return (
     <div className="mt-3 space-y-2 border-t pt-3">
       <div className="space-y-1">
-        <Label htmlFor={`dup-name-${sourceCampId}`} className="text-xs">New event name</Label>
-        <Input id={`dup-name-${sourceCampId}`} value={name} onChange={(e) => setName(e.target.value)} className="h-8" />
+        <Label htmlFor={`dup-name-${sourceEventId}`} className="text-xs">New event name</Label>
+        <Input id={`dup-name-${sourceEventId}`} value={name} onChange={(e) => setName(e.target.value)} className="h-8" />
       </div>
       <div className="grid grid-cols-3 gap-2">
         <div className="space-y-1">
-          <Label htmlFor={`dup-year-${sourceCampId}`} className="text-xs">Year</Label>
-          <Input id={`dup-year-${sourceCampId}`} type="number" min={2020} max={2040} value={year} onChange={(e) => setYear(Number(e.target.value))} className="h-8" />
+          <Label htmlFor={`dup-year-${sourceEventId}`} className="text-xs">Year</Label>
+          <Input id={`dup-year-${sourceEventId}`} type="number" min={2020} max={2040} value={year} onChange={(e) => setYear(Number(e.target.value))} className="h-8" />
         </div>
         <div className="space-y-1">
-          <Label htmlFor={`dup-start-${sourceCampId}`} className="text-xs">Start</Label>
-          <Input id={`dup-start-${sourceCampId}`} type="date" value={start} onChange={(e) => setStart(e.target.value)} className="h-8" />
+          <Label htmlFor={`dup-start-${sourceEventId}`} className="text-xs">Start</Label>
+          <Input id={`dup-start-${sourceEventId}`} type="date" value={start} onChange={(e) => setStart(e.target.value)} className="h-8" />
         </div>
         <div className="space-y-1">
-          <Label htmlFor={`dup-end-${sourceCampId}`} className="text-xs">End</Label>
-          <Input id={`dup-end-${sourceCampId}`} type="date" value={end} onChange={(e) => setEnd(e.target.value)} className="h-8" />
+          <Label htmlFor={`dup-end-${sourceEventId}`} className="text-xs">End</Label>
+          <Input id={`dup-end-${sourceEventId}`} type="date" value={end} onChange={(e) => setEnd(e.target.value)} className="h-8" />
         </div>
       </div>
       <p className="text-xs text-muted-foreground">Copies settings, assignment slots, and forms. Registrants are not copied.</p>

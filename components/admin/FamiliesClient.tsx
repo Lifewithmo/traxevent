@@ -10,13 +10,13 @@ import { bulkUpdateStatus, buildFamiliesCsvAction } from '@/actions/admin-famili
 interface FamiliesClientProps {
   families: Family[]
   orgId: string
-  campId: string
+  eventId: string
 }
 
 export function FamiliesClient({
   families,
   orgId,
-  campId,
+  eventId,
 }: FamiliesClientProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -69,7 +69,7 @@ export function FamiliesClient({
     setStatusOverrides(prev => ({ ...prev, ...overrides }))
     setSelectedIds(new Set())
     try {
-      await bulkUpdateStatus(orgId, campId, ids, status, 'Admin')
+      await bulkUpdateStatus(orgId, eventId, ids, status, 'Admin')
     } catch {
       // Revert optimistic update on failure
       setStatusOverrides(prev => {
@@ -83,7 +83,7 @@ export function FamiliesClient({
 
   async function handleExport(ids?: string[]) {
     try {
-      const csv = await buildFamiliesCsvAction(orgId, campId, ids)
+      const csv = await buildFamiliesCsvAction(orgId, eventId, ids)
       const blob = new Blob([csv], { type: 'text/csv' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
@@ -123,7 +123,7 @@ export function FamiliesClient({
         familyId={selectedFamilyId}
         families={displayFamilies}
         orgId={orgId}
-        campId={campId}
+        eventId={eventId}
         onClose={() => setFamilyId(null)}
         onNavigate={setFamilyId}
         onStatusChange={handleStatusChange}

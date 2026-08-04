@@ -1,5 +1,5 @@
 import { getOrgBySlug } from '@/actions/orgs'
-import { getCampBySlug } from '@/actions/camps'
+import { getEventBySlug } from '@/actions/events'
 import { RegistrationForm } from '@/components/registration/RegistrationForm'
 import { notFound } from 'next/navigation'
 
@@ -13,8 +13,8 @@ export default async function RegisterPage({
   const org = await getOrgBySlug(orgSlug)
   if (!org) notFound()
 
-  const camp = await getCampBySlug(org.id, campSlug)
-  if (!camp || camp.status === 'archived') notFound()
+  const event = await getEventBySlug(org.id, campSlug)
+  if (!event || event.status === 'archived') notFound()
 
-  return <RegistrationForm camp={camp} org={org} />
+  return <RegistrationForm event={event} org={org} />
 }

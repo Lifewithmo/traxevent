@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-const listCampsSpy = vi.hoisted(() => vi.fn())
+const listEventsSpy = vi.hoisted(() => vi.fn())
 const listLeadsSpy = vi.hoisted(() => vi.fn())
 const assertOrgMemberSpy = vi.hoisted(() => vi.fn().mockResolvedValue({ role: 'admin' }))
 
-vi.mock('@/actions/camps', () => ({ listCamps: listCampsSpy }))
+vi.mock('@/actions/events', () => ({ listEvents: listEventsSpy }))
 vi.mock('@/actions/leads', () => ({ listLeads: listLeadsSpy }))
 vi.mock('@/lib/auth/assert', () => ({ assertOrgMember: assertOrgMemberSpy }))
 
@@ -14,7 +14,7 @@ describe('getOrgCalendar', () => {
   beforeEach(() => vi.clearAllMocks())
 
   it('asserts membership then returns the merged, date-sorted calendar', async () => {
-    listCampsSpy.mockResolvedValue([
+    listEventsSpy.mockResolvedValue([
       { id: 'c1', name: 'Summer Camp', slug: 'summer-camp', event_start: '2026-07-10' },
     ])
     listLeadsSpy.mockResolvedValue([
@@ -24,7 +24,7 @@ describe('getOrgCalendar', () => {
     const items = await getOrgCalendar('org-1', 'my-org')
 
     expect(assertOrgMemberSpy).toHaveBeenCalledWith('org-1')
-    expect(listCampsSpy).toHaveBeenCalledWith('org-1')
+    expect(listEventsSpy).toHaveBeenCalledWith('org-1')
     expect(listLeadsSpy).toHaveBeenCalledWith('org-1')
     expect(items.map((i) => i.id)).toEqual(['l1', 'c1'])
     expect(items.map((i) => i.kind)).toEqual(['lead', 'event'])

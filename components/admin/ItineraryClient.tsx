@@ -17,7 +17,7 @@ import type { ItineraryItem } from '@/lib/types'
 
 interface ItineraryClientProps {
   orgId: string
-  campId: string
+  eventId: string
   items: ItineraryItem[]
   published: boolean
 }
@@ -28,7 +28,7 @@ function formatDayHeading(day: string): string {
   return date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
 }
 
-export function ItineraryClient({ orgId, campId, items: initialItems, published: initialPublished }: ItineraryClientProps) {
+export function ItineraryClient({ orgId, eventId, items: initialItems, published: initialPublished }: ItineraryClientProps) {
   const [items, setItems] = useState<ItineraryItem[]>(initialItems)
   const [published, setPublished] = useState(initialPublished)
   const [saving, setSaving] = useState(false)
@@ -54,7 +54,7 @@ export function ItineraryClient({ orgId, campId, items: initialItems, published:
     setSaving(true)
     setError(null)
     try {
-      const item = await createItineraryItem(orgId, campId, {
+      const item = await createItineraryItem(orgId, eventId, {
         day,
         start_time: startTime,
         end_time: endTime || undefined,
@@ -76,7 +76,7 @@ export function ItineraryClient({ orgId, campId, items: initialItems, published:
     setSaving(true)
     setError(null)
     try {
-      await updateItineraryItem(orgId, campId, id, {
+      await updateItineraryItem(orgId, eventId, id, {
         title: editTitle.trim(),
         start_time: editStart,
         end_time: editEnd || undefined,
@@ -102,7 +102,7 @@ export function ItineraryClient({ orgId, campId, items: initialItems, published:
     setSaving(true)
     setError(null)
     try {
-      await deleteItineraryItem(orgId, campId, id)
+      await deleteItineraryItem(orgId, eventId, id)
       setItems((prev) => prev.filter((i) => i.id !== id))
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to delete')
@@ -116,7 +116,7 @@ export function ItineraryClient({ orgId, campId, items: initialItems, published:
     setSaving(true)
     setError(null)
     try {
-      await setItineraryPublished(orgId, campId, next)
+      await setItineraryPublished(orgId, eventId, next)
       setPublished(next)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to update')

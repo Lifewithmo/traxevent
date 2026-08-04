@@ -1,6 +1,6 @@
 import { getOrgBySlug } from '@/actions/orgs'
 import { DEFAULT_EVENT_TYPE_ID, resolveTerminology } from '@/lib/event-types'
-import { listCamps } from '@/actions/camps'
+import { listEvents } from '@/actions/events'
 import { listDepartments } from '@/actions/departments'
 import { redirect } from 'next/navigation'
 import { Button } from '@/components/ui/button'
@@ -18,32 +18,32 @@ export default async function OrgHomePage({
   const org = await getOrgBySlug(orgSlug)
   if (!org) redirect('/login')
 
-  const [camps, departments] = await Promise.all([
-    listCamps(org.id),
+  const [events, departments] = await Promise.all([
+    listEvents(org.id),
     listDepartments(org.id),
   ])
 
-  const renderCard = (camp: typeof camps[number]) => (
-    <Card key={camp.id} className="hover:shadow-md transition-shadow h-full flex flex-col">
-      <Link href={`/${orgSlug}/${camp.slug}/dashboard`} className="block cursor-pointer">
+  const renderCard = (event: typeof events[number]) => (
+    <Card key={event.id} className="hover:shadow-md transition-shadow h-full flex flex-col">
+      <Link href={`/${orgSlug}/${event.slug}/dashboard`} className="block cursor-pointer">
         <CardHeader>
-          <CardTitle className="text-base">{camp.name}</CardTitle>
+          <CardTitle className="text-base">{event.name}</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="flex items-center gap-2 flex-wrap">
-            <Badge variant="outline">{camp.year}</Badge>
-            <Badge variant={camp.status === 'active' ? 'default' : 'secondary'}>
-              {camp.status}
+            <Badge variant="outline">{event.year}</Badge>
+            <Badge variant={event.status === 'active' ? 'default' : 'secondary'}>
+              {event.status}
             </Badge>
-            <Badge variant="outline">{resolveTerminology(camp.event_type_id ?? DEFAULT_EVENT_TYPE_ID, camp.event_type_terminology).eventLabel}</Badge>
+            <Badge variant="outline">{resolveTerminology(event.event_type_id ?? DEFAULT_EVENT_TYPE_ID, event.event_type_terminology).eventLabel}</Badge>
           </div>
           <p className="mt-2 text-xs text-muted-foreground">
-            {camp.event_start} → {camp.event_end}
+            {event.event_start} → {event.event_end}
           </p>
         </CardContent>
       </Link>
       <CardContent className="pt-0 mt-auto">
-        <DuplicateEventButton orgId={org.id} orgSlug={orgSlug} sourceCampId={camp.id} sourceName={camp.name} />
+        <DuplicateEventButton orgId={org.id} orgSlug={orgSlug} sourceEventId={event.id} sourceName={event.name} />
       </CardContent>
     </Card>
   )
@@ -57,7 +57,7 @@ export default async function OrgHomePage({
         </Link>
       </div>
 
-      {camps.length === 0 ? (
+      {events.length === 0 ? (
         <div className="text-center py-16 text-muted-foreground">
           <p className="text-lg font-medium">No events yet</p>
           <p className="mt-1 text-sm">Create your first event to get started.</p>
@@ -67,22 +67,22 @@ export default async function OrgHomePage({
         </div>
       ) : departments.length === 0 ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {camps.map(renderCard)}
+          {events.map(renderCard)}
         </div>
       ) : (
         <div className="space-y-8">
           {departments.map((dept) => {
-            const deptCamps = camps.filter((c) => c.department_id === dept.id)
-            if (deptCamps.length === 0) return null
+            const deptEvents = events.filter((c) => c.department_id === dept.id)
+            if (deptEvents.length === 0) return null
             return (
               <section key={dept.id}>
                 <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground mb-3">{dept.name}</h2>
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{deptCamps.map(renderCard)}</div>
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{deptEvents.map(renderCard)}</div>
               </section>
             )
           })}
           {(() => {
-            const unassigned = camps.filter((c) => !c.department_id || !departments.some((d) => d.id === c.department_id))
+            const unassigned = events.filter((c) => !c.department_id || !departments.some((d) => d.id === c.department_id))
             if (unassigned.length === 0) return null
             return (
               <section>

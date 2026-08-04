@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import { getOrgBySlug } from '@/actions/orgs'
-import { getCampBySlug, updateCamp } from '@/actions/camps'
+import { getEventBySlug, updateEvent } from '@/actions/events'
 import { DEFAULT_EVENT_TYPE_ID } from '@/lib/event-types'
 import type { EventType } from '@/lib/event-types'
 import { listOrgEventTypes } from '@/actions/event-types'
@@ -17,7 +17,7 @@ import type { Event } from '@/lib/types'
 
 export default function EventSettingsPage() {
   const { orgSlug, campSlug } = useParams<{ orgSlug: string; campSlug: string }>()
-  const [camp, setCamp] = useState<Event | null>(null)
+  const [event, setEvent] = useState<Event | null>(null)
   const [orgId, setOrgId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -26,8 +26,8 @@ export default function EventSettingsPage() {
   const [name, setName] = useState('')
   const [status, setStatus] = useState<Event['status']>('draft')
   const [eventTypeId, setEventTypeId] = useState<string>(DEFAULT_EVENT_TYPE_ID)
-  const [campStart, setCampStart] = useState('')
-  const [campEnd, setCampEnd] = useState('')
+  const [eventStart, setEventStart] = useState('')
+  const [eventEnd, setEventEnd] = useState('')
   const [registrationOpen, setRegistrationOpen] = useState('')
   const [registrationClose, setRegistrationClose] = useState('')
   const [capacity, setCapacity] = useState<string>('')
@@ -45,15 +45,15 @@ export default function EventSettingsPage() {
       setOrgId(org.id)
       listOrgEventTypes(org.id).then(setEventTypes).catch(() => setError('Failed to load event types'))
       listDepartments(org.id).then(setDepartments).catch(() => setError('Failed to load departments'))
-      const c = await getCampBySlug(org.id, campSlug)
+      const c = await getEventBySlug(org.id, campSlug)
       if (!c) return
-      setCamp(c)
+      setEvent(c)
       setName(c.name)
       setStatus(c.status)
       setEventTypeId(c.event_type_id ?? DEFAULT_EVENT_TYPE_ID)
       setDepartmentId(c.department_id ?? '')
-      setCampStart(c.event_start)
-      setCampEnd(c.event_end)
+      setEventStart(c.event_start)
+      setEventEnd(c.event_end)
       setRegistrationOpen(c.registration_open ?? '')
       setRegistrationClose(c.registration_close ?? '')
       setCapacity(c.capacity != null ? String(c.capacity) : '')
@@ -66,23 +66,23 @@ export default function EventSettingsPage() {
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
-    if (!orgId || !camp) return
+    if (!orgId || !event) return
     setError(null)
     setSaving(true)
     setSaved(false)
     try {
       const selectedType = eventTypes.find((t) => t.id === eventTypeId)
-      await updateCamp(orgId, camp.id, {
+      await updateEvent(orgId, event.id, {
         name,
         status,
         event_type_id: eventTypeId,
         department_id: departmentId || null,
-        registration_type: selectedType ? selectedType.registrationUnit : camp.registration_type,
+        registration_type: selectedType ? selectedType.registrationUnit : event.registration_type,
         event_type_terminology: selectedType
           ? (selectedType.is_custom ? selectedType.terminology : null)
           : undefined,
-        event_start: campStart,
-        event_end: campEnd,
+        event_start: eventStart,
+        event_end: eventEnd,
         registration_open: registrationOpen || undefined,
         registration_close: registrationClose || undefined,
         capacity: capacity ? Number(capacity) : undefined,
@@ -98,7 +98,7 @@ export default function EventSettingsPage() {
     }
   }
 
-  if (!camp) {
+  if (!event) {
     return <div className="p-6 text-sm text-muted-foreground">Loading…</div>
   }
 
@@ -172,8 +172,8 @@ export default function EventSettingsPage() {
                 <Input
                   id="campStart"
                   type="date"
-                  value={campStart}
-                  onChange={(e) => { setCampStart(e.target.value); setSaved(false) }}
+                  value={eventStart}
+                  onChange={(e) => { setEventStart(e.target.value); setSaved(false) }}
                   required
                 />
               </div>
@@ -182,8 +182,8 @@ export default function EventSettingsPage() {
                 <Input
                   id="campEnd"
                   type="date"
-                  value={campEnd}
-                  onChange={(e) => { setCampEnd(e.target.value); setSaved(false) }}
+                  value={eventEnd}
+                  onChange={(e) => { setEventEnd(e.target.value); setSaved(false) }}
                   required
                 />
               </div>
@@ -244,7 +244,7 @@ export default function EventSettingsPage() {
                 id="fromDisplayName"
                 value={fromDisplayName}
                 onChange={(e) => { setFromDisplayName(e.target.value); setSaved(false) }}
-                placeholder={`${camp.name} at Your Church`}
+                placeholder={`${event.name} at Your Church`}
               />
               <p className="text-xs text-muted-foreground">
                 How your org appears in the "From" field of emails. Defaults to TraxEvent if left blank.

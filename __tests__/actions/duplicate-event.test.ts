@@ -3,26 +3,26 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 vi.mock('@/lib/auth/assert', () => ({
   assertOrgMember: vi.fn().mockResolvedValue({ role: 'admin', event_access: {} }),
   assertOrgAdmin: vi.fn().mockResolvedValue({ role: 'admin', event_access: {} }),
-  assertCampPage: vi.fn().mockResolvedValue({ role: 'admin', event_access: {} }),
+  assertEventPage: vi.fn().mockResolvedValue({ role: 'admin', event_access: {} }),
 }))
 
-const newCampSetSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
+const newEventSetSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const newSlotSetSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const newAssignmentSetSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
-const getSourceCampSpy = vi.hoisted(() => vi.fn())
+const getSourceEventSpy = vi.hoisted(() => vi.fn())
 const getSlotsSpy = vi.hoisted(() => vi.fn())
 const getFormAssignmentsSpy = vi.hoisted(() => vi.fn())
 const slugQuerySpy = vi.hoisted(() => vi.fn())
-const newCampDeleteSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
+const newEventDeleteSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 
 vi.mock('@/lib/firebase-admin', () => {
-  const campsCollection = {
+  const eventsCollection = {
     where: vi.fn().mockReturnValue({ limit: vi.fn().mockReturnValue({ get: slugQuerySpy }) }),
     doc: vi.fn().mockImplementation((id?: string) => {
       if (id) {
         return {
           id,
-          get: getSourceCampSpy,
+          get: getSourceEventSpy,
           collection: vi.fn().mockImplementation((sub: string) => {
             if (sub === 'assignment_slots') return { get: getSlotsSpy }
             if (sub === 'form_assignments') return { get: getFormAssignmentsSpy }
@@ -32,8 +32,8 @@ vi.mock('@/lib/firebase-admin', () => {
       }
       return {
         id: 'new-camp-id',
-        set: newCampSetSpy,
-        delete: newCampDeleteSpy,
+        set: newEventSetSpy,
+        delete: newEventDeleteSpy,
         collection: vi.fn().mockImplementation((sub: string) => {
           if (sub === 'assignment_slots') return { doc: vi.fn().mockReturnValue({ set: newSlotSetSpy }) }
           if (sub === 'form_assignments') return { doc: vi.fn().mockReturnValue({ set: newAssignmentSetSpy }) }
@@ -44,14 +44,14 @@ vi.mock('@/lib/firebase-admin', () => {
   }
   return {
     adminDb: {
-      collection: vi.fn().mockReturnValue({ doc: vi.fn().mockReturnValue({ collection: vi.fn().mockReturnValue(campsCollection) }) }),
+      collection: vi.fn().mockReturnValue({ doc: vi.fn().mockReturnValue({ collection: vi.fn().mockReturnValue(eventsCollection) }) }),
     },
   }
 })
 
-import { duplicateEvent } from '@/actions/camps'
+import { duplicateEvent } from '@/actions/events'
 
-const sourceCamp = {
+const sourceEvent = {
   id: 'src', name: 'Summer Camp 2025', slug: 'summer-camp-2025', year: 2025, status: 'active',
   registration_type: 'family', event_type_id: 'summer-camp',
   features: { accommodations: true, teams: true, budget: true, itinerary: true, communicate: true },
@@ -62,17 +62,17 @@ const sourceCamp = {
 describe('duplicateEvent', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    getSourceCampSpy.mockResolvedValue({ exists: true, data: () => sourceCamp })
+    getSourceEventSpy.mockResolvedValue({ exists: true, data: () => sourceEvent })
     getSlotsSpy.mockResolvedValue({ docs: [{ data: () => ({ id: 'slot-1', name: 'Cabin 1', sort_order: 0, created_at: 'x' }) }] })
     getFormAssignmentsSpy.mockResolvedValue({ docs: [{ data: () => ({ id: 'fa-1', template_id: 't1', template_name: 'Waiver', template_version: 1, fields_snapshot: [], audience: 'registrant', required: true, created_at: 'x' }) }] })
     slugQuerySpy.mockResolvedValue({ empty: true })
   })
 
   it('creates a new draft camp copying settings with the new name/year/dates', async () => {
-    const camp = await duplicateEvent('org-1', 'src', {
+    const event = await duplicateEvent('org-1', 'src', {
       name: 'Summer Camp 2026', year: 2026, event_start: '2026-07-10', event_end: '2026-07-13',
     })
-    expect(newCampSetSpy).toHaveBeenCalledWith(
+    expect(newEventSetSpy).toHaveBeenCalledWith(
       expect.objectContaining({
         name: 'Summer Camp 2026',
         year: 2026,
@@ -85,8 +85,8 @@ describe('duplicateEvent', () => {
         event_end: '2026-07-13',
       })
     )
-    expect(camp.status).toBe('draft')
-    expect(camp.name).toBe('Summer Camp 2026')
+    expect(event.status).toBe('draft')
+    expect(event.name).toBe('Summer Camp 2026')
   })
 
   it('copies assignment slots and form assignments to the new event', async () => {
@@ -96,7 +96,7 @@ describe('duplicateEvent', () => {
   })
 
   it('throws when the source camp does not exist', async () => {
-    getSourceCampSpy.mockResolvedValue({ exists: false })
+    getSourceEventSpy.mockResolvedValue({ exists: false })
     await expect(
       duplicateEvent('org-1', 'missing', { name: 'X', year: 2026, event_start: '2026-07-10', event_end: '2026-07-13' })
     ).rejects.toThrow('Source event not found')
@@ -107,9 +107,9 @@ describe('duplicateEvent', () => {
     slugQuerySpy
       .mockResolvedValueOnce({ empty: false })
       .mockResolvedValueOnce({ empty: true })
-    const camp = await duplicateEvent('org-1', 'src', {
+    const event = await duplicateEvent('org-1', 'src', {
       name: 'Summer Camp', year: 2026, event_start: '2026-07-10', event_end: '2026-07-13',
     })
-    expect(camp.slug).toBe('summer-camp-2026-2')
+    expect(event.slug).toBe('summer-camp-2026-2')
   })
 })

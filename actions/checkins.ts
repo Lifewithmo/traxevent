@@ -2,26 +2,26 @@
 
 import { adminDb } from '@/lib/firebase-admin'
 import type { CheckinRecord, EventMember, Family, FamilyMember } from '@/lib/types'
-import { assertCampPage } from '@/lib/auth/assert'
+import { assertEventPage } from '@/lib/auth/assert'
 
-function campRef(orgId: string, campId: string) {
-  return adminDb.collection('orgs').doc(orgId).collection('events').doc(campId)
+function eventRef(orgId: string, eventId: string) {
+  return adminDb.collection('orgs').doc(orgId).collection('events').doc(eventId)
 }
 
-function checkinsRef(orgId: string, campId: string) {
-  return campRef(orgId, campId).collection('checkins')
+function checkinsRef(orgId: string, eventId: string) {
+  return eventRef(orgId, eventId).collection('checkins')
 }
 
-export async function listAllEventMembers(orgId: string, campId: string): Promise<EventMember[]> {
-  await assertCampPage(orgId, campId, 'checkin')
-  const familiesSnap = await campRef(orgId, campId).collection('families').get()
+export async function listAllEventMembers(orgId: string, eventId: string): Promise<EventMember[]> {
+  await assertEventPage(orgId, eventId, 'checkin')
+  const familiesSnap = await eventRef(orgId, eventId).collection('families').get()
 
   const perFamily = await Promise.all(
     familiesSnap.docs
       .filter((d) => (d.data() as Family).registration_status !== 'cancelled')
       .map(async (familyDoc) => {
         const family = familyDoc.data() as Family
-        const membersSnap = await campRef(orgId, campId)
+        const membersSnap = await eventRef(orgId, eventId)
           .collection('families').doc(familyDoc.id)
           .collection('family_members').get()
         return membersSnap.docs.map((memberDoc) => {
@@ -42,11 +42,11 @@ export async function listAllEventMembers(orgId: string, campId: string): Promis
 
 export async function getCheckinsForDate(
   orgId: string,
-  campId: string,
+  eventId: string,
   date: string
 ): Promise<CheckinRecord[]> {
-  await assertCampPage(orgId, campId, 'checkin')
-  const snap = await checkinsRef(orgId, campId).where('date', '==', date).get()
+  await assertEventPage(orgId, eventId, 'checkin')
+  const snap = await checkinsRef(orgId, eventId).where('date', '==', date).get()
   return snap.docs.map((d) => d.data() as CheckinRecord)
 }
 
@@ -60,10 +60,10 @@ export interface CheckInMemberInput {
 
 export async function checkInMember(
   orgId: string,
-  campId: string,
+  eventId: string,
   input: CheckInMemberInput
 ): Promise<CheckinRecord> {
-  await assertCampPage(orgId, campId, 'checkin')
+  await assertEventPage(orgId, eventId, 'checkin')
   const id = `${input.date}_${input.memberId}`
   const now = new Date().toISOString()
   const record: CheckinRecord = {
@@ -78,18 +78,18 @@ export async function checkInMember(
   }
   // Deterministic id makes check-in idempotent; re-checking in after a checkout
   // intentionally resets the record to 'in' (e.g. a child who left and returned).
-  await checkinsRef(orgId, campId).doc(id).set(record)
+  await checkinsRef(orgId, eventId).doc(id).set(record)
   return record
 }
 
 export async function checkOutMember(
   orgId: string,
-  campId: string,
+  eventId: string,
   recordId: string,
   guardianPickupName?: string
 ): Promise<void> {
-  await assertCampPage(orgId, campId, 'checkin')
-  const ref = checkinsRef(orgId, campId).doc(recordId)
+  await assertEventPage(orgId, eventId, 'checkin')
+  const ref = checkinsRef(orgId, eventId).doc(recordId)
   const snap = await ref.get()
   if (!snap.exists) throw new Error('Check-in record not found')
   await ref.update({
@@ -107,11 +107,11 @@ export interface CheckinSummary {
 
 export async function getCheckinSummary(
   orgId: string,
-  campId: string,
+  eventId: string,
   date: string
 ): Promise<CheckinSummary> {
-  await assertCampPage(orgId, campId, 'checkin')
-  const snap = await checkinsRef(orgId, campId).where('date', '==', date).get()
+  await assertEventPage(orgId, eventId, 'checkin')
+  const snap = await checkinsRef(orgId, eventId).where('date', '==', date).get()
   let checkedIn = 0
   let checkedOut = 0
   snap.docs.forEach((d) => {

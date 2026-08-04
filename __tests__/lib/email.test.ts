@@ -18,7 +18,7 @@ import { sendRegistrationConfirmation } from '@/lib/email'
 const baseParams = {
   to: 'jane@example.com',
   firstName: 'Jane',
-  campName: 'Summer Camp 2026',
+  eventName: 'Summer Camp 2026',
   orgName: 'First Hills Fellowship',
   orgSlug: 'firsthills',
   campSlug: 'summer-2026',

@@ -5,7 +5,7 @@ const itemDocSpy = vi.hoisted(() => ({
   update: vi.fn().mockResolvedValue(undefined),
   delete: vi.fn().mockResolvedValue(undefined),
 }))
-const campUpdateSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
+const eventUpdateSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const getItemsSpy = vi.hoisted(() => vi.fn())
 
 vi.mock('@/lib/firebase-admin', () => ({
@@ -18,7 +18,7 @@ vi.mock('@/lib/firebase-admin', () => ({
               if (sub === 'events') {
                 return {
                   doc: vi.fn().mockReturnValue({
-                    update: campUpdateSpy,
+                    update: eventUpdateSpy,
                     collection: vi.fn().mockImplementation((sub2: string) => {
                       if (sub2 === 'itinerary') {
                         return {
@@ -44,7 +44,7 @@ vi.mock('@/lib/firebase-admin', () => ({
 vi.mock('@/lib/auth/assert', () => ({
   assertOrgMember: vi.fn().mockResolvedValue({ role: 'admin', event_access: {} }),
   assertOrgAdmin: vi.fn().mockResolvedValue({ role: 'admin', event_access: {} }),
-  assertCampPage: vi.fn().mockResolvedValue({ role: 'admin', event_access: {} }),
+  assertEventPage: vi.fn().mockResolvedValue({ role: 'admin', event_access: {} }),
 }))
 
 import {
@@ -134,6 +134,6 @@ describe('setItineraryPublished', () => {
 
   it('updates the camp itinerary_published flag', async () => {
     await setItineraryPublished('org-1', 'camp-1', true)
-    expect(campUpdateSpy).toHaveBeenCalledWith({ itinerary_published: true })
+    expect(eventUpdateSpy).toHaveBeenCalledWith({ itinerary_published: true })
   })
 })

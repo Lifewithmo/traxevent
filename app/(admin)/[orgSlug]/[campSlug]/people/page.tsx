@@ -1,6 +1,6 @@
 export const dynamic = 'force-dynamic'
 
-import { requireCampPage } from '@/lib/auth/guards'
+import { requireEventPage } from '@/lib/auth/guards'
 import { listEventPeople, listPermissionTemplates } from '@/actions/people'
 import { listVolunteerHours } from '@/actions/volunteer-hours'
 import { EventPeopleClient } from '@/components/admin/EventPeopleClient'
@@ -12,18 +12,18 @@ export default async function EventPeoplePage({
   params: Promise<{ orgSlug: string; campSlug: string }>
 }) {
   const { orgSlug, campSlug } = await params
-  const { orgId, campId } = await requireCampPage(orgSlug, campSlug, 'people')
+  const { orgId, eventId } = await requireEventPage(orgSlug, campSlug, 'people')
 
   const [people, templates, hours] = await Promise.all([
-    listEventPeople(orgId, campId),
+    listEventPeople(orgId, eventId),
     listPermissionTemplates(orgId),
-    listVolunteerHours(orgId, campId),
+    listVolunteerHours(orgId, eventId),
   ])
 
   return (
     <>
-      <EventPeopleClient orgId={orgId} campId={campId} people={people} templates={templates} />
-      <VolunteerHoursClient orgId={orgId} campId={campId} volunteers={people.filter((p) => p.kind === 'volunteer')} entries={hours} />
+      <EventPeopleClient orgId={orgId} eventId={eventId} people={people} templates={templates} />
+      <VolunteerHoursClient orgId={orgId} eventId={eventId} volunteers={people.filter((p) => p.kind === 'volunteer')} entries={hours} />
     </>
   )
 }

@@ -1,20 +1,20 @@
 'use server'
 
 import { adminDb } from '@/lib/firebase-admin'
-import { assertCampPage } from '@/lib/auth/assert'
+import { assertEventPage } from '@/lib/auth/assert'
 import type { ItineraryItem } from '@/lib/types'
 import { randomBytes } from 'crypto'
 
-function campRef(orgId: string, campId: string) {
-  return adminDb.collection('orgs').doc(orgId).collection('events').doc(campId)
+function eventRef(orgId: string, eventId: string) {
+  return adminDb.collection('orgs').doc(orgId).collection('events').doc(eventId)
 }
 
-function itineraryRef(orgId: string, campId: string) {
-  return campRef(orgId, campId).collection('itinerary')
+function itineraryRef(orgId: string, eventId: string) {
+  return eventRef(orgId, eventId).collection('itinerary')
 }
 
-export async function listItinerary(orgId: string, campId: string): Promise<ItineraryItem[]> {
-  const snap = await itineraryRef(orgId, campId).get()
+export async function listItinerary(orgId: string, eventId: string): Promise<ItineraryItem[]> {
+  const snap = await itineraryRef(orgId, eventId).get()
   return snap.docs.map((d) => d.data() as ItineraryItem)
 }
 
@@ -30,10 +30,10 @@ export interface CreateItineraryItemInput {
 
 export async function createItineraryItem(
   orgId: string,
-  campId: string,
+  eventId: string,
   input: CreateItineraryItemInput
 ): Promise<ItineraryItem> {
-  await assertCampPage(orgId, campId, 'itinerary')
+  await assertEventPage(orgId, eventId, 'itinerary')
   const id = randomBytes(8).toString('hex')
   const now = new Date().toISOString()
   const item: ItineraryItem = {
@@ -47,33 +47,33 @@ export async function createItineraryItem(
     sort_order: input.sort_order,
     created_at: now,
   }
-  await itineraryRef(orgId, campId).doc(id).set(item)
+  await itineraryRef(orgId, eventId).doc(id).set(item)
   return item
 }
 
 export async function updateItineraryItem(
   orgId: string,
-  campId: string,
+  eventId: string,
   itemId: string,
   updates: Partial<Pick<ItineraryItem, 'day' | 'start_time' | 'end_time' | 'title' | 'location' | 'description' | 'sort_order'>>
 ): Promise<void> {
-  await assertCampPage(orgId, campId, 'itinerary')
-  await itineraryRef(orgId, campId).doc(itemId).update({
+  await assertEventPage(orgId, eventId, 'itinerary')
+  await itineraryRef(orgId, eventId).doc(itemId).update({
     ...updates,
     updated_at: new Date().toISOString(),
   })
 }
 
-export async function deleteItineraryItem(orgId: string, campId: string, itemId: string): Promise<void> {
-  await assertCampPage(orgId, campId, 'itinerary')
-  await itineraryRef(orgId, campId).doc(itemId).delete()
+export async function deleteItineraryItem(orgId: string, eventId: string, itemId: string): Promise<void> {
+  await assertEventPage(orgId, eventId, 'itinerary')
+  await itineraryRef(orgId, eventId).doc(itemId).delete()
 }
 
 export async function setItineraryPublished(
   orgId: string,
-  campId: string,
+  eventId: string,
   published: boolean
 ): Promise<void> {
-  await assertCampPage(orgId, campId, 'itinerary')
-  await campRef(orgId, campId).update({ itinerary_published: published })
+  await assertEventPage(orgId, eventId, 'itinerary')
+  await eventRef(orgId, eventId).update({ itinerary_published: published })
 }

@@ -7,7 +7,7 @@ import {
   type OrgMember,
   type OrgInvitation,
 } from '@/lib/types'
-import { buildInviteToken, validateCampPages } from '@/lib/tokens'
+import { buildInviteToken, validateEventPages } from '@/lib/tokens'
 import { assertOrgMember, assertOrgAdmin } from '@/lib/auth/assert'
 
 export async function createInvitation(
@@ -80,18 +80,18 @@ export async function listMembers(orgId: string): Promise<OrgMember[]> {
   return snap.docs.map((d) => d.data() as OrgMember)
 }
 
-export async function updateStaffCampAccess(
+export async function updateStaffEventAccess(
   orgId: string,
   uid: string,
-  campId: string,
+  eventId: string,
   pages: string[]
 ): Promise<void> {
   await assertOrgAdmin(orgId)
-  const validPages = validateCampPages(pages)
+  const validPages = validateEventPages(pages)
   await adminDb
     .collection('orgs').doc(orgId)
     .collection('members').doc(uid)
-    .update({ [`event_access.${campId}.pages`]: validPages })
+    .update({ [`event_access.${eventId}.pages`]: validPages })
 }
 
 export async function updateStaffDepartmentAccess(
@@ -101,7 +101,7 @@ export async function updateStaffDepartmentAccess(
   pages: string[]
 ): Promise<void> {
   await assertOrgAdmin(orgId)
-  const validPages = validateCampPages(pages)
+  const validPages = validateEventPages(pages)
   await adminDb
     .collection('orgs').doc(orgId)
     .collection('members').doc(uid)

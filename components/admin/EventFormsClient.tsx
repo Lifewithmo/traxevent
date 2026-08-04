@@ -9,7 +9,7 @@ import type { FormTemplate, EventFormAssignment } from '@/lib/types'
 
 interface EventFormsClientProps {
   orgId: string
-  campId: string
+  eventId: string
   templates: FormTemplate[]
   assignments: EventFormAssignment[]
   signedCounts: Record<string, number>
@@ -24,7 +24,7 @@ const AUDIENCE_LABELS: Record<string, string> = {
 
 export function EventFormsClient({
   orgId,
-  campId,
+  eventId,
   templates,
   assignments: initialAssignments,
   signedCounts,
@@ -41,7 +41,7 @@ export function EventFormsClient({
     setSaving(true)
     setError(null)
     try {
-      const assignment = await assignFormToEvent(orgId, campId, template)
+      const assignment = await assignFormToEvent(orgId, eventId, template)
       setAssignments((prev) => [...prev, assignment])
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to assign')
@@ -54,7 +54,7 @@ export function EventFormsClient({
     setSaving(true)
     setError(null)
     try {
-      await removeFormAssignment(orgId, campId, assignmentId)
+      await removeFormAssignment(orgId, eventId, assignmentId)
       setAssignments((prev) => prev.filter((a) => a.id !== assignmentId))
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to remove')

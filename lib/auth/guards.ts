@@ -3,7 +3,7 @@ import 'server-only'
 import { redirect, notFound } from 'next/navigation'
 import { adminDb } from '@/lib/firebase-admin'
 import { getCurrentUser } from '@/lib/auth/session'
-import { canAccessCampPage } from '@/lib/auth/access'
+import { canAccessEventPage } from '@/lib/auth/access'
 import type { Org, Event, OrgMember, EventPage } from '@/lib/types'
 
 // Require a logged-in member of the org identified by orgSlug.
@@ -29,43 +29,43 @@ export async function requireOrgMember(orgSlug: string): Promise<{ org: Org; org
   return { org, orgId, member }
 }
 
-// Require org membership AND access to a specific camp page. Resolves ids and enforces event_access.
+// Require org membership AND access to a specific event page. Resolves ids and enforces event_access.
 // Redirects to the org home if the member lacks access to the page.
-export async function requireCampPage(
+export async function requireEventPage(
   orgSlug: string,
   campSlug: string,
   page: EventPage
-): Promise<{ orgId: string; campId: string; camp: Event; member: OrgMember }> {
+): Promise<{ orgId: string; eventId: string; event: Event; member: OrgMember }> {
   const { orgId, member } = await requireOrgMember(orgSlug)
 
-  const campSnap = await adminDb
+  const eventSnap = await adminDb
     .collection('orgs').doc(orgId)
     .collection('events').where('slug', '==', campSlug).limit(1).get()
-  if (campSnap.empty) notFound()
-  const camp = campSnap.docs[0].data() as Event
-  const campId = campSnap.docs[0].id
+  if (eventSnap.empty) notFound()
+  const event = eventSnap.docs[0].data() as Event
+  const eventId = eventSnap.docs[0].id
 
-  if (!canAccessCampPage(member, campId, page, camp.department_id ?? null)) redirect(`/${orgSlug}`)
+  if (!canAccessEventPage(member, eventId, page, event.department_id ?? null)) redirect(`/${orgSlug}`)
 
-  return { orgId, campId, camp, member }
+  return { orgId, eventId, event, member }
 }
 
-// Require org membership + resolve the camp, WITHOUT a per-page check. Used for the
-// camp dashboard (every camp card links here) and other any-member camp entry points.
-export async function requireCamp(
+// Require org membership + resolve the event, WITHOUT a per-page check. Used for the
+// event dashboard (every event card links here) and other any-member event entry points.
+export async function requireEvent(
   orgSlug: string,
   campSlug: string
-): Promise<{ orgId: string; campId: string; camp: Event; member: OrgMember }> {
+): Promise<{ orgId: string; eventId: string; event: Event; member: OrgMember }> {
   const { orgId, member } = await requireOrgMember(orgSlug)
-  const campSnap = await adminDb
+  const eventSnap = await adminDb
     .collection('orgs').doc(orgId)
     .collection('events').where('slug', '==', campSlug).limit(1).get()
-  if (campSnap.empty) notFound()
-  return { orgId, campId: campSnap.docs[0].id, camp: campSnap.docs[0].data() as Event, member }
+  if (eventSnap.empty) notFound()
+  return { orgId, eventId: eventSnap.docs[0].id, event: eventSnap.docs[0].data() as Event, member }
 }
 
-// List the camp pages a member may access (for nav filtering).
-export function allowedCampPages(member: OrgMember, campId: string, allPages: EventPage[], departmentId?: string | null): EventPage[] {
+// List the event pages a member may access (for nav filtering).
+export function allowedEventPages(member: OrgMember, eventId: string, allPages: EventPage[], departmentId?: string | null): EventPage[] {
   if (member.role === 'owner' || member.role === 'admin') return allPages
-  return allPages.filter((p) => canAccessCampPage(member, campId, p, departmentId ?? null))
+  return allPages.filter((p) => canAccessEventPage(member, eventId, p, departmentId ?? null))
 }

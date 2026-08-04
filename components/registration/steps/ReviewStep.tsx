@@ -10,12 +10,12 @@ type MemberInput = Omit<FamilyMember, 'id' | 'family_id'>
 interface ReviewStepProps {
   contact: ContactData
   members: MemberInput[]
-  campName: string
+  eventName: string
   onSubmit: () => Promise<void>
   onBack: () => void
 }
 
-export function ReviewStep({ contact, members, campName, onSubmit, onBack }: ReviewStepProps) {
+export function ReviewStep({ contact, members, eventName, onSubmit, onBack }: ReviewStepProps) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -36,7 +36,7 @@ export function ReviewStep({ contact, members, campName, onSubmit, onBack }: Rev
       <h2 className="text-lg font-semibold text-[#4C1D95]">Review your registration</h2>
 
       <div className="bg-[#FAF5FF] rounded-lg p-4 space-y-1 text-sm">
-        <p className="font-semibold text-gray-700">{campName}</p>
+        <p className="font-semibold text-gray-700">{eventName}</p>
         <p className="text-gray-600">{contact.first_name} {contact.last_name}</p>
         <p className="text-gray-500">{contact.email} · {contact.phone}</p>
         {contact.address.city && (

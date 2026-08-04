@@ -12,7 +12,7 @@ import type { CheckinRecord, EventMember } from '@/lib/types'
 
 interface CheckinClientProps {
   orgId: string
-  campId: string
+  eventId: string
   orgSlug: string
   campSlug: string
   date: string
@@ -24,7 +24,7 @@ interface CheckinClientProps {
 
 export function CheckinClient({
   orgId,
-  campId,
+  eventId,
   orgSlug,
   campSlug,
   date,
@@ -55,7 +55,7 @@ export function CheckinClient({
     setBusyId(member.member_id)
     setError(null)
     try {
-      const rec = await checkInMember(orgId, campId, {
+      const rec = await checkInMember(orgId, eventId, {
         date,
         memberId: member.member_id,
         familyId: member.family_id,
@@ -87,7 +87,7 @@ export function CheckinClient({
     setBusyId(member.member_id)
     setError(null)
     try {
-      await checkOutMember(orgId, campId, record.id, guardianName)
+      await checkOutMember(orgId, eventId, record.id, guardianName)
       setCheckins((prev) =>
         prev.map((c) =>
           c.id === record.id

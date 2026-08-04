@@ -1,7 +1,7 @@
 'use server'
 
 import { adminDb } from '@/lib/firebase-admin'
-import { assertCampPage, assertOrgMember } from '@/lib/auth/assert'
+import { assertEventPage, assertOrgMember } from '@/lib/auth/assert'
 import type { Family, FamilyMember, EventFormAssignment, Event } from '@/lib/types'
 import { summarizeFormCompletion, type FormCompletionRow } from '@/lib/forms'
 import {
@@ -11,7 +11,7 @@ import {
   buildMedicalReport,
   buildTshirtReport,
   buildCustomCsv,
-  buildOrgCampRow,
+  buildOrgEventRow,
   aggregateOrgReport,
   type MemberWithFamily,
   type RegistrationSummary,
@@ -23,23 +23,23 @@ import {
   type OrgReport,
 } from '@/lib/reports'
 
-function familiesRef(orgId: string, campId: string) {
-  return adminDb.collection('orgs').doc(orgId).collection('events').doc(campId).collection('families')
+function familiesRef(orgId: string, eventId: string) {
+  return adminDb.collection('orgs').doc(orgId).collection('events').doc(eventId).collection('families')
 }
 
 // Loads ALL families (for status/financial summaries which should count cancellations)
 // and flattens members of NON-cancelled families with family context.
 async function loadFamiliesAndMembers(
   orgId: string,
-  campId: string
+  eventId: string
 ): Promise<{ families: Family[]; members: MemberWithFamily[] }> {
-  const familiesSnap = await familiesRef(orgId, campId).orderBy('created_at', 'desc').get()
+  const familiesSnap = await familiesRef(orgId, eventId).orderBy('created_at', 'desc').get()
   const families = familiesSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as Family)
   const active = families.filter((f) => f.registration_status !== 'cancelled')
 
   const perFamily = await Promise.all(
     active.map(async (f) => {
-      const snap = await familiesRef(orgId, campId).doc(f.id).collection('family_members').get()
+      const snap = await familiesRef(orgId, eventId).doc(f.id).collection('family_members').get()
       return snap.docs.map((d) => {
         const m = { id: d.id, ...d.data() } as FamilyMember
         const row: MemberWithFamily = {
@@ -78,9 +78,9 @@ export interface EventReportData {
   tshirt: TshirtReport
 }
 
-export async function getEventReportData(orgId: string, campId: string): Promise<EventReportData> {
-  await assertCampPage(orgId, campId, 'reports')
-  const { families, members } = await loadFamiliesAndMembers(orgId, campId)
+export async function getEventReportData(orgId: string, eventId: string): Promise<EventReportData> {
+  await assertEventPage(orgId, eventId, 'reports')
+  const { families, members } = await loadFamiliesAndMembers(orgId, eventId)
   return {
     summary: buildRegistrationSummary(families),
     financial: buildFinancialReport(families),
@@ -92,25 +92,25 @@ export async function getEventReportData(orgId: string, campId: string): Promise
 
 export async function buildCustomReportCsv(
   orgId: string,
-  campId: string,
+  eventId: string,
   fields: CustomReportField[]
 ): Promise<string> {
-  await assertCampPage(orgId, campId, 'reports')
-  const { members } = await loadFamiliesAndMembers(orgId, campId)
+  await assertEventPage(orgId, eventId, 'reports')
+  const { members } = await loadFamiliesAndMembers(orgId, eventId)
   return buildCustomCsv(members, fields)
 }
 
-export async function getFormSubmissionReport(orgId: string, campId: string): Promise<FormCompletionRow[]> {
-  await assertCampPage(orgId, campId, 'reports')
-  const campRef = adminDb.collection('orgs').doc(orgId).collection('events').doc(campId)
+export async function getFormSubmissionReport(orgId: string, eventId: string): Promise<FormCompletionRow[]> {
+  await assertEventPage(orgId, eventId, 'reports')
+  const eventRef = adminDb.collection('orgs').doc(orgId).collection('events').doc(eventId)
 
   const [familiesSnap, assignmentsSnap, signedSnap] = await Promise.all([
-    campRef.collection('families').get(),
-    campRef.collection('form_assignments').get(),
+    eventRef.collection('families').get(),
+    eventRef.collection('form_assignments').get(),
     adminDb
       .collectionGroup('signed_forms')
       .where('org_id', '==', orgId)
-      .where('event_id', '==', campId)
+      .where('event_id', '==', eventId)
       .get(),
   ])
 
@@ -139,26 +139,26 @@ export async function getFormSubmissionReport(orgId: string, campId: string): Pr
 
 export async function getOrgReportData(orgId: string, departmentId?: string): Promise<OrgReport> {
   await assertOrgMember(orgId)
-  const campsSnap = await adminDb
+  const eventsSnap = await adminDb
     .collection('orgs').doc(orgId)
     .collection('events')
     .orderBy('created_at', 'desc')
     .get()
 
-  let camps = campsSnap.docs.map((d) => d.data() as Event)
-  if (departmentId) camps = camps.filter((c) => c.department_id === departmentId)
+  let events = eventsSnap.docs.map((d) => d.data() as Event)
+  if (departmentId) events = events.filter((c) => c.department_id === departmentId)
 
   const rows = await Promise.all(
-    camps.map(async (camp) => {
+    events.map(async (event) => {
       const famSnap = await adminDb
         .collection('orgs').doc(orgId)
-        .collection('events').doc(camp.id)
+        .collection('events').doc(event.id)
         .collection('families')
         .get()
       const families = famSnap.docs
         .map((d) => d.data() as Family)
         .filter((f) => f.registration_status !== 'cancelled')
-      return buildOrgCampRow(camp, families)
+      return buildOrgEventRow(event, families)
     })
   )
 

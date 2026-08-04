@@ -7,11 +7,11 @@ import { addFamilyNote } from '@/actions/admin-families'
 interface FamilyNotesTabProps {
   family: Family
   orgId: string
-  campId: string
+  eventId: string
   onNoteAdded: (note: FamilyNote) => void
 }
 
-export function FamilyNotesTab({ family, orgId, campId, onNoteAdded }: FamilyNotesTabProps) {
+export function FamilyNotesTab({ family, orgId, eventId, onNoteAdded }: FamilyNotesTabProps) {
   const [text, setText] = useState('')
   const [saving, setSaving] = useState(false)
 
@@ -20,7 +20,7 @@ export function FamilyNotesTab({ family, orgId, campId, onNoteAdded }: FamilyNot
   async function handleAdd() {
     if (!text.trim()) return
     setSaving(true)
-    const note = await addFamilyNote(orgId, campId, family.id, text.trim(), 'Admin')
+    const note = await addFamilyNote(orgId, eventId, family.id, text.trim(), 'Admin')
     onNoteAdded(note)
     setText('')
     setSaving(false)

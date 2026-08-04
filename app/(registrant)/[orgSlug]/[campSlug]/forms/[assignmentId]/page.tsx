@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { getOrgBySlug } from '@/actions/orgs'
-import { getCampBySlug } from '@/actions/camps'
+import { getEventBySlug } from '@/actions/events'
 import { listEventFormAssignments, getSignedForms, submitSignedForm } from '@/actions/forms'
 import { getRegistrationByToken } from '@/actions/registrations'
 import { getVisibleFields } from '@/lib/forms'
@@ -27,7 +27,7 @@ export default function FormFillPage() {
   const [assignment, setAssignment] = useState<EventFormAssignment | null>(null)
   const [family, setFamily] = useState<Family | null>(null)
   const [org, setOrg] = useState<Org | null>(null)
-  const [camp, setCamp] = useState<Event | null>(null)
+  const [event, setEvent] = useState<Event | null>(null)
   const [alreadySigned, setAlreadySigned] = useState(false)
   const [responses, setResponses] = useState<Record<string, string | boolean | string[]>>({})
   const [signatureName, setSignatureName] = useState('')
@@ -38,10 +38,10 @@ export default function FormFillPage() {
     async function load() {
       const o = await getOrgBySlug(orgSlug)
       if (!o) return
-      const c = await getCampBySlug(o.id, campSlug)
+      const c = await getEventBySlug(o.id, campSlug)
       if (!c) return
       setOrg(o)
-      setCamp(c)
+      setEvent(c)
 
       const [assignments, f] = await Promise.all([
         listEventFormAssignments(o.id, c.id),
@@ -182,7 +182,7 @@ export default function FormFillPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!assignment || !family || !org || !camp) return
+    if (!assignment || !family || !org || !event) return
     if (!signatureName.trim()) {
       setError('Please type your full name as your electronic signature.')
       return
@@ -194,7 +194,7 @@ export default function FormFillPage() {
     setSubmitting(true)
     setError(null)
     try {
-      await submitSignedForm(org.id, camp.id, family.id, {
+      await submitSignedForm(org.id, event.id, family.id, {
         assignmentId: assignment.id,
         templateId: assignment.template_id,
         templateVersion: assignment.template_version,
@@ -203,12 +203,12 @@ export default function FormFillPage() {
         signatureName: signatureName.trim(),
         signerEmail: family.email,
         signerFirstName: family.first_name,
-        campName: camp.name,
+        eventName: event.name,
         orgName: org.name,
         orgSlug: org.slug,
-        campSlug: camp.slug,
-        fromDisplayName: camp.from_display_name,
-        replyTo: camp.reply_to_email,
+        campSlug: event.slug,
+        fromDisplayName: event.from_display_name,
+        replyTo: event.reply_to_email,
       })
       router.push(
         `/${orgSlug}/${campSlug}/my-registration${token ? `?token=${token}` : ''}`
@@ -258,7 +258,7 @@ export default function FormFillPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-xl font-bold text-[#4C1D95]">{assignment.template_name}</h1>
-        <p className="text-sm text-gray-500 mt-1">{camp?.name} · {org?.name}</p>
+        <p className="text-sm text-gray-500 mt-1">{event?.name} · {org?.name}</p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-5">

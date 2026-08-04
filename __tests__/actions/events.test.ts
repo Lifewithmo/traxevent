@@ -3,12 +3,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 vi.mock('@/lib/auth/assert', () => ({
   assertOrgMember: vi.fn().mockResolvedValue({ role: 'admin', event_access: {} }),
   assertOrgAdmin: vi.fn().mockResolvedValue({ role: 'admin', event_access: {} }),
-  assertCampPage: vi.fn().mockResolvedValue({ role: 'admin', event_access: {} }),
+  assertEventPage: vi.fn().mockResolvedValue({ role: 'admin', event_access: {} }),
 }))
 
-const { campUpdateSpy, campDocGetSpy } = vi.hoisted(() => ({
-  campUpdateSpy: vi.fn().mockResolvedValue(undefined),
-  campDocGetSpy: vi.fn(),
+const { eventUpdateSpy, eventDocGetSpy } = vi.hoisted(() => ({
+  eventUpdateSpy: vi.fn().mockResolvedValue(undefined),
+  eventDocGetSpy: vi.fn(),
 }))
 
 vi.mock('@/lib/firebase-admin', () => ({
@@ -18,8 +18,8 @@ vi.mock('@/lib/firebase-admin', () => ({
     set: vi.fn().mockResolvedValue(undefined),
     id: 'camp-id-123',
     orderBy: vi.fn().mockReturnThis(),
-    get: campDocGetSpy,
-    update: campUpdateSpy,
+    get: eventDocGetSpy,
+    update: eventUpdateSpy,
   },
 }))
 
@@ -28,7 +28,7 @@ vi.mock('firebase-admin/firestore', () => ({
 }))
 
 import { buildCampSlug } from '@/lib/slug'
-import { createCamp, updateCamp } from '@/actions/camps'
+import { createEvent, updateEvent } from '@/actions/events'
 
 describe('buildCampSlug', () => {
   it('appends the year to the name slug', () => {
@@ -40,9 +40,9 @@ describe('buildCampSlug', () => {
   })
 })
 
-describe('createCamp — event_type_id', () => {
+describe('createEvent — event_type_id', () => {
   it('stores event_type_id when provided', async () => {
-    const camp = await createCamp('org-1', {
+    const event = await createEvent('org-1', {
       name: 'Summer Camp',
       year: 2026,
       registration_type: 'family',
@@ -50,59 +50,59 @@ describe('createCamp — event_type_id', () => {
       event_start: '2026-06-01',
       event_end: '2026-06-07',
     })
-    expect(camp.event_type_id).toBe('gala')
+    expect(event.event_type_id).toBe('gala')
   })
 
   it('defaults event_type_id to summer-camp when omitted', async () => {
-    const camp = await createCamp('org-1', {
+    const event = await createEvent('org-1', {
       name: 'Summer Camp',
       year: 2026,
       registration_type: 'family',
       event_start: '2026-06-01',
       event_end: '2026-06-07',
     })
-    expect(camp.event_type_id).toBe('summer-camp')
+    expect(event.event_type_id).toBe('summer-camp')
   })
 })
 
-describe('updateCamp', () => {
+describe('updateEvent', () => {
   beforeEach(() => {
-    campDocGetSpy.mockResolvedValue({ exists: true, data: () => ({ id: 'camp-1' }) })
-    campDocGetSpy.mockClear()
-    campUpdateSpy.mockClear()
-    campUpdateSpy.mockResolvedValue(undefined)
+    eventDocGetSpy.mockResolvedValue({ exists: true, data: () => ({ id: 'camp-1' }) })
+    eventDocGetSpy.mockClear()
+    eventUpdateSpy.mockClear()
+    eventUpdateSpy.mockResolvedValue(undefined)
   })
 
   it('updates the camp document with provided fields and updated_at', async () => {
-    await updateCamp('org-1', 'camp-1', { name: 'New Name', status: 'active' })
-    expect(campUpdateSpy).toHaveBeenCalledWith(
+    await updateEvent('org-1', 'camp-1', { name: 'New Name', status: 'active' })
+    expect(eventUpdateSpy).toHaveBeenCalledWith(
       expect.objectContaining({ name: 'New Name', status: 'active', updated_at: expect.any(String) })
     )
   })
 
   it('only includes provided fields in the update', async () => {
-    await updateCamp('org-1', 'camp-1', { capacity: 100 })
-    const payload = campUpdateSpy.mock.calls[0][0]
+    await updateEvent('org-1', 'camp-1', { capacity: 100 })
+    const payload = eventUpdateSpy.mock.calls[0][0]
     expect(payload).toMatchObject({ capacity: 100, updated_at: expect.any(String) })
     expect(payload).not.toHaveProperty('name')
     expect(payload).not.toHaveProperty('status')
   })
 
   it('clears event_type_terminology with a delete sentinel when passed null', async () => {
-    await updateCamp('org-1', 'camp-1', { event_type_terminology: null })
-    const payload = campUpdateSpy.mock.calls[0][0]
+    await updateEvent('org-1', 'camp-1', { event_type_terminology: null })
+    const payload = eventUpdateSpy.mock.calls[0][0]
     expect(payload.event_type_terminology).toBe('__deleted__')
   })
 
   it('leaves event_type_terminology unchanged when passed undefined', async () => {
-    await updateCamp('org-1', 'camp-1', { name: 'X', event_type_terminology: undefined })
-    const payload = campUpdateSpy.mock.calls[0][0]
+    await updateEvent('org-1', 'camp-1', { name: 'X', event_type_terminology: undefined })
+    const payload = eventUpdateSpy.mock.calls[0][0]
     expect(payload).not.toHaveProperty('event_type_terminology')
   })
 
   it('throws "Camp not found" if the camp document does not exist', async () => {
-    campDocGetSpy.mockResolvedValue({ exists: false })
-    await expect(updateCamp('org-1', 'camp-999', {})).rejects.toThrow('Camp not found')
-    expect(campUpdateSpy).not.toHaveBeenCalled()
+    eventDocGetSpy.mockResolvedValue({ exists: false })
+    await expect(updateEvent('org-1', 'camp-999', {})).rejects.toThrow('Camp not found')
+    expect(eventUpdateSpy).not.toHaveBeenCalled()
   })
 })

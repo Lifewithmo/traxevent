@@ -12,8 +12,8 @@ import type { CommunicationLogEntry } from '@/lib/types'
 
 interface CommunicateClientProps {
   orgId: string
-  campId: string
-  campName: string
+  eventId: string
+  eventName: string
   fromDisplayName?: string
   log: CommunicationLogEntry[]
   members: { uid: string; name: string; email: string }[]
@@ -29,14 +29,14 @@ const FILTER_LABELS: Record<string, string> = {
 
 export function CommunicateClient({
   orgId,
-  campId,
-  campName,
+  eventId,
+  eventName,
   fromDisplayName,
   log,
   members,
   verifiedDomain,
 }: CommunicateClientProps) {
-  const [subject, setSubject] = useState(`${campName} — Update`)
+  const [subject, setSubject] = useState(`${eventName} — Update`)
   const [htmlBody, setHtmlBody] = useState('')
   const [filter, setFilter] = useState<'all' | 'confirmed' | 'pending' | 'waitlisted'>('all')
   const [sending, setSending] = useState(false)
@@ -62,7 +62,7 @@ export function CommunicateClient({
     setError(null)
     setResult(null)
     try {
-      const res = await sendEmailBlast(orgId, campId, {
+      const res = await sendEmailBlast(orgId, eventId, {
         subject,
         htmlBody,
         filter,
@@ -80,7 +80,7 @@ export function CommunicateClient({
         },
         ...prev,
       ])
-      setSubject(`${campName} — Update`)
+      setSubject(`${eventName} — Update`)
       setHtmlBody('')
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to send')

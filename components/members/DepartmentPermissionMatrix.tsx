@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { CAMP_PAGES } from '@/lib/types'
+import { EVENT_PAGES } from '@/lib/types'
 import type { OrgMember, Department } from '@/lib/types'
 import { updateStaffDepartmentAccess } from '@/actions/members'
 
@@ -39,7 +39,7 @@ export function DepartmentPermissionMatrix({ orgId, staff, departments }: Props)
               <thead>
                 <tr>
                   <th scope="col" className="text-left pr-4">Staff member</th>
-                  {CAMP_PAGES.map((page) => (<th key={page} scope="col" className="px-1 capitalize">{page}</th>))}
+                  {EVENT_PAGES.map((page) => (<th key={page} scope="col" className="px-1 capitalize">{page}</th>))}
                 </tr>
               </thead>
               <tbody>
@@ -48,7 +48,7 @@ export function DepartmentPermissionMatrix({ orgId, staff, departments }: Props)
                   return (
                     <tr key={m.uid}>
                       <td className="pr-4"><div>{m.display_name}</div><div className="text-xs text-gray-400">{m.email}</div></td>
-                      {CAMP_PAGES.map((page) => {
+                      {EVENT_PAGES.map((page) => {
                         const key = `${m.uid}-${dept.id}-${page}`
                         return (
                           <td key={page} className="text-center">
