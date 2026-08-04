@@ -55,13 +55,13 @@ export async function requireEventPage(
 export async function requireEvent(
   orgSlug: string,
   eventSlug: string
-): Promise<{ orgId: string; eventId: string; event: Event; member: OrgMember }> {
-  const { orgId, member } = await requireOrgMember(orgSlug)
+): Promise<{ org: Org; orgId: string; eventId: string; event: Event; member: OrgMember }> {
+  const { org, orgId, member } = await requireOrgMember(orgSlug)
   const eventSnap = await adminDb
     .collection('orgs').doc(orgId)
     .collection('events').where('slug', '==', eventSlug).limit(1).get()
   if (eventSnap.empty) notFound()
-  return { orgId, eventId: eventSnap.docs[0].id, event: eventSnap.docs[0].data() as Event, member }
+  return { org, orgId, eventId: eventSnap.docs[0].id, event: eventSnap.docs[0].data() as Event, member }
 }
 
 // List the event pages a member may access (for nav filtering).

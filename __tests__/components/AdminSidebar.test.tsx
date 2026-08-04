@@ -38,3 +38,17 @@ describe('AdminSidebar workspace nav gating', () => {
     expect(screen.getByText('Members')).toBeInTheDocument()
   })
 })
+
+describe('AdminSidebar event nav roster gating', () => {
+  it('hides roster event-nav items when attendee-roster module is off', () => {
+    render(<AdminSidebar orgSlug="acme" eventSlug="e1" enabledModules={['events', 'reports', 'calendar']} />)
+    expect(screen.queryByText('Families')).not.toBeInTheDocument()
+    expect(screen.queryByText('Check-in')).not.toBeInTheDocument()
+    expect(screen.getByText('Dashboard')).toBeInTheDocument() // non-roster stays
+  })
+
+  it('shows roster event-nav items when attendee-roster is enabled', () => {
+    render(<AdminSidebar orgSlug="acme" eventSlug="e1" enabledModules={['events', 'attendee-roster']} />)
+    expect(screen.getByText('Check-in')).toBeInTheDocument()
+  })
+})

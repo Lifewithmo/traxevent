@@ -42,6 +42,9 @@ function getEventNav(terminology: Terminology) {
 
 const DEFAULT_TERMINOLOGY: Terminology = getEventType(DEFAULT_EVENT_TYPE_ID).terminology
 
+// Per-event nav items that belong to the optional attendee-roster module.
+const ROSTER_KEYS = new Set(['families', 'assignments', 'checkin'])
+
 const SETTINGS_SLUGS = ['members', 'permissions', 'billing', 'email-domain', 'event-types', 'departments']
 
 function Section({ label, children }: { label: string; children: React.ReactNode }) {
@@ -90,14 +93,15 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
   ].filter((l) => has(l.module))
 
   const eventNav = getEventNav(t)
-  const visibleEventNav = allowedEventPages
-    ? eventNav.filter(
-        (n) =>
-          n.key === 'dashboard' ||
-          n.key === 'settings' ||
-          allowedEventPages.includes(n.key as EventPage)
-      )
-    : eventNav
+  const visibleEventNav = eventNav
+    .filter(
+      (n) =>
+        !allowedEventPages ||
+        n.key === 'dashboard' ||
+        n.key === 'settings' ||
+        allowedEventPages.includes(n.key as EventPage)
+    )
+    .filter((n) => !ROSTER_KEYS.has(n.key) || has('attendee-roster'))
 
   async function handleSignOut() {
     await endSession()
