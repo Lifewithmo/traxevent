@@ -7,7 +7,7 @@ export function slugify(name: string): string {
     .replace(/-+/g, '-')
 }
 
-export function buildCampSlug(name: string, year: number): string {
+export function buildEventSlug(name: string, year: number): string {
   const base = slugify(name)
   return `${base}-${year}`
 }

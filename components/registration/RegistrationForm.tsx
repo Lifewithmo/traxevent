@@ -96,7 +96,7 @@ export function RegistrationForm({ event, org }: RegistrationFormProps) {
       orgId: org.id,
       eventId: event.id,
       orgSlug: org.slug,
-      campSlug: event.slug,
+      eventSlug: event.slug,
       eventName: event.name,
       orgName: org.name,
       family: contact as ContactData,
@@ -163,7 +163,7 @@ export function RegistrationForm({ event, org }: RegistrationFormProps) {
           {currentStep === 'payment' && hasFee && (
             <PaymentStep
               orgSlug={org.slug}
-              campSlug={event.slug}
+              eventSlug={event.slug}
               familyId={familyId}
               paymentAmount={event.payment_amount!}
               onSuccess={handlePaymentSuccess}

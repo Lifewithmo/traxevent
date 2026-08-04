@@ -20,7 +20,7 @@ import type { Terminology } from '@/lib/event-types'
 interface AssignmentsClientProps {
   orgId: string
   eventId: string
-  campSlug: string
+  eventSlug: string
   orgSlug: string
   slots: AssignmentSlot[]
   families: Family[]
@@ -30,7 +30,7 @@ interface AssignmentsClientProps {
 export function AssignmentsClient({
   orgId,
   eventId,
-  campSlug,
+  eventSlug,
   orgSlug,
   slots: initialSlots,
   families: initialFamilies,
@@ -168,7 +168,7 @@ export function AssignmentsClient({
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">{slotsLabel}</h1>
         <a
-          href={`/${orgSlug}/${campSlug}/assignments/print`}
+          href={`/${orgSlug}/${eventSlug}/assignments/print`}
           target="_blank"
           rel="noopener noreferrer"
           className="text-sm text-muted-foreground underline"

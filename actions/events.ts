@@ -5,7 +5,7 @@ import { adminDb } from '@/lib/firebase-admin'
 import { assertOrgMember, assertOrgAdmin } from '@/lib/auth/assert'
 import { FieldValue } from 'firebase-admin/firestore'
 import type { Event, EventRegistrationType } from '@/lib/types'
-import { buildCampSlug } from '@/lib/slug'
+import { buildEventSlug } from '@/lib/slug'
 import { DEFAULT_EVENT_TYPE_ID } from '@/lib/event-types'
 import type { Terminology } from '@/lib/event-types'
 
@@ -30,7 +30,7 @@ export async function createEvent(
   const event: Event = {
     id: eventRef.id,
     name: input.name,
-    slug: buildCampSlug(input.name, input.year),
+    slug: buildEventSlug(input.name, input.year),
     year: input.year,
     status: 'draft',
     registration_type: input.registration_type,
@@ -135,7 +135,7 @@ export async function duplicateEvent(
   if (!sourceSnap.exists) throw new Error('Source event not found')
   const source = sourceSnap.data() as Event
 
-  const baseSlug = buildCampSlug(input.name, input.year)
+  const baseSlug = buildEventSlug(input.name, input.year)
   let slug = baseSlug
   let suffix = 2
   while (!(await eventsCol.where('slug', '==', slug).limit(1).get()).empty) {

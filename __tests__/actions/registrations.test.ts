@@ -59,7 +59,7 @@ const baseInput: CreateRegistrationInput = {
   orgId: 'org-1',
   eventId: 'camp-1',
   orgSlug: 'acme',
-  campSlug: 'summer-2026',
+  eventSlug: 'summer-2026',
   eventName: 'Summer Camp 2026',
   orgName: 'Acme Org',
   family: {

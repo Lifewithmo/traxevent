@@ -21,7 +21,7 @@ const baseParams = {
   eventName: 'Summer Camp 2026',
   orgName: 'First Hills Fellowship',
   orgSlug: 'firsthills',
-  campSlug: 'summer-2026',
+  eventSlug: 'summer-2026',
   familyId: 'fam-1',
   accessToken: 'tok_abc',
 }

@@ -6,7 +6,7 @@ function member(o: Partial<OrgMember>): OrgMember {
   return { uid: 'u', role: 'staff', display_name: 'S', email: 's@x.org', event_access: {}, ...o }
 }
 
-describe('canAccessCampPage', () => {
+describe('canAccessEventPage', () => {
   it('owners and admins can access every page', () => {
     expect(canAccessEventPage(member({ role: 'owner' }), 'camp-1', 'budget')).toBe(true)
     expect(canAccessEventPage(member({ role: 'admin' }), 'camp-1', 'reports')).toBe(true)
@@ -24,7 +24,7 @@ describe('canAccessCampPage', () => {
   })
 })
 
-describe('canAccessCampPage — department inheritance', () => {
+describe('canAccessEventPage — department inheritance', () => {
   it('grants access when the member has a department grant for the camp\'s department', () => {
     const m = member({ role: 'staff', event_access: {}, department_access: { 'dept-1': { pages: ['forms', 'families'] } } })
     expect(canAccessEventPage(m, 'camp-1', 'forms', 'dept-1')).toBe(true)

@@ -11,7 +11,7 @@ import type { ModuleId } from '@/lib/industry-packs'
 
 interface AdminSidebarProps {
   orgSlug: string
-  campSlug?: string
+  eventSlug?: string
   terminology?: Terminology
   allowedEventPages?: EventPage[]
   enabledModules?: ModuleId[]
@@ -20,7 +20,7 @@ interface AdminSidebarProps {
 const ORG_PAGE_SLUGS = new Set([
   'members', 'forms', 'permissions', 'billing', 'email-domain', 'event-types',
   'departments', 'reports', 'registrants', 'leads', 'clients', 'proposals',
-  'contracts', 'invoices', 'vendors', 'calendar', 'new-camp',
+  'contracts', 'invoices', 'vendors', 'calendar', 'new-event',
 ])
 
 function getEventNav(terminology: Terminology) {
@@ -53,7 +53,7 @@ function Section({ label, children }: { label: string; children: React.ReactNode
   )
 }
 
-export function AdminSidebar({ orgSlug, campSlug, terminology, allowedEventPages, enabledModules }: AdminSidebarProps) {
+export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPages, enabledModules }: AdminSidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
 
@@ -63,10 +63,10 @@ export function AdminSidebar({ orgSlug, campSlug, terminology, allowedEventPages
   )
   const [settingsOpen, setSettingsOpen] = useState(settingsActive)
 
-  // Rendered by BOTH the org layout (no campSlug) and the event layout (with campSlug).
+  // Rendered by BOTH the org layout (no eventSlug) and the event layout (with eventSlug).
   // On an event route the event layout renders the contextual event sidebar, so the
   // org-layout instance hides itself to avoid a doubled sidebar.
-  if (!campSlug) {
+  if (!eventSlug) {
     const seg = pathname.split('/').filter(Boolean)
     if (seg.length >= 2 && !ORG_PAGE_SLUGS.has(seg[1])) return null
   }
@@ -132,7 +132,7 @@ export function AdminSidebar({ orgSlug, campSlug, terminology, allowedEventPages
         </Link>
       </div>
 
-      {campSlug ? (
+      {eventSlug ? (
         <nav className="flex-1 px-2 py-4 space-y-0.5" aria-label="Event navigation">
           <Link
             href={`/${orgSlug}`}
@@ -141,7 +141,7 @@ export function AdminSidebar({ orgSlug, campSlug, terminology, allowedEventPages
             &larr; Events
           </Link>
           {visibleEventNav.map(({ key, label }) => {
-            const href = `/${orgSlug}/${campSlug}/${key}`
+            const href = `/${orgSlug}/${eventSlug}/${key}`
             return (
               <Link key={key} href={href} className={navClass(href)}>
                 {label}

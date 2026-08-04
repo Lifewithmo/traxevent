@@ -73,7 +73,7 @@ export async function POST(req: Request) {
           eventName: familyData.event_name,
           orgName: familyData.org_name,
           orgSlug: familyData.org_slug,
-          campSlug: familyData.event_slug,
+          eventSlug: familyData.event_slug,
           familyId: familyData.id,
           accessToken: familyData.access_token ?? '',
           fromDisplayName: eventSenderConfig.from_display_name,

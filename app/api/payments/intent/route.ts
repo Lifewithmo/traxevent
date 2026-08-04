@@ -5,9 +5,9 @@ import { adminDb } from '@/lib/firebase-admin'
 import type { Org, Event } from '@/lib/types'
 
 export async function POST(req: Request) {
-  const { orgSlug, campSlug, familyId } = await req.json()
-  if (!orgSlug || !campSlug) {
-    return NextResponse.json({ error: 'Missing orgSlug or campSlug' }, { status: 400 })
+  const { orgSlug, eventSlug, familyId } = await req.json()
+  if (!orgSlug || !eventSlug) {
+    return NextResponse.json({ error: 'Missing orgSlug or eventSlug' }, { status: 400 })
   }
 
   // Look up org by slug
@@ -25,7 +25,7 @@ export async function POST(req: Request) {
   // Look up event by slug
   const eventSnap = await adminDb
     .collection('orgs').doc(org.id)
-    .collection('events').where('slug', '==', campSlug).limit(1)
+    .collection('events').where('slug', '==', eventSlug).limit(1)
     .get()
   if (eventSnap.empty) return NextResponse.json({ error: 'Camp not found' }, { status: 404 })
   const event = eventSnap.docs[0].data() as Event

@@ -14,7 +14,7 @@ interface CheckinClientProps {
   orgId: string
   eventId: string
   orgSlug: string
-  campSlug: string
+  eventSlug: string
   date: string
   members: EventMember[]
   checkins: CheckinRecord[]
@@ -26,7 +26,7 @@ export function CheckinClient({
   orgId,
   eventId,
   orgSlug,
-  campSlug,
+  eventSlug,
   date,
   members,
   checkins: initialCheckins,
@@ -48,7 +48,7 @@ export function CheckinClient({
   const notIn = rosterRecords.filter((c) => !c).length
 
   function changeDate(newDate: string) {
-    router.push(`/${orgSlug}/${campSlug}/checkin?date=${newDate}`)
+    router.push(`/${orgSlug}/${eventSlug}/checkin?date=${newDate}`)
   }
 
   async function handleCheckIn(member: EventMember) {
@@ -107,7 +107,7 @@ export function CheckinClient({
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Check-in</h1>
         <a
-          href={`/${orgSlug}/${campSlug}/checkin/manifest?date=${date}`}
+          href={`/${orgSlug}/${eventSlug}/checkin/manifest?date=${date}`}
           target="_blank"
           rel="noopener noreferrer"
           className="text-sm text-muted-foreground underline"

@@ -161,7 +161,7 @@ describe('buildCustomCsv', () => {
   })
 })
 
-describe('buildOrgCampRow', () => {
+describe('buildOrgEventRow', () => {
   it('collapses one camp\'s (active) families into a row', () => {
     const event = { id: 'c1', name: 'Summer', year: 2026, status: 'active', department_id: 'd1' }
     const families = [

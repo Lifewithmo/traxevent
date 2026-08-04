@@ -69,7 +69,7 @@ describe('POST /api/payments/intent', () => {
     const req = new Request('http://localhost/api/payments/intent', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ orgSlug: 'acme', campSlug: 'summer-2026', familyId: 'fam-1' }),
+      body: JSON.stringify({ orgSlug: 'acme', eventSlug: 'summer-2026', familyId: 'fam-1' }),
     })
     const res = await POST(req)
     expect(res.status).toBe(200)

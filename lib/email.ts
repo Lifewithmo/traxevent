@@ -6,7 +6,7 @@ interface RegistrationConfirmationParams {
   eventName: string
   orgName: string
   orgSlug: string
-  campSlug: string
+  eventSlug: string
   familyId: string
   accessToken: string
   fromDisplayName?: string
@@ -17,7 +17,7 @@ interface RegistrationConfirmationParams {
 export async function sendRegistrationConfirmation(
   params: RegistrationConfirmationParams
 ): Promise<void> {
-  const portalUrl = `https://${params.orgSlug}.traxevent.com/${params.campSlug}/my-registration?token=${params.accessToken}`
+  const portalUrl = `https://${params.orgSlug}.traxevent.com/${params.eventSlug}/my-registration?token=${params.accessToken}`
   const accountUrl = `https://${params.orgSlug}.traxevent.com/register/create-account?token=${params.accessToken}&familyId=${params.familyId}`
 
   const from = buildFromAddress({ displayName: params.fromDisplayName, domain: params.fromDomain })

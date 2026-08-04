@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 
 interface PaymentStepProps {
   orgSlug: string
-  campSlug: string
+  eventSlug: string
   familyId: string
   paymentAmount: number
   onSuccess: () => void
@@ -55,7 +55,7 @@ function CheckoutForm({ onSuccess, onBack }: { onSuccess: () => void; onBack: ()
   )
 }
 
-export function PaymentStep({ orgSlug, campSlug, familyId, paymentAmount, onSuccess, onBack }: PaymentStepProps) {
+export function PaymentStep({ orgSlug, eventSlug, familyId, paymentAmount, onSuccess, onBack }: PaymentStepProps) {
   const [clientSecret, setClientSecret] = useState<string | null>(null)
   const [stripeAccountId, setStripeAccountId] = useState<string | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -64,7 +64,7 @@ export function PaymentStep({ orgSlug, campSlug, familyId, paymentAmount, onSucc
     fetch('/api/payments/intent', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ orgSlug, campSlug, familyId }),
+      body: JSON.stringify({ orgSlug, eventSlug, familyId }),
     })
       .then((r) => r.json())
       .then((data) => {
@@ -76,7 +76,7 @@ export function PaymentStep({ orgSlug, campSlug, familyId, paymentAmount, onSucc
         }
       })
       .catch(() => setLoadError('Failed to initialize payment'))
-  }, [orgSlug, campSlug, familyId])
+  }, [orgSlug, eventSlug, familyId])
 
   const stripePromise = useMemo(
     () =>

@@ -46,7 +46,7 @@ describe('buildInviteToken', () => {
   })
 })
 
-describe('validateCampPages', () => {
+describe('validateEventPages', () => {
   it('filters out invalid page names', () => {
     expect(validateEventPages(['dashboard', 'bogus', 'teams'])).toEqual([
       'dashboard',
@@ -60,7 +60,7 @@ describe('validateCampPages', () => {
   })
 })
 
-describe('updateStaffCampAccess', () => {
+describe('updateStaffEventAccess', () => {
   it('updates the event_access pages field with validated pages', async () => {
     updateSpy.mockClear()
     await updateStaffEventAccess('org1', 'uid1', 'camp1', ['dashboard', 'bogus', 'teams'])

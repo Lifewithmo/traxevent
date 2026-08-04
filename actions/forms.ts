@@ -136,7 +136,7 @@ export interface SubmitSignedFormInput {
   eventName: string
   orgName: string
   orgSlug: string
-  campSlug: string
+  eventSlug: string
   fromDisplayName?: string
   replyTo?: string
 }

@@ -16,7 +16,7 @@ export interface CreateRegistrationInput {
   orgId: string
   eventId: string
   orgSlug: string
-  campSlug: string
+  eventSlug: string
   eventName: string
   orgName: string
   family: Omit<Family,
@@ -67,7 +67,7 @@ export async function createRegistration(
     org_id: input.orgId,
     event_id: input.eventId,
     org_slug: input.orgSlug,
-    event_slug: input.campSlug,
+    event_slug: input.eventSlug,
     event_name: input.eventName,
     org_name: input.orgName,
     ...input.family,
@@ -120,7 +120,7 @@ export async function createRegistration(
       eventName: input.eventName,
       orgName: input.orgName,
       orgSlug: input.orgSlug,
-      campSlug: input.campSlug,
+      eventSlug: input.eventSlug,
       familyId,
       accessToken,
       fromDisplayName: event.from_display_name,

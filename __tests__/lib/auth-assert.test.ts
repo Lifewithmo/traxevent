@@ -63,7 +63,7 @@ describe('assertOrgAdmin', () => {
   })
 })
 
-describe('assertCampPage', () => {
+describe('assertEventPage', () => {
   beforeEach(() => vi.clearAllMocks())
   it('throws Forbidden when staff lacks the page grant', async () => {
     getCurrentUserSpy.mockResolvedValue({ uid: 'u1', orgId: 'org-1', role: 'staff' })

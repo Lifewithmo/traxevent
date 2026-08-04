@@ -52,7 +52,7 @@ export default async function OrgHomePage({
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">{org.name}</h1>
-        <Link href={`/${orgSlug}/new-camp`}>
+        <Link href={`/${orgSlug}/new-event`}>
           <Button>New event</Button>
         </Link>
       </div>
@@ -61,7 +61,7 @@ export default async function OrgHomePage({
         <div className="text-center py-16 text-muted-foreground">
           <p className="text-lg font-medium">No events yet</p>
           <p className="mt-1 text-sm">Create your first event to get started.</p>
-          <Link href={`/${orgSlug}/new-camp`} className="mt-4 inline-block">
+          <Link href={`/${orgSlug}/new-event`} className="mt-4 inline-block">
             <Button>Create an event</Button>
           </Link>
         </div>

@@ -27,16 +27,16 @@ vi.mock('firebase-admin/firestore', () => ({
   FieldValue: { delete: vi.fn(() => '__deleted__') },
 }))
 
-import { buildCampSlug } from '@/lib/slug'
+import { buildEventSlug } from '@/lib/slug'
 import { createEvent, updateEvent } from '@/actions/events'
 
-describe('buildCampSlug', () => {
+describe('buildEventSlug', () => {
   it('appends the year to the name slug', () => {
-    expect(buildCampSlug('Family Camp', 2026)).toBe('family-camp-2026')
+    expect(buildEventSlug('Family Camp', 2026)).toBe('family-camp-2026')
   })
 
   it('handles special characters', () => {
-    expect(buildCampSlug("Women's Retreat", 2026)).toBe('womens-retreat-2026')
+    expect(buildEventSlug("Women's Retreat", 2026)).toBe('womens-retreat-2026')
   })
 })
 

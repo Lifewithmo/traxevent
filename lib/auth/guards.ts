@@ -33,14 +33,14 @@ export async function requireOrgMember(orgSlug: string): Promise<{ org: Org; org
 // Redirects to the org home if the member lacks access to the page.
 export async function requireEventPage(
   orgSlug: string,
-  campSlug: string,
+  eventSlug: string,
   page: EventPage
 ): Promise<{ orgId: string; eventId: string; event: Event; member: OrgMember }> {
   const { orgId, member } = await requireOrgMember(orgSlug)
 
   const eventSnap = await adminDb
     .collection('orgs').doc(orgId)
-    .collection('events').where('slug', '==', campSlug).limit(1).get()
+    .collection('events').where('slug', '==', eventSlug).limit(1).get()
   if (eventSnap.empty) notFound()
   const event = eventSnap.docs[0].data() as Event
   const eventId = eventSnap.docs[0].id
@@ -54,12 +54,12 @@ export async function requireEventPage(
 // event dashboard (every event card links here) and other any-member event entry points.
 export async function requireEvent(
   orgSlug: string,
-  campSlug: string
+  eventSlug: string
 ): Promise<{ orgId: string; eventId: string; event: Event; member: OrgMember }> {
   const { orgId, member } = await requireOrgMember(orgSlug)
   const eventSnap = await adminDb
     .collection('orgs').doc(orgId)
-    .collection('events').where('slug', '==', campSlug).limit(1).get()
+    .collection('events').where('slug', '==', eventSlug).limit(1).get()
   if (eventSnap.empty) notFound()
   return { orgId, eventId: eventSnap.docs[0].id, event: eventSnap.docs[0].data() as Event, member }
 }

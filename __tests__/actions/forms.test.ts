@@ -213,7 +213,7 @@ describe('submitSignedForm', () => {
       eventName: 'Summer Camp 2026',
       orgName: 'First Hills',
       orgSlug: 'firsthills',
-      campSlug: 'summer-2026',
+      eventSlug: 'summer-2026',
     })
     expect(signedFormSetSpy).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -241,7 +241,7 @@ describe('submitSignedForm', () => {
       eventName: 'Summer Camp 2026',
       orgName: 'First Hills',
       orgSlug: 'firsthills',
-      campSlug: 'summer-2026',
+      eventSlug: 'summer-2026',
     })
     expect(sendEmailSpy).toHaveBeenCalledWith(
       expect.objectContaining({
