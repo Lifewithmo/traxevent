@@ -13,7 +13,7 @@
       "queryScope": "COLLECTION_GROUP",
       "fields": [
         { "fieldPath": "org_id", "order": "ASCENDING" },
-        { "fieldPath": "camp_id", "order": "ASCENDING" }
+        { "fieldPath": "event_id", "order": "ASCENDING" }
       ]
     },
     {
