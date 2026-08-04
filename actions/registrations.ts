@@ -45,7 +45,7 @@ export async function createRegistration(
 
   const eventSnap = await eventRef.get()
   const event = eventSnap.exists ? (eventSnap.data() as Event) : null
-  if (!event) throw new Error(`Camp not found: ${input.eventId}`)
+  if (!event) throw new Error(`Event not found: ${input.eventId}`)
 
   if (event?.capacity) {
     const familiesSnap = await eventRef.collection('families').get()

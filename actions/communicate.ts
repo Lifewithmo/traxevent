@@ -25,7 +25,7 @@ export async function sendEmailBlast(
     .collection('events').doc(eventId)
 
   const eventSnap = await eventRef.get()
-  if (!eventSnap.exists) throw new Error(`Camp not found: ${eventId}`)
+  if (!eventSnap.exists) throw new Error(`Event not found: ${eventId}`)
   const event = eventSnap.data() as Event
 
   const familiesSnap = await eventRef.collection('families').get()
