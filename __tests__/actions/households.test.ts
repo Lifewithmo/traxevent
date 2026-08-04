@@ -18,7 +18,7 @@ vi.mock('@/lib/firebase-admin', () => {
 
 import { getOrgHouseholds } from '@/actions/households'
 
-const event = (id: string, year: number) => ({ data: () => ({ id, name: `Camp ${id}`, year, slug: id, registration_type: 'family', event_type_id: 'summer-camp', features: {}, event_start: '', event_end: '', created_at: 'x' }) })
+const event = (id: string, year: number) => ({ data: () => ({ id, name: `Camp ${id}`, year, slug: id, registration_type: 'family', event_type_id: 'event', features: {}, event_start: '', event_end: '', created_at: 'x' }) })
 const fam = (email: string, first: string, status: string) => ({ data: () => ({ id: 'f', email, first_name: first, last_name: 'L', phone: '5', registrant_uid: null, created_at: '2026-01-01', registration_status: status, payment_status: 'paid' }) })
 
 describe('getOrgHouseholds', () => {

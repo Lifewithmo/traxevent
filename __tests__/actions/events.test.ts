@@ -46,14 +46,14 @@ describe('createEvent — event_type_id', () => {
       name: 'Summer Camp',
       year: 2026,
       registration_type: 'family',
-      event_type_id: 'gala',
+      event_type_id: 'catering',
       event_start: '2026-06-01',
       event_end: '2026-06-07',
     })
-    expect(event.event_type_id).toBe('gala')
+    expect(event.event_type_id).toBe('catering')
   })
 
-  it('defaults event_type_id to summer-camp when omitted', async () => {
+  it('defaults event_type_id to event when omitted', async () => {
     const event = await createEvent('org-1', {
       name: 'Summer Camp',
       year: 2026,
@@ -61,7 +61,7 @@ describe('createEvent — event_type_id', () => {
       event_start: '2026-06-01',
       event_end: '2026-06-07',
     })
-    expect(event.event_type_id).toBe('summer-camp')
+    expect(event.event_type_id).toBe('event')
   })
 })
 

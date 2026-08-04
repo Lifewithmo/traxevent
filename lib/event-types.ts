@@ -10,7 +10,7 @@ export interface Terminology {
 
 export type RegistrationUnit = 'family' | 'individual' | 'child'
 
-export type EventTypeId = 'summer-camp' | 'retreat' | 'vbs' | 'gala' | 'mission-trip'
+export type EventTypeId = 'event' | 'catering' | 'photo-shoot' | 'floral-event' | 'coffee-service'
 
 export interface EventType {
   id: EventTypeId | string
@@ -21,82 +21,67 @@ export interface EventType {
   is_custom?: boolean
 }
 
-export const DEFAULT_EVENT_TYPE_ID: EventTypeId = 'summer-camp'
+export const DEFAULT_EVENT_TYPE_ID: EventTypeId = 'event'
 
 const BUILT_IN_EVENT_TYPES: EventType[] = [
   {
-    id: 'summer-camp',
-    name: 'Summer Camp',
-    description: 'Family registration, cabin assignments, daily check-in',
-    registrationUnit: 'family',
-    terminology: {
-      registrantSingular: 'Family',
-      registrantPlural: 'Families',
-      memberSingular: 'Camper',
-      memberPlural: 'Campers',
-      assignmentSingular: 'Cabin',
-      assignmentPlural: 'Cabins',
-      eventLabel: 'Camp',
-    },
-  },
-  {
-    id: 'retreat',
-    name: 'Retreat',
-    description: 'Individual registration, room assignments, meal preferences',
+    id: 'event',
+    name: 'General Event',
+    description: 'A booked event with customers and guests',
     registrationUnit: 'individual',
     terminology: {
-      registrantSingular: 'Registrant',
-      registrantPlural: 'Registrants',
-      memberSingular: 'Attendee',
-      memberPlural: 'Attendees',
-      assignmentSingular: 'Room',
-      assignmentPlural: 'Rooms',
-      eventLabel: 'Retreat',
+      registrantSingular: 'Customer', registrantPlural: 'Customers',
+      memberSingular: 'Guest', memberPlural: 'Guests',
+      assignmentSingular: 'Assignment', assignmentPlural: 'Assignments',
+      eventLabel: 'Event',
     },
   },
   {
-    id: 'vbs',
-    name: 'VBS',
-    description: 'Child + guardian registration, class assignments, guardian pickup',
-    registrationUnit: 'child',
-    terminology: {
-      registrantSingular: 'Child',
-      registrantPlural: 'Children',
-      memberSingular: 'Child',
-      memberPlural: 'Children',
-      assignmentSingular: 'Class',
-      assignmentPlural: 'Classes',
-      eventLabel: 'VBS',
-    },
-  },
-  {
-    id: 'gala',
-    name: 'Gala / Fundraiser',
-    description: 'Individual or couple registration, table seating, ticket tiers',
+    id: 'catering',
+    name: 'Catering',
+    description: 'Event catering with menu, headcount, and stations',
     registrationUnit: 'individual',
     terminology: {
-      registrantSingular: 'Guest',
-      registrantPlural: 'Guests',
-      memberSingular: 'Guest',
-      memberPlural: 'Guests',
-      assignmentSingular: 'Table',
-      assignmentPlural: 'Tables',
-      eventLabel: 'Gala',
+      registrantSingular: 'Client', registrantPlural: 'Clients',
+      memberSingular: 'Guest', memberPlural: 'Guests',
+      assignmentSingular: 'Station', assignmentPlural: 'Stations',
+      eventLabel: 'Event',
     },
   },
   {
-    id: 'mission-trip',
-    name: 'Mission Trip',
-    description: 'Individual registration, team assignments, document collection',
+    id: 'photo-shoot',
+    name: 'Photography',
+    description: 'Photo/video sessions with clients and subjects',
     registrationUnit: 'individual',
     terminology: {
-      registrantSingular: 'Participant',
-      registrantPlural: 'Participants',
-      memberSingular: 'Member',
-      memberPlural: 'Members',
-      assignmentSingular: 'Team',
-      assignmentPlural: 'Teams',
-      eventLabel: 'Trip',
+      registrantSingular: 'Client', registrantPlural: 'Clients',
+      memberSingular: 'Subject', memberPlural: 'Subjects',
+      assignmentSingular: 'Session', assignmentPlural: 'Sessions',
+      eventLabel: 'Shoot',
+    },
+  },
+  {
+    id: 'floral-event',
+    name: 'Floral & Event Design',
+    description: 'Floral design and installation for events',
+    registrationUnit: 'individual',
+    terminology: {
+      registrantSingular: 'Client', registrantPlural: 'Clients',
+      memberSingular: 'Recipient', memberPlural: 'Recipients',
+      assignmentSingular: 'Delivery', assignmentPlural: 'Deliveries',
+      eventLabel: 'Event',
+    },
+  },
+  {
+    id: 'coffee-service',
+    name: 'Mobile Beverage',
+    description: 'Mobile coffee/beverage service for events',
+    registrationUnit: 'individual',
+    terminology: {
+      registrantSingular: 'Client', registrantPlural: 'Clients',
+      memberSingular: 'Guest', memberPlural: 'Guests',
+      assignmentSingular: 'Station', assignmentPlural: 'Stations',
+      eventLabel: 'Service',
     },
   },
 ]

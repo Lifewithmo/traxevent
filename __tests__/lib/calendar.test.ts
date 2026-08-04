@@ -5,8 +5,8 @@ import type { Event, Lead } from '@/lib/types'
 function event(overrides: Partial<Event>): Event {
   return {
     id: 'c1',
-    name: 'Summer Camp',
-    slug: 'summer-camp',
+    name: 'Spring Gathering',
+    slug: 'spring-gathering',
     event_start: '2026-07-10',
     ...overrides,
   } as Event
@@ -27,7 +27,7 @@ describe('buildCalendar', () => {
   it('merges camps and leads sorted ascending by date', () => {
     const items = buildCalendar(
       'my-org',
-      [event({ id: 'c1', name: 'Summer Camp', slug: 'summer-camp', event_start: '2026-07-10' })],
+      [event({ id: 'c1', name: 'Spring Gathering', slug: 'spring-gathering', event_start: '2026-07-10' })],
       [lead({ id: 'l1', name: 'Acme Wedding', event_date: '2026-07-05' })]
     )
     expect(items.map((i) => i.date)).toEqual(['2026-07-05', '2026-07-10'])
@@ -46,13 +46,13 @@ describe('buildCalendar', () => {
   it('sets kind and href correctly for camps (event) and leads (lead)', () => {
     const items = buildCalendar(
       'my-org',
-      [event({ id: 'c1', slug: 'summer-camp', event_start: '2026-07-10' })],
+      [event({ id: 'c1', slug: 'spring-gathering', event_start: '2026-07-10' })],
       [lead({ id: 'l1', event_date: '2026-07-05' })]
     )
     const evt = items.find((i) => i.id === 'c1')!
     const ld = items.find((i) => i.id === 'l1')!
     expect(evt.kind).toBe('event')
-    expect(evt.href).toBe('/my-org/summer-camp/dashboard')
+    expect(evt.href).toBe('/my-org/spring-gathering/dashboard')
     expect(ld.kind).toBe('lead')
     expect(ld.href).toBe('/my-org/leads/l1')
   })

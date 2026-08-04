@@ -14,38 +14,38 @@ vi.mock('@/lib/firebase', () => ({
 }))
 
 describe('AdminSidebar — terminology-driven labels', () => {
-  it('shows "Families" for summer-camp event type', () => {
-    const { terminology } = getEventType('summer-camp')
+  it('shows "Customers" for event event type', () => {
+    const { terminology } = getEventType('event')
     render(<AdminSidebar orgSlug="acme" eventSlug="camp-2026" terminology={terminology} />)
-    expect(screen.getByText('Families')).toBeInTheDocument()
+    expect(screen.getByText('Customers')).toBeInTheDocument()
   })
 
-  it('shows "Guests" for gala event type', () => {
-    const { terminology } = getEventType('gala')
+  it('shows "Stations" for catering event type', () => {
+    const { terminology } = getEventType('catering')
     render(<AdminSidebar orgSlug="acme" eventSlug="camp-2026" terminology={terminology} />)
-    expect(screen.getByText('Guests')).toBeInTheDocument()
+    expect(screen.getByText('Stations')).toBeInTheDocument()
   })
 
-  it('shows "Children" for vbs event type', () => {
-    const { terminology } = getEventType('vbs')
+  it('shows "Sessions" for photo-shoot event type', () => {
+    const { terminology } = getEventType('photo-shoot')
     render(<AdminSidebar orgSlug="acme" eventSlug="camp-2026" terminology={terminology} />)
-    expect(screen.getByText('Children')).toBeInTheDocument()
+    expect(screen.getByText('Sessions')).toBeInTheDocument()
   })
 
-  it('shows "Participants" for mission-trip event type', () => {
-    const { terminology } = getEventType('mission-trip')
+  it('shows "Deliveries" for floral-event event type', () => {
+    const { terminology } = getEventType('floral-event')
     render(<AdminSidebar orgSlug="acme" eventSlug="camp-2026" terminology={terminology} />)
-    expect(screen.getByText('Participants')).toBeInTheDocument()
+    expect(screen.getByText('Deliveries')).toBeInTheDocument()
   })
 
   it('always shows Dashboard regardless of event type', () => {
-    const { terminology } = getEventType('gala')
+    const { terminology } = getEventType('catering')
     render(<AdminSidebar orgSlug="acme" eventSlug="camp-2026" terminology={terminology} />)
     expect(screen.getByText('Dashboard')).toBeInTheDocument()
   })
 
   it('includes a Settings nav link', () => {
-    const { terminology } = getEventType('summer-camp')
+    const { terminology } = getEventType('event')
     render(<AdminSidebar orgSlug="acme" eventSlug="camp-2026" terminology={terminology} />)
     expect(screen.getByText('Settings')).toBeInTheDocument()
   })

@@ -52,11 +52,11 @@ vi.mock('@/lib/firebase-admin', () => {
 import { duplicateEvent } from '@/actions/events'
 
 const sourceEvent = {
-  id: 'src', name: 'Summer Camp 2025', slug: 'summer-camp-2025', year: 2025, status: 'active',
-  registration_type: 'family', event_type_id: 'summer-camp',
+  id: 'src', name: 'Annual Gathering 2025', slug: 'annual-gathering-2025', year: 2025, status: 'active',
+  registration_type: 'family', event_type_id: 'event',
   features: { accommodations: true, teams: true, budget: true, itinerary: true, communicate: true },
   event_start: '2025-07-10', event_end: '2025-07-13', capacity: 100, payment_amount: 150,
-  from_display_name: 'Summer Camp', reply_to_email: 'd@x.org', created_at: '2025-01-01',
+  from_display_name: 'Annual Gathering', reply_to_email: 'd@x.org', created_at: '2025-01-01',
 }
 
 describe('duplicateEvent', () => {
@@ -70,15 +70,15 @@ describe('duplicateEvent', () => {
 
   it('creates a new draft camp copying settings with the new name/year/dates', async () => {
     const event = await duplicateEvent('org-1', 'src', {
-      name: 'Summer Camp 2026', year: 2026, event_start: '2026-07-10', event_end: '2026-07-13',
+      name: 'Annual Gathering 2026', year: 2026, event_start: '2026-07-10', event_end: '2026-07-13',
     })
     expect(newEventSetSpy).toHaveBeenCalledWith(
       expect.objectContaining({
-        name: 'Summer Camp 2026',
+        name: 'Annual Gathering 2026',
         year: 2026,
         status: 'draft',
         registration_type: 'family',
-        event_type_id: 'summer-camp',
+        event_type_id: 'event',
         capacity: 100,
         payment_amount: 150,
         event_start: '2026-07-10',
@@ -86,7 +86,7 @@ describe('duplicateEvent', () => {
       })
     )
     expect(event.status).toBe('draft')
-    expect(event.name).toBe('Summer Camp 2026')
+    expect(event.name).toBe('Annual Gathering 2026')
   })
 
   it('copies assignment slots and form assignments to the new event', async () => {
@@ -108,8 +108,8 @@ describe('duplicateEvent', () => {
       .mockResolvedValueOnce({ empty: false })
       .mockResolvedValueOnce({ empty: true })
     const event = await duplicateEvent('org-1', 'src', {
-      name: 'Summer Camp', year: 2026, event_start: '2026-07-10', event_end: '2026-07-13',
+      name: 'Annual Gathering', year: 2026, event_start: '2026-07-10', event_end: '2026-07-13',
     })
-    expect(event.slug).toBe('summer-camp-2026-2')
+    expect(event.slug).toBe('annual-gathering-2026-2')
   })
 })

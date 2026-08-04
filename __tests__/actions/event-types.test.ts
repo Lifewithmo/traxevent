@@ -37,7 +37,7 @@ describe('listOrgEventTypes', () => {
       docs: [{ data: () => ({ id: 'custom-1', name: 'Sports Clinic', description: 'd', registrationUnit: 'individual', terminology: term, is_custom: true }) }],
     })
     const all = await listOrgEventTypes('org-1')
-    expect(all.some((t) => t.id === 'summer-camp')).toBe(true)
+    expect(all.some((t) => t.id === 'event')).toBe(true)
     expect(all.some((t) => t.id === 'custom-1' && t.is_custom)).toBe(true)
   })
 })
@@ -63,7 +63,7 @@ describe('deleteCustomEventType', () => {
     expect(typeDocSpy.delete).toHaveBeenCalled()
   })
   it('rejects deleting a built-in id', async () => {
-    await expect(deleteCustomEventType('org-1', 'summer-camp')).rejects.toThrow('Cannot delete a built-in event type')
+    await expect(deleteCustomEventType('org-1', 'event')).rejects.toThrow('Cannot delete a built-in event type')
     expect(typeDocSpy.delete).not.toHaveBeenCalled()
   })
 })

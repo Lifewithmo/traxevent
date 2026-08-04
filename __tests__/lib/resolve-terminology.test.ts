@@ -11,12 +11,12 @@ const customTerm: Terminology = {
 
 describe('resolveTerminology', () => {
   it('returns the snapshot when provided', () => {
-    expect(resolveTerminology('summer-camp', customTerm)).toBe(customTerm)
+    expect(resolveTerminology('event', customTerm)).toBe(customTerm)
   })
   it('falls back to the built-in event type terminology when no snapshot', () => {
-    expect(resolveTerminology('summer-camp')).toEqual(getEventType('summer-camp').terminology)
+    expect(resolveTerminology('event')).toEqual(getEventType('event').terminology)
   })
   it('falls back to default event type for an unknown id with no snapshot', () => {
-    expect(resolveTerminology('unknown-custom-id')).toEqual(getEventType('summer-camp').terminology)
+    expect(resolveTerminology('unknown-custom-id')).toEqual(getEventType('event').terminology)
   })
 })

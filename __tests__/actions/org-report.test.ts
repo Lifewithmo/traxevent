@@ -25,7 +25,7 @@ vi.mock('@/lib/auth/assert', () => ({
 import { getOrgReportData } from '@/actions/reports'
 
 const event = (id: string, department_id?: string) => ({
-  data: () => ({ id, name: `Camp ${id}`, year: 2026, status: 'active', slug: id, registration_type: 'family', event_type_id: 'summer-camp', features: {}, event_start: '', event_end: '', created_at: 'x', ...(department_id ? { department_id } : {}) }),
+  data: () => ({ id, name: `Camp ${id}`, year: 2026, status: 'active', slug: id, registration_type: 'family', event_type_id: 'event', features: {}, event_start: '', event_end: '', created_at: 'x', ...(department_id ? { department_id } : {}) }),
 })
 const fam = (status: string, due: number, paid: number, payment: string) => ({
   data: () => ({ registration_status: status, payment_status: payment, amount_due: due, amount_paid: paid }),

@@ -2,54 +2,54 @@ import { describe, it, expect } from 'vitest'
 import { getEventType, getAllEventTypes, DEFAULT_EVENT_TYPE_ID } from '@/lib/event-types'
 
 describe('DEFAULT_EVENT_TYPE_ID', () => {
-  it('is summer-camp', () => {
-    expect(DEFAULT_EVENT_TYPE_ID).toBe('summer-camp')
+  it('is event', () => {
+    expect(DEFAULT_EVENT_TYPE_ID).toBe('event')
   })
 })
 
 describe('getEventType', () => {
-  it('returns summer-camp config', () => {
-    const et = getEventType('summer-camp')
-    expect(et.id).toBe('summer-camp')
-    expect(et.name).toBe('Summer Camp')
-    expect(et.registrationUnit).toBe('family')
-    expect(et.terminology.registrantPlural).toBe('Families')
-    expect(et.terminology.memberSingular).toBe('Camper')
-    expect(et.terminology.assignmentSingular).toBe('Cabin')
-    expect(et.terminology.eventLabel).toBe('Camp')
-  })
-
-  it('returns retreat config', () => {
-    const et = getEventType('retreat')
+  it('returns event config', () => {
+    const et = getEventType('event')
+    expect(et.id).toBe('event')
+    expect(et.name).toBe('General Event')
     expect(et.registrationUnit).toBe('individual')
-    expect(et.terminology.registrantPlural).toBe('Registrants')
-    expect(et.terminology.assignmentSingular).toBe('Room')
+    expect(et.terminology.registrantPlural).toBe('Customers')
+    expect(et.terminology.memberSingular).toBe('Guest')
+    expect(et.terminology.assignmentSingular).toBe('Assignment')
+    expect(et.terminology.eventLabel).toBe('Event')
   })
 
-  it('returns vbs config', () => {
-    const et = getEventType('vbs')
-    expect(et.registrationUnit).toBe('child')
-    expect(et.terminology.registrantPlural).toBe('Children')
-    expect(et.terminology.assignmentSingular).toBe('Class')
-  })
-
-  it('returns gala config', () => {
-    const et = getEventType('gala')
+  it('returns catering config', () => {
+    const et = getEventType('catering')
     expect(et.registrationUnit).toBe('individual')
-    expect(et.terminology.registrantPlural).toBe('Guests')
-    expect(et.terminology.assignmentSingular).toBe('Table')
+    expect(et.terminology.registrantPlural).toBe('Clients')
+    expect(et.terminology.assignmentSingular).toBe('Station')
   })
 
-  it('returns mission-trip config', () => {
-    const et = getEventType('mission-trip')
+  it('returns photo-shoot config', () => {
+    const et = getEventType('photo-shoot')
     expect(et.registrationUnit).toBe('individual')
-    expect(et.terminology.registrantPlural).toBe('Participants')
-    expect(et.terminology.assignmentSingular).toBe('Team')
+    expect(et.terminology.memberPlural).toBe('Subjects')
+    expect(et.terminology.assignmentSingular).toBe('Session')
   })
 
-  it('falls back to summer-camp for unknown id', () => {
+  it('returns floral-event config', () => {
+    const et = getEventType('floral-event')
+    expect(et.registrationUnit).toBe('individual')
+    expect(et.terminology.memberPlural).toBe('Recipients')
+    expect(et.terminology.assignmentSingular).toBe('Delivery')
+  })
+
+  it('returns coffee-service config', () => {
+    const et = getEventType('coffee-service')
+    expect(et.registrationUnit).toBe('individual')
+    expect(et.terminology.registrantPlural).toBe('Clients')
+    expect(et.terminology.eventLabel).toBe('Service')
+  })
+
+  it('falls back to event for unknown id', () => {
     const et = getEventType('unknown-type')
-    expect(et.id).toBe('summer-camp')
+    expect(et.id).toBe('event')
   })
 })
 
@@ -58,11 +58,11 @@ describe('getAllEventTypes', () => {
     const all = getAllEventTypes()
     expect(all).toHaveLength(5)
     const ids = all.map((et) => et.id)
-    expect(ids).toContain('summer-camp')
-    expect(ids).toContain('retreat')
-    expect(ids).toContain('vbs')
-    expect(ids).toContain('gala')
-    expect(ids).toContain('mission-trip')
+    expect(ids).toContain('event')
+    expect(ids).toContain('catering')
+    expect(ids).toContain('photo-shoot')
+    expect(ids).toContain('floral-event')
+    expect(ids).toContain('coffee-service')
   })
 
   it('each type has all required terminology keys', () => {
