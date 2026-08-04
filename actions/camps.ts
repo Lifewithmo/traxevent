@@ -4,7 +4,7 @@ import { randomBytes } from 'crypto'
 import { adminDb } from '@/lib/firebase-admin'
 import { assertOrgMember, assertOrgAdmin } from '@/lib/auth/assert'
 import { FieldValue } from 'firebase-admin/firestore'
-import type { Camp, CampRegistrationType } from '@/lib/types'
+import type { Event, EventRegistrationType } from '@/lib/types'
 import { buildCampSlug } from '@/lib/slug'
 import { DEFAULT_EVENT_TYPE_ID } from '@/lib/event-types'
 import type { Terminology } from '@/lib/event-types'
@@ -14,20 +14,20 @@ export async function createCamp(
   input: {
     name: string
     year: number
-    registration_type: CampRegistrationType
+    registration_type: EventRegistrationType
     event_type_id?: string
     event_type_terminology?: Terminology
     camp_start: string
     camp_end: string
     department_id?: string | null
   }
-): Promise<Camp> {
+): Promise<Event> {
   await assertOrgAdmin(orgId)
   const campRef = adminDb
     .collection('orgs').doc(orgId)
     .collection('events').doc()
 
-  const camp: Camp = {
+  const camp: Event = {
     id: campRef.id,
     name: input.name,
     slug: buildCampSlug(input.name, input.year),
@@ -53,30 +53,30 @@ export async function createCamp(
   return camp
 }
 
-export async function listCamps(orgId: string): Promise<Camp[]> {
+export async function listCamps(orgId: string): Promise<Event[]> {
   await assertOrgMember(orgId)
   const snap = await adminDb
     .collection('orgs').doc(orgId)
     .collection('events')
     .orderBy('created_at', 'desc')
     .get()
-  return snap.docs.map((d) => d.data() as Camp)
+  return snap.docs.map((d) => d.data() as Event)
 }
 
-export async function getCampBySlug(orgId: string, slug: string): Promise<Camp | null> {
+export async function getCampBySlug(orgId: string, slug: string): Promise<Event | null> {
   const snap = await adminDb
     .collection('orgs').doc(orgId)
     .collection('events')
     .where('slug', '==', slug)
     .limit(1)
     .get()
-  return snap.empty ? null : (snap.docs[0].data() as Camp)
+  return snap.empty ? null : (snap.docs[0].data() as Event)
 }
 
 export async function updateCamp(
   orgId: string,
   campId: string,
-  updates: Partial<Pick<Camp,
+  updates: Partial<Pick<Event,
     | 'name'
     | 'status'
     | 'event_type_id'
@@ -127,13 +127,13 @@ export async function duplicateEvent(
   orgId: string,
   sourceCampId: string,
   input: DuplicateEventInput
-): Promise<Camp> {
+): Promise<Event> {
   await assertOrgAdmin(orgId)
   const campsCol = adminDb.collection('orgs').doc(orgId).collection('events')
   const sourceRef = campsCol.doc(sourceCampId)
   const sourceSnap = await sourceRef.get()
   if (!sourceSnap.exists) throw new Error('Source event not found')
-  const source = sourceSnap.data() as Camp
+  const source = sourceSnap.data() as Event
 
   const baseSlug = buildCampSlug(input.name, input.year)
   let slug = baseSlug
@@ -144,7 +144,7 @@ export async function duplicateEvent(
   }
 
   const newRef = campsCol.doc()
-  const newCamp: Camp = {
+  const newCamp: Event = {
     id: newRef.id,
     name: input.name,
     slug,

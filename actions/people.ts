@@ -4,7 +4,7 @@ import { adminDb } from '@/lib/firebase-admin'
 import { assertOrgMember, assertOrgAdmin, assertCampPage } from '@/lib/auth/assert'
 import { validateCampPages } from '@/lib/tokens'
 import { getBuiltInPermissionTemplates, BUILT_IN_TEMPLATE_IDS } from '@/lib/permission-templates'
-import type { PermissionTemplate, EventPerson, EventPersonKind, CampPage } from '@/lib/types'
+import type { PermissionTemplate, EventPerson, EventPersonKind, EventPage } from '@/lib/types'
 import { randomBytes } from 'crypto'
 
 function templatesRef(orgId: string) {
@@ -22,7 +22,7 @@ function isBuiltIn(templateId: string): boolean {
 export interface CreatePermissionTemplateInput {
   name: string
   description?: string
-  pages: CampPage[]
+  pages: EventPage[]
 }
 
 export async function listPermissionTemplates(orgId: string): Promise<PermissionTemplate[]> {
@@ -80,7 +80,7 @@ export interface AddEventPersonInput {
   name: string
   email: string
   role: string
-  pages: CampPage[]
+  pages: EventPage[]
   appliedTemplateId?: string
 }
 
@@ -110,7 +110,7 @@ export async function updateEventPersonPermissions(
   orgId: string,
   campId: string,
   personId: string,
-  pages: CampPage[],
+  pages: EventPage[],
   appliedTemplateId?: string
 ): Promise<void> {
   await assertCampPage(orgId, campId, 'people')

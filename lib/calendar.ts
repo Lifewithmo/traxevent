@@ -1,4 +1,4 @@
-import type { Camp, Lead } from '@/lib/types'
+import type { Event, Lead } from '@/lib/types'
 
 export interface CalendarItem {
   id: string
@@ -10,7 +10,7 @@ export interface CalendarItem {
 
 // Merge camps (by camp_start) and leads (by event_date) into one date-sorted agenda.
 // Items without a date are omitted. `orgSlug` builds the links.
-export function buildCalendar(orgSlug: string, camps: Camp[], leads: Lead[]): CalendarItem[] {
+export function buildCalendar(orgSlug: string, camps: Event[], leads: Lead[]): CalendarItem[] {
   const items: CalendarItem[] = []
   for (const c of camps) {
     if (c.camp_start) {

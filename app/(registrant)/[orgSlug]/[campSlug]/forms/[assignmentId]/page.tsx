@@ -11,7 +11,7 @@ import { getVisibleFields } from '@/lib/forms'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import type { EventFormAssignment, Family, FormField, Org, Camp } from '@/lib/types'
+import type { EventFormAssignment, Family, FormField, Org, Event } from '@/lib/types'
 
 export default function FormFillPage() {
   const { orgSlug, campSlug, assignmentId } = useParams<{
@@ -27,7 +27,7 @@ export default function FormFillPage() {
   const [assignment, setAssignment] = useState<EventFormAssignment | null>(null)
   const [family, setFamily] = useState<Family | null>(null)
   const [org, setOrg] = useState<Org | null>(null)
-  const [camp, setCamp] = useState<Camp | null>(null)
+  const [camp, setCamp] = useState<Event | null>(null)
   const [alreadySigned, setAlreadySigned] = useState(false)
   const [responses, setResponses] = useState<Record<string, string | boolean | string[]>>({})
   const [signatureName, setSignatureName] = useState('')

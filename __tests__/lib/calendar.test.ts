@@ -1,15 +1,15 @@
 import { describe, it, expect } from 'vitest'
 import { buildCalendar } from '@/lib/calendar'
-import type { Camp, Lead } from '@/lib/types'
+import type { Event, Lead } from '@/lib/types'
 
-function camp(overrides: Partial<Camp>): Camp {
+function camp(overrides: Partial<Event>): Event {
   return {
     id: 'c1',
     name: 'Summer Camp',
     slug: 'summer-camp',
     camp_start: '2026-07-10',
     ...overrides,
-  } as Camp
+  } as Event
 }
 
 function lead(overrides: Partial<Lead>): Lead {

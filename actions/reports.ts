@@ -2,7 +2,7 @@
 
 import { adminDb } from '@/lib/firebase-admin'
 import { assertCampPage, assertOrgMember } from '@/lib/auth/assert'
-import type { Family, FamilyMember, EventFormAssignment, Camp } from '@/lib/types'
+import type { Family, FamilyMember, EventFormAssignment, Event } from '@/lib/types'
 import { summarizeFormCompletion, type FormCompletionRow } from '@/lib/forms'
 import {
   buildRegistrationSummary,
@@ -145,7 +145,7 @@ export async function getOrgReportData(orgId: string, departmentId?: string): Pr
     .orderBy('created_at', 'desc')
     .get()
 
-  let camps = campsSnap.docs.map((d) => d.data() as Camp)
+  let camps = campsSnap.docs.map((d) => d.data() as Event)
   if (departmentId) camps = camps.filter((c) => c.department_id === departmentId)
 
   const rows = await Promise.all(

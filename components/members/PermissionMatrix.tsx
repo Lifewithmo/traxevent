@@ -2,12 +2,12 @@
 
 import { useState } from 'react'
 import { updateStaffCampAccess } from '@/actions/members'
-import { CAMP_PAGES, type OrgMember, type Camp } from '@/lib/types'
+import { CAMP_PAGES, type OrgMember, type Event } from '@/lib/types'
 
 interface PermissionMatrixProps {
   orgId: string
   staff: OrgMember[]
-  camps: Camp[]
+  camps: Event[]
 }
 
 export function PermissionMatrix({ orgId, staff, camps }: PermissionMatrixProps) {

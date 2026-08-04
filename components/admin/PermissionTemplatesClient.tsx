@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { createPermissionTemplate, updatePermissionTemplate, deletePermissionTemplate } from '@/actions/people'
-import { CAMP_PAGES, type PermissionTemplate, type CampPage } from '@/lib/types'
+import { CAMP_PAGES, type PermissionTemplate, type EventPage } from '@/lib/types'
 
 interface PermissionTemplatesClientProps {
   orgId: string
@@ -19,8 +19,8 @@ function PageCheckboxes({
   onToggle,
   idPrefix,
 }: {
-  selected: CampPage[]
-  onToggle: (page: CampPage) => void
+  selected: EventPage[]
+  onToggle: (page: EventPage) => void
   idPrefix: string
 }) {
   return (
@@ -52,11 +52,11 @@ export function PermissionTemplatesClient({ orgId, templates: initial }: Permiss
   const [error, setError] = useState<string | null>(null)
 
   const [newName, setNewName] = useState('')
-  const [newPages, setNewPages] = useState<CampPage[]>([])
+  const [newPages, setNewPages] = useState<EventPage[]>([])
   const [editName, setEditName] = useState('')
-  const [editPages, setEditPages] = useState<CampPage[]>([])
+  const [editPages, setEditPages] = useState<EventPage[]>([])
 
-  function toggle(list: CampPage[], page: CampPage): CampPage[] {
+  function toggle(list: EventPage[], page: EventPage): EventPage[] {
     return list.includes(page) ? list.filter((p) => p !== page) : [...list, page]
   }
 

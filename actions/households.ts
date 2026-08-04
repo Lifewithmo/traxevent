@@ -3,7 +3,7 @@
 import { adminDb } from '@/lib/firebase-admin'
 import { assertOrgMember } from '@/lib/auth/assert'
 import { buildHouseholds, type Household, type HouseholdRow } from '@/lib/households'
-import type { Camp, Family } from '@/lib/types'
+import type { Event, Family } from '@/lib/types'
 
 export async function getOrgHouseholds(orgId: string): Promise<Household[]> {
   await assertOrgMember(orgId)
@@ -11,7 +11,7 @@ export async function getOrgHouseholds(orgId: string): Promise<Household[]> {
   const campsSnap = await adminDb
     .collection('orgs').doc(orgId)
     .collection('events').orderBy('created_at', 'desc').get()
-  const camps = campsSnap.docs.map((d) => d.data() as Camp)
+  const camps = campsSnap.docs.map((d) => d.data() as Event)
 
   const rowsPerCamp = await Promise.all(
     camps.map(async (camp) => {

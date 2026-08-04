@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { addEventPerson, updateEventPersonPermissions, removeEventPerson } from '@/actions/people'
-import { CAMP_PAGES, type EventPerson, type EventPersonKind, type PermissionTemplate, type CampPage } from '@/lib/types'
+import { CAMP_PAGES, type EventPerson, type EventPersonKind, type PermissionTemplate, type EventPage } from '@/lib/types'
 
 interface EventPeopleClientProps {
   orgId: string
@@ -32,7 +32,7 @@ function PersonCard({
   saving: boolean
   onRemove: (personId: string) => void
   onApplyTemplate: (person: EventPerson, tid: string) => void
-  onTogglePage: (person: EventPerson, page: CampPage) => void
+  onTogglePage: (person: EventPerson, page: EventPage) => void
 }) {
   return (
     <Card>
@@ -104,7 +104,7 @@ export function EventPeopleClient({
   const [email, setEmail] = useState('')
   const [role, setRole] = useState('')
   const [templateId, setTemplateId] = useState('')
-  const [pages, setPages] = useState<CampPage[]>([])
+  const [pages, setPages] = useState<EventPage[]>([])
 
   function applyTemplate(id: string) {
     setTemplateId(id)
@@ -112,7 +112,7 @@ export function EventPeopleClient({
     if (t) setPages([...t.pages])
   }
 
-  function togglePage(page: CampPage) {
+  function togglePage(page: EventPage) {
     setPages((prev) => (prev.includes(page) ? prev.filter((p) => p !== page) : [...prev, page]))
     setTemplateId('')
   }
@@ -154,7 +154,7 @@ export function EventPeopleClient({
     }
   }
 
-  async function handleTogglePersonPage(person: EventPerson, page: CampPage) {
+  async function handleTogglePersonPage(person: EventPerson, page: EventPage) {
     const prev = person  // snapshot before optimistic update
     const nextPages = person.pages.includes(page)
       ? person.pages.filter((p) => p !== page)

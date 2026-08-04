@@ -10,14 +10,14 @@ import { createRegistration } from '@/actions/registrations'
 import { resolveTerminology } from '@/lib/event-types'
 import { useAuth } from '@/hooks/useAuth'
 import { getRegistrantProfile } from '@/actions/registrant-auth'
-import type { Camp, Family, FamilyMember, Org } from '@/lib/types'
+import type { Event, Family, FamilyMember, Org } from '@/lib/types'
 
 type ContactData = Pick<Family, 'first_name' | 'last_name' | 'email' | 'phone' | 'address' | 'emergency_contact'>
 type MemberInput = Omit<FamilyMember, 'id' | 'family_id'>
 type StepName = 'contact' | 'members' | 'review' | 'payment'
 
 interface RegistrationFormProps {
-  camp: Camp
+  camp: Event
   org: Org
 }
 

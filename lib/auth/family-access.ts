@@ -3,7 +3,7 @@ import 'server-only'
 import { adminDb } from '@/lib/firebase-admin'
 import { getCurrentUser } from '@/lib/auth/session'
 import { canAccessCampPage } from '@/lib/auth/access'
-import type { Camp, Family, OrgMember, CampPage } from '@/lib/types'
+import type { Event, Family, OrgMember, EventPage } from '@/lib/types'
 
 // Authorize access to ONE family's data via any of:
 //  1. a valid, unexpired access token matching the family (anonymous registrant from an email link)
@@ -14,7 +14,7 @@ export async function assertFamilyAccess(
   orgId: string,
   campId: string,
   familyId: string,
-  opts: { token?: string; page?: CampPage } = {}
+  opts: { token?: string; page?: EventPage } = {}
 ): Promise<Family> {
   const snap = await adminDb
     .collection('orgs').doc(orgId)
@@ -39,7 +39,7 @@ export async function assertFamilyAccess(
       const m = await adminDb.collection('orgs').doc(orgId).collection('members').doc(user.uid).get()
       if (m.exists) {
         const campSnap = await adminDb.collection('orgs').doc(orgId).collection('events').doc(campId).get()
-        const deptId = campSnap.exists ? ((campSnap.data() as Camp).department_id ?? null) : null
+        const deptId = campSnap.exists ? ((campSnap.data() as Event).department_id ?? null) : null
         if (canAccessCampPage(m.data() as OrgMember, campId, opts.page ?? 'families', deptId)) return family
       }
     }

@@ -4,7 +4,7 @@ import { adminDb } from '@/lib/firebase-admin'
 import { attachAccessToken } from '@/actions/access-tokens'
 import { sendRegistrationConfirmation } from '@/lib/email'
 import { getVerifiedSendingDomain } from '@/actions/domains'
-import type { Camp, Family, FamilyMember } from '@/lib/types'
+import type { Event, Family, FamilyMember } from '@/lib/types'
 import { buildFamilyId } from '@/lib/tokens'
 import { mergeSavedMembers } from '@/lib/saved-members'
 import { getRegistrantProfile, updateRegistrantProfile } from '@/actions/registrant-auth'
@@ -44,7 +44,7 @@ export async function createRegistration(
     .collection('events').doc(input.campId)
 
   const campSnap = await campRef.get()
-  const camp = campSnap.exists ? (campSnap.data() as Camp) : null
+  const camp = campSnap.exists ? (campSnap.data() as Event) : null
   if (!camp) throw new Error(`Camp not found: ${input.campId}`)
 
   if (camp?.capacity) {

@@ -2,7 +2,7 @@
 import { NextResponse } from 'next/server'
 import { stripe } from '@/lib/stripe'
 import { adminDb } from '@/lib/firebase-admin'
-import type { Org, Camp } from '@/lib/types'
+import type { Org, Event } from '@/lib/types'
 
 export async function POST(req: Request) {
   const { orgSlug, campSlug, familyId } = await req.json()
@@ -28,7 +28,7 @@ export async function POST(req: Request) {
     .collection('events').where('slug', '==', campSlug).limit(1)
     .get()
   if (campSnap.empty) return NextResponse.json({ error: 'Camp not found' }, { status: 404 })
-  const camp = campSnap.docs[0].data() as Camp
+  const camp = campSnap.docs[0].data() as Event
 
   if (!camp.payment_amount || camp.payment_amount <= 0) {
     return NextResponse.json(

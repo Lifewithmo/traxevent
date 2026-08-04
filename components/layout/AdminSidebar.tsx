@@ -6,14 +6,14 @@ import { usePathname, useRouter } from 'next/navigation'
 import { getEventType, DEFAULT_EVENT_TYPE_ID } from '@/lib/event-types'
 import { endSession } from '@/lib/auth/establish-session'
 import type { Terminology } from '@/lib/event-types'
-import type { CampPage } from '@/lib/types'
+import type { EventPage } from '@/lib/types'
 import type { ModuleId } from '@/lib/industry-packs'
 
 interface AdminSidebarProps {
   orgSlug: string
   campSlug?: string
   terminology?: Terminology
-  allowedCampPages?: CampPage[]
+  allowedCampPages?: EventPage[]
   enabledModules?: ModuleId[]
 }
 
@@ -95,7 +95,7 @@ export function AdminSidebar({ orgSlug, campSlug, terminology, allowedCampPages,
         (n) =>
           n.key === 'dashboard' ||
           n.key === 'settings' ||
-          allowedCampPages.includes(n.key as CampPage)
+          allowedCampPages.includes(n.key as EventPage)
       )
     : campNav
 

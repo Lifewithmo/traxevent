@@ -13,18 +13,18 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import type { Camp } from '@/lib/types'
+import type { Event } from '@/lib/types'
 
 export default function EventSettingsPage() {
   const { orgSlug, campSlug } = useParams<{ orgSlug: string; campSlug: string }>()
-  const [camp, setCamp] = useState<Camp | null>(null)
+  const [camp, setCamp] = useState<Event | null>(null)
   const [orgId, setOrgId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const [name, setName] = useState('')
-  const [status, setStatus] = useState<Camp['status']>('draft')
+  const [status, setStatus] = useState<Event['status']>('draft')
   const [eventTypeId, setEventTypeId] = useState<string>(DEFAULT_EVENT_TYPE_ID)
   const [campStart, setCampStart] = useState('')
   const [campEnd, setCampEnd] = useState('')
@@ -158,7 +158,7 @@ export default function EventSettingsPage() {
                 id="status"
                 className="w-full border rounded-md px-3 py-2 text-sm bg-white"
                 value={status}
-                onChange={(e) => { setStatus(e.target.value as Camp['status']); setSaved(false) }}
+                onChange={(e) => { setStatus(e.target.value as Event['status']); setSaved(false) }}
               >
                 <option value="draft">Draft — not visible to registrants</option>
                 <option value="active">Active — registration open</option>

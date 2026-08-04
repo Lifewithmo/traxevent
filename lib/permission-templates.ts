@@ -1,4 +1,4 @@
-import type { PermissionTemplate, CampPage } from '@/lib/types'
+import type { PermissionTemplate, EventPage } from '@/lib/types'
 
 export const BUILT_IN_TEMPLATE_IDS = [
   'builtin-cabin-leader',
@@ -40,5 +40,5 @@ const BUILT_IN_TEMPLATES: PermissionTemplate[] = [
 
 // Return deep copies so callers cannot mutate the module-level constants.
 export function getBuiltInPermissionTemplates(): PermissionTemplate[] {
-  return BUILT_IN_TEMPLATES.map((t) => ({ ...t, pages: [...t.pages] as CampPage[] }))
+  return BUILT_IN_TEMPLATES.map((t) => ({ ...t, pages: [...t.pages] as EventPage[] }))
 }

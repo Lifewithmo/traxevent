@@ -7,7 +7,7 @@ import { getOrgBySlug } from '@/actions/orgs'
 import { getCampBySlug } from '@/actions/camps'
 import { ContactStep } from '@/components/registration/steps/ContactStep'
 import { FamilyMembersStep } from '@/components/registration/steps/FamilyMembersStep'
-import type { Family, FamilyMember, Camp, Org } from '@/lib/types'
+import type { Family, FamilyMember, Event, Org } from '@/lib/types'
 
 type ContactData = Pick<Family, 'first_name' | 'last_name' | 'email' | 'phone' | 'address' | 'emergency_contact'>
 type MemberInput = Omit<FamilyMember, 'id' | 'family_id'>
@@ -19,7 +19,7 @@ export default function EditRegistrationPage() {
   const token = searchParams.get('token') ?? ''
 
   const [family, setFamily] = useState<Family | null>(null)
-  const [camp, setCamp] = useState<Camp | null>(null)
+  const [camp, setCamp] = useState<Event | null>(null)
   const [org, setOrg] = useState<Org | null>(null)
   const [members, setMembers] = useState<MemberInput[]>([])
   const [step, setStep] = useState<'contact' | 'members'>('contact')

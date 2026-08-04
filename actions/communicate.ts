@@ -4,7 +4,7 @@ import { adminDb } from '@/lib/firebase-admin'
 import { assertCampPage } from '@/lib/auth/assert'
 import { getResend, buildFromAddress, deriveLocalPart, resolveSenderEmail } from '@/lib/resend'
 import { getVerifiedSendingDomain } from '@/actions/domains'
-import type { Camp, Family, CommunicationLogEntry, OrgMember } from '@/lib/types'
+import type { Event, Family, CommunicationLogEntry, OrgMember } from '@/lib/types'
 import { randomBytes } from 'crypto'
 
 export interface EmailBlastInput {
@@ -26,7 +26,7 @@ export async function sendEmailBlast(
 
   const campSnap = await campRef.get()
   if (!campSnap.exists) throw new Error(`Camp not found: ${campId}`)
-  const camp = campSnap.data() as Camp
+  const camp = campSnap.data() as Event
 
   const familiesSnap = await campRef.collection('families').get()
   const families = familiesSnap.docs

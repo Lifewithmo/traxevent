@@ -4,7 +4,7 @@ import { redirect, notFound } from 'next/navigation'
 import { adminDb } from '@/lib/firebase-admin'
 import { getCurrentUser } from '@/lib/auth/session'
 import { canAccessCampPage } from '@/lib/auth/access'
-import type { Org, Camp, OrgMember, CampPage } from '@/lib/types'
+import type { Org, Event, OrgMember, EventPage } from '@/lib/types'
 
 // Require a logged-in member of the org identified by orgSlug.
 // Redirects to /login if unauthenticated; notFound() if the caller is not a member of THIS org.
@@ -34,15 +34,15 @@ export async function requireOrgMember(orgSlug: string): Promise<{ org: Org; org
 export async function requireCampPage(
   orgSlug: string,
   campSlug: string,
-  page: CampPage
-): Promise<{ orgId: string; campId: string; camp: Camp; member: OrgMember }> {
+  page: EventPage
+): Promise<{ orgId: string; campId: string; camp: Event; member: OrgMember }> {
   const { orgId, member } = await requireOrgMember(orgSlug)
 
   const campSnap = await adminDb
     .collection('orgs').doc(orgId)
     .collection('events').where('slug', '==', campSlug).limit(1).get()
   if (campSnap.empty) notFound()
-  const camp = campSnap.docs[0].data() as Camp
+  const camp = campSnap.docs[0].data() as Event
   const campId = campSnap.docs[0].id
 
   if (!canAccessCampPage(member, campId, page, camp.department_id ?? null)) redirect(`/${orgSlug}`)
@@ -55,17 +55,17 @@ export async function requireCampPage(
 export async function requireCamp(
   orgSlug: string,
   campSlug: string
-): Promise<{ orgId: string; campId: string; camp: Camp; member: OrgMember }> {
+): Promise<{ orgId: string; campId: string; camp: Event; member: OrgMember }> {
   const { orgId, member } = await requireOrgMember(orgSlug)
   const campSnap = await adminDb
     .collection('orgs').doc(orgId)
     .collection('events').where('slug', '==', campSlug).limit(1).get()
   if (campSnap.empty) notFound()
-  return { orgId, campId: campSnap.docs[0].id, camp: campSnap.docs[0].data() as Camp, member }
+  return { orgId, campId: campSnap.docs[0].id, camp: campSnap.docs[0].data() as Event, member }
 }
 
 // List the camp pages a member may access (for nav filtering).
-export function allowedCampPages(member: OrgMember, campId: string, allPages: CampPage[], departmentId?: string | null): CampPage[] {
+export function allowedCampPages(member: OrgMember, campId: string, allPages: EventPage[], departmentId?: string | null): EventPage[] {
   if (member.role === 'owner' || member.role === 'admin') return allPages
   return allPages.filter((p) => canAccessCampPage(member, campId, p, departmentId ?? null))
 }

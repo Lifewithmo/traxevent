@@ -2,7 +2,7 @@ import type { Terminology } from '@/lib/event-types'
 
 export type OrgRole = 'owner' | 'admin' | 'staff'
 
-export type CampRegistrationType = 'family' | 'individual' | 'child'
+export type EventRegistrationType = 'family' | 'individual' | 'child'
 
 export type BillingPlan = 'standard' | 'business'
 
@@ -36,15 +36,15 @@ export const CAMP_PAGES = [
   'reports',
 ] as const
 
-export type CampPage = typeof CAMP_PAGES[number]
+export type EventPage = typeof CAMP_PAGES[number]
 
 export interface OrgMember {
   uid: string
   role: OrgRole
   display_name: string
   email: string
-  camp_access: Record<string, { pages: CampPage[] }>
-  department_access?: Record<string, { pages: CampPage[] }>  // per-department grants, inherited by that dept's events
+  camp_access: Record<string, { pages: EventPage[] }>
+  department_access?: Record<string, { pages: EventPage[] }>  // per-department grants, inherited by that dept's events
 }
 
 export interface OrgInvitation {
@@ -56,13 +56,13 @@ export interface OrgInvitation {
   accepted_at?: string
 }
 
-export interface Camp {
+export interface Event {
   id: string
   name: string
   slug: string
   year: number
   status: 'draft' | 'active' | 'archived'
-  registration_type: CampRegistrationType
+  registration_type: EventRegistrationType
   event_type_id: string              // drives terminology + UI config
   features: {
     accommodations: boolean
@@ -277,7 +277,7 @@ export interface PermissionTemplate {
   id: string
   name: string
   description?: string
-  pages: CampPage[]
+  pages: EventPage[]
   is_built_in?: boolean
   created_at?: string
   updated_at?: string
@@ -289,7 +289,7 @@ export interface EventPerson {
   name: string
   email: string
   role: string
-  pages: CampPage[]
+  pages: EventPage[]
   applied_template_id?: string | null
   created_at: string
   updated_at?: string
