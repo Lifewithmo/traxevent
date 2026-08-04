@@ -5,6 +5,7 @@ export type ModuleId =
   | 'events' | 'registrants' | 'vendors' | 'calendar' | 'reports'
   // Forward-declared for later phases; no nav renders these yet.
   | 'catalog' | 'inventory' | 'deliverables' | 'routing' | 'pos'
+  | 'attendee-roster'
 
 export interface IndustryPack {
   id: string
@@ -30,7 +31,7 @@ const BUILT_IN_PACKS: IndustryPack[] = [
     name: 'General',
     description: 'Every module enabled — the default for existing orgs.',
     eventTypeId: 'summer-camp',
-    modules: [...ALL_CURRENT_MODULES],
+    modules: [...ALL_CURRENT_MODULES, 'attendee-roster'],
     catalogKind: null,
     publicMode: false,
   },

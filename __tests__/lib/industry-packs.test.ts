@@ -52,4 +52,18 @@ describe('industry packs', () => {
       expect(pack.modules.length).toBeGreaterThan(0)
     }
   })
+
+  it('general pack includes attendee-roster (existing orgs keep the roster)', () => {
+    expect(getIndustryPack('general').modules).toContain('attendee-roster')
+  })
+
+  it('booked-job packs exclude attendee-roster (headcount path instead)', () => {
+    for (const id of ['coffee-cart', 'caterer', 'florist', 'photographer']) {
+      expect(getIndustryPack(id).modules).not.toContain('attendee-roster')
+    }
+  })
+
+  it('resolveEnabledModules(undefined) includes attendee-roster (default = general)', () => {
+    expect(resolveEnabledModules(undefined)).toContain('attendee-roster')
+  })
 })

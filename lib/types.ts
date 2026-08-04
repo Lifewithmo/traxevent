@@ -76,6 +76,8 @@ export interface Event {
   registration_open?: string         // ISO date, optional
   registration_close?: string        // ISO date, optional
   capacity?: number                  // max registrants, optional
+  headcount?: number                 // booked-job path: expected guest count (no per-person roster)
+  key_contacts?: EventKeyContact[]   // booked-job path: a few contacts instead of an attendee roster
   created_at: string
   updated_at?: string                // set on every updateEvent call
   payment_amount?: number            // registration fee in dollars (e.g. 150 = $150.00); omit or 0 for free events
@@ -84,6 +86,13 @@ export interface Event {
   itinerary_published?: boolean
   event_type_terminology?: Terminology
   department_id?: string | null   // optional grouping; null/undefined = unassigned
+}
+
+export interface EventKeyContact {
+  name: string
+  role: string
+  phone?: string
+  email?: string
 }
 
 // Shape of our Firebase Auth JWT custom claims
