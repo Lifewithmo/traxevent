@@ -729,6 +729,36 @@ export interface OpsChecklist {
   steps: OpsChecklistStep[]
 }
 
+export interface OpsRequirements {
+  guests: number
+  service_start?: string     // ISO datetime
+  service_end?: string
+  site_needs?: string[]      // e.g. ['power', 'water', 'ice', 'parking']
+  notes?: string
+}
+
+export interface OpsChangeEntry {
+  at: string
+  by: string                 // uid, or 'system' for derivation-triggered entries
+  field: string              // requirements field that changed, e.g. 'guests'
+  from?: string              // stringified previous value
+  to?: string                // stringified new value
+}
+
+export interface OpsPlan {
+  package_ids: string[]
+  requirements: OpsRequirements
+  deadlines: OpsDeadline[]
+  shopping_list: OpsListItem[]
+  packing_list: OpsListItem[]
+  checklists: OpsChecklist[]
+  needs_review: boolean      // set when a change re-derived artifacts; cleared by acknowledge
+  change_log: OpsChangeEntry[]
+  industry_pack_id?: string  // pack the plan was derived under (for re-derivation)
+  created_at: string
+  updated_at?: string
+}
+
 export interface CloseoutSummary {
   planned_consumable_cost: number
   actual_consumable_cost: number

@@ -1,0 +1,118 @@
+import { adminDb } from '@/lib/firebase-admin'
+import { getWorkPackagesByIdsCore } from '@/lib/ops/work-packages'
+import { listResourcesCore } from '@/lib/ops/resources'
+import { getTemplatesForOrg } from '@/lib/ops/checklist-templates'
+import {
+  computeShoppingList, computePackingList, deriveDeadlines, instantiateChecklists,
+} from '@/lib/ops/derive'
+import type { OpsPlan, OpsRequirements, OpsChangeEntry } from '@/lib/types'
+
+export function opsPlanRef(orgId: string, eventId: string) {
+  return adminDb.collection('orgs').doc(orgId)
+    .collection('events').doc(eventId)
+    .collection('ops').doc('plan')
+}
+
+export async function getOpsPlanCore(orgId: string, eventId: string): Promise<OpsPlan | null> {
+  const snap = await opsPlanRef(orgId, eventId).get()
+  return snap.exists ? (snap.data() as OpsPlan) : null
+}
+
+export interface InstantiateOpsPlanInput {
+  package_ids: string[]
+  requirements: OpsRequirements
+  event_start: string          // ISO date of the event (deadline anchor)
+  industry_pack_id?: string
+  actor_uid: string
+}
+
+/**
+ * The chain, in one call (spec §3.3): packages + requirements → lists,
+ * deadlines, checklist instances. This is the seam the proposals
+ * "convert-to-work" increment calls after acceptance.
+ */
+export async function instantiateOpsPlanCore(
+  orgId: string,
+  eventId: string,
+  input: InstantiateOpsPlanInput,
+): Promise<OpsPlan> {
+  if (input.requirements.guests <= 0) throw new Error('Guest count must be positive')
+  const packages = await getWorkPackagesByIdsCore(orgId, input.package_ids)
+  const found = new Set(packages.map((p) => p.id))
+  for (const id of input.package_ids) {
+    if (!found.has(id)) throw new Error(`Unknown package: ${id}`)
+  }
+  const resources = await listResourcesCore(orgId)
+  const templates = await getTemplatesForOrg(orgId, input.industry_pack_id)
+
+  const now = new Date().toISOString()
+  const plan: OpsPlan = {
+    package_ids: input.package_ids,
+    requirements: input.requirements,
+    deadlines: deriveDeadlines(input.event_start, input.industry_pack_id),
+    shopping_list: computeShoppingList(packages, resources, input.requirements.guests),
+    packing_list: computePackingList(packages, resources),
+    checklists: instantiateChecklists(templates),
+    needs_review: false,
+    change_log: [{ at: now, by: input.actor_uid, field: 'instantiated' }],
+    ...(input.industry_pack_id !== undefined ? { industry_pack_id: input.industry_pack_id } : {}),
+    created_at: now,
+  }
+  await opsPlanRef(orgId, eventId).set(plan)
+  return plan
+}
+
+const QUANTITY_FIELDS = new Set<keyof OpsRequirements>(['guests'])
+
+/**
+ * Requirement changes propagate but never silently (spec §3.3): every change
+ * is logged; quantity changes re-derive the lists AND set needs_review.
+ * NOTE: re-derived lists reset `checked` state — flagged via needs_review so
+ * the operator re-verifies. Deadlines are anchored to the event date, which
+ * lives on the Event doc — date changes are out of scope here.
+ */
+export async function updateOpsRequirementsCore(
+  orgId: string,
+  eventId: string,
+  updates: Partial<OpsRequirements>,
+  actorUid: string,
+): Promise<void> {
+  if (updates.guests !== undefined && updates.guests <= 0) throw new Error('Guest count must be positive')
+  const snap = await opsPlanRef(orgId, eventId).get()
+  if (!snap.exists) throw new Error('No ops plan for this event')
+  const plan = snap.data() as OpsPlan
+
+  const now = new Date().toISOString()
+  const entries: OpsChangeEntry[] = []
+  let reDerive = false
+  for (const [field, value] of Object.entries(updates)) {
+    if (value === undefined) continue
+    const prev = plan.requirements[field as keyof OpsRequirements]
+    if (JSON.stringify(prev) === JSON.stringify(value)) continue
+    entries.push({
+      at: now, by: actorUid, field,
+      ...(prev !== undefined ? { from: JSON.stringify(prev).replace(/^"|"$/g, '') } : {}),
+      to: JSON.stringify(value).replace(/^"|"$/g, ''),
+    })
+    if (QUANTITY_FIELDS.has(field as keyof OpsRequirements)) reDerive = true
+  }
+  if (entries.length === 0) return
+
+  const payload: Record<string, unknown> = {
+    change_log: [...plan.change_log, ...entries],
+    updated_at: now,
+  }
+  for (const [field, value] of Object.entries(updates)) {
+    if (value === undefined) continue
+    payload[`requirements.${field}`] = value
+  }
+  if (reDerive) {
+    const guests = updates.guests ?? plan.requirements.guests
+    const packages = await getWorkPackagesByIdsCore(orgId, plan.package_ids)
+    const resources = await listResourcesCore(orgId)
+    payload.shopping_list = computeShoppingList(packages, resources, guests)
+    payload.packing_list = computePackingList(packages, resources)
+    payload.needs_review = true
+  }
+  await opsPlanRef(orgId, eventId).update(payload)
+}
