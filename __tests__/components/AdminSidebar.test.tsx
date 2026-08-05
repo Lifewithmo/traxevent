@@ -1,13 +1,19 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 
 vi.mock('next/navigation', () => ({
-  usePathname: () => '/acme',
+  usePathname: vi.fn(() => '/acme'),
   useRouter: () => ({ push: vi.fn() }),
 }))
 vi.mock('@/lib/auth/establish-session', () => ({ endSession: vi.fn() }))
 
+import { usePathname } from 'next/navigation'
 import { AdminSidebar } from '@/components/layout/AdminSidebar'
+
+afterEach(() => {
+  // Restore the default pathname so tests that don't care about routing stay unaffected.
+  vi.mocked(usePathname).mockReturnValue('/acme')
+})
 
 describe('AdminSidebar workspace nav gating', () => {
   it('shows every workspace link when enabledModules is omitted', () => {
@@ -37,6 +43,17 @@ describe('AdminSidebar workspace nav gating', () => {
     // Settings panel is collapsed by default on non-settings routes; expand it.
     fireEvent.click(screen.getByText('Settings'))
     expect(screen.getByText('Members')).toBeInTheDocument()
+  })
+})
+
+describe('AdminSidebar route mounting', () => {
+  it('stays mounted on the /today route (regression: today must be in ORG_PAGE_SLUGS)', () => {
+    vi.mocked(usePathname).mockReturnValue('/acme/today')
+    render(<AdminSidebar orgSlug="acme" />)
+    // Before the fix, /today wasn't in ORG_PAGE_SLUGS, so the whole sidebar
+    // early-returned null on this route and none of its nav would render.
+    expect(screen.getByText('Today')).toBeInTheDocument()
+    expect(screen.getByText('Pipeline')).toBeInTheDocument()
   })
 })
 

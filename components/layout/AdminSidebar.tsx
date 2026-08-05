@@ -19,7 +19,7 @@ interface AdminSidebarProps {
 
 const ORG_PAGE_SLUGS = new Set([
   'members', 'forms', 'permissions', 'billing', 'email-domain', 'event-types',
-  'departments', 'reports', 'registrants', 'leads', 'clients', 'proposals',
+  'departments', 'reports', 'registrants', 'today', 'leads', 'clients', 'proposals',
   'contracts', 'invoices', 'vendors', 'calendar', 'new-event',
 ])
 
