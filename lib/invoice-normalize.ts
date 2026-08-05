@@ -6,7 +6,9 @@ const LEGACY_LIFECYCLE: Record<string, InvoiceLifecycle> = {
 }
 
 export function normalizeInvoice(data: DocumentData): NormalizedInvoice {
-  const inv = data as Invoice
+  // Legacy docs (pre-lifecycle) may still carry a `status` field at rest, even
+  // though the current `Invoice` type no longer declares it.
+  const inv = data as Invoice & { status?: string }
   const lifecycle: InvoiceLifecycle =
     inv.lifecycle ?? (inv.status ? LEGACY_LIFECYCLE[inv.status] ?? 'draft' : 'draft')
   return {

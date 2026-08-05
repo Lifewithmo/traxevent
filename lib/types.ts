@@ -411,8 +411,6 @@ export interface Proposal {
   updated_at?: string
 }
 
-export type InvoiceStatus = 'draft' | 'sent' | 'partial' | 'paid' | 'void'
-
 export type InvoiceType = 'quick' | 'deposit' | 'progress' | 'final'
 export type InvoiceLifecycle = 'draft' | 'approved' | 'issued' | 'voided' | 'replaced' | 'closed'
 export type InvoiceDeliveryStatus = 'not_sent' | 'queued' | 'sent' | 'delivered' | 'bounced' | 'viewed' | 'downloaded'
@@ -459,7 +457,6 @@ export interface Invoice {
   delivery?: InvoiceDeliveryStatus
   accounting?: InvoiceAccountingStatus
   dispute?: InvoiceDisputeStatus
-  status?: InvoiceStatus         // DEPRECATED legacy field — removed in a later task
 
   source?: InvoiceSourceRef
   number?: string

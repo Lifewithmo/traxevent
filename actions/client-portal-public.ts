@@ -4,7 +4,8 @@ import { adminDb } from '@/lib/firebase-admin'
 import { buildLeadTimeline, type LeadTimelineStep } from '@/lib/client-portal'
 import { proposalTotal } from '@/lib/proposals'
 import { invoiceTotal, invoiceBalance } from '@/lib/invoices'
-import type { Lead, LeadStage, Proposal, ProposalStatus, Invoice, InvoiceStatus, Contract, ContractStatus } from '@/lib/types'
+import { normalizeInvoice } from '@/lib/invoice-normalize'
+import type { Lead, LeadStage, Proposal, ProposalStatus, InvoiceLifecycle, Contract, ContractStatus } from '@/lib/types'
 
 export interface ClientPortalProposal {
   title?: string
@@ -16,7 +17,7 @@ export interface ClientPortalProposal {
 export interface ClientPortalInvoice {
   title?: string
   number?: string
-  status: InvoiceStatus
+  lifecycle: InvoiceLifecycle
   total: number
   balance: number
   token: string
@@ -69,11 +70,12 @@ export async function getClientPortal(token: string): Promise<ClientPortal | nul
     }))
 
   const invoices: ClientPortalInvoice[] = invSnap.docs
-    .map((d) => d.data() as Invoice)
-    .map((i) => ({ ...i, status: i.status ?? 'draft' }))
-    .filter((i) => i.status !== 'draft')
+    .map((d) => normalizeInvoice(d.data()))
+    // Show only finalized invoices to clients — hide drafts (never issued) and the
+    // internal 'approved' state (queued to be issued but not yet client-facing).
+    .filter((i) => i.lifecycle !== 'draft' && i.lifecycle !== 'approved')
     .map((i) => ({
-      status: i.status,
+      lifecycle: i.lifecycle,
       total: invoiceTotal(i.line_items),
       balance: invoiceBalance(i),
       token: i.token,

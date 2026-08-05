@@ -129,7 +129,7 @@ describe('getClientPortal', () => {
     })
   })
 
-  it('includes only non-draft invoices with { status, total, balance, token, title?, number? }', async () => {
+  it('includes only finalized invoices (hides draft and approved) with { lifecycle, total, balance, token, title?, number? }', async () => {
     mockLead(fullLead())
     invoicesSpy.mockResolvedValue({
       docs: [
@@ -141,7 +141,7 @@ describe('getClientPortal', () => {
             token: 'itok',
             title: 'Deposit',
             number: 'INV-001',
-            status: 'partial',
+            lifecycle: 'issued',
             line_items: [{ description: 'DJ', quantity: 1, unit_price: 1000 }],
             payments: [{ amount: 400, recorded_at: 'x' }],
             notes: 'secret',
@@ -154,8 +154,20 @@ describe('getClientPortal', () => {
             org_id: 'org-1',
             lead_id: 'lead-1',
             token: 'draftitok',
-            status: 'draft',
+            lifecycle: 'draft',
             line_items: [{ description: 'Y', quantity: 1, unit_price: 500 }],
+            payments: [],
+            created_at: 'x',
+          }),
+        },
+        {
+          data: () => ({
+            id: 'i3',
+            org_id: 'org-1',
+            lead_id: 'lead-1',
+            token: 'approveditok',
+            lifecycle: 'approved',
+            line_items: [{ description: 'Z', quantity: 1, unit_price: 500 }],
             payments: [],
             created_at: 'x',
           }),
@@ -165,7 +177,7 @@ describe('getClientPortal', () => {
     const result = await getClientPortal('tok_client')
     expect(result?.invoices).toHaveLength(1)
     expect(result?.invoices[0]).toEqual({
-      status: 'partial',
+      lifecycle: 'issued',
       total: 1000,
       balance: 600,
       token: 'itok',
