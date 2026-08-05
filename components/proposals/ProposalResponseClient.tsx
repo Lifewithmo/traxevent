@@ -30,6 +30,10 @@ export function ProposalResponseClient({
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<Outcome | null>(null)
+  // The total actually submitted to the server on Accept — captured at click time so the
+  // post-accept "locked" display can never drift from what was recorded, even before a reload
+  // populates proposal.selection.
+  const [acceptedTotal, setAcceptedTotal] = useState<number | null>(null)
 
   const requiredItems = proposal.line_items.filter((i) => i.optional !== true)
   const optionalItems = proposal.line_items.filter((i) => i.optional === true && i.id)
@@ -45,12 +49,19 @@ export function ProposalResponseClient({
     }
     setSubmitting(true)
     setError(null)
+    // Freeze the selection at click time — the controls are disabled while submitting (see
+    // `disabled={!editable || submitting}` below), so this is guaranteed to match what's sent.
+    const submittedTotal =
+      response === 'accepted'
+        ? computeSelectedTotal(proposal, { package_id: packageId, optional_item_ids: optionalIds })
+        : null
     try {
       await respondToProposal(
         token,
         response,
         response === 'accepted' ? { package_id: packageId, optional_item_ids: optionalIds } : undefined,
       )
+      if (submittedTotal !== null) setAcceptedTotal(submittedTotal)
       setResult(response)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Something went wrong. Please try again.')
@@ -61,15 +72,19 @@ export function ProposalResponseClient({
 
   // Effective status: once the client responds in this session, reflect it.
   const status = result ?? proposal.status
-  const editable = status === 'sent'
+  // Selection controls must be locked the instant Accept/Decline is clicked, not just once
+  // `status` flips server-side — otherwise a customer could change their pick while the request
+  // is in flight, after the (correct) submitted payload has already been frozen.
+  const editable = status === 'sent' && !submitting
   const total =
-    status === 'accepted' && proposal.selection
-      ? proposal.selection.selected_total
+    status === 'accepted'
+      ? (proposal.selection?.selected_total ?? acceptedTotal ??
+          computeSelectedTotal(proposal, { package_id: packageId, optional_item_ids: optionalIds }))
       : computeSelectedTotal(proposal, { package_id: packageId, optional_item_ids: optionalIds })
 
   return (
-    <main className="min-h-screen bg-gray-50 py-10 pb-40">
-      <div className="mx-auto max-w-3xl px-6">
+    <main className="flex min-h-screen flex-col bg-gray-50">
+      <div className="mx-auto w-full max-w-3xl flex-1 px-6 py-10">
         <h1 className="mb-6 text-2xl font-bold text-gray-900">{proposal.title || 'Proposal'}</h1>
 
         {packaged && (
@@ -183,7 +198,7 @@ export function ProposalResponseClient({
         )}
       </div>
 
-      <div className="fixed inset-x-0 bottom-0 border-t border-gray-200 bg-white/95 backdrop-blur">
+      <div className="sticky bottom-0 border-t border-gray-200 bg-white/95 backdrop-blur">
         <div className="mx-auto max-w-3xl px-6 py-4">
           {error && <p className="mb-2 text-sm text-red-600">{error}</p>}
           <div className="flex flex-wrap items-end justify-between gap-4">
