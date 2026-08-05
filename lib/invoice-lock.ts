@@ -1,7 +1,7 @@
 import type { InvoiceLifecycle } from '@/lib/types'
 
 export const LOCKED_LIFECYCLES: InvoiceLifecycle[] = ['issued', 'voided', 'replaced', 'closed']
-export const FINANCIAL_FIELDS = ['line_items', 'type', 'source', 'due_date', 'number']
+export const FINANCIAL_FIELDS = ['line_items', 'type', 'source', 'due_date', 'number', 'discount', 'tax_rate', 'credits']
 
 export class InvoiceLockedError extends Error {
   constructor(message: string) { super(message); this.name = 'InvoiceLockedError' }

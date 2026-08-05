@@ -3,7 +3,7 @@
 import { adminDb } from '@/lib/firebase-admin'
 import { buildLeadTimeline, type LeadTimelineStep } from '@/lib/client-portal'
 import { proposalTotal } from '@/lib/proposals'
-import { invoiceTotal, invoiceBalance } from '@/lib/invoices'
+import { invoiceAmountDue, invoiceBalance } from '@/lib/invoices'
 import { normalizeInvoice } from '@/lib/invoice-normalize'
 import type { Lead, LeadStage, Proposal, ProposalStatus, InvoiceLifecycle, Contract, ContractStatus } from '@/lib/types'
 
@@ -76,7 +76,7 @@ export async function getClientPortal(token: string): Promise<ClientPortal | nul
     .filter((i) => i.lifecycle !== 'draft' && i.lifecycle !== 'approved')
     .map((i) => ({
       lifecycle: i.lifecycle,
-      total: invoiceTotal(i.line_items),
+      total: invoiceAmountDue(i),
       balance: invoiceBalance(i),
       token: i.token,
       ...(i.title !== undefined ? { title: i.title } : {}),

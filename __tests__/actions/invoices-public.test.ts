@@ -73,6 +73,11 @@ describe('getPublicInvoice', () => {
       line_items: [{ description: 'Catering', quantity: 1, unit_price: 100 }],
       amount_paid: 30,
       balance: 70,
+      subtotal: 100,
+      discount_amount: 0,
+      tax_amount: 0,
+      credits: [],
+      total: 100,
       notes: 'Balance due on receipt',
       due_date: '2026-07-01',
       created_at: '2026-05-01T00:00:00.000Z',
@@ -97,12 +102,17 @@ describe('getPublicInvoice', () => {
         'amount_paid',
         'balance',
         'created_at',
+        'credits',
+        'discount_amount',
         'due_date',
         'line_items',
         'notes',
         'number',
+        'subtotal',
+        'tax_amount',
         'tips_enabled',
         'title',
+        'total',
         'type',
       ].sort(),
     )
@@ -128,6 +138,11 @@ describe('getPublicInvoice', () => {
       line_items: [{ description: 'Catering', quantity: 1, unit_price: 100 }],
       amount_paid: 100,
       balance: 0,
+      subtotal: 100,
+      discount_amount: 0,
+      tax_amount: 0,
+      credits: [],
+      total: 100,
       created_at: '2026-05-01T00:00:00.000Z',
     })
     expect('token' in (result as object)).toBe(false)
@@ -152,5 +167,30 @@ describe('getPublicInvoice', () => {
   it('returns null for a draft (explicit lifecycle)', async () => {
     mockSnapshot({ id: 'i1', lifecycle: 'draft', line_items: [], payments: [], created_at: '' })
     expect(await getPublicInvoice('t')).toBeNull()
+  })
+
+  it('exposes the money breakdown (subtotal/discount/tax/credits/total) for an issued invoice', async () => {
+    mockSnapshot({
+      id: 'i1',
+      org_id: 'o1',
+      lead_id: 'l1',
+      token: 't',
+      status: 'sent',
+      line_items: [{ description: 'Venue', quantity: 1, unit_price: 1000 }],
+      discount: { type: 'percent', value: 10 },
+      tax_rate: 10,
+      credits: [{ description: 'Deposit', amount: 300 }],
+      payments: [],
+      created_at: '2026-05-01T00:00:00.000Z',
+    })
+    const result = await getPublicInvoice('t')
+    expect(result).not.toBeNull()
+    expect(result!.subtotal).toBe(1000)
+    expect(result!.discount_amount).toBe(100)
+    expect(result!.tax_amount).toBe(90)
+    expect(result!.total).toBe(690)
+    expect(result!.balance).toBe(690)
+    expect(result!.credits).toEqual([{ description: 'Deposit', amount: 300 }])
+    expect(result!.credits).toHaveLength(1)
   })
 })

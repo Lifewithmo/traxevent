@@ -1,12 +1,18 @@
 'use server'
 
 import { adminDb } from '@/lib/firebase-admin'
+import { FieldValue } from 'firebase-admin/firestore'
 import { randomBytes } from 'crypto'
 import { generateAccessToken } from '@/lib/tokens'
 import { assertOrgMember, assertOrgAdmin } from '@/lib/auth/assert'
-import { invoiceTotal, amountPaid } from '@/lib/invoices'
+import { invoiceAmountDue, amountPaid } from '@/lib/invoices'
 import { normalizeInvoice, formatInvoiceNumber } from '@/lib/invoice-normalize'
-import { previouslyBilled, remainingToBill, assertWithinScope, acceptedProposalTotal } from '@/lib/invoice-progress'
+import {
+  previouslyBilled,
+  assertWithinScope,
+  acceptedProposalTotal,
+  proposalInvoiceLines,
+} from '@/lib/invoice-progress'
 import { depositAmount } from '@/lib/proposals'
 import { assertEditable } from '@/lib/invoice-lock'
 import { derivePaymentStatus } from '@/lib/invoice-status'
@@ -17,6 +23,8 @@ import type {
   InvoiceLineItem,
   InvoicePayment,
   InvoiceType,
+  InvoiceDiscount,
+  InvoiceCredit,
   NormalizedInvoice,
 } from '@/lib/types'
 
@@ -96,29 +104,51 @@ export async function generateFromProposal(
 
   const source = { type: 'proposal' as const, id: proposalId, label: 'Accepted proposal' }
   const lineSource = { type: 'proposal' as const, id: proposalId }
-  let line: InvoiceLineItem
+  const itemLines = proposalInvoiceLines(proposal).map((l) => ({ ...l, source: lineSource }))
+
+  let line_items: InvoiceLineItem[]
+  let discount: InvoiceDiscount | undefined
+  let tax_rate: number | undefined
+  let credits: InvoiceCredit[] | undefined
   switch (opts.type) {
-    case 'deposit':
-      line = { description: 'Deposit', quantity: 1, unit_price: depositAmount(accepted, proposal.deposit), source: lineSource }
+    case 'quick':
+      line_items = itemLines
+      discount = proposal.discount
+      tax_rate = proposal.tax_rate
       break
     case 'final':
-      line = { description: 'Final balance', quantity: 1, unit_price: remainingToBill(accepted, billed), source: lineSource }
+      line_items = itemLines
+      discount = proposal.discount
+      tax_rate = proposal.tax_rate
+      if (billed > 0) credits = [{ description: 'Less: previously billed', amount: billed }]
       break
-    case 'progress':
-      line = { description: 'Progress payment', quantity: 1, unit_price: 0, source: lineSource }
+    case 'deposit':
+      line_items = [{ description: 'Deposit', quantity: 1, unit_price: depositAmount(accepted, proposal.deposit), source: lineSource }]
       break
-    default: // quick
-      line = { description: 'Per accepted proposal', quantity: 1, unit_price: accepted, source: lineSource }
+    default: // progress
+      line_items = [{ description: 'Progress payment', quantity: 1, unit_price: 0, source: lineSource }]
   }
-  const line_items = [line]
 
   if (opts.type !== 'quick') {
-    assertWithinScope(invoiceTotal(line_items), billed, accepted)
+    assertWithinScope(invoiceAmountDue({ line_items, discount, tax_rate, credits }), billed, accepted)
   }
 
   const invoice = await createInvoice(orgId, leadId, { type: opts.type, line_items })
-  await invoicesRef(orgId).doc(invoice.id).update({ source })
-  return { ...invoice, source }
+  await invoicesRef(orgId)
+    .doc(invoice.id)
+    .update({
+      source,
+      ...(discount ? { discount } : {}),
+      ...(tax_rate ? { tax_rate } : {}),
+      ...(credits ? { credits } : {}),
+    })
+  return {
+    ...invoice,
+    source,
+    ...(discount ? { discount } : {}),
+    ...(tax_rate ? { tax_rate } : {}),
+    ...(credits ? { credits } : {}),
+  }
 }
 
 export interface InvoiceUpdate {
@@ -128,6 +158,8 @@ export interface InvoiceUpdate {
   notes?: string
   due_date?: string
   line_items?: InvoiceLineItem[]
+  discount?: InvoiceDiscount
+  tax_rate?: number
 }
 
 export async function updateInvoice(orgId: string, invoiceId: string, updates: InvoiceUpdate): Promise<void> {
@@ -137,7 +169,16 @@ export async function updateInvoice(orgId: string, invoiceId: string, updates: I
   if (!snap.exists) throw new Error('Invoice not found')
   const inv = normalizeInvoice(snap.data()!)
   assertEditable(inv.lifecycle, Object.keys(updates))
-  await ref.update({ ...updates, updated_at: new Date().toISOString() })
+
+  // Firestore rejects `undefined` (ignoreUndefinedProperties is off). The invoice editor always
+  // sends its full pricing-terms state, so an `undefined` value here means "the user cleared this
+  // field" — map it to FieldValue.delete() rather than dropping the key (which would leave a
+  // stale discount/tax_rate in Firestore) or passing it raw (which throws). Mirrors updateProposal.
+  const cleaned: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(updates)) {
+    cleaned[k] = v === undefined ? FieldValue.delete() : v
+  }
+  await ref.update({ ...cleaned, updated_at: new Date().toISOString() })
 }
 
 export async function approveInvoice(orgId: string, invoiceId: string): Promise<void> {
@@ -168,7 +209,7 @@ export async function issueInvoice(orgId: string, invoiceId: string): Promise<{ 
       const approved = acceptedProposalTotal(proposal)
       const existing = await listInvoices(orgId, preInv.lead_id)
       const billed = previouslyBilled(existing, preInv.source.id)
-      assertWithinScope(invoiceTotal(preInv.line_items), billed, approved)
+      assertWithinScope(invoiceAmountDue(preInv), billed, approved)
     }
   }
 
@@ -263,7 +304,7 @@ export async function recordPayment(orgId: string, invoiceId: string, input: Rec
     ...((input.tip_amount ?? 0) > 0 ? { tip_amount: input.tip_amount } : {}),
   }
   const payments = [...(inv.payments ?? []), payment]
-  const total = invoiceTotal(inv.line_items ?? [])
+  const total = invoiceAmountDue(inv)
   const applied = amountPaid(payments)
   const payment_status = derivePaymentStatus(
     { total, applied, lifecycle: inv.lifecycle, dueDate: inv.due_date },

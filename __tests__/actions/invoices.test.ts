@@ -83,6 +83,7 @@ import {
   deleteInvoice,
   generateFromProposal,
 } from '@/actions/invoices'
+import { invoiceAmountDue } from '@/lib/invoices'
 
 describe('invoices actions', () => {
   beforeEach(() => {
@@ -180,9 +181,10 @@ describe('invoices actions', () => {
     expect(inv.line_items[0].source).toEqual({ type: 'proposal', id: 'p1' })
   })
 
-  it('generateFromProposal final bills the remaining accepted total', async () => {
+  it('generateFromProposal final itemizes the accepted scope and credits the remaining accepted total', async () => {
     getProposalSpy.mockResolvedValue({
-      id: 'p1', org_id: 'org-1', lead_id: 'lead-1', status: 'accepted', line_items: [],
+      id: 'p1', org_id: 'org-1', lead_id: 'lead-1', status: 'accepted',
+      line_items: [{ description: 'Base', quantity: 1, unit_price: 2000 }],
       selection: { optional_item_ids: [], selected_total: 2000, selected_at: '' }, created_at: '',
     })
     // one prior issued invoice billed 500 against this source
@@ -192,7 +194,9 @@ describe('invoices actions', () => {
       payments: [], created_at: '',
     }) }] })
     const inv = await generateFromProposal('org-1', 'lead-1', 'p1', { type: 'final' })
-    expect(inv.line_items[0]).toEqual(expect.objectContaining({ description: 'Final balance', unit_price: 1500 }))
+    expect(inv.line_items[0]).toEqual(expect.objectContaining({ description: 'Base', unit_price: 2000 }))
+    expect(inv.credits).toEqual([{ description: 'Less: previously billed', amount: 500 }])
+    expect(invoiceAmountDue(inv)).toBe(1500)
   })
 
   it('generateFromProposal scope guardrail uses the accepted total (package proposal)', async () => {
@@ -207,10 +211,38 @@ describe('invoices actions', () => {
       source: { type: 'proposal', id: 'p1' }, line_items: [{ description: 'x', quantity: 1, unit_price: 1000 }],
       payments: [], created_at: '',
     }) }] })
-    // final would compute remaining 0 -> fine; a progress of any positive amount must exceed:
-    // instead assert a 'final' seeds 0 remaining, and a manual over-bill is blocked at issue (next test).
+    // final still itemizes the full accepted package, but credits the amount already billed
+    // so the amount due nets to 0 -> nothing left to bill.
     const inv = await generateFromProposal('org-1', 'lead-1', 'p1', { type: 'final' })
-    expect(inv.line_items[0]).toEqual(expect.objectContaining({ unit_price: 0 })) // nothing left to bill
+    expect(inv.line_items[0]).toEqual(expect.objectContaining({ description: 'Best', unit_price: 1000 }))
+    expect(inv.credits).toEqual([{ description: 'Less: previously billed', amount: 1000 }])
+    expect(invoiceAmountDue(inv)).toBe(0)
+  })
+
+  it('generateFromProposal quick itemizes and copies discount/tax (total = accepted)', async () => {
+    getProposalSpy.mockResolvedValue({ id: 'p1', org_id: 'org-1', lead_id: 'lead-1', status: 'accepted',
+      line_items: [{ id: 'r1', description: 'Base', quantity: 1, unit_price: 1000 }],
+      discount: { type: 'percent', value: 10 }, tax_rate: 10,
+      selection: { optional_item_ids: [], selected_total: 990, selected_at: '' }, created_at: '' })
+    listInvoicesSpy.mockResolvedValue({ docs: [] })
+    const inv = await generateFromProposal('org-1', 'lead-1', 'p1', { type: 'quick' })
+    expect(inv.line_items).toEqual([expect.objectContaining({ description: 'Base', unit_price: 1000 })])
+    expect(inv.discount).toEqual({ type: 'percent', value: 10 })
+    expect(inv.tax_rate).toBe(10)
+    expect(invoiceAmountDue(inv)).toBe(990)
+  })
+
+  it('generateFromProposal final itemizes full scope and credits previously billed', async () => {
+    getProposalSpy.mockResolvedValue({ id: 'p1', org_id: 'org-1', lead_id: 'lead-1', status: 'accepted',
+      line_items: [{ id: 'r1', description: 'Base', quantity: 1, unit_price: 1000 }],
+      selection: { optional_item_ids: [], selected_total: 1000, selected_at: '' }, created_at: '' })
+    listInvoicesSpy.mockResolvedValue({ docs: [{ data: () => ({ id: 'iA', org_id: 'org-1', lead_id: 'lead-1',
+      token: 't', lifecycle: 'issued', source: { type: 'proposal', id: 'p1' },
+      line_items: [{ description: 'Deposit', quantity: 1, unit_price: 400 }], payments: [], created_at: '' }) }] })
+    const inv = await generateFromProposal('org-1', 'lead-1', 'p1', { type: 'final' })
+    expect(inv.line_items).toEqual([expect.objectContaining({ description: 'Base', unit_price: 1000 })])
+    expect(inv.credits).toEqual([{ description: 'Less: previously billed', amount: 400 }])
+    expect(invoiceAmountDue(inv)).toBe(600) // 1000 - 400
   })
 
   it('listInvoices filters by lead_id, orders by created_at desc, and returns mapped docs', async () => {
@@ -270,6 +302,21 @@ describe('invoices actions', () => {
     expect(written.due_date).toBe('2026-09-01')
     expect(written.line_items).toEqual([{ description: 'DJ', quantity: 2, unit_price: 250 }])
     expect(written.updated_at).toEqual(expect.any(String))
+  })
+
+  it('updateInvoice never passes a raw undefined to Firestore .update() — clears undefined fields via FieldValue.delete() instead', async () => {
+    invoiceDocGetSpy.mockResolvedValue({
+      exists: true,
+      data: () => ({ id: 'inv-1', lifecycle: 'draft', line_items: [], payments: [], created_at: '' }),
+    })
+    await updateInvoice('org-1', 'inv-1', { notes: 'x', discount: undefined })
+    const arg = invoiceDocUpdateSpy.mock.calls[0][0]
+    expect(arg.notes).toBe('x')
+    // Firestore Admin throws "Cannot use \"undefined\" as a Firestore value" when
+    // ignoreUndefinedProperties is off — a cleared field must become a FieldValue.delete()
+    // sentinel, not a raw undefined (and not be silently dropped, which would leave a stale value).
+    expect(arg.discount).not.toBeUndefined()
+    expect('discount' in arg).toBe(true)
   })
 
   it('updateInvoice rejects financial edits on an issued invoice', async () => {

@@ -15,4 +15,9 @@ describe('assertEditable', () => {
     }
     expect(() => assertEditable('issued', ['notes', 'due_date'])).toThrow(/locked/i)
   })
+  it('locks discount, tax_rate, and credits on issued invoices', () => {
+    for (const k of ['discount', 'tax_rate', 'credits']) {
+      expect(() => assertEditable('issued', [k])).toThrow(/locked/i)
+    }
+  })
 })

@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { createInvoice } from '@/actions/invoices'
-import { invoiceTotal, invoiceBalance } from '@/lib/invoices'
+import { invoiceAmountDue, invoiceBalance } from '@/lib/invoices'
 import { INVOICE_LIFECYCLE_LABELS } from '@/lib/invoice-status'
 import type { NormalizedInvoice } from '@/lib/types'
 
@@ -75,7 +75,7 @@ export function LeadInvoicesClient({ orgId, orgSlug, leadId, invoices }: LeadInv
                   <Badge variant="secondary">{INVOICE_LIFECYCLE_LABELS[inv.lifecycle]}</Badge>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  {money(invoiceTotal(inv.line_items))} · balance {money(invoiceBalance(inv))}
+                  {money(invoiceAmountDue(inv))} · balance {money(invoiceBalance(inv))}
                 </p>
               </div>
               <div className="flex items-center gap-2">

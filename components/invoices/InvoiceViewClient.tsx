@@ -1,5 +1,5 @@
 import type { PublicInvoice } from '@/actions/invoices-public'
-import { lineItemSubtotal, invoiceTotal } from '@/lib/invoices'
+import { lineItemSubtotal } from '@/lib/invoices'
 import { INVOICE_TYPE_LABELS } from '@/lib/invoice-status'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -15,7 +15,7 @@ function money(n: number): string {
 }
 
 export function InvoiceViewClient({ invoice }: { invoice: PublicInvoice }) {
-  const total = invoiceTotal(invoice.line_items)
+  const total = invoice.total
   const heading = invoice.number ? `Invoice #${invoice.number}` : 'Invoice'
   const isPaid = invoice.balance <= 0
 
@@ -72,8 +72,30 @@ export function InvoiceViewClient({ invoice }: { invoice: PublicInvoice }) {
           <CardContent>
             <dl className="space-y-2 text-sm">
               <div className="flex justify-between">
-                <dt className="text-gray-600">Total</dt>
-                <dd className="font-medium text-gray-900">{money(total)}</dd>
+                <dt className="text-gray-600">Subtotal</dt>
+                <dd className="font-medium text-gray-900">{money(invoice.subtotal)}</dd>
+              </div>
+              {invoice.discount_amount > 0 && (
+                <div className="flex justify-between">
+                  <dt className="text-gray-600">Discount</dt>
+                  <dd className="font-medium text-gray-900">−{money(invoice.discount_amount)}</dd>
+                </div>
+              )}
+              {invoice.tax_amount > 0 && (
+                <div className="flex justify-between">
+                  <dt className="text-gray-600">Tax</dt>
+                  <dd className="font-medium text-gray-900">+{money(invoice.tax_amount)}</dd>
+                </div>
+              )}
+              {invoice.credits.map((credit, i) => (
+                <div key={i} className="flex justify-between">
+                  <dt className="text-gray-600">{credit.description || 'Credit'}</dt>
+                  <dd className="font-medium text-gray-900">−{money(credit.amount)}</dd>
+                </div>
+              ))}
+              <div className="flex justify-between border-t pt-2">
+                <dt className="font-semibold text-gray-900">Total</dt>
+                <dd className="font-semibold text-gray-900">{money(total)}</dd>
               </div>
               <div className="flex justify-between">
                 <dt className="text-gray-600">Amount paid</dt>

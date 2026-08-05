@@ -50,6 +50,25 @@ export async function completeTask(orgId: string, leadId: string, taskId: string
   })
 }
 
+export async function snoozeTask(
+  orgId: string,
+  leadId: string,
+  taskId: string,
+  dueDate: string
+): Promise<void> {
+  await assertOrgAdmin(orgId)
+  if (!dueDate?.trim()) throw new Error('A due date is required to snooze')
+  const snap = await tasksRef(orgId, leadId).doc(taskId).get()
+  const title = snap.exists ? (snap.data() as Task).title : undefined
+  await tasksRef(orgId, leadId).doc(taskId).update({ due_date: dueDate.trim() })
+  await logActivity(orgId, {
+    parent_type: 'opportunity',
+    parent_id: leadId,
+    kind: 'task',
+    summary: `Snoozed: ${title ?? 'task'} → ${dueDate.trim()}`,
+  })
+}
+
 export async function deleteTask(orgId: string, leadId: string, taskId: string): Promise<void> {
   await assertOrgAdmin(orgId)
   await tasksRef(orgId, leadId).doc(taskId).delete()
