@@ -1,11 +1,12 @@
 'use server'
 
 import { adminDb } from '@/lib/firebase-admin'
+import { FieldValue } from 'firebase-admin/firestore'
 import { randomBytes } from 'crypto'
 import { generateAccessToken } from '@/lib/tokens'
 import { assertOrgMember, assertOrgAdmin } from '@/lib/auth/assert'
 import { PROPOSAL_STATUSES } from '@/lib/proposals'
-import type { Proposal, ProposalLineItem, ProposalStatus } from '@/lib/types'
+import type { Proposal, ProposalLineItem, ProposalStatus, ProposalPackage, ProposalDiscount, ProposalDeposit } from '@/lib/types'
 
 function proposalsRef(orgId: string) {
   return adminDb.collection('orgs').doc(orgId).collection('proposals')
@@ -15,6 +16,11 @@ export interface CreateProposalInput {
   title?: string
   line_items?: ProposalLineItem[]
   notes?: string
+  packages?: ProposalPackage[]
+  discount?: ProposalDiscount
+  tax_rate?: number
+  deposit?: ProposalDeposit
+  expires_at?: string
 }
 
 export async function listProposals(orgId: string, leadId: string): Promise<Proposal[]> {
@@ -48,6 +54,11 @@ export async function createProposal(orgId: string, leadId: string, input: Creat
     created_at: new Date().toISOString(),
     ...(input.title?.trim() ? { title: input.title.trim() } : {}),
     ...(input.notes?.trim() ? { notes: input.notes.trim() } : {}),
+    ...(input.packages ? { packages: input.packages } : {}),
+    ...(input.discount ? { discount: input.discount } : {}),
+    ...(typeof input.tax_rate === 'number' ? { tax_rate: input.tax_rate } : {}),
+    ...(input.deposit ? { deposit: input.deposit } : {}),
+    ...(input.expires_at ? { expires_at: input.expires_at } : {}),
   }
   await proposalsRef(orgId).doc(id).set(proposal)
   return proposal
@@ -58,12 +69,29 @@ export interface ProposalUpdate {
   notes?: string
   line_items?: ProposalLineItem[]
   status?: ProposalStatus
+  packages?: ProposalPackage[]
+  discount?: ProposalDiscount
+  tax_rate?: number
+  deposit?: ProposalDeposit
+  expires_at?: string
 }
 
 export async function updateProposal(orgId: string, proposalId: string, updates: ProposalUpdate): Promise<void> {
   await assertOrgAdmin(orgId)
   if (updates.status && !PROPOSAL_STATUSES.includes(updates.status)) throw new Error('Invalid status')
-  await proposalsRef(orgId).doc(proposalId).update({ ...updates, updated_at: new Date().toISOString() })
+
+  // Firestore rejects `undefined` (ignoreUndefinedProperties is off). Unlike the partial-update
+  // callers in events.ts/leads.ts (where an omitted/undefined key means "leave unchanged"), the
+  // proposal editor always sends its full pricing-terms state, so an `undefined` value here means
+  // "the user cleared this field" — map it to FieldValue.delete() rather than dropping the key
+  // (which would leave a stale discount/deposit/expiration in Firestore) or passing it raw
+  // (which throws).
+  const cleaned: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(updates)) {
+    cleaned[k] = v === undefined ? FieldValue.delete() : v
+  }
+
+  await proposalsRef(orgId).doc(proposalId).update({ ...cleaned, updated_at: new Date().toISOString() })
 }
 
 export async function sendProposal(orgId: string, proposalId: string): Promise<void> {
