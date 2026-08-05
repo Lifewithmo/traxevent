@@ -88,6 +88,7 @@ export async function respondToProposal(
     if (!packages.some((p) => p.id === packageId)) throw new Error('Invalid selection')
   }
   const optionalIds = selection?.optional_item_ids ?? []
+  if (!Array.isArray(optionalIds)) throw new Error('Invalid selection')
   const validOptionalIds = new Set(
     items.filter((i) => i.optional === true && i.id !== undefined).map((i) => i.id as string),
   )

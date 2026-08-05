@@ -302,4 +302,20 @@ describe('respondToProposal — selection', () => {
     expect(proposalUpdateSpy).toHaveBeenCalledWith(expect.objectContaining({ status: 'accepted' }))
     expect(leadUpdateSpy).toHaveBeenCalledWith(expect.objectContaining({ stage: 'closed_won' }))
   })
+
+  // Guards against a hand-crafted public request sending a non-array
+  // optional_item_ids, which would otherwise throw an uncaught TypeError
+  // (500) from `for (const id of optionalIds)` instead of a clean rejection.
+  it('rejects a non-array optional_item_ids without writing anything', async () => {
+    mockSnapshot(sentPackaged())
+    await expect(
+      respondToProposal('tok', 'accepted', {
+        package_id: 'good',
+        // @ts-expect-error deliberately malformed: a number instead of an array
+        optional_item_ids: 42,
+      }),
+    ).rejects.toThrow('Invalid selection')
+    expect(proposalUpdateSpy).not.toHaveBeenCalled()
+    expect(leadUpdateSpy).not.toHaveBeenCalled()
+  })
 })

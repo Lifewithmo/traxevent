@@ -6,6 +6,7 @@ import {
   proposalTotal,
   computeSelectedTotal,
   proposalRange,
+  proposalDisplayRange,
   discountAmount,
   depositAmount,
 } from '@/lib/proposals'
@@ -120,6 +121,35 @@ describe('proposalRange', () => {
   it('itemized: required-only to required+all-optional', () => {
     const p = prop({ line_items: [req('r1', 1, 100), opt('o1', 1, 40)] })
     expect(proposalRange(p)).toEqual({ min: 100, max: 140 })
+  })
+})
+
+describe('proposalDisplayRange', () => {
+  it('returns the locked selected_total (min=max) for an accepted proposal', () => {
+    const p = prop({
+      status: 'accepted',
+      packages: [
+        { id: 'good', name: 'Good', includes: [], price: 12500 },
+        { id: 'best', name: 'Best', includes: [], price: 22400 },
+      ],
+      line_items: [opt('o1', 1, 1500)],
+      selection: { package_id: 'best', optional_item_ids: ['o1'], selected_total: 18000, selected_at: '' },
+    })
+    expect(proposalDisplayRange(p)).toEqual({ min: 18000, max: 18000 })
+  })
+  it('matches proposalRange for a packaged proposal that is not yet accepted', () => {
+    const p = prop({
+      packages: [
+        { id: 'good', name: 'Good', includes: [], price: 12500 },
+        { id: 'best', name: 'Best', includes: [], price: 22400 },
+      ],
+      line_items: [opt('o1', 1, 1500)],
+    })
+    expect(proposalDisplayRange(p)).toEqual(proposalRange(p))
+  })
+  it('matches proposalRange for an itemized proposal that is not yet accepted', () => {
+    const p = prop({ line_items: [req('r1', 1, 100), opt('o1', 1, 40)] })
+    expect(proposalDisplayRange(p)).toEqual(proposalRange(p))
   })
 })
 

@@ -88,3 +88,13 @@ export function proposalRange(proposal: Priceable): { min: number; max: number }
   const max = computeSelectedTotal(proposal, { package_id: dearest, optional_item_ids: optionalIds })
   return { min, max }
 }
+
+// Display-safe range for list views. An accepted proposal shows its locked
+// selection total (not a recomputed guess); anything else shows proposalRange.
+export function proposalDisplayRange(
+  proposal: Priceable & Pick<Proposal, 'selection'>,
+): { min: number; max: number } {
+  const selectedTotal = proposal.selection?.selected_total
+  if (selectedTotal != null) return { min: selectedTotal, max: selectedTotal }
+  return proposalRange(proposal)
+}
