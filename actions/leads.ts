@@ -69,6 +69,7 @@ export interface LeadUpdate {
   estimated_value?: number | null
   stage?: LeadStage
   notes?: string | null
+  customer_id?: string | null
 }
 
 export async function updateLead(
