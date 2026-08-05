@@ -9,8 +9,21 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { updateProposal, sendProposal, deleteProposal } from '@/actions/proposals'
-import { lineItemSubtotal, proposalTotal, PROPOSAL_STATUS_LABELS } from '@/lib/proposals'
-import type { Proposal, ProposalLineItem, ProposalStatus } from '@/lib/types'
+import {
+  lineItemSubtotal,
+  proposalTotal,
+  proposalRange,
+  depositAmount,
+  PROPOSAL_STATUS_LABELS,
+} from '@/lib/proposals'
+import type {
+  Proposal,
+  ProposalLineItem,
+  ProposalStatus,
+  ProposalPackage,
+  ProposalDiscount,
+  ProposalDeposit,
+} from '@/lib/types'
 
 interface ProposalEditorClientProps {
   orgId: string
@@ -38,8 +51,17 @@ export function ProposalEditorClient({ orgId, orgSlug, leadId, proposal }: Propo
 
   const [title, setTitle] = useState(proposal.title ?? '')
   const [notes, setNotes] = useState(proposal.notes ?? '')
-  const [lineItems, setLineItems] = useState<ProposalLineItem[]>(proposal.line_items ?? [])
+  const [lineItems, setLineItems] = useState<ProposalLineItem[]>(
+    (proposal.line_items ?? []).map((i) => ({ ...i, id: i.id ?? crypto.randomUUID(), optional: i.optional ?? false })),
+  )
   const [status, setStatus] = useState<ProposalStatus>(proposal.status)
+
+  const [mode, setMode] = useState<'itemized' | 'packaged'>(proposal.packages?.length ? 'packaged' : 'itemized')
+  const [packages, setPackages] = useState<ProposalPackage[]>(proposal.packages ?? [])
+  const [discount, setDiscount] = useState<ProposalDiscount | undefined>(proposal.discount)
+  const [taxRate, setTaxRate] = useState<string>(proposal.tax_rate != null ? String(proposal.tax_rate) : '')
+  const [deposit, setDeposit] = useState<ProposalDeposit | undefined>(proposal.deposit)
+  const [expiresAt, setExpiresAt] = useState(proposal.expires_at ?? '')
 
   const [saving, setSaving] = useState(false)
   const [sending, setSending] = useState(false)
@@ -57,11 +79,26 @@ export function ProposalEditorClient({ orgId, orgSlug, leadId, proposal }: Propo
   }
 
   function addRow() {
-    setLineItems((prev) => [...prev, { description: '', quantity: 1, unit_price: 0 }])
+    setLineItems((prev) => [
+      ...prev,
+      { id: crypto.randomUUID(), description: '', quantity: 1, unit_price: 0, optional: mode === 'packaged' },
+    ])
   }
 
   function removeRow(index: number) {
     setLineItems((prev) => prev.filter((_, i) => i !== index))
+  }
+
+  function updatePackage(index: number, patch: Partial<ProposalPackage>) {
+    setPackages((prev) => prev.map((p, i) => (i === index ? { ...p, ...patch } : p)))
+  }
+
+  function addPackage() {
+    setPackages((prev) => [...prev, { id: crypto.randomUUID(), name: '', includes: [], price: 0 }])
+  }
+
+  function removePackage(index: number) {
+    setPackages((prev) => prev.filter((_, i) => i !== index))
   }
 
   async function handleSave() {
@@ -72,6 +109,11 @@ export function ProposalEditorClient({ orgId, orgSlug, leadId, proposal }: Propo
         title: title.trim() || undefined,
         notes: notes.trim() || undefined,
         line_items: cleaned,
+        packages: mode === 'packaged' ? packages.filter((p) => p.name.trim() !== '' || p.price > 0) : [],
+        discount,
+        tax_rate: taxRate.trim() === '' ? undefined : Number(taxRate),
+        deposit,
+        expires_at: expiresAt || undefined,
       })
       setLineItems(cleaned)
       setNotice('Saved.')
@@ -117,6 +159,15 @@ export function ProposalEditorClient({ orgId, orgSlug, leadId, proposal }: Propo
   const total = proposalTotal(lineItems)
   const busy = saving || sending || deleting
 
+  const previewProposal = {
+    packages: mode === 'packaged' ? packages : undefined,
+    line_items: lineItems,
+    discount,
+    tax_rate: taxRate.trim() === '' ? undefined : Number(taxRate),
+  }
+  const range = proposalRange(previewProposal)
+  const rangeLabel = range.min === range.max ? money(range.min) : `${money(range.min)}–${money(range.max)}`
+
   return (
     <div className="p-6 max-w-2xl space-y-6">
       <div>
@@ -154,6 +205,90 @@ export function ProposalEditorClient({ orgId, orgSlug, leadId, proposal }: Propo
           </div>
         </CardContent>
       </Card>
+
+      <div className="flex gap-2">
+        <Button
+          size="sm"
+          variant={mode === 'itemized' ? 'default' : 'outline'}
+          onClick={() => setMode('itemized')}
+          disabled={busy}
+        >
+          Itemized
+        </Button>
+        <Button
+          size="sm"
+          variant={mode === 'packaged' ? 'default' : 'outline'}
+          onClick={() => setMode('packaged')}
+          disabled={busy}
+        >
+          Packaged
+        </Button>
+      </div>
+
+      {mode === 'packaged' && (
+        <Card>
+          <CardHeader className="flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-base">Packages</CardTitle>
+            <Button size="sm" variant="outline" onClick={addPackage} disabled={busy || packages.length >= 3}>
+              Add tier
+            </Button>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {packages.length === 0 && (
+              <p className="text-sm text-muted-foreground">No tiers yet. Add up to 3.</p>
+            )}
+
+            {packages.map((pkg, i) => (
+              <div key={pkg.id} className="space-y-2 border-b border-border pb-3 last:border-b-0 last:pb-0">
+                <div className="flex flex-wrap items-end gap-2">
+                  <div className="flex-1 min-w-[160px] space-y-1">
+                    <Label htmlFor={`pkg-name-${i}`}>Name</Label>
+                    <Input
+                      id={`pkg-name-${i}`}
+                      value={pkg.name}
+                      onChange={(e) => updatePackage(i, { name: e.target.value })}
+                      placeholder="e.g. Good / Better / Best"
+                    />
+                  </div>
+                  <div className="w-28 space-y-1">
+                    <Label htmlFor={`pkg-price-${i}`}>Price</Label>
+                    <Input
+                      id={`pkg-price-${i}`}
+                      type="number"
+                      value={String(pkg.price)}
+                      onChange={(e) => updatePackage(i, { price: toNumber(e.target.value) })}
+                    />
+                  </div>
+                  <div className="flex items-center gap-1 pb-2">
+                    <input
+                      id={`pkg-recommended-${i}`}
+                      type="checkbox"
+                      checked={pkg.recommended ?? false}
+                      onChange={(e) => updatePackage(i, { recommended: e.target.checked })}
+                    />
+                    <Label htmlFor={`pkg-recommended-${i}`}>Recommended</Label>
+                  </div>
+                  <Button size="sm" variant="ghost" onClick={() => removePackage(i)} disabled={busy}>Remove</Button>
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor={`pkg-includes-${i}`}>Includes (one per line)</Label>
+                  <textarea
+                    id={`pkg-includes-${i}`}
+                    value={pkg.includes.join('\n')}
+                    onChange={(e) =>
+                      updatePackage(i, {
+                        includes: e.target.value.split('\n').map((s) => s.trim()).filter(Boolean),
+                      })
+                    }
+                    placeholder="One bullet per line"
+                    className="flex min-h-16 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  />
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader className="flex-row items-center justify-between space-y-0">
@@ -198,6 +333,15 @@ export function ProposalEditorClient({ orgId, orgSlug, leadId, proposal }: Propo
                 <Label>Subtotal</Label>
                 <p className="h-8 flex items-center text-sm font-medium">{money(lineItemSubtotal(item))}</p>
               </div>
+              <div className="flex items-center gap-1 pb-2">
+                <input
+                  id={`optional-${i}`}
+                  type="checkbox"
+                  checked={item.optional ?? false}
+                  onChange={(e) => updateRow(i, { optional: e.target.checked })}
+                />
+                <Label htmlFor={`optional-${i}`}>Optional</Label>
+              </div>
               <Button size="sm" variant="ghost" onClick={() => removeRow(i)} disabled={busy}>Remove</Button>
             </div>
           ))}
@@ -205,6 +349,90 @@ export function ProposalEditorClient({ orgId, orgSlug, leadId, proposal }: Propo
           <div className="flex items-center justify-between border-t border-border pt-3">
             <span className="text-sm font-semibold">Total</span>
             <span className="text-sm font-semibold">{money(total)}</span>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader><CardTitle className="text-base">Pricing</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="w-36 space-y-1">
+              <Label htmlFor="discountType">Discount</Label>
+              <select
+                id="discountType"
+                value={discount?.type ?? 'none'}
+                onChange={(e) => {
+                  const t = e.target.value
+                  setDiscount(t === 'none' ? undefined : { type: t as 'percent' | 'fixed', value: discount?.value ?? 0 })
+                }}
+                className="flex h-8 w-full rounded-md border border-input bg-transparent px-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              >
+                <option value="none">None</option>
+                <option value="percent">Percent</option>
+                <option value="fixed">Fixed</option>
+              </select>
+            </div>
+            <div className="w-28 space-y-1">
+              <Label htmlFor="discountValue">Value</Label>
+              <Input
+                id="discountValue"
+                type="number"
+                value={String(discount?.value ?? 0)}
+                disabled={!discount}
+                onChange={(e) => setDiscount((prev) => (prev ? { ...prev, value: toNumber(e.target.value) } : prev))}
+              />
+            </div>
+          </div>
+
+          <div className="w-28 space-y-1">
+            <Label htmlFor="taxRate">Tax rate (%)</Label>
+            <Input id="taxRate" type="number" value={taxRate} onChange={(e) => setTaxRate(e.target.value)} />
+          </div>
+
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="w-36 space-y-1">
+              <Label htmlFor="depositType">Deposit</Label>
+              <select
+                id="depositType"
+                value={deposit?.type ?? 'none'}
+                onChange={(e) => {
+                  const t = e.target.value
+                  setDeposit(t === 'none' ? undefined : { type: t as 'percent' | 'fixed', value: deposit?.value ?? 0 })
+                }}
+                className="flex h-8 w-full rounded-md border border-input bg-transparent px-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              >
+                <option value="none">None</option>
+                <option value="percent">Percent</option>
+                <option value="fixed">Fixed</option>
+              </select>
+            </div>
+            <div className="w-28 space-y-1">
+              <Label htmlFor="depositValue">Value</Label>
+              <Input
+                id="depositValue"
+                type="number"
+                value={String(deposit?.value ?? 0)}
+                disabled={!deposit}
+                onChange={(e) => setDeposit((prev) => (prev ? { ...prev, value: toNumber(e.target.value) } : prev))}
+              />
+            </div>
+          </div>
+
+          <div className="w-44 space-y-1">
+            <Label htmlFor="expiresAt">Expires</Label>
+            <Input id="expiresAt" type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="flex items-center justify-between pt-6">
+          <div>
+            <p className="text-sm font-semibold">Client sees: {rangeLabel}</p>
+            {deposit && (
+              <p className="text-xs text-muted-foreground">Deposit: {money(depositAmount(range.max, deposit))}</p>
+            )}
           </div>
         </CardContent>
       </Card>
