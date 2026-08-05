@@ -396,6 +396,16 @@ export interface Lead {
   updated_at?: string
 }
 
+export interface Task {
+  id: string
+  lead_id: string
+  title: string
+  due_date?: string
+  done: boolean
+  done_at?: string
+  created_at: string
+}
+
 export interface Customer {
   id: string
   name: string
