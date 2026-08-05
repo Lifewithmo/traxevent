@@ -28,25 +28,34 @@ export async function reconcileProposalDeposit(
   const proposal = pSnap.docs[0].data() as Proposal
   if (proposal.status !== 'accepted') return // nothing to reconcile against
 
+  // Defense-in-depth: this runs guard-free from the unauthenticated webhook.
+  // Never let a caller-supplied orgId/leadId that doesn't match the resolved
+  // proposal's own scope cause a write into the wrong org's invoices.
+  if (proposal.org_id !== orgId || proposal.lead_id !== leadId) return
+
   const existing = await listInvoicesCore(orgId, leadId)
   const depositInv = existing.find((i) => i.type === 'deposit' && i.source?.id === proposalId)
 
   if (depositInv) {
     if ((depositInv.payments?.length ?? 0) > 0) return // already reconciled → no-op
+    // Lifecycle write happens BEFORE the payment write: the idempotency check
+    // above keys on payments.length, so if a prior attempt failed partway
+    // through, a retry must still be able to re-do the lifecycle update and
+    // record the payment as the final, defining step of "reconciled."
+    await invoicesRef(orgId).doc(depositInv.id).update({ lifecycle: 'issued', issued_at: payment.paid_at })
     await recordPaymentCore(orgId, depositInv.id, {
       amount: payment.amount,
       method: 'card',
       note: `Stripe deposit ${payment.intent_id}`,
     })
-    await invoicesRef(orgId).doc(depositInv.id).update({ lifecycle: 'issued', issued_at: payment.paid_at })
     return
   }
 
   const created = await generateFromProposalCore(orgId, leadId, proposal, existing, { type: 'deposit' })
+  await invoicesRef(orgId).doc(created.id).update({ lifecycle: 'issued', issued_at: payment.paid_at })
   await recordPaymentCore(orgId, created.id, {
     amount: payment.amount,
     method: 'card',
     note: `Stripe deposit ${payment.intent_id}`,
   })
-  await invoicesRef(orgId).doc(created.id).update({ lifecycle: 'issued', issued_at: payment.paid_at })
 }

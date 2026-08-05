@@ -99,6 +99,17 @@ describe('reconcileProposalDeposit', () => {
     expect(invoiceDocUpdateSpy).not.toHaveBeenCalled()
   })
 
+  it('returns early (no writes) when the caller-supplied orgId/leadId do not match the resolved proposal', async () => {
+    // The resolved proposal actually belongs to org-1/lead-1, but the caller
+    // (e.g. a tampered or mismatched webhook payload) asks us to reconcile it
+    // under a different org/lead scope. Must never write into that scope.
+    mockProposal(acceptedProposal({ org_id: 'org-1', lead_id: 'lead-1' }))
+    await reconcileProposalDeposit('org-OTHER', 'lead-OTHER', 'prop-1', payment)
+    expect(invoiceDocSetSpy).not.toHaveBeenCalled()
+    expect(invoiceDocUpdateSpy).not.toHaveBeenCalled()
+    expect(invoicesListGetSpy).not.toHaveBeenCalled()
+  })
+
   it('creates a deposit invoice and records the Stripe payment when none exists', async () => {
     mockProposal(acceptedProposal())
     mockExistingInvoices([])
