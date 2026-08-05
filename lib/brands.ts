@@ -61,11 +61,14 @@ export function getAllBrands(): Brand[] {
 }
 
 export function getBrandByHostname(hostname: string): Brand | null {
-  const host = hostname.split(':')[0]
+  const host = hostname.toLowerCase().split(':')[0]
   for (const brand of BUILT_IN_BRANDS) {
     if (brand.domains.includes(host)) return brand
     // Dev convention: brewtrax.localhost maps to the brewtrax brand.
-    if (host === `${brand.id}.localhost`) return brand
+    // Brands with no real domains (i.e. the default brand) skip this match —
+    // traxevent.localhost is handled by the existing org-subdomain logic, not
+    // a brand landing page that doesn't exist for it.
+    if (brand.domains.length > 0 && host === `${brand.id}.localhost`) return brand
   }
   return null
 }
@@ -78,4 +81,8 @@ export function validBrandParam(value: string | null | undefined): string | null
 
 export function signupUrl(brandId: string): string {
   return `${APP_ORIGIN}/signup?brand=${brandId}`
+}
+
+export function loginUrl(): string {
+  return `${APP_ORIGIN}/login`
 }

@@ -14,10 +14,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 export default function OnboardingPage({
   searchParams,
 }: {
-  searchParams: Promise<{ brand?: string }>
+  searchParams: Promise<{ brand?: string | string[] }>
 }) {
   const { brand: brandParam } = use(searchParams)
-  const brandId = validBrandParam(brandParam)
+  const brandId = validBrandParam(typeof brandParam === 'string' ? brandParam : null)
   const router = useRouter()
   const { user } = useAuth()
   const [orgName, setOrgName] = useState('')

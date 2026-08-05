@@ -12,6 +12,10 @@ export default defineConfig({
     env: {
       RESEND_API_KEY: 'test-key',
       RESEND_FROM_EMAIL: 'test@example.com',
+      // Pinned so lib/brands.ts's APP_ORIGIN fallback ('https://traxevent.com')
+      // is deterministic in tests regardless of what's exported in the host
+      // shell/CI environment — the signupUrl test asserts a full-URL equality.
+      NEXT_PUBLIC_APP_ORIGIN: 'https://traxevent.com',
     },
   },
   resolve: {

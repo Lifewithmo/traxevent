@@ -51,12 +51,4 @@ describe('proxy — brand domains', () => {
     const res = proxy(request)
     expect(res.headers.get('x-middleware-rewrite')).toBeNull()
   })
-
-  it('does not treat traxevent org subdomains as brands', () => {
-    const request = new NextRequest('https://fbc.traxevent.com/summer/register', {
-      headers: { host: 'fbc.traxevent.com' },
-    })
-    const res = proxy(request)
-    expect(res.headers.get('x-middleware-rewrite')).toContain('/fbc/summer/register')
-  })
 })

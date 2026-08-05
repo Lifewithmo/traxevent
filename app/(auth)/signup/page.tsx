@@ -15,10 +15,10 @@ import Link from 'next/link'
 export default function SignupPage({
   searchParams,
 }: {
-  searchParams: Promise<{ brand?: string }>
+  searchParams: Promise<{ brand?: string | string[] }>
 }) {
   const { brand: brandParam } = use(searchParams)
-  const brandId = validBrandParam(brandParam)
+  const brandId = validBrandParam(typeof brandParam === 'string' ? brandParam : null)
   const brand = brandId ? getBrand(brandId) : null
   const router = useRouter()
   const [name, setName] = useState('')
@@ -34,7 +34,7 @@ export default function SignupPage({
     try {
       const cred = await createUserWithEmailAndPassword(auth, email, password)
       await updateProfile(cred.user, { displayName: name })
-      await createUser(cred.user.uid, email, name)
+      await createUser(cred.user.uid, email, name, brandId ?? undefined)
       router.push(brandId ? `/onboarding?brand=${brandId}` : '/onboarding')
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Signup failed')

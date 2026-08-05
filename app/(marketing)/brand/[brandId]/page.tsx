@@ -1,6 +1,15 @@
 import { notFound } from 'next/navigation'
 import { Button } from '@/components/ui/button'
-import { getBrand, signupUrl, DEFAULT_BRAND_ID } from '@/lib/brands'
+import { getBrand, signupUrl, loginUrl, validBrandParam } from '@/lib/brands'
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ brandId: string }>
+}) {
+  const brand = getBrand((await params).brandId)
+  return { title: brand.name, description: brand.marketing.subhead }
+}
 
 export default async function BrandLandingPage({
   params,
@@ -8,9 +17,9 @@ export default async function BrandLandingPage({
   params: Promise<{ brandId: string }>
 }) {
   const { brandId } = await params
+  // Unknown or default ids aren't real brand pages.
+  if (!validBrandParam(brandId)) notFound()
   const brand = getBrand(brandId)
-  // Unknown ids fall back to the default brand; treat both as not-a-brand-page.
-  if (brand.id === DEFAULT_BRAND_ID || brand.id !== brandId) notFound()
 
   return (
     <main className="min-h-screen flex flex-col items-center justify-center bg-white px-4">
@@ -30,6 +39,9 @@ export default async function BrandLandingPage({
         <Button size="lg" style={{ backgroundColor: brand.theme.accent }}>
           {brand.marketing.cta}
         </Button>
+      </a>
+      <a href={loginUrl()} className="text-sm text-gray-500 hover:underline mt-4">
+        Sign in
       </a>
     </main>
   )

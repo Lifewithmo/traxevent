@@ -30,7 +30,16 @@ export async function createOrg(
   // Acquisition brand (spec §2): a signup through brewtrax.com lands in an org
   // pre-configured with that brand's industry pack. Firestore rejects undefined,
   // so fields are only added when a valid brand is present.
-  const validBrand = validBrandParam(brandId)
+  //
+  // Durable fallback: the explicit param only survives an unbroken
+  // signup→onboarding hop. If it's missing/invalid, fall back to the brand_id
+  // createUser stamped on the user doc, so an interrupted flow doesn't
+  // silently lose attribution. Explicit param still wins when present.
+  let validBrand = validBrandParam(brandId)
+  if (!validBrand) {
+    const userSnap = await adminDb.collection('users').doc(uid).get()
+    validBrand = validBrandParam(userSnap.exists ? (userSnap.data()?.brand_id as string | undefined) : undefined)
+  }
   if (validBrand) {
     org.brand_id = validBrand
     org.industry_pack_id = getBrand(validBrand).industryPackId

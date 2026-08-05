@@ -2,6 +2,7 @@
 
 import { adminAuth, adminDb } from '@/lib/firebase-admin'
 import type { OrgRole } from '@/lib/types'
+import { validBrandParam } from '@/lib/brands'
 
 export async function setOrgClaims(
   uid: string,
@@ -25,12 +26,19 @@ export async function setPlatformAdminClaim(uid: string): Promise<void> {
 export async function createUser(
   uid: string,
   email: string,
-  displayName: string
+  displayName: string,
+  brandId?: string
 ): Promise<void> {
+  // Durable brand attribution (spec §2 fallback): stamped on the user doc so
+  // createOrg can recover the acquisition brand even if the signup→onboarding
+  // hop is interrupted and the ?brand= query param is lost. Firestore rejects
+  // undefined, so the key is only added when a valid brand is present.
+  const validBrand = validBrandParam(brandId)
   await adminDb.collection('users').doc(uid).set({
     email,
     display_name: displayName,
     created_at: new Date().toISOString(),
+    ...(validBrand ? { brand_id: validBrand } : {}),
   })
 }
 

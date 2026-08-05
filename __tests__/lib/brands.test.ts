@@ -6,8 +6,11 @@ import {
   getBrandByHostname,
   validBrandParam,
   signupUrl,
+  loginUrl,
   DEFAULT_BRAND_ID,
 } from '@/lib/brands'
+// Allowed in this test file only — lib/brands.ts itself must stay import-free.
+import { getAllIndustryPacks } from '@/lib/industry-packs'
 
 describe('getBrand', () => {
   it('returns the brand for a known id', () => {
@@ -28,10 +31,12 @@ describe('getAllBrands', () => {
   })
 
   it('every brand references a known shape', () => {
+    const packIds = getAllIndustryPacks().map((p) => p.id)
     for (const b of getAllBrands()) {
       expect(b.industryPackId).toBeTruthy()
       expect(b.marketing.headline).toBeTruthy()
       expect(b.theme.accent).toMatch(/^#/)
+      expect(packIds).toContain(b.industryPackId)
     }
   })
 })
@@ -46,8 +51,16 @@ describe('getBrandByHostname', () => {
     expect(getBrandByHostname('brewtrax.com:3000')?.id).toBe('brewtrax')
   })
 
+  it('is case-insensitive', () => {
+    expect(getBrandByHostname('BrewTrax.com')?.id).toBe('brewtrax')
+  })
+
   it('matches the {id}.localhost dev convention', () => {
     expect(getBrandByHostname('brewtrax.localhost:3000')?.id).toBe('brewtrax')
+  })
+
+  it('does not match the {id}.localhost convention for brands with no real domains (default brand)', () => {
+    expect(getBrandByHostname('traxevent.localhost:3000')).toBeNull()
   })
 
   it('returns null for non-brand hosts (traxevent domains, org subdomains, localhost)', () => {
@@ -74,5 +87,11 @@ describe('validBrandParam', () => {
 describe('signupUrl', () => {
   it('links to the main-domain signup carrying the brand param', () => {
     expect(signupUrl('brewtrax')).toBe('https://traxevent.com/signup?brand=brewtrax')
+  })
+})
+
+describe('loginUrl', () => {
+  it('links to the main-domain login', () => {
+    expect(loginUrl()).toBe('https://traxevent.com/login')
   })
 })
