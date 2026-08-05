@@ -1,23 +1,11 @@
 'use server'
 
-import { adminDb } from '@/lib/firebase-admin'
 import { FieldValue } from 'firebase-admin/firestore'
-import { randomBytes } from 'crypto'
 import { assertOrgMember, assertOrgAdmin } from '@/lib/auth/assert'
+import { createCustomerCore, customersRef, type CreateCustomerInput } from '@/lib/crm/customers'
 import type { Customer } from '@/lib/types'
 
-function customersRef(orgId: string) {
-  return adminDb.collection('orgs').doc(orgId).collection('customers')
-}
-
-export interface CreateCustomerInput {
-  name: string
-  company?: string
-  email?: string
-  phone?: string
-  tags?: string[]
-  notes?: string
-}
+export type { CreateCustomerInput }
 
 export async function listCustomers(orgId: string): Promise<Customer[]> {
   await assertOrgMember(orgId)
@@ -33,20 +21,7 @@ export async function getCustomer(orgId: string, customerId: string): Promise<Cu
 
 export async function createCustomer(orgId: string, input: CreateCustomerInput): Promise<Customer> {
   await assertOrgAdmin(orgId)
-  if (!input.name?.trim()) throw new Error('Name is required')
-  const id = randomBytes(8).toString('hex')
-  const customer: Customer = {
-    id,
-    name: input.name.trim(),
-    created_at: new Date().toISOString(),
-    ...(input.company?.trim() ? { company: input.company.trim() } : {}),
-    ...(input.email?.trim() ? { email: input.email.trim() } : {}),
-    ...(input.phone?.trim() ? { phone: input.phone.trim() } : {}),
-    ...(input.tags ? { tags: input.tags } : {}),
-    ...(input.notes?.trim() ? { notes: input.notes.trim() } : {}),
-  }
-  await customersRef(orgId).doc(id).set(customer)
-  return customer
+  return createCustomerCore(orgId, input)
 }
 
 export interface CustomerUpdate {
@@ -58,11 +33,7 @@ export interface CustomerUpdate {
   notes?: string | null
 }
 
-export async function updateCustomer(
-  orgId: string,
-  customerId: string,
-  updates: CustomerUpdate
-): Promise<void> {
+export async function updateCustomer(orgId: string, customerId: string, updates: CustomerUpdate): Promise<void> {
   await assertOrgAdmin(orgId)
   const cleaned: Record<string, unknown> = {}
   for (const [k, v] of Object.entries(updates)) {

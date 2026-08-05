@@ -1,16 +1,13 @@
 'use server'
 
-import { adminDb } from '@/lib/firebase-admin'
-import { FieldValue } from 'firebase-admin/firestore'
-import { randomBytes } from 'crypto'
 import { assertOrgMember, assertOrgAdmin } from '@/lib/auth/assert'
 import { LEAD_STAGES } from '@/lib/leads'
 import { logActivity } from '@/lib/activity'
+import { leadsRef, listLeadsCore, updateLeadCore, type LeadUpdate } from '@/lib/crm/leads'
+import { randomBytes } from 'crypto'
 import type { Lead, LeadStage } from '@/lib/types'
 
-function leadsRef(orgId: string) {
-  return adminDb.collection('orgs').doc(orgId).collection('leads')
-}
+export type { LeadUpdate }
 
 export interface CreateLeadInput {
   name: string
@@ -26,8 +23,7 @@ export interface CreateLeadInput {
 
 export async function listLeads(orgId: string): Promise<Lead[]> {
   await assertOrgMember(orgId)
-  const snap = await leadsRef(orgId).orderBy('created_at', 'desc').get()
-  return snap.docs.map((d) => d.data() as Lead)
+  return listLeadsCore(orgId)
 }
 
 export async function getLead(orgId: string, leadId: string): Promise<Lead | null> {
@@ -59,40 +55,14 @@ export async function createLead(orgId: string, input: CreateLeadInput): Promise
   return lead
 }
 
-export interface LeadUpdate {
-  name?: string
-  email?: string | null
-  phone?: string | null
-  organization?: string | null
-  event_type?: string | null
-  event_date?: string | null
-  estimated_value?: number | null
-  stage?: LeadStage
-  notes?: string | null
-  customer_id?: string | null
-}
-
-export async function updateLead(
-  orgId: string,
-  leadId: string,
-  updates: LeadUpdate
-): Promise<void> {
+export async function updateLead(orgId: string, leadId: string, updates: LeadUpdate): Promise<void> {
   await assertOrgAdmin(orgId)
-  if (updates.stage && !LEAD_STAGES.includes(updates.stage)) throw new Error('Invalid stage')
-
   let prevStage: LeadStage | undefined
   if (updates.stage) {
     const snap = await leadsRef(orgId).doc(leadId).get()
     prevStage = snap.exists ? (snap.data() as Lead).stage : undefined
   }
-
-  const cleaned: Record<string, unknown> = {}
-  for (const [k, v] of Object.entries(updates)) {
-    if (v === undefined) continue
-    cleaned[k] = v === null ? FieldValue.delete() : v
-  }
-  await leadsRef(orgId).doc(leadId).update({ ...cleaned, updated_at: new Date().toISOString() })
-
+  await updateLeadCore(orgId, leadId, updates)
   if (updates.stage && updates.stage !== prevStage) {
     await logActivity(orgId, { parent_type: 'opportunity', parent_id: leadId, kind: 'stage', summary: `Stage → ${updates.stage}` })
   }
