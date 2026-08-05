@@ -697,3 +697,42 @@ export interface ChecklistTemplate {
   created_at: string
   updated_at?: string
 }
+
+export interface OpsDeadline {
+  id: string          // stable template id, e.g. 'dl-order-consumables'
+  label: string
+  due: string         // ISO date (YYYY-MM-DD)
+  done: boolean
+}
+
+export interface OpsListItem {
+  resource_id: string
+  name: string        // denormalized resource name at derivation time
+  qty: number
+  unit?: string
+  checked: boolean
+}
+
+export interface OpsChecklistStep {
+  text: string
+  evidence: EvidenceType
+  done: boolean
+  evidence_value?: string   // photo URL or recorded number, set on completion
+  done_at?: string
+  done_by?: string          // uid
+}
+
+export interface OpsChecklist {
+  id: string                // instance id = source template id (unique per plan)
+  name: string
+  phase: ChecklistPhase
+  steps: OpsChecklistStep[]
+}
+
+export interface CloseoutSummary {
+  planned_consumable_cost: number
+  actual_consumable_cost: number
+  revenue: number            // package prices + recorded sales
+  planned_margin: number     // revenue - planned cost
+  actual_margin: number      // revenue - actual cost
+}
