@@ -2,13 +2,20 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const planUpdateSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const planGetSpy = vi.hoisted(() => vi.fn())
+const opsDocIdSpy = vi.hoisted(() => vi.fn())
 const opsDoc = vi.hoisted(() => ({ set: vi.fn(), update: planUpdateSpy, get: planGetSpy }))
 vi.mock('@/lib/firebase-admin', () => {
-  const opsColl = { doc: vi.fn(() => opsDoc) }
+  const opsColl = { doc: vi.fn((id?: string) => { opsDocIdSpy(id); return opsDoc }) }
   const eventDoc = { collection: vi.fn(() => opsColl) }
   const eventsColl = { doc: vi.fn(() => eventDoc) }
   const orgDoc = { collection: vi.fn(() => eventsColl) }
-  return { adminDb: { collection: vi.fn(() => ({ doc: vi.fn(() => orgDoc) })) } }
+  return {
+    adminDb: {
+      collection: vi.fn(() => ({ doc: vi.fn(() => orgDoc) })),
+      runTransaction: async (fn: (tx: { get: (ref: typeof opsDoc) => Promise<unknown>; update: (ref: typeof opsDoc, p: unknown) => unknown }) => unknown) =>
+        fn({ get: (ref) => ref.get(), update: (ref, p) => ref.update(p) }),
+    },
+  }
 })
 vi.mock('@/lib/ops/work-packages', () => ({ getWorkPackagesByIdsCore: vi.fn() }))
 vi.mock('@/lib/ops/resources', () => ({ listResourcesCore: vi.fn() }))
@@ -45,6 +52,7 @@ describe('toggleListItemCore', () => {
     await toggleListItemCore('o1', 'e1', 'shopping_list', 'res-beans', true)
     const payload = planUpdateSpy.mock.calls[0][0]
     expect(payload.shopping_list[0].checked).toBe(true)
+    expect(opsDocIdSpy).toHaveBeenCalledWith('plan')
   })
 
   it('throws for an unknown item', async () => {
@@ -91,7 +99,9 @@ describe('acknowledgeReviewCore', () => {
     await acknowledgeReviewCore('o1', 'e1', 'u9')
     const payload = planUpdateSpy.mock.calls[0][0]
     expect(payload.needs_review).toBe(false)
-    const entry = payload.change_log[payload.change_log.length - 1]
+    // change_log appended via FieldValue.arrayUnion — an opaque sentinel, not a plain array
+    expect(Array.isArray(payload.change_log)).toBe(false)
+    const entry = payload.change_log.elements[payload.change_log.elements.length - 1]
     expect(entry).toMatchObject({ by: 'u9', field: 'review_acknowledged' })
   })
 })
