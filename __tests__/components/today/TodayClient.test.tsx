@@ -19,10 +19,10 @@ describe('TodayClient', () => {
   it('renders the three sections and tiles', () => {
     render(<TodayClient orgId="o1" orgSlug="acme" data={data} />)
     expect(screen.getByRole('heading', { name: 'Today' })).toBeInTheDocument()
-    expect(screen.getAllByText('Needs attention').length).toBeGreaterThan(0)
+    expect(screen.getByText('$500.00')).toBeInTheDocument()
+    expect(screen.getAllByText('Needs attention')).toHaveLength(2)
     expect(screen.getByText('Due today / overdue')).toBeInTheDocument()
     expect(screen.getByText('Waiting on')).toBeInTheDocument()
-    expect(screen.getAllByText('Ann').length).toBeGreaterThan(0)
     expect(screen.getByText('Call')).toBeInTheDocument()
   })
 })
