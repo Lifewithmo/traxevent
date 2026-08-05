@@ -44,7 +44,8 @@ export function NextActionBanner({ orgId, lead, tasks, onAddNextStep }: NextActi
   async function run(fn: () => Promise<void>) {
     setBusy(true); setError(null)
     try { await fn(); router.refresh() }
-    catch (e: unknown) { setError(e instanceof Error ? e.message : 'Action failed'); setBusy(false) }
+    catch (e: unknown) { setError(e instanceof Error ? e.message : 'Action failed') }
+    finally { setBusy(false) }
   }
 
   const Icon = content.tone === 'active' ? Clock

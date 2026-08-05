@@ -30,6 +30,14 @@ describe('NextActionBanner', () => {
     await waitFor(() => expect(snoozeTask).toHaveBeenCalledWith('o1', 'l1', 't1', '2026-08-08'))
   })
 
+  it('active: re-enables the Done button after a successful action settles', async () => {
+    render(<NextActionBanner orgId="o1" lead={lead} tasks={[dated]} onAddNextStep={vi.fn()} />)
+    const doneButton = screen.getByRole('button', { name: /done/i })
+    fireEvent.click(doneButton)
+    await waitFor(() => expect(refresh).toHaveBeenCalled())
+    await waitFor(() => expect(doneButton).toBeEnabled())
+  })
+
   it('needs attention: prompts to add a next step', () => {
     const onAdd = vi.fn()
     render(<NextActionBanner orgId="o1" lead={lead} tasks={[]} onAddNextStep={onAdd} />)
