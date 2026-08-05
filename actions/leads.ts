@@ -7,7 +7,9 @@ import { leadsRef, listLeadsCore, updateLeadCore, type LeadUpdate } from '@/lib/
 import { randomBytes } from 'crypto'
 import type { Lead, LeadStage } from '@/lib/types'
 
-export type { LeadUpdate }
+// NOTE: this is a 'use server' module — every export must be an async function.
+// LeadUpdate (a type) is therefore NOT re-exported here; import it from
+// '@/lib/crm/leads' directly. Re-exporting it broke `next build` (RSC compiler).
 
 export interface CreateLeadInput {
   name: string
