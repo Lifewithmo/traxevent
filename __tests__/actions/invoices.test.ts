@@ -190,13 +190,16 @@ describe('invoices actions', () => {
   })
 
   it('updateInvoice passes through fields and always sets updated_at', async () => {
+    invoiceDocGetSpy.mockResolvedValue({
+      exists: true,
+      data: () => ({ id: 'i1', lifecycle: 'draft', line_items: [], payments: [], created_at: '' }),
+    })
     await updateInvoice('org-1', 'i1', {
       title: 'Updated',
       number: 'INV-002',
       notes: 'hello',
       due_date: '2026-09-01',
       line_items: [{ description: 'DJ', quantity: 2, unit_price: 250 }],
-      status: 'sent',
     })
     const written = invoiceDocUpdateSpy.mock.calls[0][0]
     expect(written.title).toBe('Updated')
@@ -204,16 +207,25 @@ describe('invoices actions', () => {
     expect(written.notes).toBe('hello')
     expect(written.due_date).toBe('2026-09-01')
     expect(written.line_items).toEqual([{ description: 'DJ', quantity: 2, unit_price: 250 }])
-    expect(written.status).toBe('sent')
     expect(written.updated_at).toEqual(expect.any(String))
   })
 
-  it('updateInvoice throws "Invalid status" for a bad status and does not write', async () => {
-    await expect(
-      // @ts-expect-error testing invalid status at runtime
-      updateInvoice('org-1', 'i1', { status: 'nope' })
-    ).rejects.toThrow('Invalid status')
+  it('updateInvoice rejects financial edits on an issued invoice', async () => {
+    invoiceDocGetSpy.mockResolvedValue({
+      exists: true,
+      data: () => ({ id: 'inv-1', lifecycle: 'issued', line_items: [], payments: [], created_at: '' }),
+    })
+    await expect(updateInvoice('org-1', 'inv-1', { line_items: [] })).rejects.toThrow(/locked/i)
     expect(invoiceDocUpdateSpy).not.toHaveBeenCalled()
+  })
+
+  it('updateInvoice allows editing notes on an issued invoice', async () => {
+    invoiceDocGetSpy.mockResolvedValue({
+      exists: true,
+      data: () => ({ id: 'inv-1', lifecycle: 'issued', line_items: [], payments: [], created_at: '' }),
+    })
+    await updateInvoice('org-1', 'inv-1', { notes: 'call before delivery' })
+    expect(invoiceDocUpdateSpy).toHaveBeenCalledWith(expect.objectContaining({ notes: 'call before delivery' }))
   })
 
   it('approveInvoice moves draft to approved', async () => {
@@ -300,18 +312,20 @@ describe('invoices actions', () => {
     )
   })
 
-  it('recordPayment appends a partial payment and sets status to partial', async () => {
+  it('recordPayment appends a partial payment and sets payment_status to partial', async () => {
     invoiceDocGetSpy.mockResolvedValue({
       exists: true,
       data: () => ({
+        id: 'i1', lifecycle: 'issued',
         line_items: [{ description: 'DJ', quantity: 1, unit_price: 100 }],
         payments: [],
-        status: 'sent',
+        created_at: '',
       }),
     })
     await recordPayment('org-1', 'i1', { amount: 40 })
     const written = invoiceDocUpdateSpy.mock.calls[0][0]
-    expect(written.status).toBe('partial')
+    expect(written.payment_status).toBe('partial')
+    expect(written.lifecycle).toBeUndefined()
     expect(written.payments).toHaveLength(1)
     expect(written.payments[0]).toEqual(
       expect.objectContaining({ amount: 40, recorded_at: expect.any(String) })
@@ -319,18 +333,20 @@ describe('invoices actions', () => {
     expect(written.updated_at).toEqual(expect.any(String))
   })
 
-  it('recordPayment sets status to paid when the balance is fully covered', async () => {
+  it('recordPayment sets payment_status to paid when the balance is fully covered', async () => {
     invoiceDocGetSpy.mockResolvedValue({
       exists: true,
       data: () => ({
+        id: 'i1', lifecycle: 'issued',
         line_items: [{ description: 'DJ', quantity: 1, unit_price: 100 }],
         payments: [],
-        status: 'sent',
+        created_at: '',
       }),
     })
     await recordPayment('org-1', 'i1', { amount: 100 })
     const written = invoiceDocUpdateSpy.mock.calls[0][0]
-    expect(written.status).toBe('paid')
+    expect(written.payment_status).toBe('paid')
+    expect(written.lifecycle).toBeUndefined()
     expect(written.payments).toHaveLength(1)
     expect(written.payments[0]).toEqual(
       expect.objectContaining({ amount: 100, recorded_at: expect.any(String) })
@@ -344,23 +360,47 @@ describe('invoices actions', () => {
     expect(invoiceDocUpdateSpy).not.toHaveBeenCalled()
   })
 
-  it('recordPayment throws "Cannot record payment on a void invoice" when the invoice is void', async () => {
+  it('recordPayment throws "Cannot record payment on a voided invoice" when the invoice is voided', async () => {
     invoiceDocGetSpy.mockResolvedValue({
       exists: true,
       data: () => ({
+        id: 'i1', lifecycle: 'voided',
         line_items: [{ description: 'DJ', quantity: 1, unit_price: 100 }],
         payments: [],
-        status: 'void',
+        created_at: '',
       }),
     })
     await expect(recordPayment('org-1', 'i1', { amount: 40 })).rejects.toThrow(
-      'Cannot record payment on a void invoice'
+      'Cannot record payment on a voided invoice'
     )
     expect(invoiceDocUpdateSpy).not.toHaveBeenCalled()
   })
 
-  it('deleteInvoice calls .delete()', async () => {
+  it('recordPayment stores tip_amount separately and recomputes payment_status', async () => {
+    invoiceDocGetSpy.mockResolvedValue({ exists: true, data: () => ({
+      id: 'inv-1', lifecycle: 'issued', line_items: [{ description: 'x', quantity: 1, unit_price: 100 }], payments: [], created_at: '',
+    }) })
+    await recordPayment('org-1', 'inv-1', { amount: 100, tip_amount: 20 })
+    const arg = invoiceDocUpdateSpy.mock.calls.at(-1)![0]
+    expect(arg.payments[0]).toEqual(expect.objectContaining({ amount: 100, tip_amount: 20 }))
+    expect(arg.payment_status).toBe('paid') // tip does not overpay
+  })
+
+  it('deleteInvoice calls .delete() for a draft invoice', async () => {
+    invoiceDocGetSpy.mockResolvedValue({
+      exists: true,
+      data: () => ({ id: 'i1', lifecycle: 'draft', line_items: [], payments: [], created_at: '' }),
+    })
     await deleteInvoice('org-1', 'i1')
     expect(invoiceDocDeleteSpy).toHaveBeenCalled()
+  })
+
+  it('deleteInvoice refuses to delete an issued invoice', async () => {
+    invoiceDocGetSpy.mockResolvedValue({
+      exists: true,
+      data: () => ({ id: 'inv-1', lifecycle: 'issued', line_items: [], payments: [], created_at: '' }),
+    })
+    await expect(deleteInvoice('org-1', 'inv-1')).rejects.toThrow(/cannot delete/i)
+    expect(invoiceDocDeleteSpy).not.toHaveBeenCalled()
   })
 })

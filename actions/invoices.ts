@@ -4,15 +4,16 @@ import { adminDb } from '@/lib/firebase-admin'
 import { randomBytes } from 'crypto'
 import { generateAccessToken } from '@/lib/tokens'
 import { assertOrgMember, assertOrgAdmin } from '@/lib/auth/assert'
-import { INVOICE_STATUSES, invoiceTotal, amountPaid, paymentStatus } from '@/lib/invoices'
+import { invoiceTotal, amountPaid } from '@/lib/invoices'
 import { normalizeInvoice, formatInvoiceNumber } from '@/lib/invoice-normalize'
 import { previouslyBilled, remainingToBill, assertWithinScope } from '@/lib/invoice-progress'
+import { assertEditable } from '@/lib/invoice-lock'
+import { derivePaymentStatus } from '@/lib/invoice-status'
 import { getProposal } from '@/actions/proposals'
 import type {
   Invoice,
   InvoiceLineItem,
   InvoicePayment,
-  InvoiceStatus,
   InvoiceType,
   NormalizedInvoice,
 } from '@/lib/types'
@@ -110,18 +111,22 @@ export async function generateFromProposal(
 }
 
 export interface InvoiceUpdate {
+  type?: InvoiceType
   title?: string
   number?: string
   notes?: string
   due_date?: string
   line_items?: InvoiceLineItem[]
-  status?: InvoiceStatus
 }
 
 export async function updateInvoice(orgId: string, invoiceId: string, updates: InvoiceUpdate): Promise<void> {
   await assertOrgAdmin(orgId)
-  if (updates.status && !INVOICE_STATUSES.includes(updates.status)) throw new Error('Invalid status')
-  await invoicesRef(orgId).doc(invoiceId).update({ ...updates, updated_at: new Date().toISOString() })
+  const ref = invoicesRef(orgId).doc(invoiceId)
+  const snap = await ref.get()
+  if (!snap.exists) throw new Error('Invoice not found')
+  const inv = normalizeInvoice(snap.data()!)
+  assertEditable(inv.lifecycle, Object.keys(updates))
+  await ref.update({ ...updates, updated_at: new Date().toISOString() })
 }
 
 export async function approveInvoice(orgId: string, invoiceId: string): Promise<void> {
@@ -197,6 +202,7 @@ export interface RecordPaymentInput {
   amount: number
   method?: string
   note?: string
+  tip_amount?: number
 }
 
 export async function recordPayment(orgId: string, invoiceId: string, input: RecordPaymentInput): Promise<void> {
@@ -205,8 +211,10 @@ export async function recordPayment(orgId: string, invoiceId: string, input: Rec
   const ref = invoicesRef(orgId).doc(invoiceId)
   const snap = await ref.get()
   if (!snap.exists) throw new Error('Invoice not found')
-  const invoice = snap.data() as Invoice
-  if (invoice.status === 'void') throw new Error('Cannot record payment on a void invoice')
+  const inv = normalizeInvoice(snap.data()!)
+  if (inv.lifecycle === 'voided' || inv.lifecycle === 'replaced') {
+    throw new Error('Cannot record payment on a voided invoice')
+  }
 
   const now = new Date().toISOString()
   const payment: InvoicePayment = {
@@ -214,15 +222,26 @@ export async function recordPayment(orgId: string, invoiceId: string, input: Rec
     recorded_at: now,
     ...(input.method?.trim() ? { method: input.method.trim() } : {}),
     ...(input.note?.trim() ? { note: input.note.trim() } : {}),
+    ...((input.tip_amount ?? 0) > 0 ? { tip_amount: input.tip_amount } : {}),
   }
-  const payments = [...(invoice.payments ?? []), payment]
-  const total = invoiceTotal(invoice.line_items ?? [])
-  const paid = amountPaid(payments)
-  const status = paymentStatus(total, paid, invoice.status === 'draft' ? 'draft' : 'sent')
-  await ref.update({ payments, status, updated_at: now })
+  const payments = [...(inv.payments ?? []), payment]
+  const total = invoiceTotal(inv.line_items ?? [])
+  const applied = amountPaid(payments)
+  const payment_status = derivePaymentStatus(
+    { total, applied, lifecycle: inv.lifecycle, dueDate: inv.due_date },
+    new Date(),
+  )
+  await ref.update({ payments, payment_status, updated_at: now })
 }
 
 export async function deleteInvoice(orgId: string, invoiceId: string): Promise<void> {
   await assertOrgAdmin(orgId)
-  await invoicesRef(orgId).doc(invoiceId).delete()
+  const ref = invoicesRef(orgId).doc(invoiceId)
+  const snap = await ref.get()
+  if (!snap.exists) return
+  const inv = normalizeInvoice(snap.data()!)
+  if (inv.lifecycle !== 'draft' && inv.lifecycle !== 'approved') {
+    throw new Error('Cannot delete an issued invoice — void it instead')
+  }
+  await ref.delete()
 }
