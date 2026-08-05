@@ -71,4 +71,24 @@ describe('buildToday', () => {
     const d = buildToday({ leads: [fresh, stale], tasksByLeadId: { fresh: [], stale: [] }, today })
     expect(d.needsAttention.map((n) => n.leadId)).toEqual(['stale', 'fresh'])
   })
+
+  it('due-list sorts by due_date ascending, with created_at tie-break', () => {
+    const l = lead({ id: 'multi' })
+    const tasks = [
+      task({ id: 'taskA', lead_id: 'multi', due_date: '2026-08-04', created_at: '2026-08-01T00:00:00.000Z' }),
+      task({ id: 'taskB', lead_id: 'multi', due_date: '2026-08-02', created_at: '2026-08-02T00:00:00.000Z' }),
+      task({ id: 'taskC', lead_id: 'multi', due_date: '2026-08-02', created_at: '2026-08-01T00:00:00.000Z' }),
+    ]
+    const d = buildToday({ leads: [l], tasksByLeadId: { multi: tasks }, today })
+    expect(d.dueTasks.map((x) => x.task.id)).toEqual(['taskC', 'taskB', 'taskA'])
+  })
+
+  it('waiting sorts by quietDays descending when followUpDue is same', () => {
+    const longerQuiet = lead({ id: 'lq', name: 'LQ', updated_at: '2026-08-01T00:00:00.000Z', waiting: { reason: 'quote', follow_up_date: '2026-08-10' } })
+    const shorterQuiet = lead({ id: 'sq', name: 'SQ', updated_at: '2026-08-04T00:00:00.000Z', waiting: { reason: 'quote', follow_up_date: '2026-08-10' } })
+    const d = buildToday({ leads: [shorterQuiet, longerQuiet], tasksByLeadId: { lq: [], sq: [] }, today })
+    expect(d.waiting.map((w) => w.leadId)).toEqual(['lq', 'sq'])
+    expect(d.waiting[0].quietDays).toBe(4)
+    expect(d.waiting[1].quietDays).toBe(1)
+  })
 })
