@@ -7,7 +7,10 @@ import {
   type InstantiateOpsPlanInput,
 } from '@/lib/ops/event-ops'
 import { createIssueCore, resolveIssueCore, listIssuesCore } from '@/lib/ops/issues'
-import type { OpsPlan, OpsRequirements, OpsIssue, IssueSeverity } from '@/lib/types'
+import {
+  getCloseoutCore, saveActualsCore, closeoutSummaryCore, completeCloseoutCore,
+} from '@/lib/ops/closeout'
+import type { OpsPlan, OpsRequirements, OpsIssue, IssueSeverity, OpsCloseout, OpsActuals, CloseoutSummary } from '@/lib/types'
 
 // NOTE: 'use server' module — InstantiateOpsPlanInput is imported for typing
 // this file's exports only and is NOT re-exported; import it from
@@ -81,4 +84,24 @@ export async function createIssue(
 export async function resolveIssue(orgId: string, eventId: string, issueId: string, resolution?: string): Promise<void> {
   await assertOrgMember(orgId)
   return resolveIssueCore(orgId, eventId, issueId, resolution)
+}
+
+export async function getCloseout(orgId: string, eventId: string): Promise<OpsCloseout | null> {
+  await assertOrgMember(orgId)
+  return getCloseoutCore(orgId, eventId)
+}
+
+export async function saveActuals(orgId: string, eventId: string, actuals: OpsActuals): Promise<void> {
+  await assertOrgMember(orgId)
+  return saveActualsCore(orgId, eventId, actuals)
+}
+
+export async function getCloseoutSummary(orgId: string, eventId: string): Promise<CloseoutSummary> {
+  await assertOrgMember(orgId)
+  return closeoutSummaryCore(orgId, eventId)
+}
+
+export async function completeCloseout(orgId: string, eventId: string): Promise<void> {
+  await assertOrgAdmin(orgId)
+  return completeCloseoutCore(orgId, eventId)
 }

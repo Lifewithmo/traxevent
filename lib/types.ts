@@ -780,3 +780,18 @@ export interface OpsIssue {
   created_at: string
   resolved_at?: string
 }
+
+export interface OpsActuals {
+  consumables?: { resource_id: string; qty_used: number }[]
+  hours_worked?: number
+  sales?: number         // tips + on-site sales, dollars
+  waste_notes?: string
+}
+
+export interface OpsCloseout {
+  actuals: OpsActuals
+  completed: boolean     // spec §3.5: the event is not "complete" until this is
+  completed_at?: string
+  created_at: string
+  updated_at?: string
+}
