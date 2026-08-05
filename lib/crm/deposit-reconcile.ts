@@ -1,0 +1,52 @@
+import { adminDb } from '@/lib/firebase-admin'
+import { invoicesRef, listInvoicesCore, generateFromProposalCore, recordPaymentCore } from '@/lib/crm/invoices'
+import type { Proposal } from '@/lib/types'
+
+/**
+ * Idempotent deposit reconciler: given a succeeded Stripe payment against an
+ * accepted proposal, ensures exactly one `deposit` invoice exists for that
+ * proposal with the payment recorded on it. Guard-free — runs from the
+ * unauthenticated payments webhook, so it re-derives everything it needs
+ * (the proposal via collectionGroup, the lead's invoices) rather than relying
+ * on a caller-supplied session.
+ *
+ * Safe to call more than once for the same Stripe event:
+ *  - no deposit invoice yet            → create one, record the payment.
+ *  - deposit invoice exists, unpaid    → record the payment onto it (covers
+ *                                         admin-generated invoices and retries
+ *                                         after a partial failure).
+ *  - deposit invoice exists, paid      → no-op.
+ */
+export async function reconcileProposalDeposit(
+  orgId: string,
+  leadId: string,
+  proposalId: string,
+  payment: { intent_id: string; amount: number; paid_at: string },
+): Promise<void> {
+  const pSnap = await adminDb.collectionGroup('proposals').where('id', '==', proposalId).limit(1).get()
+  if (pSnap.empty) return
+  const proposal = pSnap.docs[0].data() as Proposal
+  if (proposal.status !== 'accepted') return // nothing to reconcile against
+
+  const existing = await listInvoicesCore(orgId, leadId)
+  const depositInv = existing.find((i) => i.type === 'deposit' && i.source?.id === proposalId)
+
+  if (depositInv) {
+    if ((depositInv.payments?.length ?? 0) > 0) return // already reconciled → no-op
+    await recordPaymentCore(orgId, depositInv.id, {
+      amount: payment.amount,
+      method: 'card',
+      note: `Stripe deposit ${payment.intent_id}`,
+    })
+    await invoicesRef(orgId).doc(depositInv.id).update({ lifecycle: 'issued', issued_at: payment.paid_at })
+    return
+  }
+
+  const created = await generateFromProposalCore(orgId, leadId, proposal, existing, { type: 'deposit' })
+  await recordPaymentCore(orgId, created.id, {
+    amount: payment.amount,
+    method: 'card',
+    note: `Stripe deposit ${payment.intent_id}`,
+  })
+  await invoicesRef(orgId).doc(created.id).update({ lifecycle: 'issued', issued_at: payment.paid_at })
+}
