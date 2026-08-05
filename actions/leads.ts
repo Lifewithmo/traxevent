@@ -5,6 +5,7 @@ import { FieldValue } from 'firebase-admin/firestore'
 import { randomBytes } from 'crypto'
 import { assertOrgMember, assertOrgAdmin } from '@/lib/auth/assert'
 import { LEAD_STAGES } from '@/lib/leads'
+import { logActivity } from '@/lib/activity'
 import type { Lead, LeadStage } from '@/lib/types'
 
 function leadsRef(orgId: string) {
@@ -89,6 +90,7 @@ export async function setLeadStage(orgId: string, leadId: string, stage: LeadSta
   await assertOrgAdmin(orgId)
   if (!LEAD_STAGES.includes(stage)) throw new Error('Invalid stage')
   await leadsRef(orgId).doc(leadId).update({ stage, updated_at: new Date().toISOString() })
+  await logActivity(orgId, { parent_type: 'opportunity', parent_id: leadId, kind: 'stage', summary: `Stage → ${stage}` })
 }
 
 export async function deleteLead(orgId: string, leadId: string): Promise<void> {

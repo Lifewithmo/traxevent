@@ -40,6 +40,8 @@ vi.mock('firebase-admin/firestore', () => ({
   FieldValue: { delete: vi.fn().mockReturnValue(fieldValueDeleteSentinel) },
 }))
 
+vi.mock('@/lib/activity', () => ({ logActivity: vi.fn().mockResolvedValue(undefined) }))
+
 import {
   listLeads,
   getLead,

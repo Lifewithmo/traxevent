@@ -4,6 +4,10 @@ const taskDocSpy = vi.hoisted(() => ({
   set: vi.fn().mockResolvedValue(undefined),
   update: vi.fn().mockResolvedValue(undefined),
   delete: vi.fn().mockResolvedValue(undefined),
+  get: vi.fn().mockResolvedValue({
+    exists: true,
+    data: () => ({ id: 't1', title: 'Some title', done: false, lead_id: 'l1', created_at: '' }),
+  }),
 }))
 const getTasksSpy = vi.hoisted(() => vi.fn())
 
@@ -28,6 +32,8 @@ vi.mock('@/lib/auth/assert', () => ({
   assertOrgMember: vi.fn().mockResolvedValue({ role: 'admin', event_access: {} }),
   assertOrgAdmin: vi.fn().mockResolvedValue({ role: 'admin', event_access: {} }),
 }))
+
+vi.mock('@/lib/activity', () => ({ logActivity: vi.fn().mockResolvedValue(undefined) }))
 
 import { createTask, listTasks, completeTask, deleteTask } from '@/actions/tasks'
 

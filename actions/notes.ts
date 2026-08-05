@@ -3,6 +3,7 @@
 import { adminDb } from '@/lib/firebase-admin'
 import { randomBytes } from 'crypto'
 import { assertOrgMember, assertOrgAdmin } from '@/lib/auth/assert'
+import { logActivity } from '@/lib/activity'
 import type { Note } from '@/lib/types'
 
 function notesRef(orgId: string) {
@@ -27,6 +28,12 @@ export async function createNote(orgId: string, input: CreateNoteInput): Promise
     created_at: new Date().toISOString(),
   }
   await notesRef(orgId).doc(id).set(note)
+  await logActivity(orgId, {
+    parent_type: note.parent_type,
+    parent_id: note.parent_id,
+    kind: 'note',
+    summary: note.body.length > 80 ? note.body.slice(0, 80) + '…' : note.body,
+  })
   return note
 }
 

@@ -3,6 +3,7 @@
 import { adminDb } from '@/lib/firebase-admin'
 import { randomBytes } from 'crypto'
 import { assertOrgMember, assertOrgAdmin } from '@/lib/auth/assert'
+import { logActivity } from '@/lib/activity'
 import type { Task } from '@/lib/types'
 
 function tasksRef(orgId: string, leadId: string) {
@@ -38,7 +39,15 @@ export async function listTasks(orgId: string, leadId: string): Promise<Task[]> 
 
 export async function completeTask(orgId: string, leadId: string, taskId: string): Promise<void> {
   await assertOrgAdmin(orgId)
+  const snap = await tasksRef(orgId, leadId).doc(taskId).get()
+  const title = snap.exists ? (snap.data() as Task).title : undefined
   await tasksRef(orgId, leadId).doc(taskId).update({ done: true, done_at: new Date().toISOString() })
+  await logActivity(orgId, {
+    parent_type: 'opportunity',
+    parent_id: leadId,
+    kind: 'task',
+    summary: `Completed: ${title ?? 'task'}`,
+  })
 }
 
 export async function deleteTask(orgId: string, leadId: string, taskId: string): Promise<void> {

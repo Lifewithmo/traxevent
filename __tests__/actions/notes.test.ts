@@ -31,6 +31,8 @@ vi.mock('@/lib/auth/assert', () => ({
   assertOrgAdmin: vi.fn().mockResolvedValue({}),
 }))
 
+vi.mock('@/lib/activity', () => ({ logActivity: vi.fn().mockResolvedValue(undefined) }))
+
 import { createNote, listNotes, deleteNote } from '@/actions/notes'
 
 describe('createNote', () => {

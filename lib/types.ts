@@ -496,6 +496,15 @@ export interface Note {
   created_at: string
 }
 
+export interface ActivityEvent {
+  id: string
+  parent_type: 'customer' | 'opportunity'
+  parent_id: string
+  kind: 'stage' | 'task' | 'note' | 'email' | 'form' | 'created'
+  summary: string
+  created_at: string
+}
+
 export type VendorStatus = 'potential' | 'confirmed' | 'declined'
 
 export interface Vendor {
