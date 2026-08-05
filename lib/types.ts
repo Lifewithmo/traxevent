@@ -36,6 +36,7 @@ export const EVENT_PAGES = [
   'people',
   'checkin',
   'reports',
+  'ops',
 ] as const
 
 export type EventPage = typeof EVENT_PAGES[number]
