@@ -16,7 +16,14 @@ vi.mock('@/lib/firebase-admin', () => ({
   },
 }))
 
-import { getPublicProposal, respondToProposal } from '@/actions/proposals-public'
+vi.mock('next/headers', () => ({
+  headers: vi.fn().mockResolvedValue({
+    get: (k: string) => (k === 'x-forwarded-for' ? '203.0.113.7, 10.0.0.1' : k === 'user-agent' ? 'JestUA/1.0' : null),
+  }),
+}))
+vi.mock('@/lib/email', () => ({ sendProposalSignedConfirmation: vi.fn().mockResolvedValue(undefined) }))
+
+import { getPublicProposal, respondToProposal, signProposal, recordProposalView } from '@/actions/proposals-public'
 
 // Builds a snapshot whose single doc carries `data` and a `ref` whose
 // parent.parent is the org, so a lead advance resolves to
@@ -143,39 +150,28 @@ describe('getPublicProposal', () => {
 })
 
 describe('respondToProposal', () => {
-  it('accepts a sent proposal and advances the lead to closed_won', async () => {
+  // Acceptance is retired from respondToProposal — signProposal is now the
+  // ONLY path to 'accepted' (server-captured audit trail). The Increment-1
+  // UI still calls respondToProposal('accepted', ...) until Task 6, so this
+  // branch must throw loudly rather than silently close a deal unsigned.
+  it('throws on accept — acceptance now requires signing — and writes nothing', async () => {
     mockSnapshot({ id: 'p1', lead_id: 'lead-1', status: 'sent' })
-    await respondToProposal('tok', 'accepted')
-
-    expect(proposalUpdateSpy).toHaveBeenCalledTimes(1)
-    expect(proposalUpdateSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ status: 'accepted' }),
+    await expect(respondToProposal('tok', 'accepted')).rejects.toThrow(
+      'Acceptance now requires signing',
     )
-    const proposalArg = proposalUpdateSpy.mock.calls[0][0]
-    expect(proposalArg.client_response_at).toBeTruthy()
-    expect(proposalArg.updated_at).toBeTruthy()
-
-    expect(leadDocSpy).toHaveBeenCalledWith('lead-1')
-    expect(leadUpdateSpy).toHaveBeenCalledTimes(1)
-    expect(leadUpdateSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ stage: 'closed_won' }),
-    )
+    expect(proposalUpdateSpy).not.toHaveBeenCalled()
+    expect(leadUpdateSpy).not.toHaveBeenCalled()
   })
 
-  // M-4: cross-tenant isolation. The org/lead advanced on accept must be
-  // resolved from the found doc's own path (doc.ref.parent.parent) and its
-  // stored lead_id — never from any caller-supplied identifier.
-  it('advances the lead via the org from the doc path and the doc lead_id (isolation)', async () => {
+  // Re-expresses the old isolation coverage: accept is retired regardless of
+  // which doc/lead it targets — no lookup-driven side effect happens either.
+  it('throws on accept for any doc (isolation is moot — nothing is written)', async () => {
     mockSnapshot({ id: 'p1', lead_id: 'lead-from-doc', status: 'sent' })
-    await respondToProposal('tok', 'accepted')
-
-    // orgRef.collection('leads').doc(...) was called with the lead_id from
-    // the found doc's data, proving the lead is scoped to the doc's own org.
-    expect(leadDocSpy).toHaveBeenCalledTimes(1)
-    expect(leadDocSpy).toHaveBeenCalledWith('lead-from-doc')
-    expect(leadUpdateSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ stage: 'closed_won' }),
+    await expect(respondToProposal('tok', 'accepted')).rejects.toThrow(
+      'Acceptance now requires signing',
     )
+    expect(leadDocSpy).not.toHaveBeenCalled()
+    expect(leadUpdateSpy).not.toHaveBeenCalled()
   })
 
   it('rejects a sent proposal without advancing the lead', async () => {
@@ -250,57 +246,169 @@ describe('getPublicProposal — selection fields', () => {
   })
 })
 
-describe('respondToProposal — selection', () => {
-  function sentPackaged() {
+describe('getPublicProposal — signature/audit projection', () => {
+  it('projects deposit_gate/deposit_terms/payment_status', async () => {
+    mockSnapshot({
+      id: 'p1', org_id: 'org-1', lead_id: 'lead-1', token: 'secret',
+      status: 'sent', line_items: [],
+      deposit: { type: 'percent', value: 50 }, deposit_gate: 'before_accept',
+      deposit_terms: 'Non-refundable.', payment_status: 'deposit_pending',
+      created_at: '2026-05-01T00:00:00.000Z',
+    })
+    const r = await getPublicProposal('tok')
+    expect(r?.deposit_gate).toBe('before_accept')
+    expect(r?.deposit_terms).toBe('Non-refundable.')
+    expect(r?.payment_status).toBe('deposit_pending')
+  })
+
+  // SECURITY: a signed proposal's full audit record (ip/user_agent/document_hash/
+  // signer_email, pending_signature, events) must never reach the public DTO —
+  // only a reduced { signer_name, signed_at } summary.
+  it('reduces `signature` to { signer_name, signed_at } and never leaks ip/user_agent/document_hash/signer_email, pending_signature, or events', async () => {
+    mockSnapshot({
+      id: 'p1', org_id: 'org-1', lead_id: 'lead-1', token: 'secret',
+      status: 'accepted', line_items: [],
+      created_at: '2026-05-01T00:00:00.000Z',
+      signature: {
+        signer_name: 'Dana', signer_email: 'd@x.co', signed_at: '2026-06-01T00:00:00.000Z',
+        ip: '203.0.113.7', user_agent: 'JestUA/1.0', consent_electronic: true,
+        document_hash: 'a'.repeat(64),
+      },
+      pending_signature: { signer_name: 'Ghost', signer_email: 'g@x.co', captured_at: 'x', ip: '1.2.3.4', user_agent: 'ua', document_hash: 'b'.repeat(64), selection: { optional_item_ids: [], selected_total: 0, selected_at: 'x' } },
+      events: [{ kind: 'signed', at: '2026-06-01T00:00:00.000Z', ip: '203.0.113.7', user_agent: 'JestUA/1.0' }],
+    })
+    const r = await getPublicProposal('tok')
+    expect(r?.signed).toEqual({ signer_name: 'Dana', signed_at: '2026-06-01T00:00:00.000Z' })
+    const flat = JSON.stringify(r)
+    expect(flat).not.toContain('203.0.113.7')
+    expect(flat).not.toContain('JestUA/1.0')
+    expect(flat).not.toContain('a'.repeat(64))
+    expect(flat).not.toContain('d@x.co')
+    expect('signature' in (r as object)).toBe(false)
+    expect('pending_signature' in (r as object)).toBe(false)
+    expect('events' in (r as object)).toBe(false)
+  })
+
+  it('omits `signed` entirely when the proposal has no signature', async () => {
+    mockSnapshot({
+      id: 'p1', org_id: 'org-1', lead_id: 'lead-1', token: 'secret',
+      status: 'sent', line_items: [], created_at: '2026-05-01T00:00:00.000Z',
+    })
+    const r = await getPublicProposal('tok')
+    expect('signed' in (r as object)).toBe(false)
+  })
+})
+
+// Selection helper shared by the retired-accept coverage below and by the
+// signProposal selection tests further down.
+function sentPackaged() {
+  return {
+    id: 'p1', lead_id: 'lead-1', status: 'sent',
+    packages: [
+      { id: 'good', name: 'Good', includes: [], price: 12500 },
+      { id: 'best', name: 'Best', includes: [], price: 22400 },
+    ],
+    line_items: [{ id: 'o1', description: 'Lighting', quantity: 1, unit_price: 1500, optional: true }],
+  }
+}
+
+describe('respondToProposal — accept is retired', () => {
+  // The Increment-1 selection-validation-on-accept behavior moved entirely
+  // into signProposal (see below); respondToProposal's accept branch now
+  // throws unconditionally, regardless of whether the selection would have
+  // been valid, before any validation or write happens.
+  it('throws "Acceptance now requires signing" even for an otherwise-valid selection, and writes nothing', async () => {
+    mockSnapshot(sentPackaged())
+    await expect(respondToProposal('tok', 'accepted', { package_id: 'best', optional_item_ids: ['o1'] }))
+      .rejects.toThrow('Acceptance now requires signing')
+    expect(proposalUpdateSpy).not.toHaveBeenCalled()
+    expect(leadUpdateSpy).not.toHaveBeenCalled()
+  })
+
+  it('throws "Acceptance now requires signing" for a legacy itemized proposal with no selection', async () => {
+    mockSnapshot({ id: 'p1', lead_id: 'lead-1', status: 'sent' })
+    await expect(respondToProposal('tok', 'accepted')).rejects.toThrow('Acceptance now requires signing')
+    expect(proposalUpdateSpy).not.toHaveBeenCalled()
+    expect(leadUpdateSpy).not.toHaveBeenCalled()
+  })
+})
+
+describe('signProposal', () => {
+  function sentDeposit(gate: 'before_accept' | 'after_accept') {
     return {
       id: 'p1', lead_id: 'lead-1', status: 'sent',
-      packages: [
-        { id: 'good', name: 'Good', includes: [], price: 12500 },
-        { id: 'best', name: 'Best', includes: [], price: 22400 },
-      ],
       line_items: [{ id: 'o1', description: 'Lighting', quantity: 1, unit_price: 1500, optional: true }],
+      packages: [{ id: 'good', name: 'Good', includes: [], price: 12500 }],
+      deposit: { type: 'percent', value: 50 }, deposit_gate: gate, deposit_terms: 'terms',
     }
   }
 
-  it('stores a server-recomputed selection snapshot on accept', async () => {
-    mockSnapshot(sentPackaged())
-    await respondToProposal('tok', 'accepted', { package_id: 'best', optional_item_ids: ['o1'] })
+  it('after_accept: signs, captures server-side ip/ua/hash, sets deposit_pending, advances closed_won', async () => {
+    mockSnapshot(sentDeposit('after_accept'))
+    const res = await signProposal('tok', { signer_name: 'Dana', signer_email: 'd@x.co', consent: true, selection: { package_id: 'good', optional_item_ids: ['o1'] } })
     const arg = proposalUpdateSpy.mock.calls[0][0]
     expect(arg.status).toBe('accepted')
-    expect(arg.selection.package_id).toBe('best')
-    expect(arg.selection.optional_item_ids).toEqual(['o1'])
-    expect(arg.selection.selected_total).toBe(23900) // recomputed, not client-supplied
-    expect(arg.selection.selected_at).toBeTruthy()
+    expect(arg.payment_status).toBe('deposit_pending')
+    expect(arg.signature.signer_name).toBe('Dana')
+    expect(arg.signature.ip).toBe('203.0.113.7')            // first x-forwarded-for hop, server-derived
+    expect(arg.signature.user_agent).toBe('JestUA/1.0')
+    expect(arg.signature.document_hash).toMatch(/^[0-9a-f]{64}$/)
+    expect(arg.signature.consent_electronic).toBe(true)
+    expect(res.deposit_due).toBe(7000)                       // 50% of (12500+1500) with no tax? see note
     expect(leadUpdateSpy).toHaveBeenCalledWith(expect.objectContaining({ stage: 'closed_won' }))
   })
 
+  it('no deposit → payment_status not_required', async () => {
+    mockSnapshot({ id: 'p1', lead_id: 'lead-1', status: 'sent', line_items: [] })
+    const res = await signProposal('tok', { signer_name: 'A', signer_email: 'a@a.co', consent: true })
+    expect(proposalUpdateSpy.mock.calls[0][0].payment_status).toBe('not_required')
+    expect(res.deposit_due).toBe(0)
+  })
+
+  it('rejects missing consent / blank name / blank email', async () => {
+    mockSnapshot(sentDeposit('after_accept'))
+    await expect(signProposal('tok', { signer_name: '', signer_email: 'a@a.co', consent: true })).rejects.toThrow('Invalid request')
+    await expect(signProposal('tok', { signer_name: 'A', signer_email: '', consent: true })).rejects.toThrow('Invalid request')
+    await expect(signProposal('tok', { signer_name: 'A', signer_email: 'a@a.co', consent: false })).rejects.toThrow('You must consent')
+    expect(proposalUpdateSpy).not.toHaveBeenCalled()
+  })
+
+  it('is locked: throws for an already-signed or non-sent proposal, writes nothing', async () => {
+    mockSnapshot({ ...sentDeposit('after_accept'), status: 'accepted', signature: { signer_name: 'X' } })
+    await expect(signProposal('tok', { signer_name: 'A', signer_email: 'a@a.co', consent: true }))
+      .rejects.toThrow('no longer awaiting a response')
+    expect(proposalUpdateSpy).not.toHaveBeenCalled()
+  })
+
+  it('validates the selection against the proposal (bad package id)', async () => {
+    mockSnapshot(sentDeposit('after_accept'))
+    await expect(signProposal('tok', { signer_name: 'A', signer_email: 'a@a.co', consent: true, selection: { package_id: 'ghost', optional_item_ids: [] } }))
+      .rejects.toThrow('Invalid selection')
+  })
+
+  // --- additional coverage carried over from the retired respondToProposal — selection suite ---
+
   it('requires a package when the proposal is packaged', async () => {
     mockSnapshot(sentPackaged())
-    await expect(respondToProposal('tok', 'accepted', { optional_item_ids: [] }))
+    await expect(signProposal('tok', { signer_name: 'A', signer_email: 'a@a.co', consent: true, selection: { optional_item_ids: [] } }))
       .rejects.toThrow('Please select an option before accepting')
     expect(proposalUpdateSpy).not.toHaveBeenCalled()
     expect(leadUpdateSpy).not.toHaveBeenCalled()
   })
 
-  it('rejects a package id not on the proposal', async () => {
-    mockSnapshot(sentPackaged())
-    await expect(respondToProposal('tok', 'accepted', { package_id: 'phantom', optional_item_ids: [] }))
-      .rejects.toThrow('Invalid selection')
-    expect(proposalUpdateSpy).not.toHaveBeenCalled()
-  })
-
   it('rejects an optional_item_id that is not an optional item on the proposal', async () => {
     mockSnapshot(sentPackaged())
-    await expect(respondToProposal('tok', 'accepted', { package_id: 'good', optional_item_ids: ['not-real'] }))
+    await expect(signProposal('tok', { signer_name: 'A', signer_email: 'a@a.co', consent: true, selection: { package_id: 'good', optional_item_ids: ['not-real'] } }))
       .rejects.toThrow('Invalid selection')
     expect(proposalUpdateSpy).not.toHaveBeenCalled()
   })
 
-  it('still accepts a legacy itemized proposal with no selection (advances to closed_won)', async () => {
-    mockSnapshot({ id: 'p1', lead_id: 'lead-1', status: 'sent' })
-    await respondToProposal('tok', 'accepted')
+  it('still signs a legacy itemized proposal with no selection (advances to closed_won)', async () => {
+    mockSnapshot({ id: 'p1', lead_id: 'lead-1', status: 'sent', line_items: [] })
+    const res = await signProposal('tok', { signer_name: 'A', signer_email: 'a@a.co', consent: true })
     expect(proposalUpdateSpy).toHaveBeenCalledWith(expect.objectContaining({ status: 'accepted' }))
     expect(leadUpdateSpy).toHaveBeenCalledWith(expect.objectContaining({ stage: 'closed_won' }))
+    expect(res.payment_status).toBe('not_required')
   })
 
   // Guards against a hand-crafted public request sending a non-array
@@ -309,13 +417,75 @@ describe('respondToProposal — selection', () => {
   it('rejects a non-array optional_item_ids without writing anything', async () => {
     mockSnapshot(sentPackaged())
     await expect(
-      respondToProposal('tok', 'accepted', {
-        package_id: 'good',
+      signProposal('tok', {
+        signer_name: 'A', signer_email: 'a@a.co', consent: true,
         // @ts-expect-error deliberately malformed: a number instead of an array
-        optional_item_ids: 42,
+        selection: { package_id: 'good', optional_item_ids: 42 },
       }),
-    ).rejects.toThrow('Invalid selection')
+    ).rejects.toThrow('Invalid request')
     expect(proposalUpdateSpy).not.toHaveBeenCalled()
     expect(leadUpdateSpy).not.toHaveBeenCalled()
+  })
+
+  // M-4 (carried over): cross-tenant isolation — the org/lead advanced on
+  // sign must be resolved from the found doc's own path (doc.ref.parent.parent)
+  // and its stored lead_id, never from any caller-supplied identifier.
+  it('advances the lead via the org from the doc path and the doc lead_id (isolation)', async () => {
+    mockSnapshot({ id: 'p1', lead_id: 'lead-from-doc', status: 'sent', line_items: [] })
+    await signProposal('tok', { signer_name: 'A', signer_email: 'a@a.co', consent: true })
+    expect(leadDocSpy).toHaveBeenCalledTimes(1)
+    expect(leadDocSpy).toHaveBeenCalledWith('lead-from-doc')
+    expect(leadUpdateSpy).toHaveBeenCalledWith(expect.objectContaining({ stage: 'closed_won' }))
+  })
+
+  it('sends a best-effort confirmation email and does not fail the sign when it rejects', async () => {
+    const { sendProposalSignedConfirmation } = await import('@/lib/email')
+    vi.mocked(sendProposalSignedConfirmation).mockRejectedValueOnce(new Error('resend down'))
+    mockSnapshot({ id: 'p1', lead_id: 'lead-1', status: 'sent', line_items: [] })
+    const res = await signProposal('tok', { signer_name: 'A', signer_email: 'a@a.co', consent: true })
+    expect(res.payment_status).toBe('not_required')
+    expect(proposalUpdateSpy).toHaveBeenCalledTimes(1)
+    expect(sendProposalSignedConfirmation).toHaveBeenCalledWith(
+      expect.objectContaining({ to: 'a@a.co', signerName: 'A', token: 'tok' }),
+    )
+  })
+})
+
+describe('respondToProposal decline', () => {
+  it('appends a declined event', async () => {
+    mockSnapshot({ id: 'p1', lead_id: 'lead-1', status: 'sent' })
+    await respondToProposal('tok', 'rejected')
+    const arg = proposalUpdateSpy.mock.calls[0][0]
+    expect(arg.status).toBe('rejected')
+    // events appended via FieldValue.arrayUnion — assert the update carried an events mutation
+    expect('events' in arg).toBe(true)
+  })
+})
+
+describe('recordProposalView', () => {
+  it('appends a viewed event for a non-draft proposal', async () => {
+    mockSnapshot({ id: 'p1', lead_id: 'lead-1', status: 'sent' })
+    await recordProposalView('tok')
+    expect(proposalUpdateSpy).toHaveBeenCalledTimes(1)
+    const arg = proposalUpdateSpy.mock.calls[0][0]
+    expect('events' in arg).toBe(true)
+  })
+
+  it('does nothing for a draft proposal', async () => {
+    mockSnapshot({ id: 'p1', lead_id: 'lead-1', status: 'draft' })
+    await recordProposalView('tok')
+    expect(proposalUpdateSpy).not.toHaveBeenCalled()
+  })
+
+  it('does nothing for an unknown token', async () => {
+    mockSnapshot(null)
+    await expect(recordProposalView('nope')).resolves.toBeUndefined()
+    expect(proposalUpdateSpy).not.toHaveBeenCalled()
+  })
+
+  it('is best-effort: swallows a write failure instead of throwing', async () => {
+    mockSnapshot({ id: 'p1', lead_id: 'lead-1', status: 'sent' })
+    proposalUpdateSpy.mockRejectedValueOnce(new Error('firestore down'))
+    await expect(recordProposalView('tok')).resolves.toBeUndefined()
   })
 })
