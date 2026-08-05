@@ -1,7 +1,9 @@
 import Link from 'next/link'
 import { Badge } from '@/components/ui/badge'
-import { proposalTotal, PROPOSAL_STATUS_LABELS } from '@/lib/proposals'
+import { proposalDisplayRange, PROPOSAL_STATUS_LABELS } from '@/lib/proposals'
 import type { Proposal } from '@/lib/types'
+
+const money = (n: number) => `$${n.toFixed(2)}`
 
 export interface ProposalRow extends Proposal {
   clientName: string
@@ -34,16 +36,19 @@ export function AllProposalsTable({ orgSlug, rows }: AllProposalsTableProps) {
             {rows.length === 0 ? (
               <tr><td colSpan={4} className="px-3 py-4 text-center text-muted-foreground">No proposals yet.</td></tr>
             ) : (
-              rows.map((p) => (
-                <tr key={p.id} className="border-b last:border-0 hover:bg-muted/50">
-                  <td className="px-3 py-2 font-medium">
-                    <Link href={`/${orgSlug}/leads/${p.lead_id}/proposals/${p.id}`} className="block hover:underline">{p.title || 'Untitled proposal'}</Link>
-                  </td>
-                  <td className="px-3 py-2">{p.clientName || '—'}</td>
-                  <td className="px-3 py-2"><Badge variant="secondary">{PROPOSAL_STATUS_LABELS[p.status]}</Badge></td>
-                  <td className="px-3 py-2 text-right">${proposalTotal(p.line_items).toFixed(2)}</td>
-                </tr>
-              ))
+              rows.map((p) => {
+                const { min, max } = proposalDisplayRange(p)
+                return (
+                  <tr key={p.id} className="border-b last:border-0 hover:bg-muted/50">
+                    <td className="px-3 py-2 font-medium">
+                      <Link href={`/${orgSlug}/leads/${p.lead_id}/proposals/${p.id}`} className="block hover:underline">{p.title || 'Untitled proposal'}</Link>
+                    </td>
+                    <td className="px-3 py-2">{p.clientName || '—'}</td>
+                    <td className="px-3 py-2"><Badge variant="secondary">{PROPOSAL_STATUS_LABELS[p.status]}</Badge></td>
+                    <td className="px-3 py-2 text-right">{min === max ? money(min) : `${money(min)}–${money(max)}`}</td>
+                  </tr>
+                )
+              })
             )}
           </tbody>
         </table>

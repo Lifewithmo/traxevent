@@ -159,4 +159,52 @@ describe('proposals actions', () => {
     await deleteProposal('org-1', 'p1')
     expect(proposalDocDeleteSpy).toHaveBeenCalled()
   })
+
+  it('updateProposal passes through packages/discount/tax_rate/deposit/expires_at', async () => {
+    await updateProposal('org-1', 'p1', {
+      packages: [{ id: 'good', name: 'Good', includes: ['A'], price: 12500 }],
+      line_items: [{ id: 'o1', description: 'Lighting', quantity: 1, unit_price: 1500, optional: true }],
+      discount: { type: 'percent', value: 10 },
+      tax_rate: 8.25,
+      deposit: { type: 'percent', value: 50 },
+      expires_at: '2026-09-01',
+    })
+    const written = proposalDocUpdateSpy.mock.calls[0][0]
+    expect(written.packages).toEqual([{ id: 'good', name: 'Good', includes: ['A'], price: 12500 }])
+    expect(written.discount).toEqual({ type: 'percent', value: 10 })
+    expect(written.tax_rate).toBe(8.25)
+    expect(written.deposit).toEqual({ type: 'percent', value: 50 })
+    expect(written.expires_at).toBe('2026-09-01')
+    expect(written.updated_at).toEqual(expect.any(String))
+  })
+
+  it('updateProposal never passes a raw undefined to Firestore .update() — clears undefined fields via FieldValue.delete() instead', async () => {
+    await updateProposal('org-1', 'p1', {
+      line_items: [{ id: 'i1', description: 'DJ', quantity: 1, unit_price: 500 }],
+      discount: undefined,
+      tax_rate: undefined,
+      deposit: undefined,
+      expires_at: undefined,
+    })
+    const written = proposalDocUpdateSpy.mock.calls[0][0]
+    // No own value in the update payload may be a raw `undefined` — Firestore Admin throws
+    // "Cannot use \"undefined\" as a Firestore value" when ignoreUndefinedProperties is off.
+    expect(Object.values(written).every((v) => v !== undefined)).toBe(true)
+    // Fields explicitly cleared by the caller must be represented by the delete sentinel,
+    // not silently dropped (dropping would leave a stale value in Firestore) and not raw undefined.
+    const { FieldValue } = await import('firebase-admin/firestore')
+    const deleteSentinel = FieldValue.delete()
+    expect(written.discount).toEqual(deleteSentinel)
+    expect(written.tax_rate).toEqual(deleteSentinel)
+    expect(written.deposit).toEqual(deleteSentinel)
+    expect(written.expires_at).toEqual(deleteSentinel)
+  })
+
+  it('createProposal includes packages when provided', async () => {
+    await createProposal('org-1', 'lead-1', {
+      packages: [{ id: 'good', name: 'Good', includes: [], price: 100 }],
+    })
+    const written = proposalDocSetSpy.mock.calls[0][0]
+    expect(written.packages).toEqual([{ id: 'good', name: 'Good', includes: [], price: 100 }])
+  })
 })
