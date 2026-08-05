@@ -67,7 +67,10 @@ export function ProposalEditorClient({ orgId, orgSlug, leadId, proposal }: Propo
   )
   const [depositTerms, setDepositTerms] = useState(proposal.deposit_terms ?? '')
 
-  const locked = Boolean(proposal.signature)
+  // Locked whenever a signature is in progress or complete — `pending_signature`
+  // means a before_accept deposit payment is in flight; editing/deleting during
+  // that window would let the payment webhook later find nothing to promote.
+  const locked = Boolean(proposal.signature) || Boolean(proposal.pending_signature)
 
   const [saving, setSaving] = useState(false)
   const [sending, setSending] = useState(false)

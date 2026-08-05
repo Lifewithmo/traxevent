@@ -88,8 +88,11 @@ export async function updateProposal(orgId: string, proposalId: string, updates:
 
   const ref = proposalsRef(orgId).doc(proposalId)
   const snap = await ref.get()
-  if (snap?.exists && (snap.data() as Proposal).signature) {
-    throw new Error('This proposal is signed and can no longer be edited')
+  if (snap?.exists) {
+    const data = snap.data() as Proposal
+    if (data.signature || data.pending_signature) {
+      throw new Error('This proposal is signed and can no longer be edited')
+    }
   }
 
   // Firestore rejects `undefined` (ignoreUndefinedProperties is off). Unlike the partial-update
@@ -108,10 +111,26 @@ export async function updateProposal(orgId: string, proposalId: string, updates:
 
 export async function sendProposal(orgId: string, proposalId: string): Promise<void> {
   await assertOrgAdmin(orgId)
-  await proposalsRef(orgId).doc(proposalId).update({ status: 'sent', updated_at: new Date().toISOString() })
+  const ref = proposalsRef(orgId).doc(proposalId)
+  const snap = await ref.get()
+  if (snap?.exists) {
+    const data = snap.data() as Proposal
+    if (data.signature || data.pending_signature) {
+      throw new Error('This proposal is signed and can no longer be edited')
+    }
+  }
+  await ref.update({ status: 'sent', updated_at: new Date().toISOString() })
 }
 
 export async function deleteProposal(orgId: string, proposalId: string): Promise<void> {
   await assertOrgAdmin(orgId)
-  await proposalsRef(orgId).doc(proposalId).delete()
+  const ref = proposalsRef(orgId).doc(proposalId)
+  const snap = await ref.get()
+  if (snap?.exists) {
+    const data = snap.data() as Proposal
+    if (data.signature || data.pending_signature) {
+      throw new Error('This proposal is signed and can no longer be edited')
+    }
+  }
+  await ref.delete()
 }

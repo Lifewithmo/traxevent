@@ -22,6 +22,7 @@ vi.mock('next/headers', () => ({
   }),
 }))
 vi.mock('@/lib/email', () => ({ sendProposalSignedConfirmation: vi.fn().mockResolvedValue(undefined) }))
+vi.mock('@/actions/domains', () => ({ getVerifiedSendingDomain: vi.fn().mockResolvedValue('mail.acme.com') }))
 
 import { getPublicProposal, respondToProposal, signProposal, recordProposalView } from '@/actions/proposals-public'
 
@@ -447,6 +448,33 @@ describe('signProposal', () => {
     expect(proposalUpdateSpy).toHaveBeenCalledTimes(1)
     expect(sendProposalSignedConfirmation).toHaveBeenCalledWith(
       expect.objectContaining({ to: 'a@a.co', signerName: 'A', token: 'tok' }),
+    )
+  })
+
+  // Fix 3: the confirmation email is sent from the org's verified sending
+  // domain when one is configured — resolved the same way the registration
+  // webhook resolves it, via getVerifiedSendingDomain(orgId), with the org id
+  // coming from the doc path (never a caller-supplied value).
+  it('resolves the org verified sending domain and passes it to the confirmation email', async () => {
+    const { sendProposalSignedConfirmation } = await import('@/lib/email')
+    const { getVerifiedSendingDomain } = await import('@/actions/domains')
+    mockSnapshot({ id: 'p1', lead_id: 'lead-1', status: 'sent', line_items: [] })
+    await signProposal('tok', { signer_name: 'A', signer_email: 'a@a.co', consent: true })
+    expect(getVerifiedSendingDomain).toHaveBeenCalledWith('org-1')
+    expect(sendProposalSignedConfirmation).toHaveBeenCalledWith(
+      expect.objectContaining({ to: 'a@a.co', signerName: 'A', token: 'tok', fromDomain: 'mail.acme.com' }),
+    )
+  })
+
+  it('a verified-domain lookup failure does not block the confirmation email (best-effort fallback)', async () => {
+    const { sendProposalSignedConfirmation } = await import('@/lib/email')
+    const { getVerifiedSendingDomain } = await import('@/actions/domains')
+    vi.mocked(getVerifiedSendingDomain).mockRejectedValueOnce(new Error('firestore down'))
+    mockSnapshot({ id: 'p1', lead_id: 'lead-1', status: 'sent', line_items: [] })
+    const res = await signProposal('tok', { signer_name: 'A', signer_email: 'a@a.co', consent: true })
+    expect(res.payment_status).toBe('not_required')
+    expect(sendProposalSignedConfirmation).toHaveBeenCalledWith(
+      expect.objectContaining({ to: 'a@a.co', signerName: 'A', fromDomain: undefined }),
     )
   })
 })

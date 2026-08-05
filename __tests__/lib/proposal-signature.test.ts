@@ -28,6 +28,27 @@ describe('canonicalProposalDocument', () => {
     expect(canonicalProposalDocument(base({ token: 'X' }), sel))
       .toBe(canonicalProposalDocument(base({ token: 'Y' }), sel))
   })
+
+  // canonicalize() sorts object keys recursively but preserves array element
+  // ORDER. This proves it also reaches inside array elements — a nested
+  // object's keys being built in a different order (e.g. one line item
+  // literal vs. another with the same fields typed in a different sequence)
+  // must not change the hash, since JSON.stringify is key-order-sensitive
+  // per object unless every nested object has first been canonicalized.
+  it('is stable regardless of nested-object key order WITHIN an array element (line_items, packages)', () => {
+    const a = base({
+      line_items: [{ id: 'o1', description: 'Lighting', quantity: 1, unit_price: 1500, optional: true }],
+      packages: [{ id: 'good', name: 'Good', includes: ['Install'], price: 12500 }],
+    })
+    const b = base({
+      // same line item and package, same values — keys assembled in a
+      // different order for each nested object inside the array
+      line_items: [{ optional: true, unit_price: 1500, id: 'o1', quantity: 1, description: 'Lighting' }],
+      packages: [{ price: 12500, includes: ['Install'], id: 'good', name: 'Good' }],
+    })
+    expect(canonicalProposalDocument(a, sel)).toBe(canonicalProposalDocument(b, sel))
+    expect(signedDocumentHash(a, sel)).toBe(signedDocumentHash(b, sel))
+  })
 })
 
 describe('documentHash / signedDocumentHash', () => {

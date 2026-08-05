@@ -54,7 +54,13 @@ import {
 } from '@/actions/proposals'
 
 describe('proposals actions', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => {
+    vi.clearAllMocks()
+    // Default: doc exists, unsigned, no payment in flight — matches most
+    // callers here who never set up their own get() response. Tests that
+    // care about a specific stored state override this explicitly.
+    proposalDocGetSpy.mockResolvedValue({ exists: true, data: () => ({}) })
+  })
 
   it('createProposal writes a proposal with generated id, token, org/lead, draft status, created_at, and passed fields', async () => {
     const proposal = await createProposal('org-1', 'lead-1', {
@@ -224,5 +230,66 @@ describe('proposals actions', () => {
     await expect(updateProposal('org-1', 'p1', { title: 'edit' }))
       .rejects.toThrow('This proposal is signed and can no longer be edited')
     expect(proposalDocUpdateSpy).not.toHaveBeenCalled()
+  })
+
+  // Fix 1: a before_accept proposal sits at status:'sent' with only a
+  // `pending_signature` while its deposit payment is in flight. Editing or
+  // deleting it mid-payment would let the webhook later find nothing to
+  // promote — an orphaned, captured-but-unrecorded payment. Treat
+  // `pending_signature` as locked, same as a full `signature`.
+  describe('pending_signature locks the same as signature', () => {
+    function pendingSignatureDoc() {
+      return {
+        exists: true,
+        data: () => ({
+          id: 'p1',
+          status: 'sent',
+          pending_signature: {
+            signer_name: 'Dana',
+            signer_email: 'd@x.co',
+            captured_at: 'x',
+            ip: '1.2.3.4',
+            user_agent: 'ua',
+            document_hash: 'a'.repeat(64),
+            selection: { optional_item_ids: [], selected_total: 100, selected_at: 'x' },
+          },
+        }),
+      }
+    }
+
+    it('updateProposal throws and writes nothing when pending_signature is present', async () => {
+      proposalDocGetSpy.mockResolvedValue(pendingSignatureDoc())
+      await expect(updateProposal('org-1', 'p1', { title: 'edit' }))
+        .rejects.toThrow('This proposal is signed and can no longer be edited')
+      expect(proposalDocUpdateSpy).not.toHaveBeenCalled()
+    })
+
+    it('deleteProposal throws and writes nothing when pending_signature is present', async () => {
+      proposalDocGetSpy.mockResolvedValue(pendingSignatureDoc())
+      await expect(deleteProposal('org-1', 'p1'))
+        .rejects.toThrow('This proposal is signed and can no longer be edited')
+      expect(proposalDocDeleteSpy).not.toHaveBeenCalled()
+    })
+
+    it('sendProposal throws and writes nothing when pending_signature is present', async () => {
+      proposalDocGetSpy.mockResolvedValue(pendingSignatureDoc())
+      await expect(sendProposal('org-1', 'p1'))
+        .rejects.toThrow('This proposal is signed and can no longer be edited')
+      expect(proposalDocUpdateSpy).not.toHaveBeenCalled()
+    })
+
+    it('deleteProposal still works normally when neither signature nor pending_signature is present', async () => {
+      proposalDocGetSpy.mockResolvedValue({ exists: true, data: () => ({ id: 'p1', status: 'sent' }) })
+      await deleteProposal('org-1', 'p1')
+      expect(proposalDocDeleteSpy).toHaveBeenCalled()
+    })
+
+    it('sendProposal still works normally when neither signature nor pending_signature is present', async () => {
+      proposalDocGetSpy.mockResolvedValue({ exists: true, data: () => ({ id: 'p1', status: 'draft' }) })
+      await sendProposal('org-1', 'p1')
+      expect(proposalDocUpdateSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'sent', updated_at: expect.any(String) })
+      )
+    })
   })
 })

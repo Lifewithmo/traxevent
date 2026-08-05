@@ -4,7 +4,7 @@ import { FieldValue } from 'firebase-admin/firestore'
 import { stripe } from '@/lib/stripe'
 import { headers } from 'next/headers'
 import { adminDb } from '@/lib/firebase-admin'
-import { sendRegistrationConfirmation } from '@/lib/email'
+import { sendRegistrationConfirmation, sendProposalSignedConfirmation } from '@/lib/email'
 import { getVerifiedSendingDomain } from '@/actions/domains'
 import type { Proposal } from '@/lib/types'
 
@@ -45,6 +45,11 @@ export async function POST(req: Request) {
         events: FieldValue.arrayUnion({ kind: 'deposit_paid', at: now }),
       }
 
+      const orgRef = ref.parent.parent
+      // Set only when this call is the one that promotes a before_accept
+      // pending signature — drives the confirmation email below.
+      let promotedSigner: { signer_name: string; signer_email: string } | null = null
+
       // before_accept: promote the pending signature and finalize the close
       // atomically with the deposit — the FIRST time the deposit lands.
       if (!proposal.signature && proposal.pending_signature) {
@@ -66,7 +71,17 @@ export async function POST(req: Request) {
           { kind: 'signed', at: now, ip: ps.ip, user_agent: ps.user_agent },
           { kind: 'deposit_paid', at: now },
         )
-        const orgRef = ref.parent.parent
+        promotedSigner = { signer_name: ps.signer_name, signer_email: ps.signer_email }
+        // The lead advance runs BEFORE the proposal `ref.update` below. This is
+        // deliberate and self-healing: `payment_status` only flips to
+        // 'deposit_paid' in the write that follows, so if that write fails,
+        // Stripe retries the event and the idempotency guard above (which
+        // checks `payment_status === 'deposit_paid'`) hasn't tripped yet —
+        // this whole block, including the lead advance, safely replays.
+        // Reordering to proposal-first would do the opposite: a failed lead
+        // update after a successful proposal write would permanently strand
+        // the lead un-advanced, since the now-`deposit_paid` guard would skip
+        // this block on every retry. Do not reorder.
         if (orgRef) {
           await orgRef.collection('leads').doc(proposal.lead_id).update({
             stage: 'closed_won',
@@ -76,10 +91,28 @@ export async function POST(req: Request) {
       }
 
       await ref.update(update)
-      try {
-        // best-effort signed/paid confirmation email
-      } catch {
-        // email failure should not cause Stripe to retry the webhook
+
+      if (promotedSigner) {
+        // best-effort signed/paid confirmation email for the before_accept
+        // path — the after_accept path already sends this from signProposal
+        // when the signer originally signs, well before any deposit.
+        let fromDomain: string | undefined
+        try {
+          fromDomain = orgRef ? await getVerifiedSendingDomain(orgRef.id) : undefined
+        } catch {
+          // domain lookup failure should not block the email — fall back to default
+        }
+        try {
+          await sendProposalSignedConfirmation({
+            to: promotedSigner.signer_email,
+            signerName: promotedSigner.signer_name,
+            token: proposal.token,
+            signedAt: now,
+            fromDomain,
+          })
+        } catch {
+          // email failure should not cause Stripe to retry the webhook
+        }
       }
       return new Response('ok')
     }

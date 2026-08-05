@@ -10,6 +10,17 @@ const proposalsGetSpy = vi.hoisted(() => vi.fn().mockResolvedValue({ empty: true
 const proposalUpdateSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const leadUpdateSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const leadDocSpy = vi.hoisted(() => vi.fn().mockReturnValue({ update: leadUpdateSpy }))
+const sendProposalSignedConfirmationSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
+const sendRegistrationConfirmationSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
+const getVerifiedSendingDomainSpy = vi.hoisted(() => vi.fn().mockResolvedValue('mail.acme.com'))
+
+vi.mock('@/lib/email', () => ({
+  sendRegistrationConfirmation: sendRegistrationConfirmationSpy,
+  sendProposalSignedConfirmation: sendProposalSignedConfirmationSpy,
+}))
+vi.mock('@/actions/domains', () => ({
+  getVerifiedSendingDomain: getVerifiedSendingDomainSpy,
+}))
 
 vi.mock('@/lib/firebase-admin', () => ({
   adminDb: {
@@ -67,7 +78,7 @@ function mockProposalSnapshot(data: Record<string, unknown> | null) {
     proposalsGetSpy.mockResolvedValue({ empty: true, docs: [] })
     return
   }
-  const orgRef = { collection: vi.fn().mockReturnValue({ doc: leadDocSpy }) }
+  const orgRef = { id: 'org-1', collection: vi.fn().mockReturnValue({ doc: leadDocSpy }) }
   const ref = {
     update: proposalUpdateSpy,
     parent: { parent: orgRef },
@@ -154,6 +165,7 @@ describe('POST /api/payments/webhook', () => {
       return {
         id: 'prop-1',
         lead_id: 'lead-1',
+        token: 'ptok-1',
         status: 'sent',
         payment_status: 'deposit_pending',
         line_items: [],
@@ -206,11 +218,55 @@ describe('POST /api/payments/webhook', () => {
         document_hash: 'a'.repeat(64),
       })
       expect(arg.deposit_payment).toMatchObject({ intent_id: 'pi_dep_1', amount: 6250 })
-      // pending_signature is cleared via FieldValue.delete() — never left on the doc
-      expect(arg.pending_signature).toBeDefined()
+      // pending_signature is cleared via FieldValue.delete() — never left on the doc.
+      // Asserting the exact delete sentinel (not just `toBeDefined()`, which the
+      // sentinel object trivially satisfies) so a regression that stopped
+      // clearing the stash — e.g. accidentally writing back the raw
+      // pending_signature object instead of deleting it — is caught.
+      const { FieldValue } = await import('firebase-admin/firestore')
+      expect(arg.pending_signature).toEqual(FieldValue.delete())
 
       expect(leadDocSpy).toHaveBeenCalledWith('lead-1')
       expect(leadUpdateSpy).toHaveBeenCalledWith(expect.objectContaining({ stage: 'closed_won' }))
+
+      // Fix 2 + Fix 3: the before_accept path sends the same signed-confirmation
+      // email the after_accept path sends when it first signs — using the
+      // promoted signer's name/email, the proposal's own token, and the org's
+      // verified sending domain (resolved the same way the registration
+      // webhook does via getVerifiedSendingDomain).
+      expect(getVerifiedSendingDomainSpy).toHaveBeenCalledWith('org-1')
+      expect(sendProposalSignedConfirmationSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: 'd@x.co',
+          signerName: 'Dana',
+          token: 'ptok-1',
+          fromDomain: 'mail.acme.com',
+        }),
+      )
+    })
+
+    it('before_accept: a verified-domain lookup failure does not block the confirmation email (best-effort fallback)', async () => {
+      getVerifiedSendingDomainSpy.mockRejectedValueOnce(new Error('firestore down'))
+      mockProposalSnapshot(pendingSignatureProposal())
+      constructEventSpy.mockReturnValue(
+        succeededEvent({ purpose: 'proposal_deposit', proposal_id: 'prop-1', token: 'tok-1' }, 625000),
+      )
+      const res = await POST(makeRequest())
+      expect(res.status).toBe(200)
+      expect(sendProposalSignedConfirmationSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ to: 'd@x.co', signerName: 'Dana', fromDomain: undefined }),
+      )
+    })
+
+    it('before_accept: a confirmation-email failure does not fail the webhook', async () => {
+      sendProposalSignedConfirmationSpy.mockRejectedValueOnce(new Error('resend down'))
+      mockProposalSnapshot(pendingSignatureProposal())
+      constructEventSpy.mockReturnValue(
+        succeededEvent({ purpose: 'proposal_deposit', proposal_id: 'prop-1', token: 'tok-1' }, 625000),
+      )
+      const res = await POST(makeRequest())
+      expect(res.status).toBe(200)
+      expect(proposalUpdateSpy).toHaveBeenCalledTimes(1) // the finalize write still happened
     })
 
     it('before_accept: a second identical event is a no-op (idempotent)', async () => {
@@ -228,6 +284,7 @@ describe('POST /api/payments/webhook', () => {
       expect(res.status).toBe(200)
       expect(proposalUpdateSpy).not.toHaveBeenCalled()
       expect(leadUpdateSpy).not.toHaveBeenCalled()
+      expect(sendProposalSignedConfirmationSpy).not.toHaveBeenCalled()
     })
 
     it('after_accept: an already-signed proposal just sets deposit_paid, without re-advancing the lead', async () => {
@@ -245,6 +302,10 @@ describe('POST /api/payments/webhook', () => {
       expect(arg.selection).toBeUndefined()
       expect(arg.signature).toBeUndefined()
       expect(leadUpdateSpy).not.toHaveBeenCalled()
+      // already signed via signProposal (after_accept) — that path already sent
+      // its own confirmation email when the signer originally signed, so the
+      // webhook must not send a second one here.
+      expect(sendProposalSignedConfirmationSpy).not.toHaveBeenCalled()
     })
 
     it('unknown proposal_id → ok, no writes', async () => {

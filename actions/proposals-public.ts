@@ -6,6 +6,7 @@ import { adminDb } from '@/lib/firebase-admin'
 import { computeSelectedTotal, depositAmount } from '@/lib/proposals'
 import { signedDocumentHash } from '@/lib/proposal-signature'
 import { sendProposalSignedConfirmation } from '@/lib/email'
+import { getVerifiedSendingDomain } from '@/actions/domains'
 import type {
   Proposal, ProposalStatus, ProposalLineItem, ProposalPackage,
   ProposalDiscount, ProposalDeposit, ProposalSelection, PaymentStatus,
@@ -193,8 +194,14 @@ export async function signProposal(token: string, input: {
   }
 
   // best-effort confirmation email — never fail the sign on send failure
+  let fromDomain: string | undefined
   try {
-    await sendProposalSignedConfirmation({ to: email, signerName: name, token, signedAt: now })
+    fromDomain = orgRef ? await getVerifiedSendingDomain(orgRef.id) : undefined
+  } catch {
+    // domain lookup failure should not block the email — fall back to default
+  }
+  try {
+    await sendProposalSignedConfirmation({ to: email, signerName: name, token, signedAt: now, fromDomain })
   } catch {
     // swallow: the signature is already recorded and authoritative
   }
