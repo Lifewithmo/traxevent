@@ -468,6 +468,50 @@ export interface Proposal {
   client_response_at?: string  // set when the client accepts/rejects
   created_at: string
   updated_at?: string
+  deposit_gate?: 'before_accept' | 'after_accept'
+  deposit_terms?: string
+  payment_status?: PaymentStatus
+  signature?: ProposalSignature
+  deposit_payment?: ProposalDepositPayment
+  pending_signature?: PendingSignature
+  events?: ProposalEvent[]
+}
+
+export type PaymentStatus = 'not_required' | 'deposit_pending' | 'deposit_paid'
+
+export interface ProposalSignature {
+  signer_name: string
+  signer_email: string
+  signed_at: string          // server UTC ISO
+  ip: string                 // server-derived
+  user_agent: string         // server-derived
+  consent_electronic: true   // recorded acknowledgment
+  document_hash: string      // sha256 of the canonical signed document
+}
+
+export interface ProposalEvent {
+  kind: 'sent' | 'viewed' | 'accepted' | 'signed' | 'deposit_paid' | 'declined'
+  at: string                 // server UTC ISO
+  ip?: string
+  user_agent?: string
+}
+
+export interface ProposalDepositPayment {
+  intent_id: string
+  amount: number             // dollars
+  paid_at?: string
+}
+
+// Captured server-side at sign time for the before_accept path; promoted to
+// `signature` by the webhook once the deposit succeeds. Never client-trusted.
+export interface PendingSignature {
+  signer_name: string
+  signer_email: string
+  captured_at: string
+  ip: string
+  user_agent: string
+  document_hash: string
+  selection: ProposalSelection
 }
 
 export type InvoiceType = 'quick' | 'deposit' | 'progress' | 'final'

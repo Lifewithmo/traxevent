@@ -1,5 +1,7 @@
 import { getResend, buildFromAddress } from '@/lib/resend'
 
+const PROPOSAL_BASE_URL = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://traxevent.com'
+
 interface RegistrationConfirmationParams {
   to: string
   firstName: string
@@ -85,6 +87,53 @@ export async function sendFormSignedConfirmation(
         <p style="color:#64748B;font-size:13px;margin-bottom:8px">
           Signed: ${new Date(params.signedAt).toLocaleString()}
         </p>
+        <p style="color:#64748B;font-size:12px;margin-top:24px">
+          This is a record of your electronic signature under the E-SIGN Act.
+          Your signature is legally binding.
+        </p>
+      </div>
+    `,
+  })
+}
+
+interface ProposalSignedConfirmationParams {
+  to: string
+  signerName: string
+  token: string
+  signedAt: string
+  fromDisplayName?: string
+  replyTo?: string
+  fromDomain?: string
+}
+
+// Best-effort confirmation sent to the public signer after `signProposal`
+// records their e-signature. Never blocks the sign itself on send failure —
+// callers should wrap this in a try/catch.
+export async function sendProposalSignedConfirmation(
+  params: ProposalSignedConfirmationParams
+): Promise<void> {
+  const from = buildFromAddress({ displayName: params.fromDisplayName, domain: params.fromDomain })
+  const proposalUrl = `${PROPOSAL_BASE_URL}/proposals/${params.token}`
+
+  await getResend().emails.send({
+    from,
+    to: params.to,
+    ...(params.replyTo ? { replyTo: params.replyTo } : {}),
+    subject: 'You signed your proposal',
+    html: `
+      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
+        <h1 style="color:#7C3AED;margin-bottom:8px">You signed your proposal</h1>
+        <p style="color:#4C1D95;font-size:16px;margin-bottom:24px">
+          Hi ${params.signerName}, your electronic signature has been recorded.
+        </p>
+        <p style="color:#64748B;font-size:13px;margin-bottom:8px">
+          Signed: ${new Date(params.signedAt).toLocaleString()}
+        </p>
+        <a href="${proposalUrl}"
+           style="display:inline-block;background:#7C3AED;color:#fff;padding:12px 24px;
+                  border-radius:6px;text-decoration:none;font-weight:600;margin-bottom:24px">
+          View your proposal
+        </a>
         <p style="color:#64748B;font-size:12px;margin-top:24px">
           This is a record of your electronic signature under the E-SIGN Act.
           Your signature is legally binding.

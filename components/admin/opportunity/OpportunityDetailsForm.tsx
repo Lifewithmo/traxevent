@@ -7,9 +7,9 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { updateLead } from '@/actions/leads'
+import type { LeadUpdate } from '@/lib/crm/leads'
 import { LEAD_STAGES, LEAD_STAGE_LABELS } from '@/lib/leads'
 import type { Lead, LeadStage } from '@/lib/types'
-import type { LeadUpdate } from '@/lib/crm/leads'
 
 interface OpportunityDetailsFormProps {
   orgId: string

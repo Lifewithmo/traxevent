@@ -5,6 +5,10 @@ import { assertOrgMember, assertOrgAdmin } from '@/lib/auth/assert'
 import { createCustomerCore, customersRef, type CreateCustomerInput } from '@/lib/crm/customers'
 import type { Customer } from '@/lib/types'
 
+// NOTE: 'use server' module — every export must be an async function. The
+// CreateCustomerInput type is therefore NOT re-exported here; import it from
+// '@/lib/crm/customers'. Re-exporting it broke `next build` (RSC compiler).
+
 export async function listCustomers(orgId: string): Promise<Customer[]> {
   await assertOrgMember(orgId)
   const snap = await customersRef(orgId).orderBy('created_at', 'desc').get()
