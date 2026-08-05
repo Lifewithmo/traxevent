@@ -15,8 +15,8 @@ import type { Proposal, ProposalLineItem } from '@/lib/types'
 const item = (quantity: number, unit_price: number): ProposalLineItem => ({ description: 'x', quantity, unit_price })
 
 describe('PROPOSAL_STATUSES', () => {
-  it('is the four statuses in order with labels', () => {
-    expect(PROPOSAL_STATUSES).toEqual(['draft', 'sent', 'accepted', 'rejected'])
+  it('is the five statuses in order with labels', () => {
+    expect(PROPOSAL_STATUSES).toEqual(['draft', 'sent', 'accepted', 'rejected', 'voided'])
     for (const s of PROPOSAL_STATUSES) expect(PROPOSAL_STATUS_LABELS[s]).toBeTruthy()
   })
 })

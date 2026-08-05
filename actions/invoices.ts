@@ -1,10 +1,9 @@
 'use server'
 
-import { adminDb } from '@/lib/firebase-admin'
 import { FieldValue } from 'firebase-admin/firestore'
 import { assertOrgMember, assertOrgAdmin } from '@/lib/auth/assert'
 import { invoiceAmountDue } from '@/lib/invoices'
-import { normalizeInvoice, formatInvoiceNumber } from '@/lib/invoice-normalize'
+import { normalizeInvoice } from '@/lib/invoice-normalize'
 import { previouslyBilled, assertWithinScope, acceptedProposalTotal } from '@/lib/invoice-progress'
 import { assertEditable } from '@/lib/invoice-lock'
 import { getProposal } from '@/actions/proposals'
@@ -15,6 +14,7 @@ import {
   createInvoiceCore,
   generateFromProposalCore,
   recordPaymentCore,
+  issueInvoiceCore,
 } from '@/lib/crm/invoices'
 import type { Invoice, InvoiceLineItem, InvoiceType, InvoiceDiscount, NormalizedInvoice } from '@/lib/types'
 
@@ -113,12 +113,11 @@ export async function approveInvoice(orgId: string, invoiceId: string): Promise<
 export async function issueInvoice(orgId: string, invoiceId: string): Promise<{ number: string }> {
   await assertOrgAdmin(orgId)
   const ref = invoicesRef(orgId).doc(invoiceId)
-  const counterRef = adminDb.collection('orgs').doc(orgId).collection('counters').doc('invoice_number')
 
   // Enforce the scope invariant at issue time, mirroring generateFromProposal's
   // in-memory check. This must happen with plain (non-transaction) reads —
   // Firestore transactions cannot run queries — so it's done before we ever
-  // open the transaction below.
+  // delegate to issueInvoiceCore's transaction below.
   const preSnap = await ref.get()
   if (!preSnap.exists) throw new Error('Invoice not found')
   const preInv = normalizeInvoice(preSnap.data()!)
@@ -132,24 +131,7 @@ export async function issueInvoice(orgId: string, invoiceId: string): Promise<{ 
     }
   }
 
-  return adminDb.runTransaction(async (tx) => {
-    const snap = await tx.get(ref)
-    if (!snap.exists) throw new Error('Invoice not found')
-    const inv = normalizeInvoice(snap.data()!)
-    if (inv.lifecycle !== 'draft' && inv.lifecycle !== 'approved') {
-      throw new Error(`Cannot issue an invoice that is ${inv.lifecycle}`)
-    }
-    const counterSnap = await tx.get(counterRef)
-    const counterData = counterSnap.exists ? (counterSnap.data() as { seq: number; prefix?: string }) : undefined
-    const seq = (counterData?.seq ?? 1000) + 1
-    const prefix = counterData?.prefix
-    const number = formatInvoiceNumber(seq, prefix)
-    const now = new Date().toISOString()
-
-    tx.set(counterRef, { seq }, { merge: true })
-    tx.set(ref, { lifecycle: 'issued', number, issued_at: now, updated_at: now }, { merge: true })
-    return { number }
-  })
+  return issueInvoiceCore(orgId, invoiceId)
 }
 
 export async function voidInvoice(orgId: string, invoiceId: string, reason?: string): Promise<void> {

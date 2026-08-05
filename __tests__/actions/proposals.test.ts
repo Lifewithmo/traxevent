@@ -51,6 +51,7 @@ import {
   updateProposal,
   sendProposal,
   deleteProposal,
+  voidProposal,
 } from '@/actions/proposals'
 
 describe('proposals actions', () => {
@@ -151,6 +152,13 @@ describe('proposals actions', () => {
       // @ts-expect-error testing invalid status at runtime
       updateProposal('org-1', 'p1', { status: 'nope' })
     ).rejects.toThrow('Invalid status')
+    expect(proposalDocUpdateSpy).not.toHaveBeenCalled()
+  })
+
+  it('updateProposal rejects status: "voided" — voiding must go through voidProposal (with a reason) and does not write', async () => {
+    await expect(updateProposal('org-1', 'p1', { status: 'voided' })).rejects.toThrow(
+      'Use voidProposal to void a proposal'
+    )
     expect(proposalDocUpdateSpy).not.toHaveBeenCalled()
   })
 
@@ -290,6 +298,31 @@ describe('proposals actions', () => {
       expect(proposalDocUpdateSpy).toHaveBeenCalledWith(
         expect.objectContaining({ status: 'sent', updated_at: expect.any(String) })
       )
+    })
+  })
+
+  describe('voidProposal', () => {
+    it('voidProposal sets voided + reason + voided_at on a sent proposal, without deleting', async () => {
+      proposalDocGetSpy.mockResolvedValue({ exists: true, data: () => ({ id: 'p1', status: 'accepted', signature: { signer_name: 'A' } }) })
+      await voidProposal('org-1', 'p1', '  duplicate booking  ')
+      const w = proposalDocUpdateSpy.mock.calls[0][0]
+      expect(w.status).toBe('voided')
+      expect(w.void_reason).toBe('duplicate booking')     // trimmed
+      expect(w.voided_at).toEqual(expect.any(String))
+      expect(proposalDocDeleteSpy).not.toHaveBeenCalled()
+    })
+
+    it('voidProposal requires a reason', async () => {
+      proposalDocGetSpy.mockResolvedValue({ exists: true, data: () => ({ id: 'p1', status: 'sent' }) })
+      await expect(voidProposal('org-1', 'p1', '   ')).rejects.toThrow('A reason is required')
+      expect(proposalDocUpdateSpy).not.toHaveBeenCalled()
+    })
+
+    it('voidProposal refuses a draft and an already-voided proposal', async () => {
+      proposalDocGetSpy.mockResolvedValue({ exists: true, data: () => ({ id: 'p1', status: 'draft' }) })
+      await expect(voidProposal('org-1', 'p1', 'x')).rejects.toThrow('Only a sent proposal can be voided')
+      proposalDocGetSpy.mockResolvedValue({ exists: true, data: () => ({ id: 'p1', status: 'voided' }) })
+      await expect(voidProposal('org-1', 'p1', 'x')).rejects.toThrow('already voided')
     })
   })
 })

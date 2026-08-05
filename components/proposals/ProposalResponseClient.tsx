@@ -97,6 +97,15 @@ export function ProposalResponseClient({
   }
 
   const effectiveProposal = liveProposal ?? proposal
+
+  if (effectiveProposal.status === 'voided') {
+    return (
+      <main className="flex min-h-screen flex-col items-center justify-center bg-gray-50 px-6 text-center">
+        <p className="text-lg font-medium text-gray-500">This proposal is no longer available.</p>
+      </main>
+    )
+  }
+
   const declined = declinedLocally || effectiveProposal.status === 'rejected'
   const signedInfo: SignedInfo | undefined =
     effectiveProposal.signed ?? (signResult ? { signer_name: signerName.trim() } : undefined)

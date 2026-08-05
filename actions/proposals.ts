@@ -85,6 +85,7 @@ export interface ProposalUpdate {
 export async function updateProposal(orgId: string, proposalId: string, updates: ProposalUpdate): Promise<void> {
   await assertOrgAdmin(orgId)
   if (updates.status && !PROPOSAL_STATUSES.includes(updates.status)) throw new Error('Invalid status')
+  if (updates.status === 'voided') throw new Error('Use voidProposal to void a proposal')
 
   const ref = proposalsRef(orgId).doc(proposalId)
   const snap = await ref.get()
@@ -120,6 +121,24 @@ export async function sendProposal(orgId: string, proposalId: string): Promise<v
     }
   }
   await ref.update({ status: 'sent', updated_at: new Date().toISOString() })
+}
+
+// Voids a proposal without deleting it — retains the record with a cause
+// notation. Writes via `ref.update` directly (not `updateProposal`) so the
+// sign-lock does NOT block voiding a *signed* proposal — that's the point:
+// a signed proposal can still be voided (e.g. duplicate booking, cancellation).
+export async function voidProposal(orgId: string, proposalId: string, reason: string): Promise<void> {
+  await assertOrgAdmin(orgId)
+  const trimmed = typeof reason === 'string' ? reason.trim() : ''
+  if (!trimmed) throw new Error('A reason is required to void a proposal')
+  const ref = proposalsRef(orgId).doc(proposalId)
+  const snap = await ref.get()
+  if (!snap.exists) throw new Error('Proposal not found')
+  const p = snap.data() as Proposal
+  if (p.status === 'voided') throw new Error('This proposal is already voided')
+  if (p.status === 'draft') throw new Error('Only a sent proposal can be voided')
+  const now = new Date().toISOString()
+  await ref.update({ status: 'voided', void_reason: trimmed, voided_at: now, updated_at: now })
 }
 
 export async function deleteProposal(orgId: string, proposalId: string): Promise<void> {
