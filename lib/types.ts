@@ -492,7 +492,11 @@ export interface InvoiceLineItem {
   quantity: number
   unit_price: number   // dollars
   source?: InvoiceSourceRef
+  taxable?: boolean
 }
+
+export interface InvoiceDiscount { type: 'percent' | 'fixed'; value: number }
+export interface InvoiceCredit { description: string; amount: number }
 
 export interface InvoicePayment {
   amount: number       // dollars APPLIED to the balance
@@ -524,6 +528,9 @@ export interface Invoice {
   notes?: string
   due_date?: string
   tips_enabled?: boolean
+  discount?: InvoiceDiscount
+  tax_rate?: number
+  credits?: InvoiceCredit[]
 
   payment_status?: InvoicePaymentStatus  // materialized cache for future indexed views
 
