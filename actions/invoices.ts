@@ -5,7 +5,7 @@ import { randomBytes } from 'crypto'
 import { generateAccessToken } from '@/lib/tokens'
 import { assertOrgMember, assertOrgAdmin } from '@/lib/auth/assert'
 import { INVOICE_STATUSES, invoiceTotal, amountPaid, paymentStatus } from '@/lib/invoices'
-import { normalizeInvoice } from '@/lib/invoice-normalize'
+import { normalizeInvoice, formatInvoiceNumber } from '@/lib/invoice-normalize'
 import { previouslyBilled, remainingToBill, assertWithinScope } from '@/lib/invoice-progress'
 import { getProposal } from '@/actions/proposals'
 import type {
@@ -124,9 +124,73 @@ export async function updateInvoice(orgId: string, invoiceId: string, updates: I
   await invoicesRef(orgId).doc(invoiceId).update({ ...updates, updated_at: new Date().toISOString() })
 }
 
-export async function sendInvoice(orgId: string, invoiceId: string): Promise<void> {
+export async function approveInvoice(orgId: string, invoiceId: string): Promise<void> {
   await assertOrgAdmin(orgId)
-  await invoicesRef(orgId).doc(invoiceId).update({ status: 'sent', updated_at: new Date().toISOString() })
+  const ref = invoicesRef(orgId).doc(invoiceId)
+  const snap = await ref.get()
+  if (!snap.exists) throw new Error('Invoice not found')
+  const inv = normalizeInvoice(snap.data()!)
+  if (inv.lifecycle !== 'draft') throw new Error('Only a draft can be approved')
+  await ref.update({ lifecycle: 'approved', updated_at: new Date().toISOString() })
+}
+
+export async function issueInvoice(orgId: string, invoiceId: string): Promise<{ number: string }> {
+  await assertOrgAdmin(orgId)
+  const ref = invoicesRef(orgId).doc(invoiceId)
+  const counterRef = adminDb.collection('orgs').doc(orgId).collection('counters').doc('invoice_number')
+
+  return adminDb.runTransaction(async (tx) => {
+    const snap = await tx.get(ref)
+    if (!snap.exists) throw new Error('Invoice not found')
+    const inv = normalizeInvoice(snap.data()!)
+    if (inv.lifecycle !== 'draft' && inv.lifecycle !== 'approved') {
+      throw new Error(`Cannot issue an invoice that is ${inv.lifecycle}`)
+    }
+    const counterSnap = await tx.get(counterRef)
+    const counterData = counterSnap.exists ? (counterSnap.data() as { seq: number; prefix?: string }) : undefined
+    const seq = (counterData?.seq ?? 1000) + 1
+    const prefix = counterData?.prefix
+    const number = formatInvoiceNumber(seq, prefix)
+    const now = new Date().toISOString()
+
+    tx.update(counterRef, { seq })
+    tx.set(ref, { lifecycle: 'issued', number, issued_at: now, updated_at: now }, { merge: true })
+    return { number }
+  })
+}
+
+export async function voidInvoice(orgId: string, invoiceId: string, reason?: string): Promise<void> {
+  await assertOrgAdmin(orgId)
+  const ref = invoicesRef(orgId).doc(invoiceId)
+  const snap = await ref.get()
+  if (!snap.exists) throw new Error('Invoice not found')
+  const now = new Date().toISOString()
+  await ref.update({
+    lifecycle: 'voided',
+    updated_at: now,
+    ...(reason?.trim() ? { void_reason: reason.trim() } : {}),
+  })
+}
+
+export async function replaceInvoice(orgId: string, invoiceId: string): Promise<Invoice> {
+  await assertOrgAdmin(orgId)
+  const ref = invoicesRef(orgId).doc(invoiceId)
+  const snap = await ref.get()
+  if (!snap.exists) throw new Error('Invoice not found')
+  const original = normalizeInvoice(snap.data()!)
+  const draft = await createInvoice(orgId, original.lead_id, {
+    type: original.type,
+    line_items: original.line_items,
+    title: original.title,
+    due_date: original.due_date,
+    notes: original.notes,
+  })
+  const now = new Date().toISOString()
+  await invoicesRef(orgId)
+    .doc(draft.id)
+    .update({ replaces_id: invoiceId, ...(original.source ? { source: original.source } : {}) })
+  await ref.update({ lifecycle: 'replaced', replaced_by_id: draft.id, updated_at: now })
+  return { ...draft, replaces_id: invoiceId }
 }
 
 export interface RecordPaymentInput {

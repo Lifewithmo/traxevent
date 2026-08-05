@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
-import { updateInvoice, sendInvoice, deleteInvoice, recordPayment } from '@/actions/invoices'
+import { updateInvoice, issueInvoice, deleteInvoice, recordPayment } from '@/actions/invoices'
 import { lineItemSubtotal, invoiceTotal, amountPaid, invoiceBalance, INVOICE_STATUS_LABELS } from '@/lib/invoices'
 import type { Invoice, InvoiceLineItem } from '@/lib/types'
 
@@ -92,7 +92,7 @@ export function InvoiceEditorClient({ orgId, orgSlug, leadId, invoice }: Invoice
   async function handleSend() {
     setSending(true); setError(null); setNotice(null)
     try {
-      await sendInvoice(orgId, invoice.id)
+      await issueInvoice(orgId, invoice.id)
       setStatus('sent')
       setShowLink(true)
       setNotice('Sent to client.')

@@ -474,6 +474,7 @@ export interface Invoice {
 
   replaces_id?: string
   replaced_by_id?: string
+  void_reason?: string
   issued_at?: string
   created_at: string
   updated_at?: string

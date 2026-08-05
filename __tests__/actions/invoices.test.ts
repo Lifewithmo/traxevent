@@ -7,6 +7,9 @@ const invoiceDocDeleteSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined
 const listInvoicesSpy = vi.hoisted(() => vi.fn())
 const listAllInvoicesSpy = vi.hoisted(() => vi.fn())
 const getProposalSpy = vi.hoisted(() => vi.fn())
+const counterGetSpy = vi.hoisted(() => vi.fn())
+const txSetSpy = vi.hoisted(() => vi.fn())
+const txUpdateSpy = vi.hoisted(() => vi.fn())
 
 vi.mock('@/lib/firebase-admin', () => {
   const invoicesCol = {
@@ -22,15 +25,28 @@ vi.mock('@/lib/firebase-admin', () => {
     }),
     orderBy: vi.fn().mockReturnValue({ get: listAllInvoicesSpy }),
   }
+  const countersCol = {
+    doc: vi.fn().mockImplementation(() => ({
+      get: counterGetSpy,
+    })),
+  }
   const orgDoc = {
     collection: vi.fn().mockImplementation((sub: string) => {
       if (sub === 'invoices') return invoicesCol
+      if (sub === 'counters') return countersCol
       return {}
     }),
   }
   return {
     adminDb: {
       collection: vi.fn().mockReturnValue({ doc: vi.fn().mockReturnValue(orgDoc) }),
+      runTransaction: vi.fn().mockImplementation(async (cb: (tx: unknown) => unknown) =>
+        cb({
+          get: (ref: { get: () => unknown }) => ref.get(),
+          set: txSetSpy,
+          update: txUpdateSpy,
+        })
+      ),
     },
   }
 })
@@ -54,7 +70,10 @@ import {
   getInvoice,
   createInvoice,
   updateInvoice,
-  sendInvoice,
+  approveInvoice,
+  issueInvoice,
+  voidInvoice,
+  replaceInvoice,
   recordPayment,
   deleteInvoice,
   generateFromProposal,
@@ -197,10 +216,87 @@ describe('invoices actions', () => {
     expect(invoiceDocUpdateSpy).not.toHaveBeenCalled()
   })
 
-  it('sendInvoice updates status to sent and sets updated_at', async () => {
-    await sendInvoice('org-1', 'i1')
+  it('approveInvoice moves draft to approved', async () => {
+    invoiceDocGetSpy.mockResolvedValue({
+      exists: true,
+      data: () => ({ id: 'inv-1', lifecycle: 'draft', line_items: [], payments: [], created_at: '' }),
+    })
+    await approveInvoice('org-1', 'inv-1')
+    expect(invoiceDocUpdateSpy).toHaveBeenCalledWith(expect.objectContaining({ lifecycle: 'approved' }))
+  })
+
+  it('approveInvoice throws when the invoice is not a draft', async () => {
+    invoiceDocGetSpy.mockResolvedValue({
+      exists: true,
+      data: () => ({ id: 'inv-1', lifecycle: 'issued', line_items: [], payments: [], created_at: '' }),
+    })
+    await expect(approveInvoice('org-1', 'inv-1')).rejects.toThrow(/draft/i)
+    expect(invoiceDocUpdateSpy).not.toHaveBeenCalled()
+  })
+
+  it('issueInvoice assigns the next sequential number and locks the invoice', async () => {
+    invoiceDocGetSpy.mockResolvedValue({
+      exists: true,
+      data: () => ({
+        id: 'inv-1', org_id: 'org-1', lead_id: 'lead-1', token: 't', lifecycle: 'draft', type: 'quick',
+        line_items: [{ description: 'x', quantity: 1, unit_price: 500 }], payments: [], created_at: '2026-01-01',
+      }),
+    })
+    counterGetSpy.mockResolvedValue({ exists: true, data: () => ({ seq: 1000, prefix: 'INV-' }) })
+
+    const res = await issueInvoice('org-1', 'inv-1')
+
+    expect(res.number).toBe('INV-1001')
+    expect(txUpdateSpy).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ seq: 1001 }))
+    expect(txSetSpy).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ lifecycle: 'issued', number: 'INV-1001' }),
+      { merge: true }
+    )
+  })
+
+  it('issueInvoice throws when the invoice is not draft or approved', async () => {
+    invoiceDocGetSpy.mockResolvedValue({
+      exists: true,
+      data: () => ({ id: 'inv-1', lifecycle: 'voided', line_items: [], payments: [], created_at: '' }),
+    })
+    await expect(issueInvoice('org-1', 'inv-1')).rejects.toThrow(/cannot issue/i)
+    expect(txSetSpy).not.toHaveBeenCalled()
+  })
+
+  it('voidInvoice sets lifecycle voided and keeps the number', async () => {
+    invoiceDocGetSpy.mockResolvedValue({
+      exists: true,
+      data: () => ({ id: 'inv-1', lifecycle: 'issued', number: 'INV-1001', line_items: [], payments: [], created_at: '' }),
+    })
+    await voidInvoice('org-1', 'inv-1', 'duplicate')
     expect(invoiceDocUpdateSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ status: 'sent', updated_at: expect.any(String) })
+      expect.objectContaining({ lifecycle: 'voided', void_reason: 'duplicate' })
+    )
+  })
+
+  it('replaceInvoice voids the original and creates a linked draft copy', async () => {
+    invoiceDocGetSpy.mockResolvedValue({
+      exists: true,
+      data: () => ({
+        id: 'inv-1', org_id: 'org-1', lead_id: 'lead-1', token: 't', lifecycle: 'issued', type: 'quick',
+        line_items: [{ description: 'x', quantity: 1, unit_price: 500 }], payments: [], created_at: '2026-01-01',
+        source: { type: 'proposal', id: 'p1', label: 'Accepted proposal' },
+      }),
+    })
+
+    const draft = await replaceInvoice('org-1', 'inv-1')
+
+    expect(draft.lifecycle).toBe('draft')
+    expect(draft.replaces_id).toBe('inv-1')
+    expect(invoiceDocUpdateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ lifecycle: 'replaced', replaced_by_id: draft.id })
+    )
+    expect(invoiceDocUpdateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        replaces_id: 'inv-1',
+        source: { type: 'proposal', id: 'p1', label: 'Accepted proposal' },
+      })
     )
   })
 
