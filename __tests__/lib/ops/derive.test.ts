@@ -65,6 +65,10 @@ describe('deriveDeadlines', () => {
     const deadlines = deriveDeadlines('2026-09-12', undefined)
     expect(deadlines.length).toBe(DEADLINE_TEMPLATES['general'].length)
   })
+
+  it('throws on an unparseable event date', () => {
+    expect(() => deriveDeadlines('not-a-date', undefined)).toThrow('Invalid event date')
+  })
 })
 
 describe('instantiateChecklists', () => {

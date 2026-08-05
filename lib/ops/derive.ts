@@ -78,6 +78,7 @@ export function computePackingList(packages: WorkPackage[], resources: OpsResour
 export function deriveDeadlines(eventStart: string, industryPackId: string | undefined): OpsDeadline[] {
   const template = DEADLINE_TEMPLATES[industryPackId ?? 'general'] ?? DEADLINE_TEMPLATES['general']
   const start = new Date(`${eventStart.slice(0, 10)}T00:00:00.000Z`)
+  if (Number.isNaN(start.getTime())) throw new Error('Invalid event date')
   return template.map((t) => {
     const due = new Date(start)
     due.setUTCDate(due.getUTCDate() - t.days_before)

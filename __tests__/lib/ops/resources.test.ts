@@ -35,6 +35,10 @@ describe('createResourceCore', () => {
 })
 
 describe('updateResourceCore', () => {
+  it('rejects a blank name', async () => {
+    await expect(updateResourceCore('o1', 'r1', { name: '   ' })).rejects.toThrow('Name is required')
+  })
+
   it('strips undefined and converts null to a field delete', async () => {
     await updateResourceCore('o1', 'r1', { unit_cost: null, name: 'Beans (dark)' })
     const payload = docUpdateSpy.mock.calls[0][0]

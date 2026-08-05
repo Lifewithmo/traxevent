@@ -2,6 +2,7 @@ import { adminDb } from '@/lib/firebase-admin'
 import type { ChecklistTemplate, ChecklistPhase, ChecklistTemplateStep, EvidenceType } from '@/lib/types'
 
 const PHASES: ChecklistPhase[] = ['prep', 'load-out', 'setup', 'service-close', 'closeout']
+const EVIDENCE_TYPES: EvidenceType[] = ['none', 'photo', 'number']
 
 export interface CreateChecklistTemplateInput {
   name: string
@@ -25,6 +26,10 @@ export async function createChecklistTemplateCore(
   if (!input.name?.trim()) throw new Error('Name is required')
   if (!PHASES.includes(input.phase)) throw new Error('Invalid phase')
   if (!input.steps?.length) throw new Error('At least one step is required')
+  for (const step of input.steps) {
+    if (!step.text?.trim()) throw new Error('Step text is required')
+    if (!EVIDENCE_TYPES.includes(step.evidence)) throw new Error('Invalid evidence type')
+  }
   const ref = checklistTemplatesRef(orgId).doc()
   const template: ChecklistTemplate = {
     id: ref.id,
@@ -97,12 +102,25 @@ export const BUILT_IN_TEMPLATES: Record<string, ChecklistTemplate[]> = {
   ],
 }
 
-/** Org templates if any exist; otherwise built-ins for the pack (general fallback). */
+/**
+ * Built-ins for the pack, merged with the org's own templates: an org
+ * template whose id matches a built-in OVERRIDES that built-in; an org
+ * template with a new id is APPENDED. This lets an org customize e.g.
+ * 'bi-cc-prep' while still inheriting the rest of the pack's built-ins, and
+ * still keeps built-in ids attachable via WorkPackage.checklist_template_ids.
+ */
 export async function getTemplatesForOrg(
   orgId: string,
   industryPackId: string | undefined,
 ): Promise<ChecklistTemplate[]> {
   const own = await listChecklistTemplatesCore(orgId)
-  if (own.length > 0) return own
-  return BUILT_IN_TEMPLATES[industryPackId ?? 'general'] ?? BUILT_IN_TEMPLATES['general']
+  const builtIns = BUILT_IN_TEMPLATES[industryPackId ?? 'general'] ?? BUILT_IN_TEMPLATES['general']
+  if (own.length === 0) return builtIns
+  const ownById = new Map(own.map((t) => [t.id, t]))
+  const merged = builtIns.map((t) => ownById.get(t.id) ?? t)
+  const mergedIds = new Set(merged.map((t) => t.id))
+  for (const t of own) {
+    if (!mergedIds.has(t.id)) merged.push(t)
+  }
+  return merged
 }

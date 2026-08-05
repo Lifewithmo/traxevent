@@ -50,6 +50,7 @@ export async function createResourceCore(orgId: string, input: CreateResourceInp
 /** Guard-free update. undefined = untouched; null = delete the field. */
 export async function updateResourceCore(orgId: string, resourceId: string, updates: ResourceUpdate): Promise<void> {
   if (updates.kind !== undefined && !RESOURCE_KINDS.includes(updates.kind)) throw new Error('Invalid resource kind')
+  if (updates.name !== undefined && !updates.name.trim()) throw new Error('Name is required')
   const cleaned: Record<string, unknown> = {}
   for (const [k, v] of Object.entries(updates)) {
     if (v === undefined) continue
