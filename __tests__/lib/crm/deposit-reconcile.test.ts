@@ -7,6 +7,10 @@ const invoiceDocSetSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const invoiceDocGetSpy = vi.hoisted(() => vi.fn())
 const invoiceDocUpdateSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const leadDocGetSpy = vi.hoisted(() => vi.fn().mockResolvedValue({ exists: false }))
+// issueInvoiceCore (lib/crm/invoices.ts) issues via adminDb.runTransaction against the
+// invoice doc and an org-scoped counters/invoice_number doc — mock both.
+const counterGetSpy = vi.hoisted(() => vi.fn())
+const txSetSpy = vi.hoisted(() => vi.fn())
 
 vi.mock('@/lib/firebase-admin', () => {
   const invoicesCol = {
@@ -23,10 +27,14 @@ vi.mock('@/lib/firebase-admin', () => {
   const leadsCol = {
     doc: vi.fn().mockImplementation(() => ({ get: leadDocGetSpy })),
   }
+  const countersCol = {
+    doc: vi.fn().mockImplementation(() => ({ get: counterGetSpy })),
+  }
   const orgDoc = {
     collection: vi.fn().mockImplementation((sub: string) => {
       if (sub === 'invoices') return invoicesCol
       if (sub === 'leads') return leadsCol
+      if (sub === 'counters') return countersCol
       return {}
     }),
   }
@@ -41,6 +49,12 @@ vi.mock('@/lib/firebase-admin', () => {
           }),
         }
       }),
+      runTransaction: vi.fn().mockImplementation(async (cb: (tx: unknown) => unknown) =>
+        cb({
+          get: (ref: { get: () => unknown }) => ref.get(),
+          set: txSetSpy,
+        })
+      ),
     },
   }
 })
@@ -83,6 +97,7 @@ describe('reconcileProposalDeposit', () => {
     vi.clearAllMocks()
     leadDocGetSpy.mockResolvedValue({ exists: false })
     invoicesListGetSpy.mockResolvedValue({ docs: [] })
+    counterGetSpy.mockResolvedValue({ exists: true, data: () => ({ seq: 1000, prefix: 'INV-' }) })
   })
 
   it('returns early (no writes) when the proposal is not accepted', async () => {
@@ -144,10 +159,16 @@ describe('reconcileProposalDeposit', () => {
     )
     expect(paymentUpdate![0].payment_status).toBe('paid')
 
-    // Lifecycle was moved to issued.
-    const lifecycleUpdate = updateCalls.find((c) => c[0].lifecycle === 'issued')
-    expect(lifecycleUpdate).toBeDefined()
-    expect(lifecycleUpdate![0].issued_at).toBe(payment.paid_at)
+    // Lifecycle was moved to issued and assigned a sequential number via
+    // issueInvoiceCore (a transaction `set` on the invoice, not a plain `.update()`).
+    const lifecycleSet = txSetSpy.mock.calls.find((c) => (c[1] as { lifecycle?: string })?.lifecycle === 'issued')
+    expect(lifecycleSet).toBeDefined()
+    expect((lifecycleSet![1] as { issued_at?: string }).issued_at).toBe(payment.paid_at)
+    expect((lifecycleSet![1] as { number?: string }).number).toEqual(expect.any(String))
+
+    // The org's invoice-number counter was incremented in the same transaction.
+    const counterSet = txSetSpy.mock.calls.find((c) => typeof (c[1] as { seq?: number })?.seq === 'number')
+    expect(counterSet).toBeDefined()
   })
 
   it('is idempotent: a second call against an already-reconciled deposit invoice writes nothing', async () => {
@@ -208,8 +229,9 @@ describe('reconcileProposalDeposit', () => {
     expect(paymentUpdate).toBeDefined()
     expect(paymentUpdate![0].payments).toHaveLength(1)
     expect(paymentUpdate![0].payments[0]).toEqual(expect.objectContaining({ amount: 500 }))
-    const lifecycleUpdate = updateCalls.find((c) => c[0].lifecycle === 'issued')
-    expect(lifecycleUpdate).toBeDefined()
+    const lifecycleSet = txSetSpy.mock.calls.find((c) => (c[1] as { lifecycle?: string })?.lifecycle === 'issued')
+    expect(lifecycleSet).toBeDefined()
+    expect((lifecycleSet![1] as { number?: string }).number).toEqual(expect.any(String))
   })
 
   it('ignores a voided deposit invoice and creates a fresh one instead of resurrecting it', async () => {
@@ -258,8 +280,8 @@ describe('reconcileProposalDeposit', () => {
     const paymentUpdate = updateCalls.find((c) => Array.isArray(c[0].payments))
     expect(paymentUpdate).toBeDefined()
     expect(paymentUpdate![0].payments).toHaveLength(1)
-    const lifecycleUpdate = updateCalls.find((c) => c[0].lifecycle === 'issued')
-    expect(lifecycleUpdate).toBeDefined()
+    const lifecycleSet = txSetSpy.mock.calls.find((c) => (c[1] as { lifecycle?: string })?.lifecycle === 'issued')
+    expect(lifecycleSet).toBeDefined()
   })
 
   it('records the Stripe payment amount, not a recompute of the deposit amount', async () => {
