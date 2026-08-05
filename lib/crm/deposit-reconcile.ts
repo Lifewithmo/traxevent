@@ -34,7 +34,13 @@ export async function reconcileProposalDeposit(
   if (proposal.org_id !== orgId || proposal.lead_id !== leadId) return
 
   const existing = await listInvoicesCore(orgId, leadId)
-  const depositInv = existing.find((i) => i.type === 'deposit' && i.source?.id === proposalId)
+  // Exclude terminal lifecycles: a voided/replaced deposit invoice must never
+  // be matched here — matching it would resurrect it (lifecycle flipped back
+  // to 'issued' below, before recordPaymentCore's own voided/replaced guard
+  // even runs) instead of falling through to create a fresh deposit invoice.
+  const depositInv = existing.find(
+    (i) => i.type === 'deposit' && i.source?.id === proposalId && i.lifecycle !== 'voided' && i.lifecycle !== 'replaced',
+  )
 
   if (depositInv) {
     if ((depositInv.payments?.length ?? 0) > 0) return // already reconciled → no-op

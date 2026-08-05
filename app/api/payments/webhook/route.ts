@@ -123,8 +123,12 @@ export async function POST(req: Request) {
       // Idempotency for the invoice/payment side lives in the reconciler
       // itself, not in this guard.
       if (orgRef) {
+        // Use the PaymentIntent's own `created` (the actual Stripe charge
+        // time), not `now` (webhook processing time) — the invoice's
+        // issued/charge timestamp should reflect when Stripe actually
+        // charged the card, not when this handler happened to run.
         await reconcileProposalDeposit(orgRef.id, proposal.lead_id, proposal.id, {
-          intent_id: pi.id, amount: pi.amount / 100, paid_at: now,
+          intent_id: pi.id, amount: pi.amount / 100, paid_at: new Date(pi.created * 1000).toISOString(),
         })
       }
       return new Response('ok')

@@ -93,13 +93,20 @@ function mockProposalSnapshot(data: Record<string, unknown> | null) {
   })
 }
 
-function succeededEvent(metadata: Record<string, string>, amount = 625000) {
+// The PaymentIntent's own `created` (unix seconds) — the actual Stripe
+// charge time, distinct from `now` (webhook processing time). Fix 2: the
+// reconciler's `paid_at` must be derived from this, not from `now`.
+const PI_CREATED_UNIX = 1722500000
+const PI_CREATED_ISO = new Date(PI_CREATED_UNIX * 1000).toISOString()
+
+function succeededEvent(metadata: Record<string, string>, amount = 625000, created = PI_CREATED_UNIX) {
   return {
     type: 'payment_intent.succeeded',
     data: {
       object: {
         id: 'pi_dep_1',
         amount,
+        created,
         metadata,
       },
     },
@@ -257,7 +264,7 @@ describe('POST /api/payments/webhook', () => {
       expect(reconcileProposalDepositSpy).toHaveBeenCalledTimes(1)
       expect(reconcileProposalDepositSpy).toHaveBeenCalledWith(
         'org-1', 'lead-1', 'prop-1',
-        { intent_id: 'pi_dep_1', amount: 6250, paid_at: expect.any(String) },
+        { intent_id: 'pi_dep_1', amount: 6250, paid_at: PI_CREATED_ISO },
       )
     })
 
@@ -307,7 +314,7 @@ describe('POST /api/payments/webhook', () => {
       expect(reconcileProposalDepositSpy).toHaveBeenCalledTimes(1)
       expect(reconcileProposalDepositSpy).toHaveBeenCalledWith(
         'org-1', 'lead-1', 'prop-1',
-        { intent_id: 'pi_dep_1', amount: 6250, paid_at: expect.any(String) },
+        { intent_id: 'pi_dep_1', amount: 6250, paid_at: PI_CREATED_ISO },
       )
     })
 
@@ -336,7 +343,7 @@ describe('POST /api/payments/webhook', () => {
       expect(reconcileProposalDepositSpy).toHaveBeenCalledTimes(1)
       expect(reconcileProposalDepositSpy).toHaveBeenCalledWith(
         'org-1', 'lead-2', 'prop-2',
-        { intent_id: 'pi_dep_1', amount: 6250, paid_at: expect.any(String) },
+        { intent_id: 'pi_dep_1', amount: 6250, paid_at: PI_CREATED_ISO },
       )
     })
 

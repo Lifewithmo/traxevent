@@ -212,6 +212,56 @@ describe('reconcileProposalDeposit', () => {
     expect(lifecycleUpdate).toBeDefined()
   })
 
+  it('ignores a voided deposit invoice and creates a fresh one instead of resurrecting it', async () => {
+    mockProposal(acceptedProposal())
+    mockExistingInvoices([
+      {
+        id: 'inv-voided',
+        lifecycle: 'voided',
+        type: 'deposit',
+        source: { type: 'proposal', id: 'prop-1' },
+        line_items: [{ description: 'Deposit', quantity: 1, unit_price: 500 }],
+        payments: [],
+        created_at: '',
+      },
+    ])
+    // recordPaymentCore fetches the just-created invoice back from Firestore.
+    invoiceDocGetSpy.mockResolvedValue({
+      exists: true,
+      data: () => ({
+        id: 'new-invoice-id',
+        lifecycle: 'draft',
+        type: 'deposit',
+        source: { type: 'proposal', id: 'prop-1' },
+        line_items: [{ description: 'Deposit', quantity: 1, unit_price: 500 }],
+        payments: [],
+        created_at: '',
+      }),
+    })
+
+    await reconcileProposalDeposit('org-1', 'lead-1', 'prop-1', payment)
+
+    // A new invoice was created. Only the create path (generateFromProposalCore)
+    // ever calls `.set()` — the buggy "resurrect" path would instead go
+    // straight to `.update()` on the voided invoice and never call `.set()`
+    // at all, so this is the assertion that actually distinguishes "created
+    // fresh" from "matched and resurrected the voided invoice".
+    expect(invoiceDocSetSpy).toHaveBeenCalledTimes(1)
+    const created = invoiceDocSetSpy.mock.calls[0][0]
+    expect(created.type).toBe('deposit')
+
+    // The payment was recorded and lifecycle set to issued — on the newly
+    // created invoice (recordPaymentCore itself would throw on a voided
+    // invoice, so this only succeeds because the voided one was never the
+    // target).
+    const updateCalls = invoiceDocUpdateSpy.mock.calls
+    const paymentUpdate = updateCalls.find((c) => Array.isArray(c[0].payments))
+    expect(paymentUpdate).toBeDefined()
+    expect(paymentUpdate![0].payments).toHaveLength(1)
+    const lifecycleUpdate = updateCalls.find((c) => c[0].lifecycle === 'issued')
+    expect(lifecycleUpdate).toBeDefined()
+  })
+
   it('records the Stripe payment amount, not a recompute of the deposit amount', async () => {
     const stripePayment = { intent_id: 'pi_diff', amount: 625, paid_at: '2026-08-05T00:00:00.000Z' }
     const proposal = acceptedProposal()
