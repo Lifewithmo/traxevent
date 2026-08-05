@@ -36,6 +36,7 @@ export const EVENT_PAGES = [
   'people',
   'checkin',
   'reports',
+  'ops',
 ] as const
 
 export type EventPage = typeof EVENT_PAGES[number]
@@ -644,6 +645,156 @@ export interface Vendor {
   cost?: number          // dollars
   status: VendorStatus
   notes?: string
+  created_at: string
+  updated_at?: string
+}
+
+// ── Operations core (spec 2026-08-05 §3) ─────────────────────────────
+
+export type ResourceKind = 'consumable' | 'reusable' | 'serialized'
+
+export interface OpsResource {
+  id: string
+  name: string
+  kind: ResourceKind
+  unit?: string        // display unit for quantities: 'oz', 'each', 'gal'
+  unit_cost?: number   // dollars per unit; feeds closeout margin
+  notes?: string
+  created_at: string
+  updated_at?: string
+}
+
+export type WorkPackageLine =
+  | { kind: 'consumable'; resource_id: string; qty_per_guest: number; base_qty?: number }
+  | { kind: 'equipment'; resource_id: string; qty: number }
+  | { kind: 'labor'; role: string; count: number }   // recorded stub; staffing is a later phase
+
+export interface WorkPackage {
+  id: string
+  name: string
+  description?: string
+  scope?: string                     // customer-facing scope text
+  price: number                      // dollars
+  max_guests?: number
+  lines: WorkPackageLine[]
+  setup_minutes?: number
+  teardown_minutes?: number
+  checklist_template_ids?: string[]  // org checklist templates attached to this package
+  created_at: string
+  updated_at?: string
+}
+
+export type ChecklistPhase = 'prep' | 'load-out' | 'setup' | 'service-close' | 'closeout'
+export type EvidenceType = 'none' | 'photo' | 'number'
+
+export interface ChecklistTemplateStep {
+  text: string
+  evidence: EvidenceType
+}
+
+export interface ChecklistTemplate {
+  id: string
+  name: string
+  phase: ChecklistPhase
+  steps: ChecklistTemplateStep[]
+  created_at: string
+  updated_at?: string
+}
+
+export interface OpsDeadline {
+  id: string          // stable template id, e.g. 'dl-order-consumables'
+  label: string
+  due: string         // ISO date (YYYY-MM-DD)
+  done: boolean
+}
+
+export interface OpsListItem {
+  resource_id: string
+  name: string        // denormalized resource name at derivation time
+  qty: number
+  unit?: string
+  checked: boolean
+}
+
+export interface OpsChecklistStep {
+  text: string
+  evidence: EvidenceType
+  done: boolean
+  evidence_value?: string   // photo URL or recorded number, set on completion
+  done_at?: string
+  done_by?: string          // uid
+}
+
+export interface OpsChecklist {
+  id: string                // instance id = source template id (unique per plan)
+  name: string
+  phase: ChecklistPhase
+  steps: OpsChecklistStep[]
+}
+
+export interface OpsRequirements {
+  guests: number
+  service_start?: string     // ISO datetime
+  service_end?: string
+  site_needs?: string[]      // e.g. ['power', 'water', 'ice', 'parking']
+  notes?: string
+}
+
+export interface OpsChangeEntry {
+  at: string
+  by: string                 // uid, or 'system' for derivation-triggered entries
+  field: string              // requirements field that changed, e.g. 'guests'
+  from?: string              // stringified previous value
+  to?: string                // stringified new value
+}
+
+export interface OpsPlan {
+  package_ids: string[]
+  requirements: OpsRequirements
+  deadlines: OpsDeadline[]
+  shopping_list: OpsListItem[]
+  packing_list: OpsListItem[]
+  checklists: OpsChecklist[]
+  needs_review: boolean      // set when a change re-derived artifacts; cleared by acknowledge
+  change_log: OpsChangeEntry[]
+  industry_pack_id?: string  // pack the plan was derived under (for re-derivation)
+  created_at: string
+  updated_at?: string
+}
+
+export interface CloseoutSummary {
+  planned_consumable_cost: number
+  actual_consumable_cost: number
+  revenue: number            // package prices + recorded sales
+  planned_margin: number     // revenue - planned cost
+  actual_margin: number      // revenue - actual cost
+}
+
+export type IssueSeverity = 'low' | 'medium' | 'high'
+
+export interface OpsIssue {
+  id: string
+  type: string            // free-form category: 'equipment', 'supply', 'venue', 'staff', 'other'
+  severity: IssueSeverity
+  note: string
+  status: 'open' | 'resolved'
+  resolution?: string
+  created_by: string      // uid
+  created_at: string
+  resolved_at?: string
+}
+
+export interface OpsActuals {
+  consumables?: { resource_id: string; qty_used: number }[]
+  hours_worked?: number
+  sales?: number         // tips + on-site sales, dollars
+  waste_notes?: string
+}
+
+export interface OpsCloseout {
+  actuals: OpsActuals
+  completed: boolean     // spec §3.5: the event is not "complete" until this is
+  completed_at?: string
   created_at: string
   updated_at?: string
 }
