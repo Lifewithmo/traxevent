@@ -6,7 +6,12 @@ import { generateAccessToken } from '@/lib/tokens'
 import { assertOrgMember, assertOrgAdmin } from '@/lib/auth/assert'
 import { invoiceAmountDue, amountPaid } from '@/lib/invoices'
 import { normalizeInvoice, formatInvoiceNumber } from '@/lib/invoice-normalize'
-import { previouslyBilled, remainingToBill, assertWithinScope, acceptedProposalTotal } from '@/lib/invoice-progress'
+import {
+  previouslyBilled,
+  assertWithinScope,
+  acceptedProposalTotal,
+  proposalInvoiceLines,
+} from '@/lib/invoice-progress'
 import { depositAmount } from '@/lib/proposals'
 import { assertEditable } from '@/lib/invoice-lock'
 import { derivePaymentStatus } from '@/lib/invoice-status'
@@ -17,6 +22,8 @@ import type {
   InvoiceLineItem,
   InvoicePayment,
   InvoiceType,
+  InvoiceDiscount,
+  InvoiceCredit,
   NormalizedInvoice,
 } from '@/lib/types'
 
@@ -96,29 +103,51 @@ export async function generateFromProposal(
 
   const source = { type: 'proposal' as const, id: proposalId, label: 'Accepted proposal' }
   const lineSource = { type: 'proposal' as const, id: proposalId }
-  let line: InvoiceLineItem
+  const itemLines = proposalInvoiceLines(proposal).map((l) => ({ ...l, source: lineSource }))
+
+  let line_items: InvoiceLineItem[]
+  let discount: InvoiceDiscount | undefined
+  let tax_rate: number | undefined
+  let credits: InvoiceCredit[] | undefined
   switch (opts.type) {
-    case 'deposit':
-      line = { description: 'Deposit', quantity: 1, unit_price: depositAmount(accepted, proposal.deposit), source: lineSource }
+    case 'quick':
+      line_items = itemLines
+      discount = proposal.discount
+      tax_rate = proposal.tax_rate
       break
     case 'final':
-      line = { description: 'Final balance', quantity: 1, unit_price: remainingToBill(accepted, billed), source: lineSource }
+      line_items = itemLines
+      discount = proposal.discount
+      tax_rate = proposal.tax_rate
+      if (billed > 0) credits = [{ description: 'Less: previously billed', amount: billed }]
       break
-    case 'progress':
-      line = { description: 'Progress payment', quantity: 1, unit_price: 0, source: lineSource }
+    case 'deposit':
+      line_items = [{ description: 'Deposit', quantity: 1, unit_price: depositAmount(accepted, proposal.deposit), source: lineSource }]
       break
-    default: // quick
-      line = { description: 'Per accepted proposal', quantity: 1, unit_price: accepted, source: lineSource }
+    default: // progress
+      line_items = [{ description: 'Progress payment', quantity: 1, unit_price: 0, source: lineSource }]
   }
-  const line_items = [line]
 
   if (opts.type !== 'quick') {
-    assertWithinScope(invoiceAmountDue({ line_items }), billed, accepted)
+    assertWithinScope(invoiceAmountDue({ line_items, discount, tax_rate, credits }), billed, accepted)
   }
 
   const invoice = await createInvoice(orgId, leadId, { type: opts.type, line_items })
-  await invoicesRef(orgId).doc(invoice.id).update({ source })
-  return { ...invoice, source }
+  await invoicesRef(orgId)
+    .doc(invoice.id)
+    .update({
+      source,
+      ...(discount ? { discount } : {}),
+      ...(tax_rate ? { tax_rate } : {}),
+      ...(credits ? { credits } : {}),
+    })
+  return {
+    ...invoice,
+    source,
+    ...(discount ? { discount } : {}),
+    ...(tax_rate ? { tax_rate } : {}),
+    ...(credits ? { credits } : {}),
+  }
 }
 
 export interface InvoiceUpdate {
