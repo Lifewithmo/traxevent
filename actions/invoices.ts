@@ -144,6 +144,23 @@ export async function issueInvoice(orgId: string, invoiceId: string): Promise<{ 
   const ref = invoicesRef(orgId).doc(invoiceId)
   const counterRef = adminDb.collection('orgs').doc(orgId).collection('counters').doc('invoice_number')
 
+  // Enforce the scope invariant at issue time, mirroring generateFromProposal's
+  // in-memory check. This must happen with plain (non-transaction) reads —
+  // Firestore transactions cannot run queries — so it's done before we ever
+  // open the transaction below.
+  const preSnap = await ref.get()
+  if (!preSnap.exists) throw new Error('Invoice not found')
+  const preInv = normalizeInvoice(preSnap.data()!)
+  if (preInv.source?.type === 'proposal' && preInv.source.id && preInv.type !== 'quick') {
+    const proposal = await getProposal(orgId, preInv.source.id)
+    if (proposal) {
+      const approved = invoiceTotal(proposal.line_items)
+      const existing = await listInvoices(orgId, preInv.lead_id)
+      const billed = previouslyBilled(existing, preInv.source.id)
+      assertWithinScope(invoiceTotal(preInv.line_items), billed, approved)
+    }
+  }
+
   return adminDb.runTransaction(async (tx) => {
     const snap = await tx.get(ref)
     if (!snap.exists) throw new Error('Invoice not found')
@@ -158,7 +175,7 @@ export async function issueInvoice(orgId: string, invoiceId: string): Promise<{ 
     const number = formatInvoiceNumber(seq, prefix)
     const now = new Date().toISOString()
 
-    tx.update(counterRef, { seq })
+    tx.set(counterRef, { seq }, { merge: true })
     tx.set(ref, { lifecycle: 'issued', number, issued_at: now, updated_at: now }, { merge: true })
     return { number }
   })

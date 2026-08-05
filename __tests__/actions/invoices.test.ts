@@ -259,12 +259,31 @@ describe('invoices actions', () => {
     const res = await issueInvoice('org-1', 'inv-1')
 
     expect(res.number).toBe('INV-1001')
-    expect(txUpdateSpy).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ seq: 1001 }))
+    expect(txSetSpy).toHaveBeenCalledWith(expect.anything(), { seq: 1001 }, { merge: true })
     expect(txSetSpy).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ lifecycle: 'issued', number: 'INV-1001' }),
       { merge: true }
     )
+    expect(txUpdateSpy).not.toHaveBeenCalled()
+  })
+
+  it('issueInvoice seeds the counter doc via set({ merge: true }) when it does not exist yet (first issuance in the org)', async () => {
+    invoiceDocGetSpy.mockResolvedValue({
+      exists: true,
+      data: () => ({
+        id: 'inv-1', org_id: 'org-1', lead_id: 'lead-1', token: 't', lifecycle: 'draft', type: 'quick',
+        line_items: [{ description: 'x', quantity: 1, unit_price: 500 }], payments: [], created_at: '2026-01-01',
+      }),
+    })
+    // No counter doc has ever been created for this org yet.
+    counterGetSpy.mockResolvedValue({ exists: false })
+
+    const res = await issueInvoice('org-1', 'inv-1')
+
+    expect(res.number).toBe('1001')
+    expect(txSetSpy).toHaveBeenCalledWith(expect.anything(), { seq: 1001 }, { merge: true })
+    expect(txUpdateSpy).not.toHaveBeenCalled()
   })
 
   it('issueInvoice throws when the invoice is not draft or approved', async () => {
@@ -274,6 +293,48 @@ describe('invoices actions', () => {
     })
     await expect(issueInvoice('org-1', 'inv-1')).rejects.toThrow(/cannot issue/i)
     expect(txSetSpy).not.toHaveBeenCalled()
+  })
+
+  it('issueInvoice enforces the proposal scope invariant across sibling drafts, not just at generate time', async () => {
+    const proposal = {
+      id: 'p1', org_id: 'org-1', lead_id: 'lead-1', token: 'pt', status: 'accepted',
+      line_items: [{ description: 'Package', quantity: 1, unit_price: 1000 }], created_at: '2026-01-01',
+    }
+    getProposalSpy.mockResolvedValue(proposal)
+
+    const draftA = {
+      id: 'inv-a', org_id: 'org-1', lead_id: 'lead-1', token: 't', lifecycle: 'draft', type: 'progress',
+      line_items: [{ description: 'Milestone 1', quantity: 1, unit_price: 600, source: { type: 'proposal', id: 'p1' } }],
+      payments: [], created_at: '2026-02-01',
+      source: { type: 'proposal', id: 'p1', label: 'Accepted proposal' },
+    }
+    const draftB = {
+      id: 'inv-b', org_id: 'org-1', lead_id: 'lead-1', token: 't', lifecycle: 'draft', type: 'progress',
+      line_items: [{ description: 'Milestone 2', quantity: 1, unit_price: 600, source: { type: 'proposal', id: 'p1' } }],
+      payments: [], created_at: '2026-02-02',
+      source: { type: 'proposal', id: 'p1', label: 'Accepted proposal' },
+    }
+
+    // Issuing draftA: pre-check read + tx.get both see draftA; no sibling invoices issued yet.
+    invoiceDocGetSpy
+      .mockResolvedValueOnce({ exists: true, data: () => draftA })
+      .mockResolvedValueOnce({ exists: true, data: () => draftA })
+    listInvoicesSpy.mockResolvedValueOnce({ docs: [] })
+    counterGetSpy.mockResolvedValue({ exists: true, data: () => ({ seq: 1000 }) })
+
+    const first = await issueInvoice('org-1', 'inv-a')
+    expect(first.number).toBe('1001')
+
+    // Issuing draftB: pre-check read + tx.get both see draftB; draftA now shows up as
+    // already-issued in the sibling list, at $600 already billed against the $1000 proposal.
+    invoiceDocGetSpy
+      .mockResolvedValueOnce({ exists: true, data: () => draftB })
+      .mockResolvedValueOnce({ exists: true, data: () => draftB })
+    listInvoicesSpy.mockResolvedValueOnce({
+      docs: [{ data: () => ({ ...draftA, lifecycle: 'issued', number: '1001' }) }],
+    })
+
+    await expect(issueInvoice('org-1', 'inv-b')).rejects.toThrow(/exceeds approved scope/i)
   })
 
   it('voidInvoice sets lifecycle voided and keeps the number', async () => {
