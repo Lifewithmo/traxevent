@@ -1,5 +1,5 @@
 import type { PublicInvoice } from '@/actions/invoices-public'
-import { lineItemSubtotal, invoiceTotal, INVOICE_STATUS_LABELS } from '@/lib/invoices'
+import { lineItemSubtotal, invoiceTotal } from '@/lib/invoices'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
@@ -16,7 +16,7 @@ function money(n: number): string {
 export function InvoiceViewClient({ invoice }: { invoice: PublicInvoice }) {
   const total = invoiceTotal(invoice.line_items)
   const heading = invoice.number ? `Invoice #${invoice.number}` : 'Invoice'
-  const isPaid = invoice.status === 'paid' || invoice.balance <= 0
+  const isPaid = invoice.balance <= 0
 
   return (
     <main className="min-h-screen bg-gray-50 py-10">
@@ -26,7 +26,7 @@ export function InvoiceViewClient({ invoice }: { invoice: PublicInvoice }) {
             <h1 className="text-2xl font-bold text-gray-900">{heading}</h1>
             {invoice.title && <p className="mt-1 text-gray-600">{invoice.title}</p>}
           </div>
-          <Badge>{INVOICE_STATUS_LABELS[invoice.status]}</Badge>
+          <Badge>{invoice.type}</Badge>
         </div>
 
         <Card>
