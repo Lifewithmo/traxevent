@@ -660,3 +660,23 @@ export interface OpsResource {
   created_at: string
   updated_at?: string
 }
+
+export type WorkPackageLine =
+  | { kind: 'consumable'; resource_id: string; qty_per_guest: number; base_qty?: number }
+  | { kind: 'equipment'; resource_id: string; qty: number }
+  | { kind: 'labor'; role: string; count: number }   // recorded stub; staffing is a later phase
+
+export interface WorkPackage {
+  id: string
+  name: string
+  description?: string
+  scope?: string                     // customer-facing scope text
+  price: number                      // dollars
+  max_guests?: number
+  lines: WorkPackageLine[]
+  setup_minutes?: number
+  teardown_minutes?: number
+  checklist_template_ids?: string[]  // org checklist templates attached to this package
+  created_at: string
+  updated_at?: string
+}
