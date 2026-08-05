@@ -645,3 +645,18 @@ export interface Vendor {
   created_at: string
   updated_at?: string
 }
+
+// ── Operations core (spec 2026-08-05 §3) ─────────────────────────────
+
+export type ResourceKind = 'consumable' | 'reusable' | 'serialized'
+
+export interface OpsResource {
+  id: string
+  name: string
+  kind: ResourceKind
+  unit?: string        // display unit for quantities: 'oz', 'each', 'gal'
+  unit_cost?: number   // dollars per unit; feeds closeout margin
+  notes?: string
+  created_at: string
+  updated_at?: string
+}
