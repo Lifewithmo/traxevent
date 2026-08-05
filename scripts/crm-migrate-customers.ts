@@ -1,27 +1,10 @@
-import { createCustomer, type CreateCustomerInput } from '@/actions/customers'
-import { listLeads, updateLead } from '@/actions/leads'
+import { createCustomerCore, type CreateCustomerInput } from '@/lib/crm/customers'
+import { listLeadsCore, updateLeadCore } from '@/lib/crm/leads'
 import type { Lead } from '@/lib/types'
 
-/**
- * KNOWN LIMITATION — not yet runnable standalone.
- *
- * `leadToCustomerInput` is a pure function and is safe to import/use anywhere.
- *
- * `migrate(orgId)` reuses the existing server actions (`listLeads`,
- * `createCustomer`, `updateLead`), whose guards (`assertOrgMember` /
- * `assertOrgAdmin` → `getCurrentUser` → `next/headers` `cookies()`) require a
- * Next.js request scope. Run as a plain `npx tsx` script, it will throw
- * "cookies was called outside a request scope" on the first action call,
- * before any writes happen (fail-safe — no partial migration). A script-safe
- * / service-account auth path is required before this can actually be run;
- * that is deferred to the later "reshape + reseed" increment, which also
- * re-points proposals/invoices/contracts/vendors and hits this same guard.
- */
+// Run via `npm run crm:migrate` — it sets --conditions=react-server so 'server-only' (imported transitively via lib/firebase-admin) resolves to its no-throw module under tsx.
 
-/**
- * Pure mapping from a Lead's contact fields to a CreateCustomerInput.
- * Spreads only fields that are present on the lead.
- */
+/** Pure mapping from a Lead's contact fields to a CreateCustomerInput (present fields only). */
 export function leadToCustomerInput(lead: Lead): CreateCustomerInput {
   return {
     name: lead.name,
@@ -39,17 +22,14 @@ export interface MigrationSummary {
 }
 
 /**
- * Migration runner: for every lead in `orgId` without a customer_id,
- * create a Customer (deduping by email against customers already created
- * in this run) and link the lead to it via customer_id.
- *
- * This is a one-off script run manually against Firestore with the admin
- * service account — it is not exercised by CI.
+ * For every lead in `orgId` without a customer_id, create a Customer (dedup by
+ * normalized email within the run) and link the lead via customer_id.
+ * Idempotent (already-linked leads are skipped). `dryRun` performs no writes.
  */
-export async function migrate(orgId: string): Promise<MigrationSummary> {
-  const leads = await listLeads(orgId)
+export async function migrate(orgId: string, opts: { dryRun?: boolean } = {}): Promise<MigrationSummary> {
+  const { dryRun = false } = opts
+  const leads = await listLeadsCore(orgId)
   const emailToCustomerId = new Map<string, string>()
-
   let alreadyLinked = 0
   let created = 0
   let deduped = 0
@@ -59,37 +39,36 @@ export async function migrate(orgId: string): Promise<MigrationSummary> {
       alreadyLinked++
       continue
     }
-
-    let customerId: string
-    const email = lead.email
-    const dedupKey = email ? email.trim().toLowerCase() : undefined
+    const dedupKey = lead.email ? lead.email.trim().toLowerCase() : undefined
     const existingId = dedupKey ? emailToCustomerId.get(dedupKey) : undefined
 
+    let customerId: string
     if (existingId) {
       customerId = existingId
       deduped++
     } else {
-      const customer = await createCustomer(orgId, leadToCustomerInput(lead))
-      customerId = customer.id
+      customerId = dryRun ? `dry-${created}` : (await createCustomerCore(orgId, leadToCustomerInput(lead))).id
       created++
       if (dedupKey) emailToCustomerId.set(dedupKey, customerId)
     }
 
-    await updateLead(orgId, lead.id, { customer_id: customerId })
+    if (!dryRun) await updateLeadCore(orgId, lead.id, { customer_id: customerId })
   }
 
   return { totalLeads: leads.length, alreadyLinked, created, deduped }
 }
 
-if (require.main === module) {
+// CLI entrypoint — true under `tsx scripts/crm-migrate-customers.ts`, inert under Vitest import.
+if (process.argv[1]?.endsWith('crm-migrate-customers.ts')) {
   const orgId = process.argv[2]
+  const dryRun = process.argv.includes('--dry-run')
   if (!orgId) {
-    console.error('Usage: npx tsx scripts/crm-migrate-customers.ts <orgId>')
+    console.error('Usage: npm run crm:migrate -- <orgId> [--dry-run]')
     process.exit(1)
   }
-  migrate(orgId)
+  migrate(orgId, { dryRun })
     .then((summary) => {
-      console.log('Migration complete:', summary)
+      console.log(dryRun ? 'DRY RUN — no writes made.' : 'Migration complete.', summary)
       process.exit(0)
     })
     .catch((err) => {
