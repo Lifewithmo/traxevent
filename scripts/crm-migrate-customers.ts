@@ -3,6 +3,22 @@ import { listLeads, updateLead } from '@/actions/leads'
 import type { Lead } from '@/lib/types'
 
 /**
+ * KNOWN LIMITATION — not yet runnable standalone.
+ *
+ * `leadToCustomerInput` is a pure function and is safe to import/use anywhere.
+ *
+ * `migrate(orgId)` reuses the existing server actions (`listLeads`,
+ * `createCustomer`, `updateLead`), whose guards (`assertOrgMember` /
+ * `assertOrgAdmin` → `getCurrentUser` → `next/headers` `cookies()`) require a
+ * Next.js request scope. Run as a plain `npx tsx` script, it will throw
+ * "cookies was called outside a request scope" on the first action call,
+ * before any writes happen (fail-safe — no partial migration). A script-safe
+ * / service-account auth path is required before this can actually be run;
+ * that is deferred to the later "reshape + reseed" increment, which also
+ * re-points proposals/invoices/contracts/vendors and hits this same guard.
+ */
+
+/**
  * Pure mapping from a Lead's contact fields to a CreateCustomerInput.
  * Spreads only fields that are present on the lead.
  */
@@ -46,7 +62,8 @@ export async function migrate(orgId: string): Promise<MigrationSummary> {
 
     let customerId: string
     const email = lead.email
-    const existingId = email ? emailToCustomerId.get(email) : undefined
+    const dedupKey = email ? email.trim().toLowerCase() : undefined
+    const existingId = dedupKey ? emailToCustomerId.get(dedupKey) : undefined
 
     if (existingId) {
       customerId = existingId
@@ -55,7 +72,7 @@ export async function migrate(orgId: string): Promise<MigrationSummary> {
       const customer = await createCustomer(orgId, leadToCustomerInput(lead))
       customerId = customer.id
       created++
-      if (email) emailToCustomerId.set(email, customerId)
+      if (dedupKey) emailToCustomerId.set(dedupKey, customerId)
     }
 
     await updateLead(orgId, lead.id, { customer_id: customerId })
