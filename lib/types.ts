@@ -766,3 +766,17 @@ export interface CloseoutSummary {
   planned_margin: number     // revenue - planned cost
   actual_margin: number      // revenue - actual cost
 }
+
+export type IssueSeverity = 'low' | 'medium' | 'high'
+
+export interface OpsIssue {
+  id: string
+  type: string            // free-form category: 'equipment', 'supply', 'venue', 'staff', 'other'
+  severity: IssueSeverity
+  note: string
+  status: 'open' | 'resolved'
+  resolution?: string
+  created_by: string      // uid
+  created_at: string
+  resolved_at?: string
+}

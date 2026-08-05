@@ -6,7 +6,8 @@ import {
   toggleListItemCore, completeChecklistStepCore, toggleDeadlineCore, acknowledgeReviewCore,
   type InstantiateOpsPlanInput,
 } from '@/lib/ops/event-ops'
-import type { OpsPlan, OpsRequirements } from '@/lib/types'
+import { createIssueCore, resolveIssueCore, listIssuesCore } from '@/lib/ops/issues'
+import type { OpsPlan, OpsRequirements, OpsIssue, IssueSeverity } from '@/lib/types'
 
 // NOTE: 'use server' module — InstantiateOpsPlanInput is imported for typing
 // this file's exports only and is NOT re-exported; import it from
@@ -62,4 +63,22 @@ export async function toggleDeadline(orgId: string, eventId: string, deadlineId:
 export async function acknowledgeReview(orgId: string, eventId: string): Promise<void> {
   const member = await assertOrgMember(orgId)
   return acknowledgeReviewCore(orgId, eventId, member.uid)
+}
+
+export async function listIssues(orgId: string, eventId: string): Promise<OpsIssue[]> {
+  await assertOrgMember(orgId)
+  return listIssuesCore(orgId, eventId)
+}
+
+export async function createIssue(
+  orgId: string, eventId: string,
+  input: { type: string; severity: IssueSeverity; note: string },
+): Promise<OpsIssue> {
+  const member = await assertOrgMember(orgId)
+  return createIssueCore(orgId, eventId, { ...input, created_by: member.uid })
+}
+
+export async function resolveIssue(orgId: string, eventId: string, issueId: string, resolution?: string): Promise<void> {
+  await assertOrgMember(orgId)
+  return resolveIssueCore(orgId, eventId, issueId, resolution)
 }
