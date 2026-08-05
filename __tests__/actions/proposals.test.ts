@@ -159,4 +159,30 @@ describe('proposals actions', () => {
     await deleteProposal('org-1', 'p1')
     expect(proposalDocDeleteSpy).toHaveBeenCalled()
   })
+
+  it('updateProposal passes through packages/discount/tax_rate/deposit/expires_at', async () => {
+    await updateProposal('org-1', 'p1', {
+      packages: [{ id: 'good', name: 'Good', includes: ['A'], price: 12500 }],
+      line_items: [{ id: 'o1', description: 'Lighting', quantity: 1, unit_price: 1500, optional: true }],
+      discount: { type: 'percent', value: 10 },
+      tax_rate: 8.25,
+      deposit: { type: 'percent', value: 50 },
+      expires_at: '2026-09-01',
+    })
+    const written = proposalDocUpdateSpy.mock.calls[0][0]
+    expect(written.packages).toEqual([{ id: 'good', name: 'Good', includes: ['A'], price: 12500 }])
+    expect(written.discount).toEqual({ type: 'percent', value: 10 })
+    expect(written.tax_rate).toBe(8.25)
+    expect(written.deposit).toEqual({ type: 'percent', value: 50 })
+    expect(written.expires_at).toBe('2026-09-01')
+    expect(written.updated_at).toEqual(expect.any(String))
+  })
+
+  it('createProposal includes packages when provided', async () => {
+    await createProposal('org-1', 'lead-1', {
+      packages: [{ id: 'good', name: 'Good', includes: [], price: 100 }],
+    })
+    const written = proposalDocSetSpy.mock.calls[0][0]
+    expect(written.packages).toEqual([{ id: 'good', name: 'Good', includes: [], price: 100 }])
+  })
 })
