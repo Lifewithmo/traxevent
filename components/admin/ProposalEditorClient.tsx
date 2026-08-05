@@ -62,6 +62,15 @@ export function ProposalEditorClient({ orgId, orgSlug, leadId, proposal }: Propo
   const [taxRate, setTaxRate] = useState<string>(proposal.tax_rate != null ? String(proposal.tax_rate) : '')
   const [deposit, setDeposit] = useState<ProposalDeposit | undefined>(proposal.deposit)
   const [expiresAt, setExpiresAt] = useState(proposal.expires_at ?? '')
+  const [depositGate, setDepositGate] = useState<'before_accept' | 'after_accept'>(
+    proposal.deposit_gate ?? 'after_accept',
+  )
+  const [depositTerms, setDepositTerms] = useState(proposal.deposit_terms ?? '')
+
+  // Locked whenever a signature is in progress or complete — `pending_signature`
+  // means a before_accept deposit payment is in flight; editing/deleting during
+  // that window would let the payment webhook later find nothing to promote.
+  const locked = Boolean(proposal.signature) || Boolean(proposal.pending_signature)
 
   const [saving, setSaving] = useState(false)
   const [sending, setSending] = useState(false)
@@ -115,6 +124,8 @@ export function ProposalEditorClient({ orgId, orgSlug, leadId, proposal }: Propo
         tax_rate: taxRate.trim() === '' ? undefined : Number(taxRate),
         deposit,
         expires_at: expiresAt || undefined,
+        deposit_gate: deposit ? depositGate : undefined,
+        deposit_terms: deposit ? depositTerms.trim() || undefined : undefined,
       })
       setLineItems(cleaned)
       setPackages(cleanedPackages)
@@ -159,7 +170,7 @@ export function ProposalEditorClient({ orgId, orgSlug, leadId, proposal }: Propo
   }
 
   const total = proposalTotal(lineItems)
-  const busy = saving || sending || deleting
+  const busy = saving || sending || deleting || locked
 
   const previewProposal = {
     packages: mode === 'packaged' ? packages : undefined,
@@ -188,12 +199,91 @@ export function ProposalEditorClient({ orgId, orgSlug, leadId, proposal }: Propo
         {notice && <p className="text-sm text-muted-foreground">{notice}</p>}
       </div>
 
+      {locked && (
+        <Card className="border-amber-500/50 bg-amber-500/10">
+          <CardContent className="pt-6">
+            <p className="text-sm font-medium">
+              This proposal is signed and locked. Create a new version to make changes.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {proposal.signature && (
+        <Card>
+          <CardHeader><CardTitle className="text-base">Signature &amp; audit</CardTitle></CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+              <div>
+                <p className="text-xs text-muted-foreground">Signer</p>
+                <p>{proposal.signature.signer_name}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Email</p>
+                <p>{proposal.signature.signer_email}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Signed at (UTC)</p>
+                <p>{new Date(proposal.signature.signed_at).toISOString().replace('T', ' ').replace('Z', ' UTC')}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">IP address</p>
+                <p>{proposal.signature.ip}</p>
+              </div>
+              <div className="col-span-2">
+                <p className="text-xs text-muted-foreground">User agent</p>
+                <p className="break-all">{proposal.signature.user_agent}</p>
+              </div>
+              <div className="col-span-2">
+                <p className="text-xs text-muted-foreground">Document hash</p>
+                <p className="font-mono text-xs break-all">{proposal.signature.document_hash}</p>
+              </div>
+            </div>
+
+            {(proposal.payment_status || proposal.deposit_payment) && (
+              <div className="border-t border-border pt-3 space-y-1">
+                {proposal.payment_status && (
+                  <p>
+                    <span className="text-xs text-muted-foreground">Payment status: </span>
+                    {proposal.payment_status}
+                  </p>
+                )}
+                {proposal.deposit_payment && (
+                  <p>
+                    <span className="text-xs text-muted-foreground">Deposit paid: </span>
+                    {money(proposal.deposit_payment.amount)}
+                    {proposal.deposit_payment.paid_at &&
+                      ` on ${new Date(proposal.deposit_payment.paid_at).toISOString().replace('T', ' ').replace('Z', ' UTC')}`}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {proposal.events && proposal.events.length > 0 && (
+              <div className="border-t border-border pt-3 space-y-1">
+                <p className="text-xs text-muted-foreground">Events</p>
+                <ul className="space-y-1">
+                  {proposal.events.map((ev, i) => (
+                    <li key={i} className="text-xs">
+                      <span className="font-medium">{ev.kind}</span>
+                      {' — '}
+                      {new Date(ev.at).toISOString().replace('T', ' ').replace('Z', ' UTC')}
+                      {ev.ip && ` — ${ev.ip}`}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardHeader><CardTitle className="text-base">Details</CardTitle></CardHeader>
         <CardContent className="space-y-3">
           <div className="space-y-1">
             <Label htmlFor="propTitle">Title</Label>
-            <Input id="propTitle" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Proposal title" />
+            <Input id="propTitle" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Proposal title" disabled={locked} />
           </div>
           <div className="space-y-1">
             <Label htmlFor="propNotes">Notes</Label>
@@ -202,6 +292,7 @@ export function ProposalEditorClient({ orgId, orgSlug, leadId, proposal }: Propo
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Notes for the client"
+              disabled={locked}
               className="flex min-h-24 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             />
           </div>
@@ -250,6 +341,7 @@ export function ProposalEditorClient({ orgId, orgSlug, leadId, proposal }: Propo
                       value={pkg.name}
                       onChange={(e) => updatePackage(i, { name: e.target.value })}
                       placeholder="e.g. Good / Better / Best"
+                      disabled={locked}
                     />
                   </div>
                   <div className="w-28 space-y-1">
@@ -259,6 +351,7 @@ export function ProposalEditorClient({ orgId, orgSlug, leadId, proposal }: Propo
                       type="number"
                       value={String(pkg.price)}
                       onChange={(e) => updatePackage(i, { price: toNumber(e.target.value) })}
+                      disabled={locked}
                     />
                   </div>
                   <div className="flex items-center gap-1 pb-2">
@@ -267,6 +360,7 @@ export function ProposalEditorClient({ orgId, orgSlug, leadId, proposal }: Propo
                       type="checkbox"
                       checked={pkg.recommended ?? false}
                       onChange={(e) => updatePackage(i, { recommended: e.target.checked })}
+                      disabled={locked}
                     />
                     <Label htmlFor={`pkg-recommended-${i}`}>Recommended</Label>
                   </div>
@@ -283,6 +377,7 @@ export function ProposalEditorClient({ orgId, orgSlug, leadId, proposal }: Propo
                       })
                     }
                     placeholder="One bullet per line"
+                    disabled={locked}
                     className="flex min-h-16 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                   />
                 </div>
@@ -311,6 +406,7 @@ export function ProposalEditorClient({ orgId, orgSlug, leadId, proposal }: Propo
                   value={item.description}
                   onChange={(e) => updateRow(i, { description: e.target.value })}
                   placeholder="Service or item"
+                  disabled={locked}
                 />
               </div>
               <div className="w-20 space-y-1">
@@ -320,6 +416,7 @@ export function ProposalEditorClient({ orgId, orgSlug, leadId, proposal }: Propo
                   type="number"
                   value={String(item.quantity)}
                   onChange={(e) => updateRow(i, { quantity: toNumber(e.target.value) })}
+                  disabled={locked}
                 />
               </div>
               <div className="w-28 space-y-1">
@@ -329,6 +426,7 @@ export function ProposalEditorClient({ orgId, orgSlug, leadId, proposal }: Propo
                   type="number"
                   value={String(item.unit_price)}
                   onChange={(e) => updateRow(i, { unit_price: toNumber(e.target.value) })}
+                  disabled={locked}
                 />
               </div>
               <div className="w-24 space-y-1">
@@ -341,6 +439,7 @@ export function ProposalEditorClient({ orgId, orgSlug, leadId, proposal }: Propo
                   type="checkbox"
                   checked={item.optional ?? false}
                   onChange={(e) => updateRow(i, { optional: e.target.checked })}
+                  disabled={locked}
                 />
                 <Label htmlFor={`optional-${i}`}>Optional</Label>
               </div>
@@ -368,6 +467,7 @@ export function ProposalEditorClient({ orgId, orgSlug, leadId, proposal }: Propo
                   const t = e.target.value
                   setDiscount(t === 'none' ? undefined : { type: t as 'percent' | 'fixed', value: discount?.value ?? 0 })
                 }}
+                disabled={locked}
                 className="flex h-8 w-full rounded-md border border-input bg-transparent px-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               >
                 <option value="none">None</option>
@@ -381,7 +481,7 @@ export function ProposalEditorClient({ orgId, orgSlug, leadId, proposal }: Propo
                 id="discountValue"
                 type="number"
                 value={String(discount?.value ?? 0)}
-                disabled={!discount}
+                disabled={locked || !discount}
                 onChange={(e) => setDiscount((prev) => (prev ? { ...prev, value: toNumber(e.target.value) } : prev))}
               />
             </div>
@@ -389,7 +489,7 @@ export function ProposalEditorClient({ orgId, orgSlug, leadId, proposal }: Propo
 
           <div className="w-28 space-y-1">
             <Label htmlFor="taxRate">Tax rate (%)</Label>
-            <Input id="taxRate" type="number" value={taxRate} onChange={(e) => setTaxRate(e.target.value)} />
+            <Input id="taxRate" type="number" value={taxRate} onChange={(e) => setTaxRate(e.target.value)} disabled={locked} />
           </div>
 
           <div className="flex flex-wrap items-end gap-2">
@@ -402,6 +502,7 @@ export function ProposalEditorClient({ orgId, orgSlug, leadId, proposal }: Propo
                   const t = e.target.value
                   setDeposit(t === 'none' ? undefined : { type: t as 'percent' | 'fixed', value: deposit?.value ?? 0 })
                 }}
+                disabled={locked}
                 className="flex h-8 w-full rounded-md border border-input bg-transparent px-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               >
                 <option value="none">None</option>
@@ -415,15 +516,44 @@ export function ProposalEditorClient({ orgId, orgSlug, leadId, proposal }: Propo
                 id="depositValue"
                 type="number"
                 value={String(deposit?.value ?? 0)}
-                disabled={!deposit}
+                disabled={locked || !deposit}
                 onChange={(e) => setDeposit((prev) => (prev ? { ...prev, value: toNumber(e.target.value) } : prev))}
               />
             </div>
           </div>
 
+          {deposit && (
+            <div className="space-y-3 border-t border-border pt-3">
+              <div className="w-64 space-y-1">
+                <Label htmlFor="depositGate">Deposit gate</Label>
+                <select
+                  id="depositGate"
+                  value={depositGate}
+                  onChange={(e) => setDepositGate(e.target.value as 'before_accept' | 'after_accept')}
+                  disabled={locked}
+                  className="flex h-8 w-full rounded-md border border-input bg-transparent px-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                >
+                  <option value="after_accept">Request deposit after acceptance</option>
+                  <option value="before_accept">Require deposit before accepting</option>
+                </select>
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="depositTerms">Cancellation / refund policy (shown to the client at signing)</Label>
+                <textarea
+                  id="depositTerms"
+                  value={depositTerms}
+                  onChange={(e) => setDepositTerms(e.target.value)}
+                  placeholder="e.g. Deposit is non-refundable within 30 days of the event date."
+                  disabled={locked}
+                  className="flex min-h-20 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                />
+              </div>
+            </div>
+          )}
+
           <div className="w-44 space-y-1">
             <Label htmlFor="expiresAt">Expires</Label>
-            <Input id="expiresAt" type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} />
+            <Input id="expiresAt" type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} disabled={locked} />
           </div>
         </CardContent>
       </Card>

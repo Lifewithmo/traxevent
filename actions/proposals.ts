@@ -21,6 +21,8 @@ export interface CreateProposalInput {
   tax_rate?: number
   deposit?: ProposalDeposit
   expires_at?: string
+  deposit_gate?: 'before_accept' | 'after_accept'
+  deposit_terms?: string
 }
 
 export async function listProposals(orgId: string, leadId: string): Promise<Proposal[]> {
@@ -59,6 +61,8 @@ export async function createProposal(orgId: string, leadId: string, input: Creat
     ...(typeof input.tax_rate === 'number' ? { tax_rate: input.tax_rate } : {}),
     ...(input.deposit ? { deposit: input.deposit } : {}),
     ...(input.expires_at ? { expires_at: input.expires_at } : {}),
+    ...(input.deposit_gate ? { deposit_gate: input.deposit_gate } : {}),
+    ...(input.deposit_terms?.trim() ? { deposit_terms: input.deposit_terms.trim() } : {}),
   }
   await proposalsRef(orgId).doc(id).set(proposal)
   return proposal
@@ -74,11 +78,22 @@ export interface ProposalUpdate {
   tax_rate?: number
   deposit?: ProposalDeposit
   expires_at?: string
+  deposit_gate?: 'before_accept' | 'after_accept'
+  deposit_terms?: string
 }
 
 export async function updateProposal(orgId: string, proposalId: string, updates: ProposalUpdate): Promise<void> {
   await assertOrgAdmin(orgId)
   if (updates.status && !PROPOSAL_STATUSES.includes(updates.status)) throw new Error('Invalid status')
+
+  const ref = proposalsRef(orgId).doc(proposalId)
+  const snap = await ref.get()
+  if (snap?.exists) {
+    const data = snap.data() as Proposal
+    if (data.signature || data.pending_signature) {
+      throw new Error('This proposal is signed and can no longer be edited')
+    }
+  }
 
   // Firestore rejects `undefined` (ignoreUndefinedProperties is off). Unlike the partial-update
   // callers in events.ts/leads.ts (where an omitted/undefined key means "leave unchanged"), the
@@ -91,15 +106,31 @@ export async function updateProposal(orgId: string, proposalId: string, updates:
     cleaned[k] = v === undefined ? FieldValue.delete() : v
   }
 
-  await proposalsRef(orgId).doc(proposalId).update({ ...cleaned, updated_at: new Date().toISOString() })
+  await ref.update({ ...cleaned, updated_at: new Date().toISOString() })
 }
 
 export async function sendProposal(orgId: string, proposalId: string): Promise<void> {
   await assertOrgAdmin(orgId)
-  await proposalsRef(orgId).doc(proposalId).update({ status: 'sent', updated_at: new Date().toISOString() })
+  const ref = proposalsRef(orgId).doc(proposalId)
+  const snap = await ref.get()
+  if (snap?.exists) {
+    const data = snap.data() as Proposal
+    if (data.signature || data.pending_signature) {
+      throw new Error('This proposal is signed and can no longer be edited')
+    }
+  }
+  await ref.update({ status: 'sent', updated_at: new Date().toISOString() })
 }
 
 export async function deleteProposal(orgId: string, proposalId: string): Promise<void> {
   await assertOrgAdmin(orgId)
-  await proposalsRef(orgId).doc(proposalId).delete()
+  const ref = proposalsRef(orgId).doc(proposalId)
+  const snap = await ref.get()
+  if (snap?.exists) {
+    const data = snap.data() as Proposal
+    if (data.signature || data.pending_signature) {
+      throw new Error('This proposal is signed and can no longer be edited')
+    }
+  }
+  await ref.delete()
 }
