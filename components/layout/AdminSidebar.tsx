@@ -79,6 +79,7 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
   const has = (m: ModuleId) => !enabledModules || enabledModules.includes(m)
 
   const salesLinks = [
+    { module: 'leads' as ModuleId, label: 'Today', slug: 'today' },
     { module: 'leads' as ModuleId, label: 'Pipeline', slug: 'leads' },
     { module: 'clients' as ModuleId, label: 'Clients', slug: 'clients' },
     { module: 'proposals' as ModuleId, label: 'Proposals', slug: 'proposals' },

@@ -12,6 +12,7 @@ import { AdminSidebar } from '@/components/layout/AdminSidebar'
 describe('AdminSidebar workspace nav gating', () => {
   it('shows every workspace link when enabledModules is omitted', () => {
     render(<AdminSidebar orgSlug="acme" />)
+    expect(screen.getByText('Today')).toBeInTheDocument()
     expect(screen.getByText('Pipeline')).toBeInTheDocument()
     expect(screen.getByText('Registrants')).toBeInTheDocument()
     expect(screen.getByText('Vendors')).toBeInTheDocument()
