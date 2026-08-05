@@ -1,5 +1,5 @@
 import type {
-  InvoiceLifecycle, InvoicePaymentStatus, InvoiceAgingBucket,
+  InvoiceLifecycle, InvoicePaymentStatus, InvoiceAgingBucket, InvoiceType,
 } from '@/lib/types'
 
 export const INVOICE_LIFECYCLES: InvoiceLifecycle[] = ['draft', 'approved', 'issued', 'voided', 'replaced', 'closed']
@@ -7,6 +7,10 @@ export const INVOICE_LIFECYCLES: InvoiceLifecycle[] = ['draft', 'approved', 'iss
 export const INVOICE_LIFECYCLE_LABELS: Record<InvoiceLifecycle, string> = {
   draft: 'Draft', approved: 'Approved', issued: 'Issued',
   voided: 'Voided', replaced: 'Replaced', closed: 'Closed',
+}
+
+export const INVOICE_TYPE_LABELS: Record<InvoiceType, string> = {
+  quick: 'Quick', deposit: 'Deposit', progress: 'Progress', final: 'Final',
 }
 
 // Whole days from `due` to `now` (positive = overdue).

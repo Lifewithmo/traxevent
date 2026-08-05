@@ -1,5 +1,6 @@
 import type { PublicInvoice } from '@/actions/invoices-public'
 import { lineItemSubtotal, invoiceTotal } from '@/lib/invoices'
+import { INVOICE_TYPE_LABELS } from '@/lib/invoice-status'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
@@ -26,7 +27,7 @@ export function InvoiceViewClient({ invoice }: { invoice: PublicInvoice }) {
             <h1 className="text-2xl font-bold text-gray-900">{heading}</h1>
             {invoice.title && <p className="mt-1 text-gray-600">{invoice.title}</p>}
           </div>
-          <Badge>{invoice.type}</Badge>
+          <Badge>{INVOICE_TYPE_LABELS[invoice.type]}</Badge>
         </div>
 
         <Card>
