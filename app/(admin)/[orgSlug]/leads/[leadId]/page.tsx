@@ -3,11 +3,15 @@ export const dynamic = 'force-dynamic'
 import { notFound } from 'next/navigation'
 import { adminDb } from '@/lib/firebase-admin'
 import { getLead } from '@/actions/leads'
+import { getCustomer } from '@/actions/customers'
+import { listTasks } from '@/actions/tasks'
+import { listActivity } from '@/actions/activity'
 import { listProposals } from '@/actions/proposals'
 import { listInvoices } from '@/actions/invoices'
 import { listContracts } from '@/actions/contracts'
 import { listVendors } from '@/actions/vendors'
-import { LeadDetailClient } from '@/components/admin/LeadDetailClient'
+import { OpportunityDetailClient } from '@/components/admin/OpportunityDetailClient'
+import { AttachmentChips } from '@/components/admin/opportunity/AttachmentChips'
 import { LeadProposalsClient } from '@/components/admin/LeadProposalsClient'
 import { LeadInvoicesClient } from '@/components/admin/LeadInvoicesClient'
 import { LeadContractsClient } from '@/components/admin/LeadContractsClient'
@@ -19,15 +23,36 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ org
   const orgSnap = await adminDb.collection('orgs').where('slug', '==', orgSlug).limit(1).get()
   if (orgSnap.empty) notFound()
   const orgId = orgSnap.docs[0].id
+
   const lead = await getLead(orgId, leadId)
   if (!lead) notFound()
-  const proposals = await listProposals(orgId, leadId)
-  const invoices = await listInvoices(orgId, leadId)
-  const contracts = await listContracts(orgId, leadId)
-  const vendors = await listVendors(orgId, leadId)
+
+  const [customer, tasks, activity, proposals, invoices, contracts, vendors] = await Promise.all([
+    lead.customer_id ? getCustomer(orgId, lead.customer_id) : Promise.resolve(null),
+    listTasks(orgId, leadId),
+    listActivity(orgId, 'opportunity', leadId),
+    listProposals(orgId, leadId),
+    listInvoices(orgId, leadId),
+    listContracts(orgId, leadId),
+    listVendors(orgId, leadId),
+  ])
+
   return (
     <>
-      <LeadDetailClient orgId={orgId} orgSlug={orgSlug} lead={lead} />
+      <OpportunityDetailClient
+        orgId={orgId}
+        orgSlug={orgSlug}
+        lead={lead}
+        customer={customer}
+        tasks={tasks}
+        activity={activity}
+      />
+
+      <div className="mx-auto max-w-5xl space-y-4 px-6 pb-2">
+        <h2 className="text-sm font-semibold text-muted-foreground">Attachments</h2>
+        <AttachmentChips proposals={proposals} invoices={invoices} contracts={contracts} vendors={vendors} />
+      </div>
+
       <LeadProposalsClient orgId={orgId} orgSlug={orgSlug} leadId={leadId} proposals={proposals} />
       <LeadInvoicesClient orgId={orgId} orgSlug={orgSlug} leadId={leadId} invoices={invoices} />
       <LeadContractsClient orgId={orgId} orgSlug={orgSlug} leadId={leadId} contracts={contracts} />

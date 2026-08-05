@@ -35,7 +35,7 @@ vi.mock('@/lib/auth/assert', () => ({
 
 vi.mock('@/lib/activity', () => ({ logActivity: vi.fn().mockResolvedValue(undefined) }))
 
-import { createTask, listTasks, completeTask, deleteTask } from '@/actions/tasks'
+import { createTask, listTasks, completeTask, deleteTask, snoozeTask } from '@/actions/tasks'
 
 describe('createTask', () => {
   beforeEach(() => vi.clearAllMocks())
@@ -91,5 +91,20 @@ describe('deleteTask', () => {
   it('deletes the task document', async () => {
     await deleteTask('o1', 'l1', 't1')
     expect(taskDocSpy.delete).toHaveBeenCalled()
+  })
+})
+
+describe('snoozeTask', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('updates the due_date', async () => {
+    await snoozeTask('o1', 'l1', 't1', '2026-08-08')
+    expect(taskDocSpy.update).toHaveBeenCalledWith(
+      expect.objectContaining({ due_date: '2026-08-08' })
+    )
+  })
+
+  it('rejects a blank date', async () => {
+    await expect(snoozeTask('o1', 'l1', 't1', '  ')).rejects.toThrow('due date')
   })
 })
