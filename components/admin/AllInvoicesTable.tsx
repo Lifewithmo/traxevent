@@ -43,7 +43,7 @@ export function AllInvoicesTable({ orgSlug, rows }: AllInvoicesTableProps) {
                     </Link>
                   </td>
                   <td className="px-3 py-2">{inv.clientName || '—'}</td>
-                  <td className="px-3 py-2"><Badge variant="secondary">{INVOICE_STATUS_LABELS[inv.status]}</Badge></td>
+                  <td className="px-3 py-2"><Badge variant="secondary">{INVOICE_STATUS_LABELS[inv.status ?? 'draft']}</Badge></td>
                   <td className="px-3 py-2 text-right">${invoiceTotal(inv.line_items).toFixed(2)}</td>
                   <td className="px-3 py-2 text-right">${invoiceBalance(inv).toFixed(2)}</td>
                 </tr>

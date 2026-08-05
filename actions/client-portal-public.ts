@@ -70,6 +70,7 @@ export async function getClientPortal(token: string): Promise<ClientPortal | nul
 
   const invoices: ClientPortalInvoice[] = invSnap.docs
     .map((d) => d.data() as Invoice)
+    .map((i) => ({ ...i, status: i.status ?? 'draft' }))
     .filter((i) => i.status !== 'draft')
     .map((i) => ({
       status: i.status,

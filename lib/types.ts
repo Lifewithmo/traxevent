@@ -19,6 +19,7 @@ export interface Org {
   sending_domain_id?: string
   sending_domain_status?: SendingDomainStatus
   sending_domain_records?: DomainDnsRecord[]
+  tips_enabled?: boolean
   created_at: string
 }
 
@@ -420,10 +421,21 @@ export type InvoiceDisputeStatus = 'none' | 'question' | 'under_review' | 'adjus
 export type InvoicePaymentStatus = 'not_due' | 'due' | 'partial' | 'paid' | 'overpaid' | 'refunded' | 'void'
 export type InvoiceAgingBucket = 'current' | 'due_soon' | 'due_today' | 'd1_30' | 'd31_60' | 'd61_90' | 'd90_plus'
 
+export type InvoiceSourceType =
+  | 'proposal' | 'change_order' | 'job' | 'milestone'
+  | 'time' | 'expense' | 'recurring' | 'manual'
+
+export interface InvoiceSourceRef {
+  type: InvoiceSourceType
+  id?: string      // e.g. accepted proposal id
+  label?: string   // human ref, e.g. "Accepted proposal"
+}
+
 export interface InvoiceLineItem {
   description: string
   quantity: number
   unit_price: number   // dollars
+  source?: InvoiceSourceRef
 }
 
 export interface InvoicePayment {
@@ -436,18 +448,43 @@ export interface InvoicePayment {
 
 export interface Invoice {
   id: string
-  org_id: string       // denormalized for collectionGroup token lookups
+  org_id: string
   lead_id: string
-  token: string        // unguessable public link token
-  number?: string      // human-facing invoice number, optional
+  customer_id?: string          // CRM seam — populated when Customer ships
+  token: string
+  schema_version?: number       // absent/legacy => v1; new invoices => 2
+
+  type?: InvoiceType
+  lifecycle?: InvoiceLifecycle
+  delivery?: InvoiceDeliveryStatus
+  accounting?: InvoiceAccountingStatus
+  dispute?: InvoiceDisputeStatus
+  status?: InvoiceStatus         // DEPRECATED legacy field — removed in a later task
+
+  source?: InvoiceSourceRef
+  number?: string
   title?: string
-  status: InvoiceStatus
   line_items: InvoiceLineItem[]
   payments: InvoicePayment[]
   notes?: string
-  due_date?: string    // ISO date, optional
+  due_date?: string
+  tips_enabled?: boolean
+
+  payment_status?: InvoicePaymentStatus  // materialized cache for future indexed views
+
+  replaces_id?: string
+  replaced_by_id?: string
+  issued_at?: string
   created_at: string
   updated_at?: string
+}
+
+export type NormalizedInvoice = Invoice & {
+  type: InvoiceType
+  lifecycle: InvoiceLifecycle
+  delivery: InvoiceDeliveryStatus
+  accounting: InvoiceAccountingStatus
+  dispute: InvoiceDisputeStatus
 }
 
 export type ContractStatus = 'draft' | 'sent' | 'signed'

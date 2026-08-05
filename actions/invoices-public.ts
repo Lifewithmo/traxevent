@@ -29,9 +29,10 @@ export async function getPublicInvoice(token: string): Promise<PublicInvoice | n
   const doc = await findInvoiceByToken(token)
   if (!doc) return null
   const invoice = doc.data() as Invoice
-  if (invoice.status === 'draft') return null
+  const status: InvoiceStatus = invoice.status ?? 'draft'
+  if (status === 'draft') return null
   const publicInvoice: PublicInvoice = {
-    status: invoice.status,
+    status,
     line_items: invoice.line_items,
     amount_paid: amountPaid(invoice.payments ?? []),
     balance: invoiceBalance(invoice),

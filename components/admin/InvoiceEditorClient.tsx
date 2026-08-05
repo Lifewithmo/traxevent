@@ -41,7 +41,7 @@ export function InvoiceEditorClient({ orgId, orgSlug, leadId, invoice }: Invoice
   const [dueDate, setDueDate] = useState(invoice.due_date ?? '')
   const [notes, setNotes] = useState(invoice.notes ?? '')
   const [lineItems, setLineItems] = useState<InvoiceLineItem[]>(invoice.line_items ?? [])
-  const [status, setStatus] = useState(invoice.status)
+  const [status, setStatus] = useState(invoice.status ?? 'draft')
 
   const [saving, setSaving] = useState(false)
   const [sending, setSending] = useState(false)

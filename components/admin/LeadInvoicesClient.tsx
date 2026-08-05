@@ -71,7 +71,7 @@ export function LeadInvoicesClient({ orgId, orgSlug, leadId, invoices }: LeadInv
                   <span className="text-sm font-medium">
                     {inv.number ? `#${inv.number} ` : ''}{inv.title || 'Invoice'}
                   </span>
-                  <Badge variant="secondary">{INVOICE_STATUS_LABELS[inv.status]}</Badge>
+                  <Badge variant="secondary">{INVOICE_STATUS_LABELS[inv.status ?? 'draft']}</Badge>
                 </div>
                 <p className="text-xs text-muted-foreground">
                   {money(invoiceTotal(inv.line_items))} · balance {money(invoiceBalance(inv))}
