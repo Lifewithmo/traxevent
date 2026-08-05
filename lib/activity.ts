@@ -21,5 +21,12 @@ export async function logActivity(
 ): Promise<void> {
   const id = randomBytes(8).toString('hex')
   const created_at = new Date().toISOString()
-  await activityRef(orgId).doc(id).set({ id, created_at, ...e })
+  try {
+    await activityRef(orgId).doc(id).set({ id, created_at, ...e })
+  } catch (err) {
+    // Best-effort telemetry: the caller's real business write has already
+    // committed by the time logActivity runs, so a failure here must never
+    // bubble up and fail an already-successful mutation.
+    console.error('logActivity failed', err)
+  }
 }

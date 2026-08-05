@@ -50,6 +50,7 @@ import {
   setLeadStage,
   deleteLead,
 } from '@/actions/leads'
+import { logActivity } from '@/lib/activity'
 
 describe('leads actions', () => {
   beforeEach(() => vi.clearAllMocks())
@@ -133,6 +134,38 @@ describe('leads actions', () => {
       updateLead('org-1', 'l1', { stage: 'nope' })
     ).rejects.toThrow('Invalid stage')
     expect(leadDocUpdateSpy).not.toHaveBeenCalled()
+  })
+
+  it('updateLead logs a stage ActivityEvent when the stage actually changes', async () => {
+    leadDocGetSpy.mockResolvedValue({
+      exists: true,
+      data: () => ({ id: 'l1', name: 'X', stage: 'inquiry', created_at: '' }),
+    })
+    await updateLead('org-1', 'l1', { stage: 'proposal' })
+    expect(logActivity).toHaveBeenCalledTimes(1)
+    expect(logActivity).toHaveBeenCalledWith(
+      'org-1',
+      expect.objectContaining({
+        parent_type: 'opportunity',
+        parent_id: 'l1',
+        kind: 'stage',
+        summary: 'Stage → proposal',
+      })
+    )
+  })
+
+  it('updateLead does not log when the stage is unchanged', async () => {
+    leadDocGetSpy.mockResolvedValue({
+      exists: true,
+      data: () => ({ id: 'l1', name: 'X', stage: 'inquiry', created_at: '' }),
+    })
+    await updateLead('org-1', 'l1', { stage: 'inquiry' })
+    expect(logActivity).not.toHaveBeenCalled()
+  })
+
+  it('updateLead does not log for a non-stage update', async () => {
+    await updateLead('org-1', 'l1', { notes: 'x' })
+    expect(logActivity).not.toHaveBeenCalled()
   })
 
   it('setLeadStage throws "Invalid stage" for a bad stage and does not update', async () => {

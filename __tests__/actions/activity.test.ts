@@ -47,6 +47,13 @@ describe('logActivity', () => {
       })
     )
   })
+
+  it('is best-effort: does not reject when the underlying write fails', async () => {
+    activityDocSpy.set.mockRejectedValueOnce(new Error('firestore down'))
+    await expect(
+      logActivity('o1', { parent_type: 'opportunity', parent_id: 'p1', kind: 'stage', summary: 'x' })
+    ).resolves.toBeUndefined()
+  })
 })
 
 describe('listActivity', () => {
