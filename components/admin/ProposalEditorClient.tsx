@@ -105,17 +105,19 @@ export function ProposalEditorClient({ orgId, orgSlug, leadId, proposal }: Propo
     setSaving(true); setError(null); setNotice(null)
     try {
       const cleaned = lineItems.filter((item) => !isBlankRow(item))
+      const cleanedPackages = packages.filter((p) => p.name.trim() !== '' || p.price > 0)
       await updateProposal(orgId, proposal.id, {
         title: title.trim() || undefined,
         notes: notes.trim() || undefined,
         line_items: cleaned,
-        packages: mode === 'packaged' ? packages.filter((p) => p.name.trim() !== '' || p.price > 0) : [],
+        packages: mode === 'packaged' ? cleanedPackages : [],
         discount,
         tax_rate: taxRate.trim() === '' ? undefined : Number(taxRate),
         deposit,
         expires_at: expiresAt || undefined,
       })
       setLineItems(cleaned)
+      setPackages(cleanedPackages)
       setNotice('Saved.')
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to save')

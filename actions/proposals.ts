@@ -1,6 +1,7 @@
 'use server'
 
 import { adminDb } from '@/lib/firebase-admin'
+import { FieldValue } from 'firebase-admin/firestore'
 import { randomBytes } from 'crypto'
 import { generateAccessToken } from '@/lib/tokens'
 import { assertOrgMember, assertOrgAdmin } from '@/lib/auth/assert'
@@ -78,7 +79,19 @@ export interface ProposalUpdate {
 export async function updateProposal(orgId: string, proposalId: string, updates: ProposalUpdate): Promise<void> {
   await assertOrgAdmin(orgId)
   if (updates.status && !PROPOSAL_STATUSES.includes(updates.status)) throw new Error('Invalid status')
-  await proposalsRef(orgId).doc(proposalId).update({ ...updates, updated_at: new Date().toISOString() })
+
+  // Firestore rejects `undefined` (ignoreUndefinedProperties is off). Unlike the partial-update
+  // callers in events.ts/leads.ts (where an omitted/undefined key means "leave unchanged"), the
+  // proposal editor always sends its full pricing-terms state, so an `undefined` value here means
+  // "the user cleared this field" — map it to FieldValue.delete() rather than dropping the key
+  // (which would leave a stale discount/deposit/expiration in Firestore) or passing it raw
+  // (which throws).
+  const cleaned: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(updates)) {
+    cleaned[k] = v === undefined ? FieldValue.delete() : v
+  }
+
+  await proposalsRef(orgId).doc(proposalId).update({ ...cleaned, updated_at: new Date().toISOString() })
 }
 
 export async function sendProposal(orgId: string, proposalId: string): Promise<void> {

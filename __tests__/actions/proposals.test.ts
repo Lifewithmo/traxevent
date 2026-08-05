@@ -178,6 +178,28 @@ describe('proposals actions', () => {
     expect(written.updated_at).toEqual(expect.any(String))
   })
 
+  it('updateProposal never passes a raw undefined to Firestore .update() — clears undefined fields via FieldValue.delete() instead', async () => {
+    await updateProposal('org-1', 'p1', {
+      line_items: [{ id: 'i1', description: 'DJ', quantity: 1, unit_price: 500 }],
+      discount: undefined,
+      tax_rate: undefined,
+      deposit: undefined,
+      expires_at: undefined,
+    })
+    const written = proposalDocUpdateSpy.mock.calls[0][0]
+    // No own value in the update payload may be a raw `undefined` — Firestore Admin throws
+    // "Cannot use \"undefined\" as a Firestore value" when ignoreUndefinedProperties is off.
+    expect(Object.values(written).every((v) => v !== undefined)).toBe(true)
+    // Fields explicitly cleared by the caller must be represented by the delete sentinel,
+    // not silently dropped (dropping would leave a stale value in Firestore) and not raw undefined.
+    const { FieldValue } = await import('firebase-admin/firestore')
+    const deleteSentinel = FieldValue.delete()
+    expect(written.discount).toEqual(deleteSentinel)
+    expect(written.tax_rate).toEqual(deleteSentinel)
+    expect(written.deposit).toEqual(deleteSentinel)
+    expect(written.expires_at).toEqual(deleteSentinel)
+  })
+
   it('createProposal includes packages when provided', async () => {
     await createProposal('org-1', 'lead-1', {
       packages: [{ id: 'good', name: 'Good', includes: [], price: 100 }],
