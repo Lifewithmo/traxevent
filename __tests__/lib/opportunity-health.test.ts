@@ -30,4 +30,7 @@ describe('nextAction', () => {
   it('returns null when nothing qualifies', () => {
     expect(nextAction([t({ due_date: undefined }), t({ done: true, due_date: '2026-01-01' })])).toBeNull()
   })
+  it('breaks a due_date tie in favor of the first task', () => {
+    expect(nextAction([t({ id: 'a', due_date: '2026-02-01' }), t({ id: 'b', due_date: '2026-02-01' })])?.id).toBe('a')
+  })
 })
