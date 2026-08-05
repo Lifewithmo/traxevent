@@ -1,6 +1,7 @@
-// Pure derivation engine — spec §3.3. NO firebase imports; everything here is
-// unit-testable with plain objects. The chain: packages × guests → lists;
-// event date × pack → deadlines; templates → checklist instances.
+// Pure derivation engine — spec §3.3. NO backend/DB imports of any kind;
+// everything here is unit-testable with plain objects. The chain: packages
+// × guests → lists; event date × pack → deadlines; templates → checklist
+// instances.
 import type {
   WorkPackage, OpsResource, ChecklistTemplate,
   OpsDeadline, OpsListItem, OpsChecklist, CloseoutSummary,
