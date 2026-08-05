@@ -7,8 +7,6 @@ import { leadsRef, listLeadsCore, updateLeadCore, type LeadUpdate } from '@/lib/
 import { randomBytes } from 'crypto'
 import type { Lead, LeadStage } from '@/lib/types'
 
-export type { LeadUpdate }
-
 export interface CreateLeadInput {
   name: string
   email?: string

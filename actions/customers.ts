@@ -5,8 +5,6 @@ import { assertOrgMember, assertOrgAdmin } from '@/lib/auth/assert'
 import { createCustomerCore, customersRef, type CreateCustomerInput } from '@/lib/crm/customers'
 import type { Customer } from '@/lib/types'
 
-export type { CreateCustomerInput }
-
 export async function listCustomers(orgId: string): Promise<Customer[]> {
   await assertOrgMember(orgId)
   const snap = await customersRef(orgId).orderBy('created_at', 'desc').get()
