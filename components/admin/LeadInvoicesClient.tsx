@@ -7,14 +7,15 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { createInvoice } from '@/actions/invoices'
-import { invoiceTotal, invoiceBalance, INVOICE_STATUS_LABELS } from '@/lib/invoices'
-import type { Invoice } from '@/lib/types'
+import { invoiceTotal, invoiceBalance } from '@/lib/invoices'
+import { INVOICE_LIFECYCLE_LABELS } from '@/lib/invoice-status'
+import type { NormalizedInvoice } from '@/lib/types'
 
 interface LeadInvoicesClientProps {
   orgId: string
   orgSlug: string
   leadId: string
-  invoices: Invoice[]
+  invoices: NormalizedInvoice[]
 }
 
 const money = (n: number) => `$${n.toFixed(2)}`
@@ -71,14 +72,14 @@ export function LeadInvoicesClient({ orgId, orgSlug, leadId, invoices }: LeadInv
                   <span className="text-sm font-medium">
                     {inv.number ? `#${inv.number} ` : ''}{inv.title || 'Invoice'}
                   </span>
-                  <Badge variant="secondary">{INVOICE_STATUS_LABELS[inv.status]}</Badge>
+                  <Badge variant="secondary">{INVOICE_LIFECYCLE_LABELS[inv.lifecycle]}</Badge>
                 </div>
                 <p className="text-xs text-muted-foreground">
                   {money(invoiceTotal(inv.line_items))} · balance {money(invoiceBalance(inv))}
                 </p>
               </div>
               <div className="flex items-center gap-2">
-                {inv.status !== 'draft' && (
+                {inv.lifecycle !== 'draft' && (
                   <Button size="sm" variant="outline" onClick={() => handleCopy(inv.token)}>
                     {copied === inv.token ? 'Copied!' : 'Copy client link'}
                   </Button>

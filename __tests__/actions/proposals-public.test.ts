@@ -226,3 +226,96 @@ describe('respondToProposal', () => {
     expect(leadUpdateSpy).not.toHaveBeenCalled()
   })
 })
+
+describe('getPublicProposal — selection fields', () => {
+  it('projects packages/discount/tax_rate/deposit/expires_at/selection when present, still stripping internal', async () => {
+    mockSnapshot({
+      id: 'p1', org_id: 'org-1', lead_id: 'lead-1', token: 'secret',
+      title: 'Landscape', status: 'sent',
+      line_items: [{ id: 'o1', description: 'Lighting', quantity: 1, unit_price: 1500, optional: true }],
+      packages: [{ id: 'good', name: 'Good', includes: ['Install'], price: 12500 }],
+      discount: { type: 'percent', value: 10 }, tax_rate: 8.25, deposit: { type: 'percent', value: 50 },
+      expires_at: '2026-09-01', created_at: '2026-05-01T00:00:00.000Z',
+    })
+    const r = await getPublicProposal('tok')
+    expect(r?.packages).toEqual([{ id: 'good', name: 'Good', includes: ['Install'], price: 12500 }])
+    expect(r?.discount).toEqual({ type: 'percent', value: 10 })
+    expect(r?.tax_rate).toBe(8.25)
+    expect(r?.deposit).toEqual({ type: 'percent', value: 50 })
+    expect(r?.expires_at).toBe('2026-09-01')
+    expect('token' in (r as object)).toBe(false)
+    expect('org_id' in (r as object)).toBe(false)
+    expect('lead_id' in (r as object)).toBe(false)
+    expect('id' in (r as object)).toBe(false)
+  })
+})
+
+describe('respondToProposal — selection', () => {
+  function sentPackaged() {
+    return {
+      id: 'p1', lead_id: 'lead-1', status: 'sent',
+      packages: [
+        { id: 'good', name: 'Good', includes: [], price: 12500 },
+        { id: 'best', name: 'Best', includes: [], price: 22400 },
+      ],
+      line_items: [{ id: 'o1', description: 'Lighting', quantity: 1, unit_price: 1500, optional: true }],
+    }
+  }
+
+  it('stores a server-recomputed selection snapshot on accept', async () => {
+    mockSnapshot(sentPackaged())
+    await respondToProposal('tok', 'accepted', { package_id: 'best', optional_item_ids: ['o1'] })
+    const arg = proposalUpdateSpy.mock.calls[0][0]
+    expect(arg.status).toBe('accepted')
+    expect(arg.selection.package_id).toBe('best')
+    expect(arg.selection.optional_item_ids).toEqual(['o1'])
+    expect(arg.selection.selected_total).toBe(23900) // recomputed, not client-supplied
+    expect(arg.selection.selected_at).toBeTruthy()
+    expect(leadUpdateSpy).toHaveBeenCalledWith(expect.objectContaining({ stage: 'closed_won' }))
+  })
+
+  it('requires a package when the proposal is packaged', async () => {
+    mockSnapshot(sentPackaged())
+    await expect(respondToProposal('tok', 'accepted', { optional_item_ids: [] }))
+      .rejects.toThrow('Please select an option before accepting')
+    expect(proposalUpdateSpy).not.toHaveBeenCalled()
+    expect(leadUpdateSpy).not.toHaveBeenCalled()
+  })
+
+  it('rejects a package id not on the proposal', async () => {
+    mockSnapshot(sentPackaged())
+    await expect(respondToProposal('tok', 'accepted', { package_id: 'phantom', optional_item_ids: [] }))
+      .rejects.toThrow('Invalid selection')
+    expect(proposalUpdateSpy).not.toHaveBeenCalled()
+  })
+
+  it('rejects an optional_item_id that is not an optional item on the proposal', async () => {
+    mockSnapshot(sentPackaged())
+    await expect(respondToProposal('tok', 'accepted', { package_id: 'good', optional_item_ids: ['not-real'] }))
+      .rejects.toThrow('Invalid selection')
+    expect(proposalUpdateSpy).not.toHaveBeenCalled()
+  })
+
+  it('still accepts a legacy itemized proposal with no selection (advances to closed_won)', async () => {
+    mockSnapshot({ id: 'p1', lead_id: 'lead-1', status: 'sent' })
+    await respondToProposal('tok', 'accepted')
+    expect(proposalUpdateSpy).toHaveBeenCalledWith(expect.objectContaining({ status: 'accepted' }))
+    expect(leadUpdateSpy).toHaveBeenCalledWith(expect.objectContaining({ stage: 'closed_won' }))
+  })
+
+  // Guards against a hand-crafted public request sending a non-array
+  // optional_item_ids, which would otherwise throw an uncaught TypeError
+  // (500) from `for (const id of optionalIds)` instead of a clean rejection.
+  it('rejects a non-array optional_item_ids without writing anything', async () => {
+    mockSnapshot(sentPackaged())
+    await expect(
+      respondToProposal('tok', 'accepted', {
+        package_id: 'good',
+        // @ts-expect-error deliberately malformed: a number instead of an array
+        optional_item_ids: 42,
+      }),
+    ).rejects.toThrow('Invalid selection')
+    expect(proposalUpdateSpy).not.toHaveBeenCalled()
+    expect(leadUpdateSpy).not.toHaveBeenCalled()
+  })
+})

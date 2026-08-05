@@ -1,6 +1,6 @@
 import type { ClientPortal } from '@/actions/client-portal-public'
 import { PROPOSAL_STATUS_LABELS } from '@/lib/proposals'
-import { INVOICE_STATUS_LABELS } from '@/lib/invoices'
+import { INVOICE_LIFECYCLE_LABELS } from '@/lib/invoice-status'
 import { CONTRACT_STATUS_LABELS } from '@/lib/contracts'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -124,7 +124,7 @@ export function ClientPortalView({ portal }: { portal: ClientPortal }) {
                       <span className="text-sm font-medium text-gray-900">
                         {[i.number ? `#${i.number}` : '', i.title || 'Invoice'].filter(Boolean).join(' ')}
                       </span>
-                      <Badge variant="secondary">{INVOICE_STATUS_LABELS[i.status]}</Badge>
+                      <Badge variant="secondary">{INVOICE_LIFECYCLE_LABELS[i.lifecycle]}</Badge>
                     </div>
                     <p className="text-xs text-gray-500">
                       {money(i.total)} · Balance due {money(i.balance)}

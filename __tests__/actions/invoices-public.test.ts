@@ -62,13 +62,14 @@ describe('getPublicInvoice', () => {
     expect(await getPublicInvoice('tok')).toBeNull()
   })
 
-  it('projects a public-safe DTO for a non-draft invoice with computed totals', async () => {
+  it('projects a public-safe DTO for an issued (legacy sent) invoice with computed totals', async () => {
     mockSnapshot(fullDoc('sent'))
     const result = await getPublicInvoice('tok')
     expect(result).toEqual({
       title: 'Event Services',
       number: 'INV-001',
-      status: 'sent',
+      type: 'quick',
+      tips_enabled: false,
       line_items: [{ description: 'Catering', quantity: 1, unit_price: 100 }],
       amount_paid: 30,
       balance: 70,
@@ -90,6 +91,7 @@ describe('getPublicInvoice', () => {
     // No stray internal fields either.
     expect('updated_at' in (result as object)).toBe(false)
     expect('payments' in (result as object)).toBe(false)
+    expect('status' in (result as object)).toBe(false)
     expect(Object.keys(result as object).sort()).toEqual(
       [
         'amount_paid',
@@ -99,8 +101,9 @@ describe('getPublicInvoice', () => {
         'line_items',
         'notes',
         'number',
-        'status',
+        'tips_enabled',
         'title',
+        'type',
       ].sort(),
     )
   })
@@ -120,7 +123,8 @@ describe('getPublicInvoice', () => {
     })
     const result = await getPublicInvoice('tok')
     expect(result).toEqual({
-      status: 'paid',
+      type: 'quick',
+      tips_enabled: false,
       line_items: [{ description: 'Catering', quantity: 1, unit_price: 100 }],
       amount_paid: 100,
       balance: 0,
@@ -130,5 +134,23 @@ describe('getPublicInvoice', () => {
     expect('org_id' in (result as object)).toBe(false)
     expect('lead_id' in (result as object)).toBe(false)
     expect('id' in (result as object)).toBe(false)
+  })
+
+  it('exposes an issued invoice with type and resolved tips flag, hides drafts', async () => {
+    // issued (legacy 'sent') doc
+    mockSnapshot({
+      id: 'i1', org_id: 'o1', lead_id: 'l1', token: 't', status: 'sent', type: 'deposit',
+      line_items: [{ description: 'x', quantity: 1, unit_price: 100 }], payments: [], created_at: '', tips_enabled: true,
+    })
+    const pub = await getPublicInvoice('t')
+    expect(pub).not.toBeNull()
+    expect(pub!.type).toBe('deposit')
+    expect(pub!.tips_enabled).toBe(true)
+    expect(pub!.balance).toBe(100)
+  })
+
+  it('returns null for a draft (explicit lifecycle)', async () => {
+    mockSnapshot({ id: 'i1', lifecycle: 'draft', line_items: [], payments: [], created_at: '' })
+    expect(await getPublicInvoice('t')).toBeNull()
   })
 })

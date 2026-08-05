@@ -19,6 +19,7 @@ export interface Org {
   sending_domain_id?: string
   sending_domain_status?: SendingDomainStatus
   sending_domain_records?: DomainDnsRecord[]
+  tips_enabled?: boolean
   created_at: string
 }
 
@@ -420,55 +421,126 @@ export interface Customer {
 
 export type ProposalStatus = 'draft' | 'sent' | 'accepted' | 'rejected'
 
+export interface ProposalPackage {
+  id: string
+  name: string                 // builder-named: "Good" / "Better" / "Best"
+  description?: string
+  includes: string[]           // bullet lines shown to the customer
+  price: number                // the tier's all-in price (dollars)
+  recommended?: boolean
+}
+
 export interface ProposalLineItem {
+  id?: string                  // stable id; a selection references it (optional for back-compat)
   description: string
   quantity: number
-  unit_price: number   // dollars (may be decimal)
+  unit_price: number           // dollars (may be decimal)
+  optional?: boolean           // true = customer-toggleable add-on; missing/false = required base scope
+  taxable?: boolean            // default true; stored now, honored in a later increment
+}
+
+export interface ProposalDiscount { type: 'percent' | 'fixed'; value: number }
+export interface ProposalDeposit { type: 'percent' | 'fixed'; value: number }  // captured now, collected later
+
+export interface ProposalSelection {
+  package_id?: string
+  optional_item_ids: string[]
+  selected_total: number       // recomputed server-side; never trusted from the client
+  selected_at: string          // ISO
 }
 
 export interface Proposal {
   id: string
-  org_id: string        // denormalized for collectionGroup token lookups
-  lead_id: string
-  token: string         // unguessable public link token
+  org_id: string               // denormalized for collectionGroup token lookups
+  lead_id: string              // the opportunity id
+  token: string                // unguessable public link token
   title?: string
   status: ProposalStatus
   line_items: ProposalLineItem[]
+  packages?: ProposalPackage[] // if present (max 3), the customer must pick exactly one
+  discount?: ProposalDiscount
+  tax_rate?: number            // percent, e.g. 8.25
+  deposit?: ProposalDeposit
+  expires_at?: string          // ISO; display-only this increment
   notes?: string
-  client_response_at?: string   // set when the client accepts/rejects
+  selection?: ProposalSelection
+  client_response_at?: string  // set when the client accepts/rejects
   created_at: string
   updated_at?: string
 }
 
-export type InvoiceStatus = 'draft' | 'sent' | 'partial' | 'paid' | 'void'
+export type InvoiceType = 'quick' | 'deposit' | 'progress' | 'final'
+export type InvoiceLifecycle = 'draft' | 'approved' | 'issued' | 'voided' | 'replaced' | 'closed'
+export type InvoiceDeliveryStatus = 'not_sent' | 'queued' | 'sent' | 'delivered' | 'bounced' | 'viewed' | 'downloaded'
+export type InvoiceAccountingStatus = 'not_connected' | 'ready' | 'syncing' | 'synced' | 'error' | 'mismatch'
+export type InvoiceDisputeStatus = 'none' | 'question' | 'under_review' | 'adjustment_proposed' | 'resolved' | 'escalated'
+export type InvoicePaymentStatus = 'not_due' | 'due' | 'partial' | 'paid' | 'overpaid' | 'refunded' | 'void'
+export type InvoiceAgingBucket = 'current' | 'due_soon' | 'due_today' | 'd1_30' | 'd31_60' | 'd61_90' | 'd90_plus'
+
+export type InvoiceSourceType =
+  | 'proposal' | 'change_order' | 'job' | 'milestone'
+  | 'time' | 'expense' | 'recurring' | 'manual'
+
+export interface InvoiceSourceRef {
+  type: InvoiceSourceType
+  id?: string      // e.g. accepted proposal id
+  label?: string   // human ref, e.g. "Accepted proposal"
+}
 
 export interface InvoiceLineItem {
   description: string
   quantity: number
   unit_price: number   // dollars
+  source?: InvoiceSourceRef
 }
 
 export interface InvoicePayment {
-  amount: number       // dollars
+  amount: number       // dollars APPLIED to the balance
   method?: string      // e.g. 'cash' | 'check' | 'card' | free text
   note?: string
   recorded_at: string  // ISO
+  tip_amount?: number  // gratuity — EXCLUDED from balance and progress math
 }
 
 export interface Invoice {
   id: string
-  org_id: string       // denormalized for collectionGroup token lookups
+  org_id: string
   lead_id: string
-  token: string        // unguessable public link token
-  number?: string      // human-facing invoice number, optional
+  customer_id?: string          // CRM seam — populated when Customer ships
+  token: string
+  schema_version?: number       // absent/legacy => v1; new invoices => 2
+
+  type?: InvoiceType
+  lifecycle?: InvoiceLifecycle
+  delivery?: InvoiceDeliveryStatus
+  accounting?: InvoiceAccountingStatus
+  dispute?: InvoiceDisputeStatus
+
+  source?: InvoiceSourceRef
+  number?: string
   title?: string
-  status: InvoiceStatus
   line_items: InvoiceLineItem[]
   payments: InvoicePayment[]
   notes?: string
-  due_date?: string    // ISO date, optional
+  due_date?: string
+  tips_enabled?: boolean
+
+  payment_status?: InvoicePaymentStatus  // materialized cache for future indexed views
+
+  replaces_id?: string
+  replaced_by_id?: string
+  void_reason?: string
+  issued_at?: string
   created_at: string
   updated_at?: string
+}
+
+export type NormalizedInvoice = Invoice & {
+  type: InvoiceType
+  lifecycle: InvoiceLifecycle
+  delivery: InvoiceDeliveryStatus
+  accounting: InvoiceAccountingStatus
+  dispute: InvoiceDisputeStatus
 }
 
 export type ContractStatus = 'draft' | 'sent' | 'signed'

@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { createProposal } from '@/actions/proposals'
-import { proposalTotal, PROPOSAL_STATUS_LABELS } from '@/lib/proposals'
+import { proposalDisplayRange, PROPOSAL_STATUS_LABELS } from '@/lib/proposals'
 import type { Proposal } from '@/lib/types'
 
 interface LeadProposalsClientProps {
@@ -64,30 +64,33 @@ export function LeadProposalsClient({ orgId, orgSlug, leadId, proposals }: LeadP
             <p className="text-sm text-muted-foreground">No proposals yet.</p>
           )}
 
-          {proposals.map((p) => (
-            <div key={p.id} className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2">
-              <div className="flex-1 space-y-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium">{p.title || 'Untitled proposal'}</span>
-                  <Badge variant="secondary">{PROPOSAL_STATUS_LABELS[p.status]}</Badge>
+          {proposals.map((p) => {
+            const { min, max } = proposalDisplayRange(p)
+            return (
+              <div key={p.id} className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2">
+                <div className="flex-1 space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium">{p.title || 'Untitled proposal'}</span>
+                    <Badge variant="secondary">{PROPOSAL_STATUS_LABELS[p.status]}</Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground">{min === max ? money(min) : `${money(min)}–${money(max)}`}</p>
                 </div>
-                <p className="text-xs text-muted-foreground">{money(proposalTotal(p.line_items))}</p>
+                <div className="flex items-center gap-2">
+                  {p.status !== 'draft' && (
+                    <Button size="sm" variant="outline" onClick={() => handleCopy(p.token)}>
+                      {copied === p.token ? 'Copied!' : 'Copy client link'}
+                    </Button>
+                  )}
+                  <Link
+                    href={`/${orgSlug}/leads/${leadId}/proposals/${p.id}`}
+                    className="inline-flex h-7 items-center rounded-md border border-border bg-background px-2.5 text-[0.8rem] font-medium hover:bg-muted"
+                  >
+                    Edit
+                  </Link>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                {p.status !== 'draft' && (
-                  <Button size="sm" variant="outline" onClick={() => handleCopy(p.token)}>
-                    {copied === p.token ? 'Copied!' : 'Copy client link'}
-                  </Button>
-                )}
-                <Link
-                  href={`/${orgSlug}/leads/${leadId}/proposals/${p.id}`}
-                  className="inline-flex h-7 items-center rounded-md border border-border bg-background px-2.5 text-[0.8rem] font-medium hover:bg-muted"
-                >
-                  Edit
-                </Link>
-              </div>
-            </div>
-          ))}
+            )
+          })}
         </CardContent>
       </Card>
     </div>
