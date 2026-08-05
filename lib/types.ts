@@ -370,7 +370,12 @@ export interface Department {
   updated_at?: string
 }
 
-export type LeadStage = 'inquiry' | 'consultation' | 'proposal' | 'booked' | 'delivered'
+export type LeadStage = 'inquiry' | 'consultation' | 'proposal' | 'closed_won' | 'closed_lost'
+
+export interface LeadWaiting {
+  reason: string
+  follow_up_date?: string
+}
 
 export interface Lead {
   id: string
@@ -384,6 +389,9 @@ export interface Lead {
   stage: LeadStage
   notes?: string
   portal_token?: string   // lazily generated; powers the login-free client portal link
+  customer_id?: string    // linked Customer once one exists
+  tags?: string[]
+  waiting?: LeadWaiting    // set when the lead is blocked/waiting on something
   created_at: string
   updated_at?: string
 }

@@ -142,9 +142,9 @@ describe('leads actions', () => {
   })
 
   it('setLeadStage updates stage and updated_at for a valid stage', async () => {
-    await setLeadStage('org-1', 'l1', 'booked')
+    await setLeadStage('org-1', 'l1', 'closed_won')
     expect(leadDocUpdateSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ stage: 'booked', updated_at: expect.any(String) })
+      expect.objectContaining({ stage: 'closed_won', updated_at: expect.any(String) })
     )
   })
 
