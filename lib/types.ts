@@ -421,7 +421,7 @@ export interface Customer {
   updated_at?: string
 }
 
-export type ProposalStatus = 'draft' | 'sent' | 'accepted' | 'rejected'
+export type ProposalStatus = 'draft' | 'sent' | 'accepted' | 'rejected' | 'voided'
 
 export interface ProposalPackage {
   id: string
@@ -467,6 +467,8 @@ export interface Proposal {
   notes?: string
   selection?: ProposalSelection
   client_response_at?: string  // set when the client accepts/rejects
+  void_reason?: string         // set when status transitions to 'voided'
+  voided_at?: string           // ISO; set when status transitions to 'voided'
   created_at: string
   updated_at?: string
   deposit_gate?: 'before_accept' | 'after_accept'

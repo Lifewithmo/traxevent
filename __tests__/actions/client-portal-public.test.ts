@@ -89,7 +89,7 @@ describe('getClientPortal', () => {
     expect(result?.timeline.some((s) => s.current && s.stage === 'proposal')).toBe(true)
   })
 
-  it('includes only non-draft proposals with { status, total, token, title? }', async () => {
+  it('includes only non-draft, non-voided proposals with { status, total, token, title? }', async () => {
     mockLead(fullLead())
     proposalsSpy.mockResolvedValue({
       docs: [
@@ -114,6 +114,19 @@ describe('getClientPortal', () => {
             token: 'draftptok',
             status: 'draft',
             line_items: [{ description: 'X', quantity: 1, unit_price: 999 }],
+            created_at: 'x',
+          }),
+        },
+        {
+          data: () => ({
+            id: 'p3',
+            org_id: 'org-1',
+            lead_id: 'lead-1',
+            token: 'voidedptok',
+            status: 'voided',
+            line_items: [{ description: 'Y', quantity: 1, unit_price: 777 }],
+            voided_at: 'x',
+            void_reason: 'Superseded',
             created_at: 'x',
           }),
         },

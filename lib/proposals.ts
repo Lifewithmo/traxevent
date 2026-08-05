@@ -7,13 +7,14 @@ import type {
   ProposalSelection,
 } from '@/lib/types'
 
-export const PROPOSAL_STATUSES: ProposalStatus[] = ['draft', 'sent', 'accepted', 'rejected']
+export const PROPOSAL_STATUSES: ProposalStatus[] = ['draft', 'sent', 'accepted', 'rejected', 'voided']
 
 export const PROPOSAL_STATUS_LABELS: Record<ProposalStatus, string> = {
   draft: 'Draft',
   sent: 'Sent',
   accepted: 'Accepted',
   rejected: 'Rejected',
+  voided: 'Voided',
 }
 
 function round2(n: number): number {

@@ -1,5 +1,5 @@
 import { adminDb } from '@/lib/firebase-admin'
-import { invoicesRef, listInvoicesCore, generateFromProposalCore, recordPaymentCore } from '@/lib/crm/invoices'
+import { listInvoicesCore, generateFromProposalCore, recordPaymentCore, issueInvoiceCore } from '@/lib/crm/invoices'
 import type { Proposal } from '@/lib/types'
 
 /**
@@ -48,7 +48,9 @@ export async function reconcileProposalDeposit(
     // above keys on payments.length, so if a prior attempt failed partway
     // through, a retry must still be able to re-do the lifecycle update and
     // record the payment as the final, defining step of "reconciled."
-    await invoicesRef(orgId).doc(depositInv.id).update({ lifecycle: 'issued', issued_at: payment.paid_at })
+    if (depositInv.lifecycle === 'draft' || depositInv.lifecycle === 'approved') {
+      await issueInvoiceCore(orgId, depositInv.id, { issuedAt: payment.paid_at })
+    }
     await recordPaymentCore(orgId, depositInv.id, {
       amount: payment.amount,
       method: 'card',
@@ -58,7 +60,7 @@ export async function reconcileProposalDeposit(
   }
 
   const created = await generateFromProposalCore(orgId, leadId, proposal, existing, { type: 'deposit' })
-  await invoicesRef(orgId).doc(created.id).update({ lifecycle: 'issued', issued_at: payment.paid_at })
+  await issueInvoiceCore(orgId, created.id, { issuedAt: payment.paid_at })
   await recordPaymentCore(orgId, created.id, {
     amount: payment.amount,
     method: 'card',

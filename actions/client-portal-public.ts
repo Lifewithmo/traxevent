@@ -61,7 +61,7 @@ export async function getClientPortal(token: string): Promise<ClientPortal | nul
 
   const proposals: ClientPortalProposal[] = propSnap.docs
     .map((d) => d.data() as Proposal)
-    .filter((p) => p.status !== 'draft')
+    .filter((p) => p.status !== 'draft' && p.status !== 'voided')
     .map((p) => ({
       status: p.status,
       total: proposalTotal(p.line_items),

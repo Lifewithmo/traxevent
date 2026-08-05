@@ -93,6 +93,7 @@ import {
   deleteInvoice,
   generateFromProposal,
 } from '@/actions/invoices'
+import { issueInvoiceCore } from '@/lib/crm/invoices'
 import { invoiceAmountDue } from '@/lib/invoices'
 
 describe('invoices actions', () => {
@@ -489,6 +490,54 @@ describe('invoices actions', () => {
     counterGetSpy.mockResolvedValue({ exists: true, data: () => ({ seq: 1000 }) })
 
     await expect(issueInvoice('org-1', 'inv-c')).rejects.toThrow(/exceeds approved scope/i)
+  })
+
+  it('issueInvoiceCore assigns the next sequential number, honors a caller-supplied issuedAt, and increments the counter', async () => {
+    invoiceDocGetSpy.mockResolvedValue({
+      exists: true,
+      data: () => ({
+        id: 'inv-1', org_id: 'org-1', lead_id: 'lead-1', token: 't', lifecycle: 'draft', type: 'quick',
+        line_items: [{ description: 'x', quantity: 1, unit_price: 500 }], payments: [], created_at: '2026-01-01',
+      }),
+    })
+    counterGetSpy.mockResolvedValue({ exists: true, data: () => ({ seq: 1000, prefix: 'INV-' }) })
+
+    const res = await issueInvoiceCore('org-1', 'inv-1', { issuedAt: '2026-08-01T00:00:00.000Z' })
+
+    expect(res.number).toBe('INV-1001')
+    expect(txSetSpy).toHaveBeenCalledWith(expect.anything(), { seq: 1001 }, { merge: true })
+    expect(txSetSpy).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ lifecycle: 'issued', number: 'INV-1001', issued_at: '2026-08-01T00:00:00.000Z' }),
+      { merge: true }
+    )
+  })
+
+  it('issueInvoiceCore also accepts an approved invoice and defaults issued_at to now when opts is omitted', async () => {
+    invoiceDocGetSpy.mockResolvedValue({
+      exists: true,
+      data: () => ({
+        id: 'inv-1', org_id: 'org-1', lead_id: 'lead-1', token: 't', lifecycle: 'approved', type: 'quick',
+        line_items: [], payments: [], created_at: '2026-01-01',
+      }),
+    })
+    counterGetSpy.mockResolvedValue({ exists: false })
+
+    const res = await issueInvoiceCore('org-1', 'inv-1')
+
+    expect(res.number).toBe('1001')
+    const invoiceSetCall = txSetSpy.mock.calls.find((c) => (c[1] as { lifecycle?: string })?.lifecycle === 'issued')
+    expect(invoiceSetCall).toBeDefined()
+    expect((invoiceSetCall![1] as { issued_at?: string }).issued_at).toEqual(expect.any(String))
+  })
+
+  it('issueInvoiceCore throws when the invoice is not draft or approved and writes nothing', async () => {
+    invoiceDocGetSpy.mockResolvedValue({
+      exists: true,
+      data: () => ({ id: 'inv-1', lifecycle: 'voided', line_items: [], payments: [], created_at: '' }),
+    })
+    await expect(issueInvoiceCore('org-1', 'inv-1')).rejects.toThrow(/cannot issue/i)
+    expect(txSetSpy).not.toHaveBeenCalled()
   })
 
   it('voidInvoice sets lifecycle voided and keeps the number', async () => {

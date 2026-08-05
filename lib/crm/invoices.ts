@@ -2,7 +2,7 @@ import { adminDb } from '@/lib/firebase-admin'
 import { randomBytes } from 'crypto'
 import { generateAccessToken } from '@/lib/tokens'
 import { invoiceAmountDue, amountPaid } from '@/lib/invoices'
-import { normalizeInvoice } from '@/lib/invoice-normalize'
+import { normalizeInvoice, formatInvoiceNumber } from '@/lib/invoice-normalize'
 import {
   previouslyBilled,
   assertWithinScope,
@@ -150,6 +150,45 @@ export async function generateFromProposalCore(
     ...(tax_rate ? { tax_rate } : {}),
     ...(credits ? { credits } : {}),
   }
+}
+
+/**
+ * Guard-free invoice issuance: assigns the next sequential invoice number and locks
+ * the invoice to `lifecycle: 'issued'`. Performs no auth and no scope-invariant check
+ * (callers that need the proposal-scope guardrail — e.g. `issueInvoice` — must run it
+ * themselves before delegating here, since it requires a plain, non-transaction query).
+ *
+ * `opts.issuedAt` lets a caller backdate `issued_at` to an external event's own
+ * timestamp (e.g. the Stripe payment's `paid_at`, in the deposit reconciler) instead of
+ * "now".
+ */
+export async function issueInvoiceCore(
+  orgId: string,
+  invoiceId: string,
+  opts?: { issuedAt?: string },
+): Promise<{ number: string }> {
+  const ref = invoicesRef(orgId).doc(invoiceId)
+  const counterRef = adminDb.collection('orgs').doc(orgId).collection('counters').doc('invoice_number')
+
+  return adminDb.runTransaction(async (tx) => {
+    const snap = await tx.get(ref)
+    if (!snap.exists) throw new Error('Invoice not found')
+    const inv = normalizeInvoice(snap.data()!)
+    if (inv.lifecycle !== 'draft' && inv.lifecycle !== 'approved') {
+      throw new Error(`Cannot issue an invoice that is ${inv.lifecycle}`)
+    }
+    const counterSnap = await tx.get(counterRef)
+    const counterData = counterSnap.exists ? (counterSnap.data() as { seq: number; prefix?: string }) : undefined
+    const seq = (counterData?.seq ?? 1000) + 1
+    const prefix = counterData?.prefix
+    const number = formatInvoiceNumber(seq, prefix)
+    const now = new Date().toISOString()
+    const issued_at = opts?.issuedAt ?? now
+
+    tx.set(counterRef, { seq }, { merge: true })
+    tx.set(ref, { lifecycle: 'issued', number, issued_at, updated_at: now }, { merge: true })
+    return { number }
+  })
 }
 
 /** Guard-free payment recording. Performs no auth. */

@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
-import { updateProposal, sendProposal, deleteProposal } from '@/actions/proposals'
+import { updateProposal, sendProposal, deleteProposal, voidProposal } from '@/actions/proposals'
 import {
   lineItemSubtotal,
   proposalTotal,
@@ -70,11 +70,14 @@ export function ProposalEditorClient({ orgId, orgSlug, leadId, proposal }: Propo
   // Locked whenever a signature is in progress or complete — `pending_signature`
   // means a before_accept deposit payment is in flight; editing/deleting during
   // that window would let the payment webhook later find nothing to promote.
-  const locked = Boolean(proposal.signature) || Boolean(proposal.pending_signature)
+  // A voided proposal is also permanently locked — nothing about it should be editable.
+  const voided = proposal.status === 'voided'
+  const locked = Boolean(proposal.signature) || Boolean(proposal.pending_signature) || voided
 
   const [saving, setSaving] = useState(false)
   const [sending, setSending] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [voiding, setVoiding] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [showLink, setShowLink] = useState(proposal.status !== 'draft')
@@ -159,6 +162,21 @@ export function ProposalEditorClient({ orgId, orgSlug, leadId, proposal }: Propo
     }
   }
 
+  async function handleVoid() {
+    const reason = window.prompt('Reason for voiding this proposal:')
+    if (!reason || !reason.trim()) return
+    setVoiding(true); setError(null); setNotice(null)
+    try {
+      await voidProposal(orgId, proposal.id, reason.trim())
+      setStatus('voided')
+      router.refresh()
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to void proposal')
+    } finally {
+      setVoiding(false)
+    }
+  }
+
   async function handleCopy() {
     setError(null)
     try {
@@ -170,7 +188,10 @@ export function ProposalEditorClient({ orgId, orgSlug, leadId, proposal }: Propo
   }
 
   const total = proposalTotal(lineItems)
-  const busy = saving || sending || deleting || locked
+  const busy = saving || sending || deleting || voiding || locked
+  // The void button must stay usable on a *signed* (locked) proposal — voiding a signed
+  // proposal is the whole point — so it only respects the action-in-flight flags, not `locked`.
+  const voidBusy = saving || sending || deleting || voiding
 
   const previewProposal = {
     packages: mode === 'packaged' ? packages : undefined,
@@ -199,7 +220,17 @@ export function ProposalEditorClient({ orgId, orgSlug, leadId, proposal }: Propo
         {notice && <p className="text-sm text-muted-foreground">{notice}</p>}
       </div>
 
-      {locked && (
+      {voided && (
+        <Card className="border-destructive/50 bg-destructive/10">
+          <CardContent className="pt-6">
+            <p className="text-sm font-medium">
+              Voided{proposal.void_reason ? ` — ${proposal.void_reason}` : ''}
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {locked && !voided && (
         <Card className="border-amber-500/50 bg-amber-500/10">
           <CardContent className="pt-6">
             <p className="text-sm font-medium">
@@ -572,7 +603,14 @@ export function ProposalEditorClient({ orgId, orgSlug, leadId, proposal }: Propo
       <div className="flex flex-wrap gap-2">
         <Button onClick={handleSave} disabled={busy}>{saving ? 'Saving…' : 'Save'}</Button>
         <Button variant="outline" onClick={handleSend} disabled={busy}>{sending ? 'Sending…' : 'Send to client'}</Button>
-        <Button variant="destructive" onClick={handleDelete} disabled={busy}>{deleting ? 'Deleting…' : 'Delete'}</Button>
+        {proposal.status === 'draft' && (
+          <Button variant="destructive" onClick={handleDelete} disabled={busy}>{deleting ? 'Deleting…' : 'Delete'}</Button>
+        )}
+        {proposal.status !== 'draft' && proposal.status !== 'voided' && (
+          <Button variant="outline" onClick={handleVoid} disabled={voidBusy}>
+            {voiding ? 'Voiding…' : 'Void proposal'}
+          </Button>
+        )}
       </div>
 
       {showLink && (
