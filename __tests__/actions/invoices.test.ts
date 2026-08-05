@@ -87,6 +87,10 @@ import {
 describe('invoices actions', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // clearAllMocks() clears call history but not queued mockResolvedValueOnce
+    // implementations; a prior test that queued more .get() responses than it
+    // consumed can otherwise leak a stale response into the next test.
+    invoiceDocGetSpy.mockReset()
     getLeadSpy.mockResolvedValue(null)
   })
 
@@ -438,6 +442,26 @@ describe('invoices actions', () => {
     expect(invoiceDocUpdateSpy).toHaveBeenCalledWith(
       expect.objectContaining({ lifecycle: 'voided', void_reason: 'duplicate' })
     )
+  })
+
+  it('voidInvoice rejects a draft (delete instead)', async () => {
+    invoiceDocGetSpy.mockResolvedValue({ exists: true, data: () => ({
+      id: 'inv-1', lifecycle: 'draft', line_items: [], payments: [], created_at: '' }) })
+    await expect(voidInvoice('org-1', 'inv-1')).rejects.toThrow(/delete the draft/i)
+    expect(invoiceDocUpdateSpy).not.toHaveBeenCalled()
+  })
+
+  it('voidInvoice rejects an already-voided invoice', async () => {
+    invoiceDocGetSpy.mockResolvedValue({ exists: true, data: () => ({
+      id: 'inv-1', lifecycle: 'voided', line_items: [], payments: [], created_at: '' }) })
+    await expect(voidInvoice('org-1', 'inv-1')).rejects.toThrow(/already voided/i)
+    expect(invoiceDocUpdateSpy).not.toHaveBeenCalled()
+  })
+
+  it('replaceInvoice rejects a non-issued invoice', async () => {
+    invoiceDocGetSpy.mockResolvedValue({ exists: true, data: () => ({
+      id: 'inv-1', lifecycle: 'draft', line_items: [], payments: [], created_at: '' }) })
+    await expect(replaceInvoice('org-1', 'inv-1')).rejects.toThrow(/issued/i)
   })
 
   it('replaceInvoice voids the original and creates a linked draft copy', async () => {

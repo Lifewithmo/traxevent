@@ -197,6 +197,13 @@ export async function voidInvoice(orgId: string, invoiceId: string, reason?: str
   const ref = invoicesRef(orgId).doc(invoiceId)
   const snap = await ref.get()
   if (!snap.exists) throw new Error('Invoice not found')
+  const inv = normalizeInvoice(snap.data()!)
+  if (inv.lifecycle !== 'issued') {
+    if (inv.lifecycle === 'draft' || inv.lifecycle === 'approved') {
+      throw new Error('Only an issued invoice can be voided — delete the draft instead')
+    }
+    throw new Error(`Invoice is already ${inv.lifecycle} and cannot be voided`)
+  }
   const now = new Date().toISOString()
   await ref.update({
     lifecycle: 'voided',
@@ -211,6 +218,9 @@ export async function replaceInvoice(orgId: string, invoiceId: string): Promise<
   const snap = await ref.get()
   if (!snap.exists) throw new Error('Invoice not found')
   const original = normalizeInvoice(snap.data()!)
+  if (original.lifecycle !== 'issued') {
+    throw new Error('Only an issued invoice can be replaced')
+  }
   const draft = await createInvoice(orgId, original.lead_id, {
     type: original.type,
     line_items: original.line_items,
