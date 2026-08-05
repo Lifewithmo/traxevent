@@ -680,3 +680,20 @@ export interface WorkPackage {
   created_at: string
   updated_at?: string
 }
+
+export type ChecklistPhase = 'prep' | 'load-out' | 'setup' | 'service-close' | 'closeout'
+export type EvidenceType = 'none' | 'photo' | 'number'
+
+export interface ChecklistTemplateStep {
+  text: string
+  evidence: EvidenceType
+}
+
+export interface ChecklistTemplate {
+  id: string
+  name: string
+  phase: ChecklistPhase
+  steps: ChecklistTemplateStep[]
+  created_at: string
+  updated_at?: string
+}
