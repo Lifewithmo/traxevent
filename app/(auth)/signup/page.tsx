@@ -1,17 +1,25 @@
 'use client'
 
-import { useState } from 'react'
+import { use, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth'
 import { auth } from '@/lib/firebase'
 import { createUser } from '@/actions/auth'
+import { validBrandParam, getBrand } from '@/lib/brands'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import Link from 'next/link'
 
-export default function SignupPage() {
+export default function SignupPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ brand?: string }>
+}) {
+  const { brand: brandParam } = use(searchParams)
+  const brandId = validBrandParam(brandParam)
+  const brand = brandId ? getBrand(brandId) : null
   const router = useRouter()
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
@@ -27,7 +35,7 @@ export default function SignupPage() {
       const cred = await createUserWithEmailAndPassword(auth, email, password)
       await updateProfile(cred.user, { displayName: name })
       await createUser(cred.user.uid, email, name)
-      router.push('/onboarding')
+      router.push(brandId ? `/onboarding?brand=${brandId}` : '/onboarding')
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Signup failed')
     } finally {
@@ -38,7 +46,9 @@ export default function SignupPage() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Create your TraxEvent account</CardTitle>
+        <CardTitle>
+          {brand ? `Create your ${brand.name} account` : 'Create your TraxEvent account'}
+        </CardTitle>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">

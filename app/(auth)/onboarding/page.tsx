@@ -1,16 +1,23 @@
 'use client'
 
-import { useState } from 'react'
+import { use, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { createOrg } from '@/actions/orgs'
 import { establishSession } from '@/lib/auth/establish-session'
+import { validBrandParam } from '@/lib/brands'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
-export default function OnboardingPage() {
+export default function OnboardingPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ brand?: string }>
+}) {
+  const { brand: brandParam } = use(searchParams)
+  const brandId = validBrandParam(brandParam)
   const router = useRouter()
   const { user } = useAuth()
   const [orgName, setOrgName] = useState('')
@@ -27,7 +34,8 @@ export default function OnboardingPage() {
         user.uid,
         orgName,
         user.displayName ?? '',
-        user.email ?? ''
+        user.email ?? '',
+        brandId ?? undefined
       )
       // Force token refresh so new claims (orgId, orgSlug, role) are active
       await user.getIdToken(true)
