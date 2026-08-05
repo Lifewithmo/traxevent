@@ -37,6 +37,10 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ org
     listVendors(orgId, leadId),
   ])
 
+  const acceptedProposals = proposals
+    .filter((p) => p.status === 'accepted')
+    .map((p) => ({ id: p.id, title: p.title }))
+
   return (
     <>
       <OpportunityDetailClient
@@ -54,7 +58,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ org
       </div>
 
       <LeadProposalsClient orgId={orgId} orgSlug={orgSlug} leadId={leadId} proposals={proposals} />
-      <LeadInvoicesClient orgId={orgId} orgSlug={orgSlug} leadId={leadId} invoices={invoices} />
+      <LeadInvoicesClient orgId={orgId} orgSlug={orgSlug} leadId={leadId} invoices={invoices} acceptedProposals={acceptedProposals} />
       <LeadContractsClient orgId={orgId} orgSlug={orgSlug} leadId={leadId} contracts={contracts} />
       <LeadVendorsClient orgId={orgId} leadId={leadId} vendors={vendors} />
       <ClientPortalLinkClient orgId={orgId} leadId={leadId} />
