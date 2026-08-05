@@ -1,5 +1,6 @@
-import type { InvoiceLifecycle, InvoiceLineItem } from '@/lib/types'
+import type { InvoiceLifecycle, InvoiceLineItem, Proposal } from '@/lib/types'
 import { invoiceTotal } from '@/lib/invoices'
+import { computeSelectedTotal } from '@/lib/proposals'
 
 export class InvoiceScopeError extends Error {
   constructor(message: string) { super(message); this.name = 'InvoiceScopeError' }
@@ -27,4 +28,10 @@ export function assertWithinScope(newTotal: number, billed: number, approved: nu
   if (overage > 0) {
     throw new InvoiceScopeError(`Invoice exceeds approved scope by $${overage.toFixed(2)}`)
   }
+}
+
+export function acceptedProposalTotal(
+  proposal: Pick<Proposal, 'packages' | 'line_items' | 'discount' | 'tax_rate' | 'selection'>,
+): number {
+  return proposal.selection?.selected_total ?? computeSelectedTotal(proposal, { optional_item_ids: [] })
 }

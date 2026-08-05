@@ -33,3 +33,36 @@ describe('assertWithinScope', () => {
     expect(() => assertWithinScope(600, 500, 1000)).toThrow(/exceeds approved scope by \$100\.00/)
   })
 })
+
+import { acceptedProposalTotal } from '@/lib/invoice-progress'
+
+describe('acceptedProposalTotal', () => {
+  it('prefers the locked selection.selected_total when present', () => {
+    const p = { line_items: [{ description: 'x', quantity: 1, unit_price: 999 }],
+      selection: { optional_item_ids: [], selected_total: 1234, selected_at: '' } }
+    expect(acceptedProposalTotal(p)).toBe(1234)
+  })
+
+  it('falls back to computeSelectedTotal (required items − discount + tax) with no selection', () => {
+    const p = {
+      line_items: [
+        { id: 'a', description: 'Base', quantity: 1, unit_price: 1000 },
+        { id: 'b', description: 'Add-on', quantity: 1, unit_price: 500, optional: true }, // excluded (not selected)
+      ],
+      discount: { type: 'percent' as const, value: 10 },   // -100 on 1000
+      tax_rate: 10,                                         // +90 on 900
+    }
+    // required base 1000, no addons; discount 100 -> 900; tax 10% -> 990
+    expect(acceptedProposalTotal(p)).toBe(990)
+  })
+
+  it('a package proposal returns its locked selected_total', () => {
+    const p = {
+      packages: [{ id: 'good', name: 'Good', includes: [], price: 800 },
+                 { id: 'best', name: 'Best', includes: [], price: 2000 }],
+      line_items: [],
+      selection: { package_id: 'best', optional_item_ids: [], selected_total: 2000, selected_at: '' },
+    }
+    expect(acceptedProposalTotal(p)).toBe(2000)
+  })
+})
