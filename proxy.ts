@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getBrandByHostname } from '@/lib/brands'
 
 const ROOT_DOMAIN = 'traxevent.com'
 const RESERVED = new Set(['www', 'app', 'api'])
@@ -15,6 +16,19 @@ export function extractOrgSlug(hostname: string): string | null {
 
 export function proxy(request: NextRequest) {
   const hostname = request.headers.get('host') ?? ''
+
+  // Brand acquisition domains (brewtrax.com, …): serve the brand landing at /.
+  // Everything else on a brand domain falls through to normal routes.
+  const brand = getBrandByHostname(hostname)
+  if (brand) {
+    if (request.nextUrl.pathname === '/') {
+      const url = request.nextUrl.clone()
+      url.pathname = `/brand/${brand.id}`
+      return NextResponse.rewrite(url)
+    }
+    return NextResponse.next()
+  }
+
   const orgSlug = extractOrgSlug(hostname)
 
   if (orgSlug) {

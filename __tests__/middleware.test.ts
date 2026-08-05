@@ -34,3 +34,29 @@ describe('proxy', () => {
     expect(res.headers.get('x-middleware-rewrite')).toContain('/fbc/summer/register')
   })
 })
+
+describe('proxy — brand domains', () => {
+  it('rewrites the brand domain root to the brand landing route', () => {
+    const request = new NextRequest('https://brewtrax.com/', {
+      headers: { host: 'brewtrax.com' },
+    })
+    const res = proxy(request)
+    expect(res.headers.get('x-middleware-rewrite')).toContain('/brand/brewtrax')
+  })
+
+  it('leaves non-root paths on brand domains untouched', () => {
+    const request = new NextRequest('https://brewtrax.com/signup', {
+      headers: { host: 'brewtrax.com' },
+    })
+    const res = proxy(request)
+    expect(res.headers.get('x-middleware-rewrite')).toBeNull()
+  })
+
+  it('does not treat traxevent org subdomains as brands', () => {
+    const request = new NextRequest('https://fbc.traxevent.com/summer/register', {
+      headers: { host: 'fbc.traxevent.com' },
+    })
+    const res = proxy(request)
+    expect(res.headers.get('x-middleware-rewrite')).toContain('/fbc/summer/register')
+  })
+})
