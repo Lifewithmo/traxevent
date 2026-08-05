@@ -6,12 +6,14 @@ import type { Org, OrgRole } from '@/lib/types'
 import { slugify } from '@/lib/slug'
 import { assertOrgAdmin } from '@/lib/auth/assert'
 import { getAllIndustryPacks } from '@/lib/industry-packs'
+import { getBrand, validBrandParam } from '@/lib/brands'
 
 export async function createOrg(
   uid: string,
   orgName: string,
   displayName: string,
-  email: string
+  email: string,
+  brandId?: string
 ): Promise<Org> {
   const slug = slugify(orgName)
   const orgRef = adminDb.collection('orgs').doc()
@@ -23,6 +25,15 @@ export async function createOrg(
     slug,
     billing_status: 'trialing',
     created_at: new Date().toISOString(),
+  }
+
+  // Acquisition brand (spec §2): a signup through brewtrax.com lands in an org
+  // pre-configured with that brand's industry pack. Firestore rejects undefined,
+  // so fields are only added when a valid brand is present.
+  const validBrand = validBrandParam(brandId)
+  if (validBrand) {
+    org.brand_id = validBrand
+    org.industry_pack_id = getBrand(validBrand).industryPackId
   }
 
   await orgRef.set(org)

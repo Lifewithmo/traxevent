@@ -13,6 +13,7 @@ export interface Org {
   billing_status: 'active' | 'trialing' | 'inactive'
   plan?: BillingPlan
   industry_pack_id?: string          // selected industry pack; absent = 'general'
+  brand_id?: string                  // acquisition brand the org signed up through; absent = 'traxevent'
   stripe_customer_id?: string
   stripe_account_id?: string
   sending_domain?: string
