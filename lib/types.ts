@@ -412,6 +412,14 @@ export interface Proposal {
 
 export type InvoiceStatus = 'draft' | 'sent' | 'partial' | 'paid' | 'void'
 
+export type InvoiceType = 'quick' | 'deposit' | 'progress' | 'final'
+export type InvoiceLifecycle = 'draft' | 'approved' | 'issued' | 'voided' | 'replaced' | 'closed'
+export type InvoiceDeliveryStatus = 'not_sent' | 'queued' | 'sent' | 'delivered' | 'bounced' | 'viewed' | 'downloaded'
+export type InvoiceAccountingStatus = 'not_connected' | 'ready' | 'syncing' | 'synced' | 'error' | 'mismatch'
+export type InvoiceDisputeStatus = 'none' | 'question' | 'under_review' | 'adjustment_proposed' | 'resolved' | 'escalated'
+export type InvoicePaymentStatus = 'not_due' | 'due' | 'partial' | 'paid' | 'overpaid' | 'refunded' | 'void'
+export type InvoiceAgingBucket = 'current' | 'due_soon' | 'due_today' | 'd1_30' | 'd31_60' | 'd61_90' | 'd90_plus'
+
 export interface InvoiceLineItem {
   description: string
   quantity: number
