@@ -396,6 +396,18 @@ export interface Lead {
   updated_at?: string
 }
 
+export interface Customer {
+  id: string
+  name: string
+  company?: string
+  email?: string
+  phone?: string
+  tags?: string[]
+  notes?: string
+  created_at: string
+  updated_at?: string
+}
+
 export type ProposalStatus = 'draft' | 'sent' | 'accepted' | 'rejected'
 
 export interface ProposalLineItem {
