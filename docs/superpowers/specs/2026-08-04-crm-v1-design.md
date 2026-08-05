@@ -37,14 +37,14 @@ New and evolved entities (Firestore, under `orgs/{orgId}/…`):
 
 Relationships: **Customer → many Opportunities → many (Tasks, Notes, ActivityEvents) + attached Proposals/Invoices/Contracts/Vendors.**
 
-**Opportunity stage** (the pipeline): three **open** stages `inquiry → consultation → proposal`, then two **closed** outcomes — `booked` (won: they hired you) and `lost`. (This replaces the old `Lead` stages; the old `delivered` was post-sale operations, which belong to the Event/operations side, out of V1 CRM scope.)
+**Opportunity stage** (the pipeline): three **open** stages `inquiry → consultation → proposal`, then two **closed** outcomes — `closed_won` and `closed_lost` (displayed "Closed Won" / "Closed Lost"). (This replaces the old `Lead` stages; the old `booked`/`delivered` were post-sale operations, which belong to the Event/operations side, out of V1 CRM scope — `closed_won` is the booking.)
 
 ### The discipline mechanic (derived, not a stored flag)
 
 An open opportunity's "health" is **derived** each render:
 - **Active** — has ≥1 incomplete task with a `due_date`. The soonest such task is its **next action**.
 - **Waiting** — `waiting` is set (reason + optional `follow_up_date`). When `follow_up_date` arrives, it auto-becomes a next action (a task is created / surfaced).
-- **Closed** — stage is `booked` (won) or `lost`.
+- **Closed** — stage is `closed_won` or `closed_lost`.
 - **Needs attention** — open (stage `inquiry`/`consultation`/`proposal`), not waiting, and no dated incomplete task. These are the orphans the Today screen surfaces.
 
 **Tasks and "next actions" are one system.** A task belongs to an opportunity; the opportunity's soonest incomplete dated task *is* its next action. All incomplete tasks across all opportunities feed the Today to-do list. Tasks stay attached through every stage.
@@ -54,7 +54,7 @@ An open opportunity's "health" is **derived** each render:
 1. **Today** (home) — three metric tiles (tasks due, needs attention count, open pipeline value); a **Needs attention** list (orphan opportunities, each with one-click *Add next step* / *Mark waiting*); a **Due today / overdue** task list (each tagged with its customer + opportunity); a **Waiting on** list (blocked deals + how long quiet). Validated by mockup.
 2. **Opportunity detail** — a **compact contact card** (top-right: avatar, name, company, quick call/email/expand — never dominates the page); a prominent **next-action banner**; a **Tasks** column and an **Activity** timeline sharing the main space; **attached Proposal/Invoice/Contract** chips at the bottom. Validated by mockup.
 3. **Customer detail** — the customer's contact info, tags, notes, and the roll-up of *all* their opportunities (open + past) with total/last-contact, so repeat business is never re-keyed.
-4. **Board** — kanban by stage (`inquiry → consultation → proposal → booked`, with `lost` reachable via the card menu); cards show customer, value, and a small colored dot for health (active / waiting / needs-attention); drag to change stage.
+4. **Board** — kanban by stage (`inquiry → consultation → proposal`, with `closed_won` / `closed_lost` as outcome columns or a card-menu action); cards show customer, value, and a small colored dot for health (active / waiting / needs-attention); drag to change stage.
 5. **Smart views** — saved filter presets over opportunities (built-ins: *Needs attention*, *Waiting on*, *Due this week*, *Booked this month*; plus user-saved filters by stage / tag / value / date).
 6. **Basic intake form** — a public, tokenized lead-capture form that creates a Customer + Opportunity (+ optional first task) and logs a `form` activity event. Distinct from the event-registration forms engine.
 
