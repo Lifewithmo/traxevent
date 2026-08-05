@@ -1,10 +1,12 @@
 // app/api/payments/webhook/route.ts
 import Stripe from 'stripe'
+import { FieldValue } from 'firebase-admin/firestore'
 import { stripe } from '@/lib/stripe'
 import { headers } from 'next/headers'
 import { adminDb } from '@/lib/firebase-admin'
 import { sendRegistrationConfirmation } from '@/lib/email'
 import { getVerifiedSendingDomain } from '@/actions/domains'
+import type { Proposal } from '@/lib/types'
 
 export async function POST(req: Request) {
   const body = await req.text()
@@ -22,6 +24,66 @@ export async function POST(req: Request) {
 
   if (event.type === 'payment_intent.succeeded') {
     const pi = event.data.object as Stripe.PaymentIntent
+
+    if (pi.metadata?.purpose === 'proposal_deposit') {
+      const proposalId = pi.metadata.proposal_id
+      const snap = await adminDb
+        .collectionGroup('proposals')
+        .where('id', '==', proposalId)
+        .limit(1)
+        .get()
+      if (snap.empty) return new Response('ok')
+      const ref = snap.docs[0].ref
+      const proposal = snap.docs[0].data() as Proposal
+      if (proposal.payment_status === 'deposit_paid') return new Response('ok') // idempotent
+
+      const now = new Date().toISOString()
+      const update: Record<string, unknown> = {
+        payment_status: 'deposit_paid',
+        deposit_payment: { intent_id: pi.id, amount: pi.amount / 100, paid_at: now },
+        updated_at: now,
+        events: FieldValue.arrayUnion({ kind: 'deposit_paid', at: now }),
+      }
+
+      // before_accept: promote the pending signature and finalize the close
+      // atomically with the deposit — the FIRST time the deposit lands.
+      if (!proposal.signature && proposal.pending_signature) {
+        const ps = proposal.pending_signature
+        update.status = 'accepted'
+        update.selection = ps.selection
+        update.signature = {
+          signer_name: ps.signer_name,
+          signer_email: ps.signer_email,
+          signed_at: now,
+          ip: ps.ip,
+          user_agent: ps.user_agent,
+          consent_electronic: true,
+          document_hash: ps.document_hash,
+        }
+        update.client_response_at = now
+        update.pending_signature = FieldValue.delete()
+        update.events = FieldValue.arrayUnion(
+          { kind: 'signed', at: now, ip: ps.ip, user_agent: ps.user_agent },
+          { kind: 'deposit_paid', at: now },
+        )
+        const orgRef = ref.parent.parent
+        if (orgRef) {
+          await orgRef.collection('leads').doc(proposal.lead_id).update({
+            stage: 'closed_won',
+            updated_at: now,
+          })
+        }
+      }
+
+      await ref.update(update)
+      try {
+        // best-effort signed/paid confirmation email
+      } catch {
+        // email failure should not cause Stripe to retry the webhook
+      }
+      return new Response('ok')
+    }
+
     const familyId = pi.metadata?.familyId
     if (!familyId) return new Response('ok')
 
