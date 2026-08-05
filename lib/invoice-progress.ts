@@ -42,3 +42,26 @@ export function acceptedProposalTotal(
 ): number {
   return proposal.selection?.selected_total ?? computeSelectedTotal(proposal, { optional_item_ids: [] })
 }
+
+export function proposalInvoiceLines(
+  proposal: Pick<Proposal, 'id' | 'packages' | 'line_items' | 'selection'>,
+): InvoiceLineItem[] {
+  const src = { type: 'proposal' as const, id: proposal.id }
+  const sel = proposal.selection
+  const items = proposal.line_items ?? []
+  const lines: InvoiceLineItem[] = []
+  const pkgs = proposal.packages ?? []
+  if (pkgs.length > 0 && sel?.package_id) {
+    const pkg = pkgs.find((p) => p.id === sel.package_id)
+    if (pkg) lines.push({ description: pkg.name, quantity: 1, unit_price: pkg.price, source: src })
+  } else {
+    for (const i of items.filter((i) => i.optional !== true)) {
+      lines.push({ description: i.description, quantity: i.quantity, unit_price: i.unit_price, source: src })
+    }
+  }
+  const chosen = new Set(sel?.optional_item_ids ?? [])
+  for (const i of items.filter((i) => i.optional === true && i.id !== undefined && chosen.has(i.id))) {
+    lines.push({ description: i.description, quantity: i.quantity, unit_price: i.unit_price, source: src })
+  }
+  return lines
+}
