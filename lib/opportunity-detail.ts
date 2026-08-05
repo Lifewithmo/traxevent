@@ -1,5 +1,6 @@
 import type { Proposal, Invoice, Contract, Vendor } from '@/lib/types'
 import type { OppHealth } from '@/lib/opportunity-health'
+import { invoiceBalance } from '@/lib/invoices'
 
 /** Up to two uppercase initials from a display name. */
 export function initials(name: string): string {
@@ -112,12 +113,16 @@ export function attachmentChips(i: {
   vendors: Vendor[]
 }): AttachmentChip[] {
   const accepted = i.proposals.filter((p) => p.status === 'accepted').length
-  const unpaid = i.invoices.filter((v) => v.status !== 'paid' && v.status !== 'void').length
+  // Invoices moved to a lifecycle + balance model (Invoice.status was removed).
+  // "Outstanding" = not voided/replaced and still carrying a positive balance.
+  const isDead = (v: Invoice) => v.lifecycle === 'voided' || v.lifecycle === 'replaced'
+  const outstanding = i.invoices.filter((v) => !isDead(v) && invoiceBalance(v) > 0).length
+  const anyLiveInvoice = i.invoices.some((v) => !isDead(v))
   const signed = i.contracts.filter((c) => c.status === 'signed').length
   const confirmed = i.vendors.filter((v) => v.status === 'confirmed').length
   return [
     { kind: 'proposal', label: 'Proposals', count: i.proposals.length, hint: accepted ? `${accepted} accepted` : undefined },
-    { kind: 'invoice', label: 'Invoices', count: i.invoices.length, hint: unpaid ? `${unpaid} unpaid` : (i.invoices.length ? 'paid' : undefined) },
+    { kind: 'invoice', label: 'Invoices', count: i.invoices.length, hint: outstanding ? `${outstanding} unpaid` : (anyLiveInvoice ? 'paid' : undefined) },
     { kind: 'contract', label: 'Contracts', count: i.contracts.length, hint: signed ? 'signed' : (i.contracts.length ? 'unsigned' : undefined) },
     { kind: 'vendor', label: 'Vendors', count: i.vendors.length, hint: confirmed ? `${confirmed} confirmed` : undefined },
   ]
