@@ -6,7 +6,7 @@ import { randomBytes } from 'crypto'
 import { assertOrgMember, assertOrgAdmin } from '@/lib/auth/assert'
 import { LEAD_STAGES } from '@/lib/leads'
 import { logActivity } from '@/lib/activity'
-import type { Lead, LeadStage } from '@/lib/types'
+import type { Lead, LeadStage, LeadWaiting } from '@/lib/types'
 
 function leadsRef(orgId: string) {
   return adminDb.collection('orgs').doc(orgId).collection('leads')
@@ -103,6 +103,27 @@ export async function setLeadStage(orgId: string, leadId: string, stage: LeadSta
   if (!LEAD_STAGES.includes(stage)) throw new Error('Invalid stage')
   await leadsRef(orgId).doc(leadId).update({ stage, updated_at: new Date().toISOString() })
   await logActivity(orgId, { parent_type: 'opportunity', parent_id: leadId, kind: 'stage', summary: `Stage → ${stage}` })
+}
+
+export async function setLeadWaiting(
+  orgId: string,
+  leadId: string,
+  input: { reason: string; follow_up_date?: string }
+): Promise<void> {
+  await assertOrgAdmin(orgId)
+  if (!input.reason?.trim()) throw new Error('A reason is required')
+  const waiting: LeadWaiting = {
+    reason: input.reason.trim(),
+    ...(input.follow_up_date?.trim() ? { follow_up_date: input.follow_up_date.trim() } : {}),
+  }
+  await leadsRef(orgId).doc(leadId).update({ waiting, updated_at: new Date().toISOString() })
+  await logActivity(orgId, { parent_type: 'opportunity', parent_id: leadId, kind: 'waiting', summary: `Waiting: ${waiting.reason}` })
+}
+
+export async function clearLeadWaiting(orgId: string, leadId: string): Promise<void> {
+  await assertOrgAdmin(orgId)
+  await leadsRef(orgId).doc(leadId).update({ waiting: FieldValue.delete(), updated_at: new Date().toISOString() })
+  await logActivity(orgId, { parent_type: 'opportunity', parent_id: leadId, kind: 'waiting', summary: 'Resumed — cleared waiting' })
 }
 
 export async function deleteLead(orgId: string, leadId: string): Promise<void> {
