@@ -62,6 +62,12 @@ export async function instantiateOpsPlanCore(
   return plan
 }
 
+async function loadPlan(orgId: string, eventId: string): Promise<OpsPlan> {
+  const snap = await opsPlanRef(orgId, eventId).get()
+  if (!snap.exists) throw new Error('No ops plan for this event')
+  return snap.data() as OpsPlan
+}
+
 const QUANTITY_FIELDS = new Set<keyof OpsRequirements>(['guests'])
 
 /**
@@ -78,9 +84,7 @@ export async function updateOpsRequirementsCore(
   actorUid: string,
 ): Promise<void> {
   if (updates.guests !== undefined && updates.guests <= 0) throw new Error('Guest count must be positive')
-  const snap = await opsPlanRef(orgId, eventId).get()
-  if (!snap.exists) throw new Error('No ops plan for this event')
-  const plan = snap.data() as OpsPlan
+  const plan = await loadPlan(orgId, eventId)
 
   const now = new Date().toISOString()
   const entries: OpsChangeEntry[] = []
@@ -115,4 +119,72 @@ export async function updateOpsRequirementsCore(
     payload.needs_review = true
   }
   await opsPlanRef(orgId, eventId).update(payload)
+}
+
+export async function toggleListItemCore(
+  orgId: string,
+  eventId: string,
+  list: 'shopping_list' | 'packing_list',
+  resourceId: string,
+  checked: boolean,
+): Promise<void> {
+  const plan = await loadPlan(orgId, eventId)
+  const items = plan[list]
+  const idx = items.findIndex((i) => i.resource_id === resourceId)
+  if (idx === -1) throw new Error('Item not found')
+  const next = items.map((i, n) => (n === idx ? { ...i, checked } : i))
+  await opsPlanRef(orgId, eventId).update({ [list]: next, updated_at: new Date().toISOString() })
+}
+
+export async function completeChecklistStepCore(
+  orgId: string,
+  eventId: string,
+  checklistId: string,
+  stepIndex: number,
+  input: { done: boolean; evidence_value?: string; actor_uid: string },
+): Promise<void> {
+  const plan = await loadPlan(orgId, eventId)
+  const clIdx = plan.checklists.findIndex((c) => c.id === checklistId)
+  if (clIdx === -1) throw new Error('Checklist not found')
+  const checklist = plan.checklists[clIdx]
+  if (stepIndex < 0 || stepIndex >= checklist.steps.length) throw new Error('Step not found')
+
+  const steps = checklist.steps.map((s, n) => {
+    if (n !== stepIndex) return s
+    if (!input.done) {
+      // un-complete: strip completion metadata entirely
+      return { text: s.text, evidence: s.evidence, done: false }
+    }
+    return {
+      text: s.text, evidence: s.evidence, done: true,
+      done_at: new Date().toISOString(),
+      done_by: input.actor_uid,
+      ...(input.evidence_value !== undefined ? { evidence_value: input.evidence_value } : {}),
+    }
+  })
+  const checklists = plan.checklists.map((c, n) => (n === clIdx ? { ...c, steps } : c))
+  await opsPlanRef(orgId, eventId).update({ checklists, updated_at: new Date().toISOString() })
+}
+
+export async function toggleDeadlineCore(
+  orgId: string,
+  eventId: string,
+  deadlineId: string,
+  done: boolean,
+): Promise<void> {
+  const plan = await loadPlan(orgId, eventId)
+  const idx = plan.deadlines.findIndex((d) => d.id === deadlineId)
+  if (idx === -1) throw new Error('Deadline not found')
+  const deadlines = plan.deadlines.map((d, n) => (n === idx ? { ...d, done } : d))
+  await opsPlanRef(orgId, eventId).update({ deadlines, updated_at: new Date().toISOString() })
+}
+
+export async function acknowledgeReviewCore(orgId: string, eventId: string, actorUid: string): Promise<void> {
+  const plan = await loadPlan(orgId, eventId)
+  const now = new Date().toISOString()
+  await opsPlanRef(orgId, eventId).update({
+    needs_review: false,
+    change_log: [...plan.change_log, { at: now, by: actorUid, field: 'review_acknowledged' }],
+    updated_at: now,
+  })
 }

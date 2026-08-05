@@ -3,6 +3,7 @@
 import { assertOrgMember, assertOrgAdmin } from '@/lib/auth/assert'
 import {
   getOpsPlanCore, instantiateOpsPlanCore, updateOpsRequirementsCore,
+  toggleListItemCore, completeChecklistStepCore, toggleDeadlineCore, acknowledgeReviewCore,
   type InstantiateOpsPlanInput,
 } from '@/lib/ops/event-ops'
 import type { OpsPlan, OpsRequirements } from '@/lib/types'
@@ -34,4 +35,31 @@ export async function updateOpsRequirements(
 ): Promise<void> {
   const member = await assertOrgMember(orgId)
   return updateOpsRequirementsCore(orgId, eventId, updates, member.uid)
+}
+
+export async function toggleListItem(
+  orgId: string, eventId: string,
+  list: 'shopping_list' | 'packing_list', resourceId: string, checked: boolean,
+): Promise<void> {
+  await assertOrgMember(orgId)
+  return toggleListItemCore(orgId, eventId, list, resourceId, checked)
+}
+
+export async function completeChecklistStep(
+  orgId: string, eventId: string,
+  checklistId: string, stepIndex: number,
+  input: { done: boolean; evidence_value?: string },
+): Promise<void> {
+  const member = await assertOrgMember(orgId)
+  return completeChecklistStepCore(orgId, eventId, checklistId, stepIndex, { ...input, actor_uid: member.uid })
+}
+
+export async function toggleDeadline(orgId: string, eventId: string, deadlineId: string, done: boolean): Promise<void> {
+  await assertOrgMember(orgId)
+  return toggleDeadlineCore(orgId, eventId, deadlineId, done)
+}
+
+export async function acknowledgeReview(orgId: string, eventId: string): Promise<void> {
+  const member = await assertOrgMember(orgId)
+  return acknowledgeReviewCore(orgId, eventId, member.uid)
 }
