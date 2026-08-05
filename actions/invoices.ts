@@ -6,7 +6,8 @@ import { generateAccessToken } from '@/lib/tokens'
 import { assertOrgMember, assertOrgAdmin } from '@/lib/auth/assert'
 import { invoiceTotal, amountPaid } from '@/lib/invoices'
 import { normalizeInvoice, formatInvoiceNumber } from '@/lib/invoice-normalize'
-import { previouslyBilled, remainingToBill, assertWithinScope } from '@/lib/invoice-progress'
+import { previouslyBilled, remainingToBill, assertWithinScope, acceptedProposalTotal } from '@/lib/invoice-progress'
+import { depositAmount } from '@/lib/proposals'
 import { assertEditable } from '@/lib/invoice-lock'
 import { derivePaymentStatus } from '@/lib/invoice-status'
 import { getProposal } from '@/actions/proposals'
@@ -89,23 +90,30 @@ export async function generateFromProposal(
   if (!proposal) throw new Error('Proposal not found')
   if (proposal.status !== 'accepted') throw new Error('Proposal is not accepted')
 
-  const approved = invoiceTotal(proposal.line_items)
+  const accepted = acceptedProposalTotal(proposal)
   const existing = await listInvoices(orgId, leadId)
   const billed = previouslyBilled(existing, proposalId)
 
   const source = { type: 'proposal' as const, id: proposalId, label: 'Accepted proposal' }
   const lineSource = { type: 'proposal' as const, id: proposalId }
-  let line_items: InvoiceLineItem[]
-  if (opts.type === 'final') {
-    line_items = [
-      { description: 'Final balance', quantity: 1, unit_price: remainingToBill(approved, billed), source: lineSource },
-    ]
-  } else {
-    line_items = proposal.line_items.map((l) => ({ ...l, source: lineSource }))
+  let line: InvoiceLineItem
+  switch (opts.type) {
+    case 'deposit':
+      line = { description: 'Deposit', quantity: 1, unit_price: depositAmount(accepted, proposal.deposit), source: lineSource }
+      break
+    case 'final':
+      line = { description: 'Final balance', quantity: 1, unit_price: remainingToBill(accepted, billed), source: lineSource }
+      break
+    case 'progress':
+      line = { description: 'Progress payment', quantity: 1, unit_price: 0, source: lineSource }
+      break
+    default: // quick
+      line = { description: 'Per accepted proposal', quantity: 1, unit_price: accepted, source: lineSource }
   }
+  const line_items = [line]
 
   if (opts.type !== 'quick') {
-    assertWithinScope(invoiceTotal(line_items), billed, approved)
+    assertWithinScope(invoiceTotal(line_items), billed, accepted)
   }
 
   const invoice = await createInvoice(orgId, leadId, { type: opts.type, line_items })
@@ -157,7 +165,7 @@ export async function issueInvoice(orgId: string, invoiceId: string): Promise<{ 
   if (preInv.source?.type === 'proposal' && preInv.source.id && preInv.type !== 'quick') {
     const proposal = await getProposal(orgId, preInv.source.id)
     if (proposal) {
-      const approved = invoiceTotal(proposal.line_items)
+      const approved = acceptedProposalTotal(proposal)
       const existing = await listInvoices(orgId, preInv.lead_id)
       const billed = previouslyBilled(existing, preInv.source.id)
       assertWithinScope(invoiceTotal(preInv.line_items), billed, approved)

@@ -136,7 +136,7 @@ describe('invoices actions', () => {
     expect(invoice.line_items).toEqual([])
   })
 
-  it('generateFromProposal builds a draft with proposal-sourced lines and invoice source', async () => {
+  it('generateFromProposal builds a draft with a proposal-sourced summary line and invoice source', async () => {
     getProposalSpy.mockResolvedValue({
       id: 'p1', org_id: 'org-1', lead_id: 'lead-1', token: 'pt', status: 'accepted',
       line_items: [{ description: 'Package', quantity: 1, unit_price: 1000 }], created_at: '2026-01-01',
@@ -149,6 +149,9 @@ describe('invoices actions', () => {
     expect(inv.lifecycle).toBe('draft')
     expect(inv.type).toBe('deposit')
     expect(inv.source).toEqual({ type: 'proposal', id: 'p1', label: 'Accepted proposal' })
+    // no deposit terms on the proposal -> depositAmount is 0
+    expect(inv.line_items).toHaveLength(1)
+    expect(inv.line_items[0]).toEqual(expect.objectContaining({ description: 'Deposit', unit_price: 0 }))
     expect(inv.line_items[0].source).toEqual({ type: 'proposal', id: 'p1' })
     expect(inv.schema_version).toBe(2)
   })
@@ -157,6 +160,53 @@ describe('invoices actions', () => {
     getProposalSpy.mockResolvedValue({ id: 'p1', status: 'sent', line_items: [] })
     await expect(generateFromProposal('org-1', 'lead-1', 'p1', { type: 'deposit' }))
       .rejects.toThrow(/not accepted/i)
+  })
+
+  it('generateFromProposal deposit seeds depositAmount from the accepted total', async () => {
+    getProposalSpy.mockResolvedValue({
+      id: 'p1', org_id: 'org-1', lead_id: 'lead-1', status: 'accepted', line_items: [],
+      deposit: { type: 'percent', value: 25 },
+      selection: { optional_item_ids: [], selected_total: 2000, selected_at: '' },
+      created_at: '',
+    })
+    listInvoicesSpy.mockResolvedValue({ docs: [] })
+    const inv = await generateFromProposal('org-1', 'lead-1', 'p1', { type: 'deposit' })
+    expect(inv.line_items).toHaveLength(1)
+    expect(inv.line_items[0]).toEqual(expect.objectContaining({ description: 'Deposit', unit_price: 500 })) // 25% of 2000
+    expect(inv.line_items[0].source).toEqual({ type: 'proposal', id: 'p1' })
+  })
+
+  it('generateFromProposal final bills the remaining accepted total', async () => {
+    getProposalSpy.mockResolvedValue({
+      id: 'p1', org_id: 'org-1', lead_id: 'lead-1', status: 'accepted', line_items: [],
+      selection: { optional_item_ids: [], selected_total: 2000, selected_at: '' }, created_at: '',
+    })
+    // one prior issued invoice billed 500 against this source
+    listInvoicesSpy.mockResolvedValue({ docs: [{ data: () => ({
+      id: 'iA', org_id: 'org-1', lead_id: 'lead-1', token: 't', lifecycle: 'issued',
+      source: { type: 'proposal', id: 'p1' }, line_items: [{ description: 'Deposit', quantity: 1, unit_price: 500 }],
+      payments: [], created_at: '',
+    }) }] })
+    const inv = await generateFromProposal('org-1', 'lead-1', 'p1', { type: 'final' })
+    expect(inv.line_items[0]).toEqual(expect.objectContaining({ description: 'Final balance', unit_price: 1500 }))
+  })
+
+  it('generateFromProposal scope guardrail uses the accepted total (package proposal)', async () => {
+    getProposalSpy.mockResolvedValue({
+      id: 'p1', org_id: 'org-1', lead_id: 'lead-1', status: 'accepted', line_items: [],
+      packages: [{ id: 'best', name: 'Best', includes: [], price: 1000 }],
+      selection: { package_id: 'best', optional_item_ids: [], selected_total: 1000, selected_at: '' }, created_at: '',
+    })
+    // already billed 1000 (fully) against this source
+    listInvoicesSpy.mockResolvedValue({ docs: [{ data: () => ({
+      id: 'iA', org_id: 'org-1', lead_id: 'lead-1', token: 't', lifecycle: 'issued',
+      source: { type: 'proposal', id: 'p1' }, line_items: [{ description: 'x', quantity: 1, unit_price: 1000 }],
+      payments: [], created_at: '',
+    }) }] })
+    // final would compute remaining 0 -> fine; a progress of any positive amount must exceed:
+    // instead assert a 'final' seeds 0 remaining, and a manual over-bill is blocked at issue (next test).
+    const inv = await generateFromProposal('org-1', 'lead-1', 'p1', { type: 'final' })
+    expect(inv.line_items[0]).toEqual(expect.objectContaining({ unit_price: 0 })) // nothing left to bill
   })
 
   it('listInvoices filters by lead_id, orders by created_at desc, and returns mapped docs', async () => {
@@ -343,6 +393,40 @@ describe('invoices actions', () => {
     })
 
     await expect(issueInvoice('org-1', 'inv-b')).rejects.toThrow(/exceeds approved scope/i)
+  })
+
+  it('issueInvoice scope check uses the accepted total, not invoiceTotal(proposal.line_items) (package proposal)', async () => {
+    // proposal.line_items sums to 5000 (would let old, buggy `invoiceTotal(proposal.line_items)`
+    // scope math wave through over-billing) but the accepted (selected) total is only 1000.
+    const proposal = {
+      id: 'p1', org_id: 'org-1', lead_id: 'lead-1', token: 'pt', status: 'accepted',
+      line_items: [{ description: 'x', quantity: 1, unit_price: 5000 }],
+      packages: [{ id: 'best', name: 'Best', includes: [], price: 1000 }],
+      selection: { package_id: 'best', optional_item_ids: [], selected_total: 1000, selected_at: '' },
+      created_at: '2026-01-01',
+    }
+    getProposalSpy.mockResolvedValue(proposal)
+
+    const draft = {
+      id: 'inv-c', org_id: 'org-1', lead_id: 'lead-1', token: 't', lifecycle: 'draft', type: 'progress',
+      line_items: [{ description: 'Extra', quantity: 1, unit_price: 1, source: { type: 'proposal', id: 'p1' } }],
+      payments: [], created_at: '2026-02-03',
+      source: { type: 'proposal', id: 'p1', label: 'Accepted proposal' },
+    }
+    invoiceDocGetSpy
+      .mockResolvedValueOnce({ exists: true, data: () => draft })
+      .mockResolvedValueOnce({ exists: true, data: () => draft })
+    // a sibling already issued for the full accepted total (1000)
+    listInvoicesSpy.mockResolvedValueOnce({
+      docs: [{ data: () => ({
+        id: 'iA', org_id: 'org-1', lead_id: 'lead-1', token: 't', lifecycle: 'issued',
+        source: { type: 'proposal', id: 'p1' }, line_items: [{ description: 'Package', quantity: 1, unit_price: 1000 }],
+        payments: [], created_at: '2026-02-01',
+      }) }],
+    })
+    counterGetSpy.mockResolvedValue({ exists: true, data: () => ({ seq: 1000 }) })
+
+    await expect(issueInvoice('org-1', 'inv-c')).rejects.toThrow(/exceeds approved scope/i)
   })
 
   it('voidInvoice sets lifecycle voided and keeps the number', async () => {
