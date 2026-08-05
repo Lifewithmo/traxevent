@@ -37,4 +37,40 @@ describe('InvoiceEditorClient', () => {
     render(<InvoiceEditorClient orgId="o" orgSlug="s" leadId="l" invoice={inv({})} />)
     expect(screen.queryByText(/bill to/i)).not.toBeInTheDocument()
   })
+
+  it('breakdown panel shows Subtotal/Discount/Tax/Total for an invoice with discount + tax', () => {
+    render(
+      <InvoiceEditorClient
+        orgId="o" orgSlug="s" leadId="l"
+        invoice={inv({
+          discount: { type: 'percent', value: 10 },
+          tax_rate: 10,
+          line_items: [{ description: 'Service', quantity: 1, unit_price: 1000 }],
+        })}
+      />,
+    )
+    expect(screen.getByTestId('breakdown-subtotal')).toHaveTextContent('1000.00')
+    expect(screen.getByTestId('breakdown-discount')).toHaveTextContent('100.00')
+    expect(screen.getByTestId('breakdown-tax')).toHaveTextContent('90.00')
+    // subtotal 1000, -10% discount = 900, +10% tax = 990
+    expect(screen.getByTestId('breakdown-total')).toHaveTextContent('990.00')
+  })
+
+  it('disables the discount/tax/taxable inputs once issued', () => {
+    render(
+      <InvoiceEditorClient
+        orgId="o" orgSlug="s" leadId="l"
+        invoice={inv({
+          lifecycle: 'issued',
+          discount: { type: 'percent', value: 10 },
+          tax_rate: 10,
+          line_items: [{ description: 'x', quantity: 1, unit_price: 10 }],
+        })}
+      />,
+    )
+    expect((screen.getByLabelText('Discount') as HTMLSelectElement).disabled).toBe(true)
+    expect((screen.getByLabelText('Value') as HTMLInputElement).disabled).toBe(true)
+    expect((screen.getByLabelText(/tax rate/i) as HTMLInputElement).readOnly).toBe(true)
+    expect((screen.getByLabelText(/taxable/i) as HTMLInputElement).disabled).toBe(true)
+  })
 })

@@ -11,10 +11,13 @@ import { Badge } from '@/components/ui/badge'
 import {
   updateInvoice, issueInvoice, approveInvoice, voidInvoice, replaceInvoice, deleteInvoice, recordPayment,
 } from '@/actions/invoices'
-import { lineItemSubtotal, linesSubtotal, amountPaid, invoiceBalance } from '@/lib/invoices'
+import {
+  lineItemSubtotal, linesSubtotal, amountPaid, invoiceBalance,
+  invoiceDiscountAmount, invoiceTaxAmount, invoiceAmountDue,
+} from '@/lib/invoices'
 import { INVOICE_LIFECYCLE_LABELS, resolveTipsEnabled } from '@/lib/invoice-status'
 import { LOCKED_LIFECYCLES } from '@/lib/invoice-lock'
-import type { NormalizedInvoice, InvoiceLineItem } from '@/lib/types'
+import type { NormalizedInvoice, InvoiceLineItem, InvoiceDiscount } from '@/lib/types'
 
 interface InvoiceEditorClientProps {
   orgId: string
@@ -47,6 +50,8 @@ export function InvoiceEditorClient({ orgId, orgSlug, leadId, invoice, orgTipsEn
   const [dueDate, setDueDate] = useState(invoice.due_date ?? '')
   const [notes, setNotes] = useState(invoice.notes ?? '')
   const [lineItems, setLineItems] = useState<InvoiceLineItem[]>(invoice.line_items ?? [])
+  const [discount, setDiscount] = useState<InvoiceDiscount | undefined>(invoice.discount)
+  const [taxRate, setTaxRate] = useState<string>(invoice.tax_rate != null ? String(invoice.tax_rate) : '')
 
   const [saving, setSaving] = useState(false)
   const [approving, setApproving] = useState(false)
@@ -87,12 +92,15 @@ export function InvoiceEditorClient({ orgId, orgSlug, leadId, invoice, orgTipsEn
     setSaving(true); setError(null); setNotice(null)
     try {
       const cleaned = lineItems.filter((item) => !isBlankRow(item))
+      const taxRateNum = taxRate.trim() === '' ? undefined : toNumber(taxRate)
       await updateInvoice(orgId, invoice.id, {
         number: number.trim() || undefined,
         title: title.trim() || undefined,
         due_date: dueDate || undefined,
         notes: notes.trim() || undefined,
         line_items: cleaned,
+        discount: discount && discount.value > 0 ? discount : undefined,
+        tax_rate: taxRateNum && taxRateNum > 0 ? taxRateNum : undefined,
       })
       setLineItems(cleaned)
       setNotice('Saved.')
@@ -189,7 +197,12 @@ export function InvoiceEditorClient({ orgId, orgSlug, leadId, invoice, orgTipsEn
     }
   }
 
-  const total = linesSubtotal(lineItems)
+  const taxRateNum = taxRate.trim() === '' ? undefined : toNumber(taxRate)
+  const subtotal = linesSubtotal(lineItems)
+  const discountAmt = invoiceDiscountAmount(subtotal, discount)
+  const taxAmt = invoiceTaxAmount(subtotal - discountAmt, taxRateNum)
+  const credits = invoice.credits ?? []
+  const totalDue = invoiceAmountDue({ line_items: lineItems, discount, tax_rate: taxRateNum, credits })
   const paid = amountPaid(invoice.payments)
   const balance = invoiceBalance(invoice)
   const busy = saving || approving || issuing || voiding || replacing || deleting || recording
@@ -293,13 +306,102 @@ export function InvoiceEditorClient({ orgId, orgSlug, leadId, invoice, orgTipsEn
                 <Label>Subtotal</Label>
                 <p className="h-8 flex items-center text-sm font-medium">{money(lineItemSubtotal(item))}</p>
               </div>
+              <div className="flex items-center gap-1 pb-2">
+                <input
+                  id={`taxable-${i}`}
+                  type="checkbox"
+                  checked={item.taxable !== false}
+                  onChange={(e) => updateRow(i, { taxable: e.target.checked })}
+                  disabled={locked}
+                />
+                <Label htmlFor={`taxable-${i}`}>Taxable</Label>
+              </div>
               <Button size="sm" variant="ghost" onClick={() => removeRow(i)} disabled={busy || locked}>Remove</Button>
             </div>
           ))}
 
           <div className="flex items-center justify-between border-t border-border pt-3">
+            <span className="text-sm font-semibold">Subtotal</span>
+            <span className="text-sm font-semibold">{money(subtotal)}</span>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader><CardTitle className="text-base">Discount &amp; tax</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="w-36 space-y-1">
+              <Label htmlFor="discountType">Discount</Label>
+              <select
+                id="discountType"
+                value={discount?.type ?? 'none'}
+                disabled={locked}
+                onChange={(e) => {
+                  const t = e.target.value
+                  setDiscount(t === 'none' ? undefined : { type: t as 'percent' | 'fixed', value: discount?.value ?? 0 })
+                }}
+                className="flex h-8 w-full rounded-md border border-input bg-transparent px-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              >
+                <option value="none">None</option>
+                <option value="percent">Percent</option>
+                <option value="fixed">Fixed</option>
+              </select>
+            </div>
+            <div className="w-28 space-y-1">
+              <Label htmlFor="discountValue">Value</Label>
+              <Input
+                id="discountValue"
+                type="number"
+                value={String(discount?.value ?? 0)}
+                disabled={locked || !discount}
+                onChange={(e) => setDiscount((prev) => (prev ? { ...prev, value: toNumber(e.target.value) } : prev))}
+              />
+            </div>
+            <div className="w-28 space-y-1">
+              <Label htmlFor="taxRate">Tax rate (%)</Label>
+              <Input id="taxRate" type="number" value={taxRate} onChange={(e) => setTaxRate(e.target.value)} readOnly={locked} />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader><CardTitle className="text-base">Breakdown</CardTitle></CardHeader>
+        <CardContent className="space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-sm">Subtotal</span>
+            <span className="text-sm font-medium" data-testid="breakdown-subtotal">{money(subtotal)}</span>
+          </div>
+          {discountAmt > 0 && (
+            <div className="flex items-center justify-between">
+              <span className="text-sm">Discount</span>
+              <span className="text-sm font-medium" data-testid="breakdown-discount">−{money(discountAmt)}</span>
+            </div>
+          )}
+          {taxAmt > 0 && (
+            <div className="flex items-center justify-between">
+              <span className="text-sm">Tax</span>
+              <span className="text-sm font-medium" data-testid="breakdown-tax">+{money(taxAmt)}</span>
+            </div>
+          )}
+          {credits.map((c, i) => (
+            <div key={i} className="flex items-center justify-between">
+              <span className="text-sm">{c.description}</span>
+              <span className="text-sm font-medium" data-testid={`breakdown-credit-${i}`}>−{money(c.amount)}</span>
+            </div>
+          ))}
+          <div className="flex items-center justify-between border-t border-border pt-2">
             <span className="text-sm font-semibold">Total</span>
-            <span className="text-sm font-semibold">{money(total)}</span>
+            <span className="text-sm font-semibold" data-testid="breakdown-total">{money(totalDue)}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-sm">Amount paid</span>
+            <span className="text-sm font-medium" data-testid="breakdown-paid">{money(paid)}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-semibold">Balance</span>
+            <span className="text-sm font-semibold" data-testid="breakdown-balance">{money(balance)}</span>
           </div>
         </CardContent>
       </Card>

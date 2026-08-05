@@ -157,6 +157,8 @@ export interface InvoiceUpdate {
   notes?: string
   due_date?: string
   line_items?: InvoiceLineItem[]
+  discount?: InvoiceDiscount
+  tax_rate?: number
 }
 
 export async function updateInvoice(orgId: string, invoiceId: string, updates: InvoiceUpdate): Promise<void> {
