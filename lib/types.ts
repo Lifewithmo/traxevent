@@ -419,10 +419,11 @@ export interface InvoiceLineItem {
 }
 
 export interface InvoicePayment {
-  amount: number       // dollars
+  amount: number       // dollars APPLIED to the balance
   method?: string      // e.g. 'cash' | 'check' | 'card' | free text
   note?: string
   recorded_at: string  // ISO
+  tip_amount?: number  // gratuity — EXCLUDED from balance and progress math
 }
 
 export interface Invoice {

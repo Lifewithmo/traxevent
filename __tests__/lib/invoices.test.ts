@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   INVOICE_STATUSES, INVOICE_STATUS_LABELS,
-  lineItemSubtotal, invoiceTotal, amountPaid, invoiceBalance, paymentStatus,
+  lineItemSubtotal, invoiceTotal, amountPaid, invoiceBalance, paymentStatus, tipsTotal,
 } from '@/lib/invoices'
 import type { Invoice, InvoiceLineItem, InvoicePayment } from '@/lib/types'
 
@@ -43,5 +43,20 @@ describe('paymentStatus', () => {
     expect(paymentStatus(100, 40, 'sent')).toBe('partial')
     expect(paymentStatus(100, 0, 'sent')).toBe('sent')
     expect(paymentStatus(0, 0, 'draft')).toBe('draft')
+  })
+})
+
+describe('tips', () => {
+  const payTip = (amount: number, tip: number): InvoicePayment => ({ amount, tip_amount: tip, recorded_at: '' })
+
+  it('tipsTotal sums positive tip_amount only; missing tip counts as 0', () => {
+    expect(tipsTotal([payTip(100, 15), payTip(50, 0), pay(25)])).toBe(15)
+    expect(tipsTotal([payTip(100, -5)])).toBe(0)
+  })
+
+  it('amountPaid and invoiceBalance ignore tips entirely', () => {
+    const inv = { line_items: [li(1, 100)], payments: [payTip(100, 20)] } as Invoice
+    expect(amountPaid(inv.payments)).toBe(100)     // tip not counted as payment
+    expect(invoiceBalance(inv)).toBe(0)            // balance ignores the $20 tip
   })
 })
