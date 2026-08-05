@@ -5,6 +5,7 @@ import { FieldValue } from 'firebase-admin/firestore'
 import { randomBytes } from 'crypto'
 import { assertOrgMember, assertOrgAdmin } from '@/lib/auth/assert'
 import { LEAD_STAGES } from '@/lib/leads'
+import { logActivity } from '@/lib/activity'
 import type { Lead, LeadStage } from '@/lib/types'
 
 function leadsRef(orgId: string) {
@@ -68,6 +69,7 @@ export interface LeadUpdate {
   estimated_value?: number | null
   stage?: LeadStage
   notes?: string | null
+  customer_id?: string | null
 }
 
 export async function updateLead(
@@ -77,18 +79,30 @@ export async function updateLead(
 ): Promise<void> {
   await assertOrgAdmin(orgId)
   if (updates.stage && !LEAD_STAGES.includes(updates.stage)) throw new Error('Invalid stage')
+
+  let prevStage: LeadStage | undefined
+  if (updates.stage) {
+    const snap = await leadsRef(orgId).doc(leadId).get()
+    prevStage = snap.exists ? (snap.data() as Lead).stage : undefined
+  }
+
   const cleaned: Record<string, unknown> = {}
   for (const [k, v] of Object.entries(updates)) {
     if (v === undefined) continue
     cleaned[k] = v === null ? FieldValue.delete() : v
   }
   await leadsRef(orgId).doc(leadId).update({ ...cleaned, updated_at: new Date().toISOString() })
+
+  if (updates.stage && updates.stage !== prevStage) {
+    await logActivity(orgId, { parent_type: 'opportunity', parent_id: leadId, kind: 'stage', summary: `Stage → ${updates.stage}` })
+  }
 }
 
 export async function setLeadStage(orgId: string, leadId: string, stage: LeadStage): Promise<void> {
   await assertOrgAdmin(orgId)
   if (!LEAD_STAGES.includes(stage)) throw new Error('Invalid stage')
   await leadsRef(orgId).doc(leadId).update({ stage, updated_at: new Date().toISOString() })
+  await logActivity(orgId, { parent_type: 'opportunity', parent_id: leadId, kind: 'stage', summary: `Stage → ${stage}` })
 }
 
 export async function deleteLead(orgId: string, leadId: string): Promise<void> {

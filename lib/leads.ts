@@ -1,18 +1,22 @@
 import type { Lead, LeadStage } from '@/lib/types'
 
-export const LEAD_STAGES: LeadStage[] = ['inquiry', 'consultation', 'proposal', 'booked', 'delivered']
+export const LEAD_STAGES: LeadStage[] = ['inquiry', 'consultation', 'proposal', 'closed_won', 'closed_lost']
+
+// Pipeline stages still "in play" vs. the two closed outcomes. closed_won is the booking.
+export const OPEN_STAGES: LeadStage[] = ['inquiry', 'consultation', 'proposal']
+export const CLOSED_STAGES: LeadStage[] = ['closed_won', 'closed_lost']
 
 export const LEAD_STAGE_LABELS: Record<LeadStage, string> = {
   inquiry: 'Inquiry',
   consultation: 'Consultation',
   proposal: 'Proposal',
-  booked: 'Booked',
-  delivered: 'Delivered',
+  closed_won: 'Closed Won',
+  closed_lost: 'Closed Lost',
 }
 
 // Bucket leads by stage for the pipeline board. Leads with an unrecognized stage are dropped.
 export function groupLeadsByStage(leads: Lead[]): Record<LeadStage, Lead[]> {
-  const grouped = { inquiry: [], consultation: [], proposal: [], booked: [], delivered: [] } as Record<LeadStage, Lead[]>
+  const grouped = { inquiry: [], consultation: [], proposal: [], closed_won: [], closed_lost: [] } as Record<LeadStage, Lead[]>
   for (const lead of leads) {
     if (grouped[lead.stage]) grouped[lead.stage].push(lead)
   }
@@ -38,9 +42,9 @@ export function pipelineSummary(leads: Lead[]): PipelineSummary {
     const items = grouped[stage]
     return { stage, count: items.length, value: items.reduce((sum, l) => sum + (l.estimated_value ?? 0), 0) }
   })
-  const open = stages.filter((s) => s.stage !== 'delivered')
+  const open = stages.filter((s) => (OPEN_STAGES as LeadStage[]).includes(s.stage))
   const openCount = open.reduce((n, s) => n + s.count, 0)
   const openValue = open.reduce((n, s) => n + s.value, 0)
-  const bookedValue = [...grouped.booked, ...grouped.delivered].reduce((sum, l) => sum + (l.estimated_value ?? 0), 0)
+  const bookedValue = grouped.closed_won.reduce((sum, l) => sum + (l.estimated_value ?? 0), 0)
   return { stages, openCount, openValue, bookedValue }
 }

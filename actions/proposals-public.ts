@@ -42,7 +42,7 @@ export async function getPublicProposal(token: string): Promise<PublicProposal |
   return publicProposal
 }
 
-// PUBLIC. Client accepts or rejects. Accepting advances the lead to 'booked'.
+// PUBLIC. Client accepts or rejects. Accepting advances the lead to 'closed_won' (booked = won).
 export async function respondToProposal(token: string, response: 'accepted' | 'rejected'): Promise<void> {
   if (response !== 'accepted' && response !== 'rejected') throw new Error('Invalid response')
   const doc = await findProposalByToken(token)
@@ -56,7 +56,7 @@ export async function respondToProposal(token: string, response: 'accepted' | 'r
   if (response === 'accepted') {
     const orgRef = doc.ref.parent.parent
     if (orgRef) {
-      await orgRef.collection('leads').doc(proposal.lead_id).update({ stage: 'booked', updated_at: now })
+      await orgRef.collection('leads').doc(proposal.lead_id).update({ stage: 'closed_won', updated_at: now })
     }
   }
 }

@@ -371,7 +371,12 @@ export interface Department {
   updated_at?: string
 }
 
-export type LeadStage = 'inquiry' | 'consultation' | 'proposal' | 'booked' | 'delivered'
+export type LeadStage = 'inquiry' | 'consultation' | 'proposal' | 'closed_won' | 'closed_lost'
+
+export interface LeadWaiting {
+  reason: string
+  follow_up_date?: string
+}
 
 export interface Lead {
   id: string
@@ -385,6 +390,31 @@ export interface Lead {
   stage: LeadStage
   notes?: string
   portal_token?: string   // lazily generated; powers the login-free client portal link
+  customer_id?: string    // linked Customer once one exists
+  tags?: string[]
+  waiting?: LeadWaiting    // set when the lead is blocked/waiting on something
+  created_at: string
+  updated_at?: string
+}
+
+export interface Task {
+  id: string
+  lead_id: string
+  title: string
+  due_date?: string
+  done: boolean
+  done_at?: string
+  created_at: string
+}
+
+export interface Customer {
+  id: string
+  name: string
+  company?: string
+  email?: string
+  phone?: string
+  tags?: string[]
+  notes?: string
   created_at: string
   updated_at?: string
 }
@@ -500,6 +530,23 @@ export interface Contract {
   signed_at?: string   // ISO, set when signed
   created_at: string
   updated_at?: string
+}
+
+export interface Note {
+  id: string
+  parent_type: 'customer' | 'opportunity'
+  parent_id: string
+  body: string
+  created_at: string
+}
+
+export interface ActivityEvent {
+  id: string
+  parent_type: 'customer' | 'opportunity'
+  parent_id: string
+  kind: 'stage' | 'task' | 'note' | 'email' | 'form' | 'created'
+  summary: string
+  created_at: string
 }
 
 export type VendorStatus = 'potential' | 'confirmed' | 'declined'

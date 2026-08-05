@@ -143,7 +143,7 @@ describe('getPublicProposal', () => {
 })
 
 describe('respondToProposal', () => {
-  it('accepts a sent proposal and advances the lead to booked', async () => {
+  it('accepts a sent proposal and advances the lead to closed_won', async () => {
     mockSnapshot({ id: 'p1', lead_id: 'lead-1', status: 'sent' })
     await respondToProposal('tok', 'accepted')
 
@@ -158,7 +158,7 @@ describe('respondToProposal', () => {
     expect(leadDocSpy).toHaveBeenCalledWith('lead-1')
     expect(leadUpdateSpy).toHaveBeenCalledTimes(1)
     expect(leadUpdateSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ stage: 'booked' }),
+      expect.objectContaining({ stage: 'closed_won' }),
     )
   })
 
@@ -174,7 +174,7 @@ describe('respondToProposal', () => {
     expect(leadDocSpy).toHaveBeenCalledTimes(1)
     expect(leadDocSpy).toHaveBeenCalledWith('lead-from-doc')
     expect(leadUpdateSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ stage: 'booked' }),
+      expect.objectContaining({ stage: 'closed_won' }),
     )
   })
 
