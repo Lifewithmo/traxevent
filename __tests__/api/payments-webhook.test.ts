@@ -13,6 +13,7 @@ const leadDocSpy = vi.hoisted(() => vi.fn().mockReturnValue({ update: leadUpdate
 const sendProposalSignedConfirmationSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const sendRegistrationConfirmationSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const getVerifiedSendingDomainSpy = vi.hoisted(() => vi.fn().mockResolvedValue('mail.acme.com'))
+const reconcileProposalDepositSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 
 vi.mock('@/lib/email', () => ({
   sendRegistrationConfirmation: sendRegistrationConfirmationSpy,
@@ -20,6 +21,9 @@ vi.mock('@/lib/email', () => ({
 }))
 vi.mock('@/actions/domains', () => ({
   getVerifiedSendingDomain: getVerifiedSendingDomainSpy,
+}))
+vi.mock('@/lib/crm/deposit-reconcile', () => ({
+  reconcileProposalDeposit: reconcileProposalDepositSpy,
 }))
 
 vi.mock('@/lib/firebase-admin', () => ({
@@ -89,13 +93,20 @@ function mockProposalSnapshot(data: Record<string, unknown> | null) {
   })
 }
 
-function succeededEvent(metadata: Record<string, string>, amount = 625000) {
+// The PaymentIntent's own `created` (unix seconds) — the actual Stripe
+// charge time, distinct from `now` (webhook processing time). Fix 2: the
+// reconciler's `paid_at` must be derived from this, not from `now`.
+const PI_CREATED_UNIX = 1722500000
+const PI_CREATED_ISO = new Date(PI_CREATED_UNIX * 1000).toISOString()
+
+function succeededEvent(metadata: Record<string, string>, amount = 625000, created = PI_CREATED_UNIX) {
   return {
     type: 'payment_intent.succeeded',
     data: {
       object: {
         id: 'pi_dep_1',
         amount,
+        created,
         metadata,
       },
     },
@@ -127,6 +138,8 @@ describe('POST /api/payments/webhook', () => {
     })
     const res = await POST(req)
     expect(res.status).toBe(400)
+    // a bad signature must 400 before any reconcile runs
+    expect(reconcileProposalDepositSpy).not.toHaveBeenCalled()
   })
 
   it('marks family as paid on payment_intent.succeeded', async () => {
@@ -158,6 +171,7 @@ describe('POST /api/payments/webhook', () => {
         amount_paid: 150, // 15000 cents → $150
       })
     )
+    expect(reconcileProposalDepositSpy).not.toHaveBeenCalled()
   })
 
   describe('proposal_deposit', () => {
@@ -243,6 +257,15 @@ describe('POST /api/payments/webhook', () => {
           fromDomain: 'mail.acme.com',
         }),
       )
+
+      // reconcile runs on the first-finalize delivery too, after the proposal
+      // has been finalized to accepted — org/lead/proposal ids all derived
+      // from the resolved doc, never from unverified client input.
+      expect(reconcileProposalDepositSpy).toHaveBeenCalledTimes(1)
+      expect(reconcileProposalDepositSpy).toHaveBeenCalledWith(
+        'org-1', 'lead-1', 'prop-1',
+        { intent_id: 'pi_dep_1', amount: 6250, paid_at: PI_CREATED_ISO },
+      )
     })
 
     it('before_accept: a verified-domain lookup failure does not block the confirmation email (best-effort fallback)', async () => {
@@ -269,10 +292,13 @@ describe('POST /api/payments/webhook', () => {
       expect(proposalUpdateSpy).toHaveBeenCalledTimes(1) // the finalize write still happened
     })
 
-    it('before_accept: a second identical event is a no-op (idempotent)', async () => {
+    it('before_accept: a second identical event skips the finalize (no duplicate proposal/lead write) but still reconciles', async () => {
       // Simulates the doc state AFTER the first webhook already finalized it.
+      // The finalize is guarded by payment_status !== 'deposit_paid' (skipped
+      // here), but reconcile must run on every delivery — idempotency for the
+      // invoice/payment side lives inside the reconciler itself, not here.
       mockProposalSnapshot({
-        id: 'prop-1', lead_id: 'lead-1', status: 'accepted', payment_status: 'deposit_paid',
+        id: 'prop-1', lead_id: 'lead-1', org_id: 'org-1', status: 'accepted', payment_status: 'deposit_paid',
         line_items: [],
         signature: { signer_name: 'Dana', signer_email: 'd@x.co', signed_at: 'x', ip: '1.2.3.4', user_agent: 'ua', consent_electronic: true, document_hash: 'a'.repeat(64) },
         selection: { package_id: 'good', optional_item_ids: [], selected_total: 12500, selected_at: 'x' },
@@ -285,6 +311,11 @@ describe('POST /api/payments/webhook', () => {
       expect(proposalUpdateSpy).not.toHaveBeenCalled()
       expect(leadUpdateSpy).not.toHaveBeenCalled()
       expect(sendProposalSignedConfirmationSpy).not.toHaveBeenCalled()
+      expect(reconcileProposalDepositSpy).toHaveBeenCalledTimes(1)
+      expect(reconcileProposalDepositSpy).toHaveBeenCalledWith(
+        'org-1', 'lead-1', 'prop-1',
+        { intent_id: 'pi_dep_1', amount: 6250, paid_at: PI_CREATED_ISO },
+      )
     })
 
     it('after_accept: an already-signed proposal just sets deposit_paid, without re-advancing the lead', async () => {
@@ -306,6 +337,14 @@ describe('POST /api/payments/webhook', () => {
       // its own confirmation email when the signer originally signed, so the
       // webhook must not send a second one here.
       expect(sendProposalSignedConfirmationSpy).not.toHaveBeenCalled()
+
+      // first-finalize delivery on the after_accept path: reconcile still runs,
+      // scoped to this proposal's own org/lead/id.
+      expect(reconcileProposalDepositSpy).toHaveBeenCalledTimes(1)
+      expect(reconcileProposalDepositSpy).toHaveBeenCalledWith(
+        'org-1', 'lead-2', 'prop-2',
+        { intent_id: 'pi_dep_1', amount: 6250, paid_at: PI_CREATED_ISO },
+      )
     })
 
     it('unknown proposal_id → ok, no writes', async () => {
@@ -317,6 +356,7 @@ describe('POST /api/payments/webhook', () => {
       expect(res.status).toBe(200)
       expect(proposalUpdateSpy).not.toHaveBeenCalled()
       expect(leadUpdateSpy).not.toHaveBeenCalled()
+      expect(reconcileProposalDepositSpy).not.toHaveBeenCalled()
     })
   })
 })

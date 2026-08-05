@@ -11,6 +11,10 @@ const counterGetSpy = vi.hoisted(() => vi.fn())
 const txSetSpy = vi.hoisted(() => vi.fn())
 const txUpdateSpy = vi.hoisted(() => vi.fn())
 const getLeadSpy = vi.hoisted(() => vi.fn())
+// generateFromProposalCore (lib/crm/invoices.ts) resolves customer_id itself via
+// leadsRef(orgId).doc(leadId).get() — a direct Firestore read, not the guarded
+// @/actions/leads getLead — so it needs its own mocked doc().get() response.
+const leadDocGetSpy = vi.hoisted(() => vi.fn())
 
 vi.mock('@/lib/firebase-admin', () => {
   const invoicesCol = {
@@ -31,10 +35,16 @@ vi.mock('@/lib/firebase-admin', () => {
       get: counterGetSpy,
     })),
   }
+  const leadsCol = {
+    doc: vi.fn().mockImplementation(() => ({
+      get: leadDocGetSpy,
+    })),
+  }
   const orgDoc = {
     collection: vi.fn().mockImplementation((sub: string) => {
       if (sub === 'invoices') return invoicesCol
       if (sub === 'counters') return countersCol
+      if (sub === 'leads') return leadsCol
       return {}
     }),
   }
@@ -93,6 +103,7 @@ describe('invoices actions', () => {
     // consumed can otherwise leak a stale response into the next test.
     invoiceDocGetSpy.mockReset()
     getLeadSpy.mockResolvedValue(null)
+    leadDocGetSpy.mockResolvedValue({ exists: false })
   })
 
   it('createInvoice writes an invoice with generated id, token, org/lead, draft lifecycle, empty payments, created_at, and passed fields', async () => {
@@ -651,7 +662,8 @@ describe('invoices actions', () => {
   })
 
   it('generateFromProposal inherits the lead customer_id', async () => {
-    getLeadSpy.mockResolvedValue({ id: 'lead-1', name: 'Acme', stage: 'booked', customer_id: 'cust-9', created_at: '' })
+    // generateFromProposalCore resolves customer_id itself via leadsRef, not @/actions/leads.
+    leadDocGetSpy.mockResolvedValue({ exists: true, data: () => ({ id: 'lead-1', name: 'Acme', stage: 'booked', customer_id: 'cust-9', created_at: '' }) })
     getProposalSpy.mockResolvedValue({ id: 'p1', org_id: 'org-1', lead_id: 'lead-1', status: 'accepted',
       line_items: [{ description: 'Pkg', quantity: 1, unit_price: 1000 }], created_at: '' })
     listInvoicesSpy.mockResolvedValue({ docs: [] })
