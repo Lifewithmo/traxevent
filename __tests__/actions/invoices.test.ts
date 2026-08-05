@@ -10,6 +10,7 @@ const getProposalSpy = vi.hoisted(() => vi.fn())
 const counterGetSpy = vi.hoisted(() => vi.fn())
 const txSetSpy = vi.hoisted(() => vi.fn())
 const txUpdateSpy = vi.hoisted(() => vi.fn())
+const getLeadSpy = vi.hoisted(() => vi.fn())
 
 vi.mock('@/lib/firebase-admin', () => {
   const invoicesCol = {
@@ -64,6 +65,10 @@ vi.mock('@/actions/proposals', () => ({
   getProposal: getProposalSpy,
 }))
 
+vi.mock('@/actions/leads', () => ({
+  getLead: getLeadSpy,
+}))
+
 import {
   listInvoices,
   listAllInvoices,
@@ -80,7 +85,10 @@ import {
 } from '@/actions/invoices'
 
 describe('invoices actions', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => {
+    vi.clearAllMocks()
+    getLeadSpy.mockResolvedValue(null)
+  })
 
   it('createInvoice writes an invoice with generated id, token, org/lead, draft lifecycle, empty payments, created_at, and passed fields', async () => {
     const invoice = await createInvoice('org-1', 'lead-1', {
@@ -463,5 +471,36 @@ describe('invoices actions', () => {
     })
     await expect(deleteInvoice('org-1', 'inv-1')).rejects.toThrow(/cannot delete/i)
     expect(invoiceDocDeleteSpy).not.toHaveBeenCalled()
+  })
+
+  it('createInvoice copies customer_id from the lead when the lead has one', async () => {
+    getLeadSpy.mockResolvedValue({ id: 'lead-1', name: 'Acme', stage: 'booked', customer_id: 'cust-9', created_at: '' })
+    const inv = await createInvoice('org-1', 'lead-1', {})
+    expect(inv.customer_id).toBe('cust-9')
+    const written = invoiceDocSetSpy.mock.calls.at(-1)![0]
+    expect(written.customer_id).toBe('cust-9')
+  })
+
+  it('createInvoice omits customer_id when the lead has none (no undefined written)', async () => {
+    getLeadSpy.mockResolvedValue({ id: 'lead-1', name: 'Acme', stage: 'booked', created_at: '' })
+    const inv = await createInvoice('org-1', 'lead-1', {})
+    expect(inv.customer_id).toBeUndefined()
+    const written = invoiceDocSetSpy.mock.calls.at(-1)![0]
+    expect('customer_id' in written).toBe(false)
+  })
+
+  it('createInvoice omits customer_id when the lead is missing', async () => {
+    getLeadSpy.mockResolvedValue(null)
+    const inv = await createInvoice('org-1', 'lead-1', {})
+    expect(inv.customer_id).toBeUndefined()
+  })
+
+  it('generateFromProposal inherits the lead customer_id', async () => {
+    getLeadSpy.mockResolvedValue({ id: 'lead-1', name: 'Acme', stage: 'booked', customer_id: 'cust-9', created_at: '' })
+    getProposalSpy.mockResolvedValue({ id: 'p1', org_id: 'org-1', lead_id: 'lead-1', status: 'accepted',
+      line_items: [{ description: 'Pkg', quantity: 1, unit_price: 1000 }], created_at: '' })
+    listInvoicesSpy.mockResolvedValue({ docs: [] })
+    const inv = await generateFromProposal('org-1', 'lead-1', 'p1', { type: 'deposit' })
+    expect(inv.customer_id).toBe('cust-9')
   })
 })

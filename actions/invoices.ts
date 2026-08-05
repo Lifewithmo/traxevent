@@ -10,6 +10,7 @@ import { previouslyBilled, remainingToBill, assertWithinScope } from '@/lib/invo
 import { assertEditable } from '@/lib/invoice-lock'
 import { derivePaymentStatus } from '@/lib/invoice-status'
 import { getProposal } from '@/actions/proposals'
+import { getLead } from '@/actions/leads'
 import type {
   Invoice,
   InvoiceLineItem,
@@ -51,6 +52,7 @@ export async function getInvoice(orgId: string, invoiceId: string): Promise<Norm
 
 export async function createInvoice(orgId: string, leadId: string, input: CreateInvoiceInput): Promise<Invoice> {
   await assertOrgAdmin(orgId)
+  const lead = await getLead(orgId, leadId)
   const id = randomBytes(8).toString('hex')
   const invoice: Invoice = {
     id,
@@ -66,6 +68,7 @@ export async function createInvoice(orgId: string, leadId: string, input: Create
     line_items: input.line_items ?? [],
     payments: [],
     created_at: new Date().toISOString(),
+    ...(lead?.customer_id ? { customer_id: lead.customer_id } : {}),
     ...(input.title?.trim() ? { title: input.title.trim() } : {}),
     ...(input.number?.trim() ? { number: input.number.trim() } : {}),
     ...(input.due_date?.trim() ? { due_date: input.due_date.trim() } : {}),
