@@ -22,6 +22,7 @@ interface InvoiceEditorClientProps {
   leadId: string
   invoice: NormalizedInvoice
   orgTipsEnabled?: boolean
+  customerName?: string
 }
 
 const money = (n: number) => `$${n.toFixed(2)}`
@@ -38,7 +39,7 @@ function isBlankRow(item: InvoiceLineItem): boolean {
   return item.description.trim() === '' && !(item.quantity > 0) && !(item.unit_price > 0)
 }
 
-export function InvoiceEditorClient({ orgId, orgSlug, leadId, invoice, orgTipsEnabled }: InvoiceEditorClientProps) {
+export function InvoiceEditorClient({ orgId, orgSlug, leadId, invoice, orgTipsEnabled, customerName }: InvoiceEditorClientProps) {
   const router = useRouter()
 
   const [number, setNumber] = useState(invoice.number ?? '')
@@ -205,6 +206,10 @@ export function InvoiceEditorClient({ orgId, orgSlug, leadId, invoice, orgTipsEn
         <h1 className="text-2xl font-bold">Invoice</h1>
         <Badge variant="secondary">{INVOICE_LIFECYCLE_LABELS[invoice.lifecycle]}</Badge>
       </div>
+
+      {customerName && (
+        <p className="text-sm text-muted-foreground">Bill to: <span className="font-medium text-foreground">{customerName}</span></p>
+      )}
 
       <div aria-live="polite" aria-atomic="true">
         {error && <p className="text-sm text-destructive">{error}</p>}

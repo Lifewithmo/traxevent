@@ -28,4 +28,13 @@ describe('InvoiceEditorClient', () => {
     render(<InvoiceEditorClient orgId="o" orgSlug="s" leadId="l" invoice={inv({ lifecycle: 'issued', line_items: [{ description: 'x', quantity: 1, unit_price: 10 }] })} />)
     expect((screen.getByDisplayValue('x') as HTMLInputElement).readOnly).toBe(true)
   })
+  it('shows "Bill to" with the customer name when provided', () => {
+    render(<InvoiceEditorClient orgId="o" orgSlug="s" leadId="l" customerName="Acme Corp" invoice={inv({ customer_id: 'cust-9' })} />)
+    expect(screen.getByText(/bill to/i)).toBeInTheDocument()
+    expect(screen.getByText(/acme corp/i)).toBeInTheDocument()
+  })
+  it('renders no "Bill to" line when customerName is absent', () => {
+    render(<InvoiceEditorClient orgId="o" orgSlug="s" leadId="l" invoice={inv({})} />)
+    expect(screen.queryByText(/bill to/i)).not.toBeInTheDocument()
+  })
 })
