@@ -4,7 +4,7 @@ import { adminDb } from '@/lib/firebase-admin'
 import { randomBytes } from 'crypto'
 import { generateAccessToken } from '@/lib/tokens'
 import { assertOrgMember, assertOrgAdmin } from '@/lib/auth/assert'
-import { invoiceTotal, amountPaid } from '@/lib/invoices'
+import { invoiceAmountDue, amountPaid } from '@/lib/invoices'
 import { normalizeInvoice, formatInvoiceNumber } from '@/lib/invoice-normalize'
 import { previouslyBilled, remainingToBill, assertWithinScope, acceptedProposalTotal } from '@/lib/invoice-progress'
 import { depositAmount } from '@/lib/proposals'
@@ -113,7 +113,7 @@ export async function generateFromProposal(
   const line_items = [line]
 
   if (opts.type !== 'quick') {
-    assertWithinScope(invoiceTotal(line_items), billed, accepted)
+    assertWithinScope(invoiceAmountDue({ line_items }), billed, accepted)
   }
 
   const invoice = await createInvoice(orgId, leadId, { type: opts.type, line_items })
@@ -168,7 +168,7 @@ export async function issueInvoice(orgId: string, invoiceId: string): Promise<{ 
       const approved = acceptedProposalTotal(proposal)
       const existing = await listInvoices(orgId, preInv.lead_id)
       const billed = previouslyBilled(existing, preInv.source.id)
-      assertWithinScope(invoiceTotal(preInv.line_items), billed, approved)
+      assertWithinScope(invoiceAmountDue(preInv), billed, approved)
     }
   }
 
@@ -263,7 +263,7 @@ export async function recordPayment(orgId: string, invoiceId: string, input: Rec
     ...((input.tip_amount ?? 0) > 0 ? { tip_amount: input.tip_amount } : {}),
   }
   const payments = [...(inv.payments ?? []), payment]
-  const total = invoiceTotal(inv.line_items ?? [])
+  const total = invoiceAmountDue(inv)
   const applied = amountPaid(payments)
   const payment_status = derivePaymentStatus(
     { total, applied, lifecycle: inv.lifecycle, dueDate: inv.due_date },

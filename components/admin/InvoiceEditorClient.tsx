@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge'
 import {
   updateInvoice, issueInvoice, approveInvoice, voidInvoice, replaceInvoice, deleteInvoice, recordPayment,
 } from '@/actions/invoices'
-import { lineItemSubtotal, invoiceTotal, amountPaid, invoiceBalance } from '@/lib/invoices'
+import { lineItemSubtotal, linesSubtotal, amountPaid, invoiceBalance } from '@/lib/invoices'
 import { INVOICE_LIFECYCLE_LABELS, resolveTipsEnabled } from '@/lib/invoice-status'
 import { LOCKED_LIFECYCLES } from '@/lib/invoice-lock'
 import type { NormalizedInvoice, InvoiceLineItem } from '@/lib/types'
@@ -189,7 +189,7 @@ export function InvoiceEditorClient({ orgId, orgSlug, leadId, invoice, orgTipsEn
     }
   }
 
-  const total = invoiceTotal(lineItems)
+  const total = linesSubtotal(lineItems)
   const paid = amountPaid(invoice.payments)
   const balance = invoiceBalance(invoice)
   const busy = saving || approving || issuing || voiding || replacing || deleting || recording

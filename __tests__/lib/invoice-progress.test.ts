@@ -15,6 +15,18 @@ describe('previouslyBilled', () => {
     ]
     expect(previouslyBilled(invs, 'p1')).toBe(500)
   })
+
+  it('sums amount due (net of discount/tax/credits), not raw line totals', () => {
+    const invs = [
+      {
+        lifecycle: 'issued' as const,
+        source: { id: 'p1' },
+        line_items: line(1000),
+        discount: { type: 'percent' as const, value: 10 },
+      },
+    ]
+    expect(previouslyBilled(invs, 'p1')).toBe(900) // 1000 - 10% discount, no tax/credits
+  })
 })
 
 describe('remainingToBill', () => {

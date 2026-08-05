@@ -1,5 +1,5 @@
-import type { InvoiceLifecycle, InvoiceLineItem, Proposal } from '@/lib/types'
-import { invoiceTotal } from '@/lib/invoices'
+import type { InvoiceLifecycle, InvoiceLineItem, InvoiceDiscount, InvoiceCredit, Proposal } from '@/lib/types'
+import { invoiceAmountDue } from '@/lib/invoices'
 import { computeSelectedTotal } from '@/lib/proposals'
 
 export class InvoiceScopeError extends Error {
@@ -9,13 +9,20 @@ export class InvoiceScopeError extends Error {
 function round2(n: number): number { return Math.round(n * 100) / 100 }
 
 export function previouslyBilled(
-  invoices: ReadonlyArray<{ lifecycle: InvoiceLifecycle; source?: { id?: string }; line_items: InvoiceLineItem[] }>,
+  invoices: ReadonlyArray<{
+    lifecycle: InvoiceLifecycle
+    source?: { id?: string }
+    line_items: InvoiceLineItem[]
+    discount?: InvoiceDiscount
+    tax_rate?: number
+    credits?: InvoiceCredit[]
+  }>,
   sourceId: string,
 ): number {
   return round2(
     invoices
       .filter((i) => i.lifecycle === 'issued' && i.source?.id === sourceId)
-      .reduce((sum, i) => sum + invoiceTotal(i.line_items), 0),
+      .reduce((sum, i) => sum + invoiceAmountDue(i), 0),
   )
 }
 

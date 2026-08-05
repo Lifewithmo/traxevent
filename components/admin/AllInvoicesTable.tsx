@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { Badge } from '@/components/ui/badge'
-import { invoiceTotal, invoiceBalance } from '@/lib/invoices'
+import { invoiceAmountDue, invoiceBalance } from '@/lib/invoices'
 import { INVOICE_LIFECYCLE_LABELS } from '@/lib/invoice-status'
 import type { NormalizedInvoice } from '@/lib/types'
 
@@ -45,7 +45,7 @@ export function AllInvoicesTable({ orgSlug, rows }: AllInvoicesTableProps) {
                   </td>
                   <td className="px-3 py-2">{inv.clientName || '—'}</td>
                   <td className="px-3 py-2"><Badge variant="secondary">{INVOICE_LIFECYCLE_LABELS[inv.lifecycle]}</Badge></td>
-                  <td className="px-3 py-2 text-right">${invoiceTotal(inv.line_items).toFixed(2)}</td>
+                  <td className="px-3 py-2 text-right">${invoiceAmountDue(inv).toFixed(2)}</td>
                   <td className="px-3 py-2 text-right">${invoiceBalance(inv).toFixed(2)}</td>
                 </tr>
               ))

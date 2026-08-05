@@ -11,10 +11,6 @@ export function lineItemSubtotal(item: InvoiceLineItem): number {
   return round2(qty * price)
 }
 
-export function invoiceTotal(lineItems: InvoiceLineItem[]): number {
-  return round2(lineItems.reduce((sum, item) => sum + lineItemSubtotal(item), 0))
-}
-
 export function amountPaid(payments: InvoicePayment[]): number {
   return round2(payments.reduce((sum, p) => sum + (p.amount > 0 ? p.amount : 0), 0))
 }
@@ -23,8 +19,10 @@ export function tipsTotal(payments: InvoicePayment[]): number {
   return round2(payments.reduce((sum, p) => sum + ((p.tip_amount ?? 0) > 0 ? (p.tip_amount as number) : 0), 0))
 }
 
-export function invoiceBalance(invoice: Pick<Invoice, 'line_items' | 'payments'>): number {
-  return round2(invoiceTotal(invoice.line_items) - amountPaid(invoice.payments))
+export function invoiceBalance(
+  invoice: Pick<Invoice, 'line_items' | 'payments' | 'discount' | 'tax_rate' | 'credits'>,
+): number {
+  return round2(invoiceAmountDue(invoice) - amountPaid(invoice.payments))
 }
 
 export function linesSubtotal(lineItems: InvoiceLineItem[]): number {

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  lineItemSubtotal, invoiceTotal, amountPaid, invoiceBalance, tipsTotal,
+  lineItemSubtotal, amountPaid, invoiceBalance, tipsTotal,
   linesSubtotal, invoiceDiscountAmount, invoiceTaxAmount, creditsTotal, invoiceGross, invoiceAmountDue,
 } from '@/lib/invoices'
 import type { Invoice, InvoiceLineItem, InvoicePayment } from '@/lib/types'
@@ -8,12 +8,12 @@ import type { Invoice, InvoiceLineItem, InvoicePayment } from '@/lib/types'
 const li = (quantity: number, unit_price: number): InvoiceLineItem => ({ description: 'x', quantity, unit_price })
 const pay = (amount: number): InvoicePayment => ({ amount, recorded_at: '' })
 
-describe('lineItemSubtotal / invoiceTotal', () => {
+describe('lineItemSubtotal / linesSubtotal', () => {
   it('multiplies and sums, rounded to cents; non-positive → 0', () => {
     expect(lineItemSubtotal(li(3, 45.99))).toBe(137.97)
     expect(lineItemSubtotal(li(-1, 50))).toBe(0)
-    expect(invoiceTotal([li(2, 50), li(1, 45.99)])).toBe(145.99)
-    expect(invoiceTotal([])).toBe(0)
+    expect(linesSubtotal([li(2, 50), li(1, 45.99)])).toBe(145.99)
+    expect(linesSubtotal([])).toBe(0)
   })
 })
 
@@ -70,5 +70,10 @@ describe('invoice breakdown', () => {
       credits: [{ description: 'deposit', amount: 300 }] })
     expect(invoiceGross(v)).toBe(990)      // 1000 -100 +90
     expect(invoiceAmountDue(v)).toBe(690)  // 990 - 300
+  })
+  it('invoiceBalance uses amount due (net of discount/tax/credits)', () => {
+    const v = inv({ line_items: [li(1, 1000)], discount: { type: 'percent', value: 10 }, tax_rate: 10,
+      credits: [{ description: 'd', amount: 300 }], payments: [pay(90)] })
+    expect(invoiceBalance(v)).toBe(600) // due 690 - paid 90
   })
 })
