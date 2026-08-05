@@ -6,6 +6,7 @@ const invoiceDocUpdateSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined
 const invoiceDocDeleteSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const listInvoicesSpy = vi.hoisted(() => vi.fn())
 const listAllInvoicesSpy = vi.hoisted(() => vi.fn())
+const getProposalSpy = vi.hoisted(() => vi.fn())
 
 vi.mock('@/lib/firebase-admin', () => {
   const invoicesCol = {
@@ -43,6 +44,10 @@ vi.mock('@/lib/tokens', () => ({
   generateAccessToken: vi.fn().mockReturnValue('tok_test'),
 }))
 
+vi.mock('@/actions/proposals', () => ({
+  getProposal: getProposalSpy,
+}))
+
 import {
   listInvoices,
   listAllInvoices,
@@ -52,12 +57,13 @@ import {
   sendInvoice,
   recordPayment,
   deleteInvoice,
+  generateFromProposal,
 } from '@/actions/invoices'
 
 describe('invoices actions', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('createInvoice writes an invoice with generated id, token, org/lead, draft status, empty payments, created_at, and passed fields', async () => {
+  it('createInvoice writes an invoice with generated id, token, org/lead, draft lifecycle, empty payments, created_at, and passed fields', async () => {
     const invoice = await createInvoice('org-1', 'lead-1', {
       title: 'Deposit',
       number: 'INV-001',
@@ -70,7 +76,9 @@ describe('invoices actions', () => {
         org_id: 'org-1',
         lead_id: 'lead-1',
         token: 'tok_test',
-        status: 'draft',
+        lifecycle: 'draft',
+        type: 'quick',
+        schema_version: 2,
         title: 'Deposit',
         number: 'INV-001',
         due_date: '2026-08-01',
@@ -84,7 +92,9 @@ describe('invoices actions', () => {
     expect(invoice.token).toBe('tok_test')
     expect(invoice.org_id).toBe('org-1')
     expect(invoice.lead_id).toBe('lead-1')
-    expect(invoice.status).toBe('draft')
+    expect(invoice.lifecycle).toBe('draft')
+    expect(invoice.type).toBe('quick')
+    expect(invoice.schema_version).toBe(2)
     expect(invoice.title).toBe('Deposit')
     expect(invoice.number).toBe('INV-001')
     expect(invoice.due_date).toBe('2026-08-01')
@@ -97,6 +107,29 @@ describe('invoices actions', () => {
     expect(written.line_items).toEqual([])
     expect(written.payments).toEqual([])
     expect(invoice.line_items).toEqual([])
+  })
+
+  it('generateFromProposal builds a draft with proposal-sourced lines and invoice source', async () => {
+    getProposalSpy.mockResolvedValue({
+      id: 'p1', org_id: 'org-1', lead_id: 'lead-1', token: 'pt', status: 'accepted',
+      line_items: [{ description: 'Package', quantity: 1, unit_price: 1000 }], created_at: '2026-01-01',
+    })
+    // no prior invoices from this source
+    listInvoicesSpy.mockResolvedValue({ docs: [] })
+
+    const inv = await generateFromProposal('org-1', 'lead-1', 'p1', { type: 'deposit' })
+
+    expect(inv.lifecycle).toBe('draft')
+    expect(inv.type).toBe('deposit')
+    expect(inv.source).toEqual({ type: 'proposal', id: 'p1', label: 'Accepted proposal' })
+    expect(inv.line_items[0].source).toEqual({ type: 'proposal', id: 'p1' })
+    expect(inv.schema_version).toBe(2)
+  })
+
+  it('generateFromProposal rejects a non-accepted proposal', async () => {
+    getProposalSpy.mockResolvedValue({ id: 'p1', status: 'sent', line_items: [] })
+    await expect(generateFromProposal('org-1', 'lead-1', 'p1', { type: 'deposit' }))
+      .rejects.toThrow(/not accepted/i)
   })
 
   it('listInvoices filters by lead_id, orders by created_at desc, and returns mapped docs', async () => {

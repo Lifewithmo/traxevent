@@ -5,7 +5,17 @@ import { randomBytes } from 'crypto'
 import { generateAccessToken } from '@/lib/tokens'
 import { assertOrgMember, assertOrgAdmin } from '@/lib/auth/assert'
 import { INVOICE_STATUSES, invoiceTotal, amountPaid, paymentStatus } from '@/lib/invoices'
-import type { Invoice, InvoiceLineItem, InvoicePayment, InvoiceStatus } from '@/lib/types'
+import { normalizeInvoice } from '@/lib/invoice-normalize'
+import { previouslyBilled, remainingToBill, assertWithinScope } from '@/lib/invoice-progress'
+import { getProposal } from '@/actions/proposals'
+import type {
+  Invoice,
+  InvoiceLineItem,
+  InvoicePayment,
+  InvoiceStatus,
+  InvoiceType,
+  NormalizedInvoice,
+} from '@/lib/types'
 
 function invoicesRef(orgId: string) {
   return adminDb.collection('orgs').doc(orgId).collection('invoices')
@@ -17,24 +27,25 @@ export interface CreateInvoiceInput {
   line_items?: InvoiceLineItem[]
   notes?: string
   due_date?: string
+  type?: InvoiceType
 }
 
-export async function listInvoices(orgId: string, leadId: string): Promise<Invoice[]> {
+export async function listInvoices(orgId: string, leadId: string): Promise<NormalizedInvoice[]> {
   await assertOrgMember(orgId)
   const snap = await invoicesRef(orgId).where('lead_id', '==', leadId).orderBy('created_at', 'desc').get()
-  return snap.docs.map((d) => d.data() as Invoice)
+  return snap.docs.map((d) => normalizeInvoice(d.data()))
 }
 
-export async function listAllInvoices(orgId: string): Promise<Invoice[]> {
+export async function listAllInvoices(orgId: string): Promise<NormalizedInvoice[]> {
   await assertOrgMember(orgId)
   const snap = await invoicesRef(orgId).orderBy('created_at', 'desc').get()
-  return snap.docs.map((d) => d.data() as Invoice)
+  return snap.docs.map((d) => normalizeInvoice(d.data()))
 }
 
-export async function getInvoice(orgId: string, invoiceId: string): Promise<Invoice | null> {
+export async function getInvoice(orgId: string, invoiceId: string): Promise<NormalizedInvoice | null> {
   await assertOrgMember(orgId)
   const snap = await invoicesRef(orgId).doc(invoiceId).get()
-  return snap.exists ? (snap.data() as Invoice) : null
+  return snap.exists ? normalizeInvoice(snap.data()!) : null
 }
 
 export async function createInvoice(orgId: string, leadId: string, input: CreateInvoiceInput): Promise<Invoice> {
@@ -45,7 +56,12 @@ export async function createInvoice(orgId: string, leadId: string, input: Create
     org_id: orgId,
     lead_id: leadId,
     token: generateAccessToken(),
-    status: 'draft',
+    schema_version: 2,
+    type: input.type ?? 'quick',
+    lifecycle: 'draft',
+    delivery: 'not_sent',
+    accounting: 'not_connected',
+    dispute: 'none',
     line_items: input.line_items ?? [],
     payments: [],
     created_at: new Date().toISOString(),
@@ -56,6 +72,41 @@ export async function createInvoice(orgId: string, leadId: string, input: Create
   }
   await invoicesRef(orgId).doc(id).set(invoice)
   return invoice
+}
+
+export async function generateFromProposal(
+  orgId: string,
+  leadId: string,
+  proposalId: string,
+  opts: { type: InvoiceType },
+): Promise<Invoice> {
+  await assertOrgAdmin(orgId)
+  const proposal = await getProposal(orgId, proposalId)
+  if (!proposal) throw new Error('Proposal not found')
+  if (proposal.status !== 'accepted') throw new Error('Proposal is not accepted')
+
+  const approved = invoiceTotal(proposal.line_items)
+  const existing = await listInvoices(orgId, leadId)
+  const billed = previouslyBilled(existing, proposalId)
+
+  const source = { type: 'proposal' as const, id: proposalId, label: 'Accepted proposal' }
+  const lineSource = { type: 'proposal' as const, id: proposalId }
+  let line_items: InvoiceLineItem[]
+  if (opts.type === 'final') {
+    line_items = [
+      { description: 'Final balance', quantity: 1, unit_price: remainingToBill(approved, billed), source: lineSource },
+    ]
+  } else {
+    line_items = proposal.line_items.map((l) => ({ ...l, source: lineSource }))
+  }
+
+  if (opts.type !== 'quick') {
+    assertWithinScope(invoiceTotal(line_items), billed, approved)
+  }
+
+  const invoice = await createInvoice(orgId, leadId, { type: opts.type, line_items })
+  await invoicesRef(orgId).doc(invoice.id).update({ source })
+  return { ...invoice, source }
 }
 
 export interface InvoiceUpdate {
