@@ -304,6 +304,21 @@ describe('invoices actions', () => {
     expect(written.updated_at).toEqual(expect.any(String))
   })
 
+  it('updateInvoice never passes a raw undefined to Firestore .update() — clears undefined fields via FieldValue.delete() instead', async () => {
+    invoiceDocGetSpy.mockResolvedValue({
+      exists: true,
+      data: () => ({ id: 'inv-1', lifecycle: 'draft', line_items: [], payments: [], created_at: '' }),
+    })
+    await updateInvoice('org-1', 'inv-1', { notes: 'x', discount: undefined })
+    const arg = invoiceDocUpdateSpy.mock.calls[0][0]
+    expect(arg.notes).toBe('x')
+    // Firestore Admin throws "Cannot use \"undefined\" as a Firestore value" when
+    // ignoreUndefinedProperties is off — a cleared field must become a FieldValue.delete()
+    // sentinel, not a raw undefined (and not be silently dropped, which would leave a stale value).
+    expect(arg.discount).not.toBeUndefined()
+    expect('discount' in arg).toBe(true)
+  })
+
   it('updateInvoice rejects financial edits on an issued invoice', async () => {
     invoiceDocGetSpy.mockResolvedValue({
       exists: true,

@@ -1,6 +1,7 @@
 'use server'
 
 import { adminDb } from '@/lib/firebase-admin'
+import { FieldValue } from 'firebase-admin/firestore'
 import { randomBytes } from 'crypto'
 import { generateAccessToken } from '@/lib/tokens'
 import { assertOrgMember, assertOrgAdmin } from '@/lib/auth/assert'
@@ -168,7 +169,16 @@ export async function updateInvoice(orgId: string, invoiceId: string, updates: I
   if (!snap.exists) throw new Error('Invoice not found')
   const inv = normalizeInvoice(snap.data()!)
   assertEditable(inv.lifecycle, Object.keys(updates))
-  await ref.update({ ...updates, updated_at: new Date().toISOString() })
+
+  // Firestore rejects `undefined` (ignoreUndefinedProperties is off). The invoice editor always
+  // sends its full pricing-terms state, so an `undefined` value here means "the user cleared this
+  // field" — map it to FieldValue.delete() rather than dropping the key (which would leave a
+  // stale discount/tax_rate in Firestore) or passing it raw (which throws). Mirrors updateProposal.
+  const cleaned: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(updates)) {
+    cleaned[k] = v === undefined ? FieldValue.delete() : v
+  }
+  await ref.update({ ...cleaned, updated_at: new Date().toISOString() })
 }
 
 export async function approveInvoice(orgId: string, invoiceId: string): Promise<void> {
