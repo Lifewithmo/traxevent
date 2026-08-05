@@ -420,22 +420,50 @@ export interface Customer {
 
 export type ProposalStatus = 'draft' | 'sent' | 'accepted' | 'rejected'
 
+export interface ProposalPackage {
+  id: string
+  name: string                 // builder-named: "Good" / "Better" / "Best"
+  description?: string
+  includes: string[]           // bullet lines shown to the customer
+  price: number                // the tier's all-in price (dollars)
+  recommended?: boolean
+}
+
 export interface ProposalLineItem {
+  id?: string                  // stable id; a selection references it (optional for back-compat)
   description: string
   quantity: number
-  unit_price: number   // dollars (may be decimal)
+  unit_price: number           // dollars (may be decimal)
+  optional?: boolean           // true = customer-toggleable add-on; missing/false = required base scope
+  taxable?: boolean            // default true; stored now, honored in a later increment
+}
+
+export interface ProposalDiscount { type: 'percent' | 'fixed'; value: number }
+export interface ProposalDeposit { type: 'percent' | 'fixed'; value: number }  // captured now, collected later
+
+export interface ProposalSelection {
+  package_id?: string
+  optional_item_ids: string[]
+  selected_total: number       // recomputed server-side; never trusted from the client
+  selected_at: string          // ISO
 }
 
 export interface Proposal {
   id: string
-  org_id: string        // denormalized for collectionGroup token lookups
-  lead_id: string
-  token: string         // unguessable public link token
+  org_id: string               // denormalized for collectionGroup token lookups
+  lead_id: string              // the opportunity id
+  token: string                // unguessable public link token
   title?: string
   status: ProposalStatus
   line_items: ProposalLineItem[]
+  packages?: ProposalPackage[] // if present (max 3), the customer must pick exactly one
+  discount?: ProposalDiscount
+  tax_rate?: number            // percent, e.g. 8.25
+  deposit?: ProposalDeposit
+  expires_at?: string          // ISO; display-only this increment
   notes?: string
-  client_response_at?: string   // set when the client accepts/rejects
+  selection?: ProposalSelection
+  client_response_at?: string  // set when the client accepts/rejects
   created_at: string
   updated_at?: string
 }
