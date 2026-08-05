@@ -488,6 +488,14 @@ export interface Contract {
   updated_at?: string
 }
 
+export interface Note {
+  id: string
+  parent_type: 'customer' | 'opportunity'
+  parent_id: string
+  body: string
+  created_at: string
+}
+
 export type VendorStatus = 'potential' | 'confirmed' | 'declined'
 
 export interface Vendor {
