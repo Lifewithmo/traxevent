@@ -2,6 +2,8 @@ import { createCustomerCore, type CreateCustomerInput } from '@/lib/crm/customer
 import { listLeadsCore, updateLeadCore } from '@/lib/crm/leads'
 import type { Lead } from '@/lib/types'
 
+// Run via `npm run crm:migrate` — it sets --conditions=react-server so 'server-only' (imported transitively via lib/firebase-admin) resolves to its no-throw module under tsx.
+
 /** Pure mapping from a Lead's contact fields to a CreateCustomerInput (present fields only). */
 export function leadToCustomerInput(lead: Lead): CreateCustomerInput {
   return {

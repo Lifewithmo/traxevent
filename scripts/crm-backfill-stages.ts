@@ -1,6 +1,8 @@
 import { listLeadsCore, updateLeadCore } from '@/lib/crm/leads'
 import type { LeadStage } from '@/lib/types'
 
+// Run via `npm run crm:backfill-stages` — it sets --conditions=react-server so 'server-only' (imported transitively via lib/firebase-admin) resolves to its no-throw module under tsx.
+
 /** Map a legacy (dropped) stage to its V1 equivalent, or null if no change is needed. */
 export function mapLegacyStage(stage: string): LeadStage | null {
   if (stage === 'booked' || stage === 'delivered') return 'closed_won'
