@@ -48,6 +48,20 @@ describe('createWorkPackageCore', () => {
     expect(wp.id).toBeTruthy()
     expect(docSetSpy.mock.calls[0][0].lines).toHaveLength(3)
   })
+
+  it('strips undefined keys from line objects before writing to Firestore', async () => {
+    const withUndefined = {
+      ...base,
+      lines: [
+        { kind: 'consumable' as const, resource_id: 'res-beans', qty_per_guest: 0.75, base_qty: undefined },
+      ],
+    }
+    await createWorkPackageCore('o1', withUndefined, RESOURCES)
+    const writtenPackage = docSetSpy.mock.calls[0][0]
+    const line = writtenPackage.lines[0]
+    expect('base_qty' in line).toBe(false)
+    expect(line.qty_per_guest).toBe(0.75)
+  })
 })
 
 describe('updateWorkPackageCore', () => {

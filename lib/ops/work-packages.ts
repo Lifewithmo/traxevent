@@ -42,6 +42,11 @@ function validateLines(lines: WorkPackageLine[], validResourceIds: Set<string>):
   }
 }
 
+/** Sanitize line objects: strip undefined keys to prevent Firestore undefined rejection. */
+function sanitizeLines(lines: WorkPackageLine[]): WorkPackageLine[] {
+  return lines.map((line) => Object.fromEntries(Object.entries(line).filter(([, v]) => v !== undefined))) as WorkPackageLine[]
+}
+
 export async function listWorkPackagesCore(orgId: string): Promise<WorkPackage[]> {
   const snap = await workPackagesRef(orgId).orderBy('name').get()
   return snap.docs.map((d) => d.data() as WorkPackage)
@@ -66,7 +71,7 @@ export async function createWorkPackageCore(
     id: ref.id,
     name: input.name.trim(),
     price: input.price,
-    lines: input.lines,
+    lines: sanitizeLines(input.lines),
     ...(input.description !== undefined ? { description: input.description } : {}),
     ...(input.scope !== undefined ? { scope: input.scope } : {}),
     ...(input.max_guests !== undefined ? { max_guests: input.max_guests } : {}),
@@ -91,7 +96,11 @@ export async function updateWorkPackageCore(
   const cleaned: Record<string, unknown> = {}
   for (const [k, v] of Object.entries(updates)) {
     if (v === undefined) continue
-    cleaned[k] = v === null ? FieldValue.delete() : v
+    if (k === 'lines' && v !== null) {
+      cleaned[k] = sanitizeLines(v as WorkPackageLine[])
+    } else {
+      cleaned[k] = v === null ? FieldValue.delete() : v
+    }
   }
   await workPackagesRef(orgId).doc(packageId).update({ ...cleaned, updated_at: new Date().toISOString() })
 }
