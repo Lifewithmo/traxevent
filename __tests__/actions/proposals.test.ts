@@ -155,6 +155,13 @@ describe('proposals actions', () => {
     expect(proposalDocUpdateSpy).not.toHaveBeenCalled()
   })
 
+  it('updateProposal rejects status: "voided" — voiding must go through voidProposal (with a reason) and does not write', async () => {
+    await expect(updateProposal('org-1', 'p1', { status: 'voided' })).rejects.toThrow(
+      'Use voidProposal to void a proposal'
+    )
+    expect(proposalDocUpdateSpy).not.toHaveBeenCalled()
+  })
+
   it('sendProposal updates status to sent and sets updated_at', async () => {
     await sendProposal('org-1', 'p1')
     expect(proposalDocUpdateSpy).toHaveBeenCalledWith(

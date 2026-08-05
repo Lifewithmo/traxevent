@@ -85,6 +85,7 @@ export interface ProposalUpdate {
 export async function updateProposal(orgId: string, proposalId: string, updates: ProposalUpdate): Promise<void> {
   await assertOrgAdmin(orgId)
   if (updates.status && !PROPOSAL_STATUSES.includes(updates.status)) throw new Error('Invalid status')
+  if (updates.status === 'voided') throw new Error('Use voidProposal to void a proposal')
 
   const ref = proposalsRef(orgId).doc(proposalId)
   const snap = await ref.get()
