@@ -207,4 +207,22 @@ describe('proposals actions', () => {
     const written = proposalDocSetSpy.mock.calls[0][0]
     expect(written.packages).toEqual([{ id: 'good', name: 'Good', includes: [], price: 100 }])
   })
+
+  it('updateProposal passes through deposit_gate and deposit_terms', async () => {
+    proposalDocGetSpy.mockResolvedValue({ exists: true, data: () => ({ id: 'p1', status: 'sent' }) })
+    await updateProposal('org-1', 'p1', { deposit_gate: 'before_accept', deposit_terms: 'Non-refundable.' })
+    const written = proposalDocUpdateSpy.mock.calls[0][0]
+    expect(written.deposit_gate).toBe('before_accept')
+    expect(written.deposit_terms).toBe('Non-refundable.')
+  })
+
+  it('updateProposal refuses to edit a signed (locked) proposal and does not write', async () => {
+    proposalDocGetSpy.mockResolvedValue({
+      exists: true,
+      data: () => ({ id: 'p1', status: 'accepted', signature: { signer_name: 'A', signed_at: 'x' } }),
+    })
+    await expect(updateProposal('org-1', 'p1', { title: 'edit' }))
+      .rejects.toThrow('This proposal is signed and can no longer be edited')
+    expect(proposalDocUpdateSpy).not.toHaveBeenCalled()
+  })
 })
