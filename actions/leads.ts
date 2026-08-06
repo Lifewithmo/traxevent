@@ -5,7 +5,7 @@ import { LEAD_STAGES } from '@/lib/leads'
 import { logActivity } from '@/lib/activity'
 import { leadsRef, listLeadsCore, updateLeadCore, type LeadUpdate } from '@/lib/crm/leads'
 import { randomBytes } from 'crypto'
-import type { Lead, LeadStage } from '@/lib/types'
+import type { Lead, LeadStage, LeadWaiting } from '@/lib/types'
 
 // NOTE: this is a 'use server' module — every export must be an async function.
 // LeadUpdate (a type) is therefore NOT re-exported here; import it from
@@ -80,4 +80,29 @@ export async function setLeadStage(orgId: string, leadId: string, stage: LeadSta
 export async function deleteLead(orgId: string, leadId: string): Promise<void> {
   await assertOrgAdmin(orgId)
   await leadsRef(orgId).doc(leadId).delete()
+}
+
+export async function setLeadWaiting(
+  orgId: string,
+  leadId: string,
+  input: { reason: string; follow_up_date?: string }
+): Promise<void> {
+  await assertOrgAdmin(orgId)
+  if (!input.reason?.trim()) throw new Error('A reason is required')
+  const waiting: LeadWaiting = {
+    reason: input.reason.trim(),
+    ...(input.follow_up_date?.trim() ? { follow_up_date: input.follow_up_date.trim() } : {}),
+  }
+  await updateLeadCore(orgId, leadId, { waiting })
+  await logActivity(orgId, {
+    parent_type: 'opportunity', parent_id: leadId, kind: 'waiting', summary: `Waiting: ${waiting.reason}`,
+  })
+}
+
+export async function clearLeadWaiting(orgId: string, leadId: string): Promise<void> {
+  await assertOrgAdmin(orgId)
+  await updateLeadCore(orgId, leadId, { waiting: null })
+  await logActivity(orgId, {
+    parent_type: 'opportunity', parent_id: leadId, kind: 'waiting', summary: 'Resumed — cleared waiting',
+  })
 }

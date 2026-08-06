@@ -627,7 +627,7 @@ export interface ActivityEvent {
   id: string
   parent_type: 'customer' | 'opportunity'
   parent_id: string
-  kind: 'stage' | 'task' | 'note' | 'email' | 'form' | 'created'
+  kind: 'stage' | 'task' | 'note' | 'email' | 'form' | 'created' | 'waiting'
   summary: string
   created_at: string
 }
