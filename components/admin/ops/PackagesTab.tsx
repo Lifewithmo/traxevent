@@ -47,6 +47,26 @@ function lineSummary(line: WorkPackageLine, resourceById: Map<string, OpsResourc
   return `${name} × ${line.qty}`
 }
 
+/** Every line has the fields it needs to be saved — gates the Save button. */
+function linesComplete(lines: WorkPackageLine[]): boolean {
+  return lines.every((l) => {
+    if (l.kind === 'consumable') return l.resource_id !== '' && l.qty_per_guest > 0
+    if (l.kind === 'equipment') return l.resource_id !== '' && l.qty > 0
+    return l.role.trim() !== '' && l.count > 0
+  })
+}
+
+/** Apply a WorkPackageUpdate-shaped payload locally: null clears the field (mirrors Firestore's
+ *  FieldValue.delete() semantics in lib/ops/work-packages.ts), undefined leaves it untouched. */
+function applyUpdate(p: WorkPackage, updates: Record<string, unknown>): WorkPackage {
+  const next = { ...p } as Record<string, unknown>
+  for (const [k, v] of Object.entries(updates)) {
+    if (v === null) delete next[k]
+    else if (v !== undefined) next[k] = v
+  }
+  return next as unknown as WorkPackage
+}
+
 export function PackagesTab({ orgId, isAdmin, packages: initial, resources, templates }: PackagesTabProps) {
   const [packages, setPackages] = useState(initial)
   const [draft, setDraft] = useState<Draft | null>(null)
@@ -61,7 +81,8 @@ export function PackagesTab({ orgId, isAdmin, packages: initial, resources, temp
     setDraft((d) => d && { ...d, lines: d.lines.map((l, idx) => (idx === i ? line : l)) })
   }
 
-  function toInput(d: Draft) {
+  // CreateWorkPackageInput has no null variants — omit unset optional fields entirely.
+  function toCreateInput(d: Draft) {
     return {
       name: d.name.trim(),
       price: Number(d.price || 0),
@@ -75,15 +96,32 @@ export function PackagesTab({ orgId, isAdmin, packages: initial, resources, temp
     }
   }
 
+  // WorkPackageUpdate treats null as "delete this field" — a cleared optional field must send
+  // null, not be omitted, or editing can never remove a previously-set value.
+  function toUpdateInput(d: Draft) {
+    return {
+      name: d.name.trim(),
+      price: Number(d.price || 0),
+      lines: d.lines,
+      description: d.description.trim() ? d.description.trim() : null,
+      scope: d.scope.trim() ? d.scope.trim() : null,
+      max_guests: d.max_guests !== '' ? Number(d.max_guests) : null,
+      setup_minutes: d.setup_minutes !== '' ? Number(d.setup_minutes) : null,
+      teardown_minutes: d.teardown_minutes !== '' ? Number(d.teardown_minutes) : null,
+      checklist_template_ids: d.checklist_template_ids.length > 0 ? d.checklist_template_ids : null,
+    }
+  }
+
   async function handleSave() {
-    if (!draft || !draft.name.trim()) return
+    if (!draft || !draft.name.trim() || !linesComplete(draft.lines)) return
     setSaving(true); setError(null)
     try {
       if (draft.id) {
-        await updateWorkPackage(orgId, draft.id, toInput(draft))
-        setPackages((prev) => prev.map((p) => (p.id === draft.id ? { ...p, ...toInput(draft) } : p)))
+        const updates = toUpdateInput(draft)
+        await updateWorkPackage(orgId, draft.id, updates)
+        setPackages((prev) => prev.map((p) => (p.id === draft.id ? applyUpdate(p, updates) : p)))
       } else {
-        const created = await createWorkPackage(orgId, toInput(draft))
+        const created = await createWorkPackage(orgId, toCreateInput(draft))
         setPackages((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)))
       }
       setDraft(null)
@@ -322,7 +360,7 @@ export function PackagesTab({ orgId, isAdmin, packages: initial, resources, temp
             </div>
 
             <div className="flex gap-2">
-              <Button onClick={handleSave} disabled={saving || !draft.name.trim()}>Save package</Button>
+              <Button onClick={handleSave} disabled={saving || !draft.name.trim() || !linesComplete(draft.lines)}>Save package</Button>
               <Button variant="outline" onClick={() => setDraft(null)}>Cancel</Button>
             </div>
           </CardContent>

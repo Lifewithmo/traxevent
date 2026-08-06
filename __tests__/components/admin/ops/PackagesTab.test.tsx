@@ -9,7 +9,7 @@ vi.mock('@/actions/work-packages', () => ({
   deleteWorkPackage: vi.fn().mockResolvedValue(undefined),
 }))
 
-import { createWorkPackage, deleteWorkPackage } from '@/actions/work-packages'
+import { createWorkPackage, updateWorkPackage, deleteWorkPackage } from '@/actions/work-packages'
 import { PackagesTab } from '@/components/admin/ops/PackagesTab'
 import type { OpsResource, WorkPackage, ChecklistTemplate } from '@/lib/types'
 
@@ -78,5 +78,31 @@ describe('PackagesTab', () => {
     render(<PackagesTab orgId="o1" isAdmin={false} packages={[espressoBar]} resources={[]} templates={[]} />)
     expect(screen.queryByRole('button', { name: 'New package' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Delete Espresso Bar' })).not.toBeInTheDocument()
+  })
+
+  it('clearing max_guests on edit sends null and drops the guests badge', async () => {
+    render(<PackagesTab orgId="o1" isAdmin packages={[espressoBar]} resources={[beans, machine]} templates={[]} />)
+    expect(screen.getByText(/up to 100 guests/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+    fireEvent.change(screen.getByLabelText('Max guests'), { target: { value: '' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save package' }))
+    await waitFor(() =>
+      expect(updateWorkPackage).toHaveBeenCalledWith('o1', 'p1', expect.objectContaining({ max_guests: null }))
+    )
+    expect(screen.queryByText(/up to 100 guests/)).not.toBeInTheDocument()
+  })
+
+  it('disables Save until every consumable line has a resource and a positive qty per guest', () => {
+    render(<PackagesTab orgId="o1" isAdmin packages={[]} resources={[beans, machine]} templates={[]} />)
+    fireEvent.click(screen.getByRole('button', { name: 'New package' }))
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Cold Brew Cart' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add consumable' }))
+    expect(screen.getByRole('button', { name: 'Save package' })).toBeDisabled()
+
+    fireEvent.change(screen.getByLabelText('Consumable 1 resource'), { target: { value: 'r1' } })
+    expect(screen.getByRole('button', { name: 'Save package' })).toBeDisabled()
+
+    fireEvent.change(screen.getByLabelText('Consumable 1 qty per guest'), { target: { value: '0.5' } })
+    expect(screen.getByRole('button', { name: 'Save package' })).not.toBeDisabled()
   })
 })
