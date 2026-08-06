@@ -78,6 +78,11 @@ describe('instantiateOpsPlanCore', () => {
       .rejects.toThrow('Guest count must be positive')
   })
 
+  it('rejects a non-finite (NaN) guest count', async () => {
+    await expect(instantiateOpsPlanCore('o1', 'e1', { ...input, requirements: { guests: NaN } }))
+      .rejects.toThrow('Guest count must be positive')
+  })
+
   it('rejects when a plan already exists (no silent overwrite)', async () => {
     planGetSpy.mockResolvedValue({ exists: true })
     await expect(instantiateOpsPlanCore('o1', 'e1', input)).rejects.toThrow('Ops plan already exists for this event')
@@ -162,6 +167,11 @@ describe('updateOpsRequirementsCore', () => {
     planGetSpy.mockResolvedValue({ exists: true, data: () => existing })
     // @ts-expect-error invalid field at runtime
     await expect(updateOpsRequirementsCore('o1', 'e1', { budget: 500 }, 'u1')).rejects.toThrow('Unknown requirement field: budget')
+  })
+
+  it('rejects a non-finite (NaN) guest count', async () => {
+    planGetSpy.mockResolvedValue({ exists: true, data: () => existing })
+    await expect(updateOpsRequirementsCore('o1', 'e1', { guests: NaN }, 'u1')).rejects.toThrow('Guest count must be positive')
   })
 
   it('throws when a re-derive discovers a package that no longer exists', async () => {

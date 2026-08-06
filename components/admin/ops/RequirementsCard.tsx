@@ -122,7 +122,7 @@ export function RequirementsCard({ orgId, eventId, plan, packages, onPlanChange 
             </div>
             <p className="text-xs text-gray-500">Changing guests re-derives the shopping list (checked items carry over) and flags the plan for review.</p>
             <div className="flex gap-2">
-              <Button size="sm" onClick={handleSave} disabled={saving || !guests || Number(guests) <= 0}>Save</Button>
+              <Button size="sm" onClick={handleSave} disabled={saving || !guests || !Number.isFinite(Number(guests)) || Number(guests) <= 0}>Save</Button>
               <Button size="sm" variant="outline" onClick={() => setEditing(false)}>Cancel</Button>
             </div>
           </div>

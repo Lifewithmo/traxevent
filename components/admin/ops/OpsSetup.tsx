@@ -118,7 +118,7 @@ export function OpsSetup({ orgId, eventId, packages, eventStart, industryPackId,
           <Input id="ops-notes" value={notes} onChange={(e) => setNotes(e.target.value)} />
         </div>
         {error && <p className="text-sm text-red-600">{error}</p>}
-        <Button onClick={handleCreate} disabled={saving || selected.length === 0 || !guests || Number(guests) <= 0}>
+        <Button onClick={handleCreate} disabled={saving || selected.length === 0 || !guests || !Number.isFinite(Number(guests)) || Number(guests) <= 0}>
           Set up ops plan
         </Button>
       </CardContent>
