@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic'
 import { notFound } from 'next/navigation'
 import { adminDb } from '@/lib/firebase-admin'
 import { listCustomers } from '@/actions/customers'
-import { listLeadsCore } from '@/lib/crm/leads'
+import { listLeads } from '@/actions/leads'
 import { rollupCustomer } from '@/lib/crm/customer-rollup'
 import { ClientsTable } from '@/components/admin/ClientsTable'
 import type { Lead } from '@/lib/types'
@@ -14,7 +14,7 @@ export default async function ClientsPage({ params }: { params: Promise<{ orgSlu
   if (orgSnap.empty) notFound()
   const orgId = orgSnap.docs[0].id
 
-  const [customers, leads] = await Promise.all([listCustomers(orgId), listLeadsCore(orgId)])
+  const [customers, leads] = await Promise.all([listCustomers(orgId), listLeads(orgId)])
   const byCustomer = new Map<string, Lead[]>()
   for (const l of leads) {
     if (!l.customer_id) continue
