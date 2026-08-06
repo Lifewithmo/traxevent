@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import type { PublicProposal } from '@/actions/proposals-public'
 import { respondToProposal, signProposal, recordProposalView, getPublicProposal } from '@/actions/proposals-public'
-import { lineItemSubtotal, computeSelectedTotal, depositAmount } from '@/lib/proposals'
+import { lineItemSubtotal, computeSelectedTotal, depositAmount, proposalExpiryInstant } from '@/lib/proposals'
 import type { PaymentStatus } from '@/lib/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -454,7 +454,12 @@ export function ProposalResponseClient({
               )}
               {proposal.expires_at && (
                 <p className="text-xs text-gray-400">
-                  This proposal expires {new Date(proposal.expires_at).toLocaleDateString()}
+                  {/* Rendered from the same instant the signing/deposit guards
+                      use (proposalExpiryInstant), so a date-only expires_at
+                      (end of that UTC day) never shows a date the guards
+                      would already treat as expired, or vice versa. */}
+                  This proposal expires{' '}
+                  {new Date(proposalExpiryInstant(proposal.expires_at)).toLocaleDateString()}
                 </p>
               )}
             </div>

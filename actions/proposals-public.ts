@@ -3,7 +3,7 @@
 import { headers } from 'next/headers'
 import { FieldValue } from 'firebase-admin/firestore'
 import { adminDb } from '@/lib/firebase-admin'
-import { computeSelectedTotal, depositAmount } from '@/lib/proposals'
+import { computeSelectedTotal, depositAmount, proposalExpiryInstant } from '@/lib/proposals'
 import { signedDocumentHash } from '@/lib/proposal-signature'
 import { sendProposalSignedConfirmation } from '@/lib/email'
 import { getVerifiedSendingDomain } from '@/actions/domains'
@@ -151,7 +151,7 @@ export async function signProposal(token: string, input: {
   if (proposal.status !== 'sent' || proposal.signature) {
     throw new Error('This proposal is no longer awaiting a response')
   }
-  if (proposal.expires_at && new Date(proposal.expires_at).getTime() < Date.now()) {
+  if (proposal.expires_at && Date.now() > proposalExpiryInstant(proposal.expires_at)) {
     throw new Error('This proposal has expired. Please ask for an updated proposal.')
   }
 

@@ -9,6 +9,7 @@ import {
   proposalDisplayRange,
   discountAmount,
   depositAmount,
+  proposalExpiryInstant,
 } from '@/lib/proposals'
 import type { Proposal, ProposalLineItem } from '@/lib/types'
 
@@ -163,5 +164,30 @@ describe('discountAmount / depositAmount', () => {
     expect(depositAmount(1000, { type: 'percent', value: 50 })).toBe(500)
     expect(depositAmount(1000, { type: 'fixed', value: 2000 })).toBe(1000)
     expect(depositAmount(1000, undefined)).toBe(0)
+  })
+})
+
+describe('proposalExpiryInstant', () => {
+  // The admin editor's expiry field is an <input type="date">, which only
+  // ever produces a bare YYYY-MM-DD string — that is the format this field
+  // holds in practice, not an edge case. Such a value must mean "valid
+  // through the end of that named day," not "expires at UTC midnight."
+  it('resolves a date-only value to the end of that calendar day in UTC', () => {
+    expect(proposalExpiryInstant('2026-08-06')).toBe(
+      new Date('2026-08-06T23:59:59.999Z').getTime(),
+    )
+  })
+
+  it('uses a value with an explicit time component as-is', () => {
+    expect(proposalExpiryInstant('2026-08-06T10:30:00.000Z')).toBe(
+      new Date('2026-08-06T10:30:00.000Z').getTime(),
+    )
+  })
+
+  // An unparseable value must not read as expired — a malformed stored
+  // string should never silently brick an otherwise-signable proposal.
+  it('does not treat an unparseable value as expired', () => {
+    expect(proposalExpiryInstant('not-a-real-date')).toBe(Infinity)
+    expect(Date.now() < proposalExpiryInstant('not-a-real-date')).toBe(true)
   })
 })

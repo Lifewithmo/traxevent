@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server'
 import { headers } from 'next/headers'
 import { stripe } from '@/lib/stripe'
 import { adminDb } from '@/lib/firebase-admin'
-import { computeSelectedTotal, depositAmount } from '@/lib/proposals'
+import { computeSelectedTotal, depositAmount, proposalExpiryInstant } from '@/lib/proposals'
 import { signedDocumentHash } from '@/lib/proposal-signature'
 import type { Org, Proposal, ProposalSelection, PendingSignature } from '@/lib/types'
 
@@ -61,7 +61,7 @@ export async function POST(req: Request) {
         { status: 400 }
       )
     }
-    if (proposal.expires_at && new Date(proposal.expires_at).getTime() < Date.now()) {
+    if (proposal.expires_at && Date.now() > proposalExpiryInstant(proposal.expires_at)) {
       return NextResponse.json(
         { error: 'This proposal has expired. Please ask for an updated proposal.' },
         { status: 400 }

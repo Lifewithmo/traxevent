@@ -532,6 +532,23 @@ describe('signProposal', () => {
       signProposal('tok', { signer_name: 'Dana', signer_email: 'd@x.com', consent: true }),
     ).resolves.toBeDefined()
   })
+
+  // Regression: the admin editor's expiry field is a bare <input
+  // type="date">, so `expires_at` is stored as YYYY-MM-DD with no time
+  // component. Naively parsing that as UTC midnight would reject signing for
+  // the entire final valid day. A date-only expires_at of "today" must still
+  // be signable — proposalExpiryInstant resolves it to end-of-day UTC.
+  it('still allows signing when a date-only expiry is today', async () => {
+    const today = new Date().toISOString().slice(0, 10)
+    mockSnapshot({
+      id: 'p1', org_id: 'org-1', lead_id: 'l1', token: 'tok',
+      status: 'sent', line_items: [], created_at: 'x',
+      expires_at: today,
+    })
+    await expect(
+      signProposal('tok', { signer_name: 'Dana', signer_email: 'd@x.com', consent: true }),
+    ).resolves.toBeDefined()
+  })
 })
 
 describe('respondToProposal decline', () => {
