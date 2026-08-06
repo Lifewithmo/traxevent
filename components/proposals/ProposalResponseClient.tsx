@@ -3,18 +3,22 @@
 import { useState, useEffect } from 'react'
 import type { PublicProposal } from '@/actions/proposals-public'
 import { respondToProposal, signProposal, recordProposalView, getPublicProposal } from '@/actions/proposals-public'
-import { lineItemSubtotal, computeSelectedTotal, depositAmount, proposalExpiryInstant } from '@/lib/proposals'
+import { computeSelectedTotal, depositAmount } from '@/lib/proposals'
 import type { PaymentStatus } from '@/lib/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ProposalDocument } from '@/components/proposals/ProposalDocument'
+// Shared with the print route so the two renderings of the same offer cannot
+// drift apart again — see components/proposals/ProposalPricing.tsx.
+import {
+  ProposalPackageOption,
+  ProposalIncludedItems,
+  ProposalOptionalItems,
+  ProposalTotals,
+} from '@/components/proposals/ProposalPricing'
 import { ProposalDepositPayment } from './ProposalDepositPayment'
-
-function money(n: number): string {
-  return `$${n.toFixed(2)}`
-}
 
 // Local, immediate confirmation shown right after a successful `signProposal`
 // call in THIS session — the server doesn't echo signed_at back, so it's
@@ -211,42 +215,15 @@ export function ProposalResponseClient({
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                {proposal.packages!.map((pkg) => {
-                  const selected = packageId === pkg.id
-                  return (
-                    <button
-                      key={pkg.id}
-                      type="button"
-                      disabled={!editable}
-                      onClick={() => editable && setPackageId(pkg.id)}
-                      aria-pressed={selected}
-                      className={`relative rounded-lg border p-4 text-left transition ${
-                        selected ? 'border-gray-900 ring-2 ring-gray-900' : 'border-gray-200'
-                      } ${editable ? 'cursor-pointer hover:border-gray-400' : 'cursor-default'}`}
-                    >
-                      {pkg.recommended && (
-                        <span className="absolute right-3 top-3 rounded-full bg-gray-900 px-2 py-0.5 text-xs font-medium text-white">
-                          Recommended
-                        </span>
-                      )}
-                      <p className="font-semibold text-gray-900">{pkg.name}</p>
-                      {pkg.description && (
-                        <p className="mt-1 text-sm text-gray-500">{pkg.description}</p>
-                      )}
-                      <p className="mt-2 text-lg font-bold text-gray-900">{money(pkg.price)}</p>
-                      {pkg.includes && pkg.includes.length > 0 && (
-                        <ul className="mt-3 space-y-1 text-sm text-gray-700">
-                          {pkg.includes.map((line, i) => (
-                            <li key={i} className="flex gap-2">
-                              <span aria-hidden="true">✓</span>
-                              <span>{line}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </button>
-                  )
-                })}
+                {proposal.packages!.map((pkg) => (
+                  <ProposalPackageOption
+                    key={pkg.id}
+                    pkg={pkg}
+                    selected={packageId === pkg.id}
+                    selectable={editable}
+                    onSelect={() => setPackageId(pkg.id)}
+                  />
+                ))}
               </div>
             </CardContent>
           </Card>
@@ -258,17 +235,7 @@ export function ProposalResponseClient({
               <CardTitle>What&apos;s included</CardTitle>
             </CardHeader>
             <CardContent>
-              <ul className="divide-y">
-                {requiredItems.map((item, i) => (
-                  <li key={item.id ?? i} className="flex items-center justify-between py-2 text-sm">
-                    <span className="text-gray-900">
-                      {item.description}{' '}
-                      <span className="text-gray-500">× {item.quantity}</span>
-                    </span>
-                    <span className="text-gray-900">{money(lineItemSubtotal(item))}</span>
-                  </li>
-                ))}
-              </ul>
+              <ProposalIncludedItems items={requiredItems} />
             </CardContent>
           </Card>
         )}
@@ -279,26 +246,12 @@ export function ProposalResponseClient({
               <CardTitle>Optional add-ons</CardTitle>
             </CardHeader>
             <CardContent>
-              <ul className="divide-y">
-                {optionalItems.map((item) => (
-                  <li key={item.id} className="flex items-center justify-between py-2 text-sm">
-                    <label className="flex items-center gap-3 text-gray-900">
-                      <input
-                        type="checkbox"
-                        checked={optionalIds.includes(item.id as string)}
-                        disabled={!editable}
-                        onChange={() => toggleOptional(item.id as string)}
-                        className="h-4 w-4 rounded border-gray-300"
-                      />
-                      <span>
-                        {item.description}{' '}
-                        <span className="text-gray-500">× {item.quantity}</span>
-                      </span>
-                    </label>
-                    <span className="text-gray-900">{money(lineItemSubtotal(item))}</span>
-                  </li>
-                ))}
-              </ul>
+              <ProposalOptionalItems
+                items={optionalItems}
+                selectedIds={optionalIds}
+                onToggle={toggleOptional}
+                disabled={!editable}
+              />
             </CardContent>
           </Card>
         )}
@@ -443,26 +396,12 @@ export function ProposalResponseClient({
         <div className="mx-auto max-w-3xl px-6 py-4">
           {error && <p className="mb-2 text-sm text-red-600">{error}</p>}
           <div className="flex flex-wrap items-end justify-between gap-4">
-            <div>
-              <p className="text-sm text-gray-500">Total</p>
-              <p className="text-2xl font-bold text-gray-900">{money(total)}</p>
-              {proposal.deposit && !signedInfo && (
-                <p className="text-sm text-gray-600">
-                  Deposit due{usesBeforeAcceptGate ? ' to accept' : ' on acceptance'}:{' '}
-                  {money(depositAmount(total, proposal.deposit))}
-                </p>
-              )}
-              {proposal.expires_at && (
-                <p className="text-xs text-gray-400">
-                  {/* Rendered from the same instant the signing/deposit guards
-                      use (proposalExpiryInstant), so a date-only expires_at
-                      (end of that UTC day) never shows a date the guards
-                      would already treat as expired, or vice versa. */}
-                  This proposal expires{' '}
-                  {new Date(proposalExpiryInstant(proposal.expires_at)).toLocaleDateString()}
-                </p>
-              )}
-            </div>
+            <ProposalTotals
+              total={{ min: total, max: total }}
+              deposit={signedInfo ? undefined : proposal.deposit}
+              depositLabel={usesBeforeAcceptGate ? 'Deposit due to accept' : 'Deposit due on acceptance'}
+              expiresAt={proposal.expires_at}
+            />
 
             {showForm ? (
               <div className="flex gap-3">

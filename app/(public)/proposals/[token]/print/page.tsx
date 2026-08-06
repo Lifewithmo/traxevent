@@ -4,7 +4,13 @@ import { notFound } from 'next/navigation'
 import { getPublicProposal } from '@/actions/proposals-public'
 import { ProposalDocument } from '@/components/proposals/ProposalDocument'
 import { PrintButton } from '@/components/admin/ops/PrintButton'
-import { lineItemSubtotal } from '@/lib/proposals'
+import {
+  ProposalPackageOption,
+  ProposalIncludedItems,
+  ProposalOptionalItems,
+  ProposalTotals,
+} from '@/components/proposals/ProposalPricing'
+import { proposalDisplayRange } from '@/lib/proposals'
 
 export default async function ProposalPrintPage({
   params,
@@ -17,6 +23,43 @@ export default async function ProposalPrintPage({
   const proposal = await getPublicProposal(token)
   if (!proposal) notFound()
 
+  // STATUS GATE — mirrors ProposalResponseClient exactly, because this route
+  // renders the same offer from the same projection and must refuse for the
+  // same reasons. getPublicProposal only nulls out drafts; every other refusal
+  // lived in the client component, which this server route does not run.
+  //
+  // `voided` short-circuits to the same sentence the main page shows, rather
+  // than notFound(): the customer holds a link that worked yesterday, and a
+  // 404 reads as "broken", not "revoked". Critically, nothing below renders —
+  // no document, no pricing, no notes — so a voided proposal can no longer be
+  // printed and kept as though it were a live offer.
+  if (proposal.status === 'voided') {
+    return (
+      <main className="flex min-h-screen flex-col items-center justify-center bg-gray-50 px-6 text-center">
+        <p className="text-lg font-medium text-gray-500">This proposal is no longer available.</p>
+      </main>
+    )
+  }
+
+  // `rejected` and signed/accepted still render — the main page renders them
+  // too, and a customer is entitled to a copy of what they declined or signed.
+  // But a printed sheet outlives the screen it came from, so each state is
+  // stated on the page: an unmarked printout of a signed proposal is
+  // indistinguishable from a live offer awaiting a decision.
+  const declined = proposal.status === 'rejected'
+  const signed = proposal.signed
+
+  // A locked selection prices itself; anything unselected is a SPAN, not a
+  // guess. proposalDisplayRange encodes exactly that rule and is already what
+  // the admin list views use.
+  const total = proposalDisplayRange(proposal)
+  const selectedPackageId = proposal.selection?.package_id
+  const selectedOptionalIds = proposal.selection?.optional_item_ids ?? []
+
+  const packages = proposal.packages ?? []
+  const requiredItems = proposal.line_items.filter((i) => i.optional !== true)
+  const optionalItems = proposal.line_items.filter((i) => i.optional === true && i.id)
+
   return (
     <main className="mx-auto max-w-3xl px-8 py-10 text-gray-900">
       <div className="mb-6 flex items-start justify-between">
@@ -24,24 +67,73 @@ export default async function ProposalPrintPage({
         <PrintButton />
       </div>
 
+      {signed && (
+        <div className="mb-6 rounded-md border border-green-200 bg-green-50 p-4 text-sm">
+          <p className="font-medium text-green-800">Accepted</p>
+          <p className="text-green-700">
+            Signed by {signed.signer_name} on {new Date(signed.signed_at).toLocaleString()}.
+          </p>
+          {proposal.payment_status === 'deposit_paid' && (
+            <p className="text-green-700">Deposit paid.</p>
+          )}
+        </div>
+      )}
+
+      {declined && (
+        <div className="mb-6 rounded-md border border-gray-300 bg-gray-50 p-4 text-sm font-medium text-gray-700">
+          This proposal was declined.
+        </div>
+      )}
+
       <ProposalDocument blocks={proposal.blocks} />
 
-      {proposal.line_items.length > 0 && (
+      {packages.length > 0 && (
         <section className="mt-8">
-          <h2 className="mb-2 text-lg font-bold">Pricing</h2>
-          <table className="w-full text-sm">
-            <tbody>
-              {proposal.line_items.map((li, i) => (
-                <tr key={i} className="border-b">
-                  <td className="py-1">{li.description}</td>
-                  <td className="py-1 text-right">
-                    {li.quantity} × ${li.unit_price.toFixed(2)}
-                  </td>
-                  <td className="py-1 text-right">${lineItemSubtotal(li).toFixed(2)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <h2 className="mb-3 text-lg font-bold">Options</h2>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            {packages.map((pkg) => (
+              <ProposalPackageOption
+                key={pkg.id}
+                pkg={pkg}
+                selected={pkg.id === selectedPackageId}
+              />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {requiredItems.length > 0 && (
+        <section className="mt-8">
+          <h2 className="mb-2 text-lg font-bold">What&apos;s included</h2>
+          <ProposalIncludedItems items={requiredItems} />
+        </section>
+      )}
+
+      {optionalItems.length > 0 && (
+        <section className="mt-8">
+          <h2 className="mb-2 text-lg font-bold">Optional add-ons</h2>
+          <ProposalOptionalItems items={optionalItems} selectedIds={selectedOptionalIds} />
+        </section>
+      )}
+
+      <section className="mt-8 border-t pt-4">
+        <ProposalTotals
+          total={total}
+          deposit={signed ? undefined : proposal.deposit}
+          depositLabel={
+            proposal.deposit_gate === 'before_accept'
+              ? 'Deposit due to accept'
+              : 'Deposit due on acceptance'
+          }
+          depositPaid={Boolean(signed) && proposal.payment_status === 'deposit_paid'}
+          expiresAt={signed || declined ? undefined : proposal.expires_at}
+        />
+      </section>
+
+      {proposal.deposit_terms && (
+        <section className="mt-8">
+          <h2 className="mb-2 text-lg font-bold">Deposit terms</h2>
+          <p className="whitespace-pre-wrap text-sm text-gray-700">{proposal.deposit_terms}</p>
         </section>
       )}
 
