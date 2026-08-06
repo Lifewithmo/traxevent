@@ -428,6 +428,7 @@ export function ProposalEditorClient({ orgId, orgSlug, leadId, proposal }: Propo
             orgId={orgId}
             proposalId={proposal.id}
             initialBlocks={proposal.blocks ?? []}
+            disabled={locked}
           />
         </CardContent>
       </Card>

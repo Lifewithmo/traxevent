@@ -46,11 +46,16 @@ function nextNewBlockId(blocks: ProposalBlock[]): number {
 }
 
 export function ProposalBlockEditor({
-  orgId, proposalId, initialBlocks,
+  orgId, proposalId, initialBlocks, disabled = false,
 }: {
   orgId: string
   proposalId: string
   initialBlocks: ProposalBlock[]
+  // Mirrors the `locked` value the surrounding ProposalEditorClient applies to
+  // every other control: a signed, pending-signature, or voided proposal is
+  // read-only. The server re-checks all three (updateProposalBlocksCore) —
+  // this only keeps the UI honest.
+  disabled?: boolean
 }) {
   const [blocks, setBlocks] = useState<ProposalBlock[]>(initialBlocks)
   const [saving, setSaving] = useState(false)
@@ -63,20 +68,27 @@ export function ProposalBlockEditor({
   const nextIdRef = useRef(nextNewBlockId(initialBlocks))
 
   function add(type: ProposalBlockType) {
+    if (disabled) return
     const id = `new-${nextIdRef.current}`
     nextIdRef.current += 1
     setBlocks((b) => [...b, blankBlock(type, id)])
   }
 
+  // Keyed by block ID, never by index. `pickImage` resolves after an await, by
+  // which time a `move` or `remove` may already have shifted positions — an
+  // index captured in the render closure would then write the uploaded URL
+  // onto a different block entirely.
+  //
   // One documented cast, here rather than at every call site. Spreading a
   // partial onto a discriminated union cannot be expressed type-safely in
   // TypeScript; callers only ever pass fields that exist on the block they
   // are editing, and normalizeBlocks re-validates everything server-side.
-  function patch(index: number, changes: Record<string, unknown>) {
-    setBlocks((b) => b.map((blk, i) => (i === index ? ({ ...blk, ...changes } as ProposalBlock) : blk)))
+  function patch(id: string, changes: Record<string, unknown>) {
+    setBlocks((b) => b.map((blk) => (blk.id === id ? ({ ...blk, ...changes } as ProposalBlock) : blk)))
   }
 
   function move(index: number, delta: number) {
+    if (disabled) return
     const target = index + delta
     if (target < 0 || target >= blocks.length) return
     setBlocks((b) => {
@@ -87,29 +99,47 @@ export function ProposalBlockEditor({
   }
 
   function remove(index: number) {
+    if (disabled) return
     if (!window.confirm('Delete this block?')) return
     setBlocks((b) => b.filter((_, i) => i !== index))
   }
 
-  async function pickImage(index: number, file: File) {
+  async function pickImage(id: string, file: File) {
+    if (disabled) return
     setError(null)
     try {
       const form = new FormData()
       form.set('file', file)
       const { url } = await uploadProposalImage(orgId, proposalId, form)
-      patch(index, { url })
+      patch(id, { url })
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Image upload failed')
     }
   }
 
   async function save() {
+    if (disabled) return
     setSaving(true)
     setError(null)
     setNotice(null)
+    const submitted = blocks.length
     try {
-      const { adjustments } = await updateProposalBlocks(orgId, proposalId, blocks)
-      setNotice(adjustments.length ? adjustments.join(' ') : 'Saved.')
+      // Re-seed from the server's normalized result rather than keeping local
+      // state: normalizeBlocks silently drops blocks whose required content is
+      // still blank (every freshly added block starts in exactly that state),
+      // and those drops are NOT reported through `adjustments`. Trusting local
+      // state here is what let the editor print "Saved." while still showing a
+      // block that Firestore had just discarded.
+      const { blocks: persisted, adjustments } = await updateProposalBlocks(orgId, proposalId, blocks)
+      setBlocks(persisted)
+      const dropped = submitted - persisted.length
+      const messages = [...adjustments]
+      if (dropped > 0) {
+        messages.push(
+          `Removed ${dropped} incomplete block${dropped === 1 ? '' : 's'} that had no content yet.`,
+        )
+      }
+      setNotice(messages.length ? messages.join(' ') : 'Saved.')
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Save failed')
     } finally {
@@ -129,50 +159,50 @@ export function ProposalBlockEditor({
             <span className="text-xs font-medium uppercase text-muted-foreground">{LABELS[block.type]}</span>
             <div className="flex gap-1">
               <Button type="button" variant="outline" size="sm" aria-label="Move up"
-                onClick={() => move(i, -1)} disabled={i === 0}>↑</Button>
+                onClick={() => move(i, -1)} disabled={disabled || i === 0}>↑</Button>
               <Button type="button" variant="outline" size="sm" aria-label="Move down"
-                onClick={() => move(i, 1)} disabled={i === blocks.length - 1}>↓</Button>
+                onClick={() => move(i, 1)} disabled={disabled || i === blocks.length - 1}>↓</Button>
               <Button type="button" variant="outline" size="sm" aria-label="Delete block"
-                onClick={() => remove(i)}>Delete</Button>
+                onClick={() => remove(i)} disabled={disabled}>Delete</Button>
             </div>
           </div>
 
           {block.type === 'heading' && (
-            <Input aria-label={`Heading ${i + 1}`} value={block.text}
-              onChange={(e) => patch(i, { text: e.target.value })} />
+            <Input aria-label={`Heading ${i + 1}`} value={block.text} disabled={disabled}
+              onChange={(e) => patch(block.id, { text: e.target.value })} />
           )}
 
           {block.type === 'paragraph' && (
-            <textarea aria-label={`Paragraph ${i + 1}`} rows={4} value={block.text}
+            <textarea aria-label={`Paragraph ${i + 1}`} rows={4} value={block.text} disabled={disabled}
               className="w-full rounded-md border px-3 py-2 text-sm"
-              onChange={(e) => patch(i, { text: e.target.value })} />
+              onChange={(e) => patch(block.id, { text: e.target.value })} />
           )}
 
           {block.type === 'list' && (
-            <textarea aria-label={`List ${i + 1}`} rows={4} value={block.items.join('\n')}
+            <textarea aria-label={`List ${i + 1}`} rows={4} value={block.items.join('\n')} disabled={disabled}
               className="w-full rounded-md border px-3 py-2 text-sm"
-              onChange={(e) => patch(i, { items: e.target.value.split('\n') })} />
+              onChange={(e) => patch(block.id, { items: e.target.value.split('\n') })} />
           )}
 
           {block.type === 'image' && (
             <div className="space-y-2">
-              <input type="file" accept="image/*" aria-label={`Image ${i + 1}`}
-                onChange={(e) => { const f = e.target.files?.[0]; if (f) pickImage(i, f) }} />
+              <input type="file" accept="image/*" aria-label={`Image ${i + 1}`} disabled={disabled}
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) pickImage(block.id, f) }} />
               {block.url && <p className="truncate text-xs text-muted-foreground">{block.url}</p>}
               <Input aria-label={`Image ${i + 1} alt text`} placeholder="Alt text"
-                value={block.alt ?? ''}
-                onChange={(e) => patch(i, { alt: e.target.value })} />
+                value={block.alt ?? ''} disabled={disabled}
+                onChange={(e) => patch(block.id, { alt: e.target.value })} />
             </div>
           )}
 
           {block.type === 'testimonial' && (
             <div className="space-y-2">
-              <textarea aria-label={`Testimonial ${i + 1}`} rows={3} value={block.quote}
+              <textarea aria-label={`Testimonial ${i + 1}`} rows={3} value={block.quote} disabled={disabled}
                 className="w-full rounded-md border px-3 py-2 text-sm"
-                onChange={(e) => patch(i, { quote: e.target.value })} />
+                onChange={(e) => patch(block.id, { quote: e.target.value })} />
               <Input aria-label={`Testimonial ${i + 1} attribution`} placeholder="Attribution"
-                value={block.attribution ?? ''}
-                onChange={(e) => patch(i, { attribution: e.target.value })} />
+                value={block.attribution ?? ''} disabled={disabled}
+                onChange={(e) => patch(block.id, { attribution: e.target.value })} />
             </div>
           )}
         </div>
@@ -180,14 +210,14 @@ export function ProposalBlockEditor({
 
       <div className="flex flex-wrap gap-2">
         {(Object.keys(LABELS) as ProposalBlockType[]).map((t) => (
-          <Button key={t} type="button" variant="outline" size="sm"
+          <Button key={t} type="button" variant="outline" size="sm" disabled={disabled}
             onClick={() => add(t)}>{`Add ${t}`}</Button>
         ))}
       </div>
 
       <div className="flex items-center gap-3">
         <Label htmlFor="save-document" className="sr-only">Save document</Label>
-        <Button id="save-document" type="button" onClick={save} disabled={saving}>
+        <Button id="save-document" type="button" onClick={save} disabled={disabled || saving}>
           {saving ? 'Saving…' : 'Save document'}
         </Button>
         {notice && <span className="text-sm text-muted-foreground">{notice}</span>}

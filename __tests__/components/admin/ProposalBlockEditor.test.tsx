@@ -10,10 +10,27 @@ vi.mock('@/actions/proposal-images', () => ({
 }))
 
 import { updateProposalBlocks } from '@/actions/proposals'
+import { uploadProposalImage } from '@/actions/proposal-images'
+import type { ProposalBlock } from '@/lib/types'
 
 const base = { orgId: 'o1', proposalId: 'p1' }
 
-beforeEach(() => vi.clearAllMocks())
+// The action now echoes back what it persisted. Default the mock to "kept
+// everything" so the existing cases keep exercising the unchanged path.
+function echo(blocks: ProposalBlock[], adjustments: string[] = []) {
+  return { blocks, adjustments }
+}
+
+function savedBlocksFromCall(call = 0): ProposalBlock[] {
+  return vi.mocked(updateProposalBlocks).mock.calls[call][2] as ProposalBlock[]
+}
+
+beforeEach(() => {
+  vi.clearAllMocks()
+  vi.mocked(updateProposalBlocks).mockImplementation(
+    async (_o: string, _p: string, blocks: unknown) => echo(blocks as ProposalBlock[]),
+  )
+})
 
 describe('ProposalBlockEditor', () => {
   it('shows an empty state when there are no blocks', () => {
@@ -67,12 +84,97 @@ describe('ProposalBlockEditor', () => {
   })
 
   it('reports adjustments returned by the server', async () => {
-    vi.mocked(updateProposalBlocks).mockResolvedValueOnce({ adjustments: ['Shortened a paragraph.'] })
+    vi.mocked(updateProposalBlocks).mockResolvedValueOnce(
+      echo([{ id: 'a', type: 'paragraph', text: 'x' }], ['Shortened a paragraph.']),
+    )
     render(<ProposalBlockEditor {...base} initialBlocks={[
       { id: 'a', type: 'paragraph', text: 'x' },
     ]} />)
     fireEvent.click(screen.getByRole('button', { name: 'Save document' }))
     await waitFor(() => expect(screen.getByText(/Shortened a paragraph/)).toBeInTheDocument())
+  })
+
+  it('re-seeds from the blocks the server persisted so a dropped block cannot linger', async () => {
+    // A half-filled block is dropped by normalizeBlocks WITHOUT an adjustment.
+    // Before the fix the UI printed "Saved." and kept rendering all three,
+    // and the third only vanished on a later reload.
+    vi.mocked(updateProposalBlocks).mockResolvedValueOnce(
+      echo([
+        { id: 'a', type: 'paragraph', text: 'One' },
+        { id: 'b', type: 'paragraph', text: 'Two' },
+      ]),
+    )
+    render(<ProposalBlockEditor {...base} initialBlocks={[
+      { id: 'a', type: 'paragraph', text: 'One' },
+      { id: 'b', type: 'paragraph', text: 'Two' },
+      { id: 'c', type: 'paragraph', text: '' },
+    ]} />)
+    expect(screen.getAllByRole('textbox')).toHaveLength(3)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save document' }))
+
+    await waitFor(() => expect(screen.getAllByRole('textbox')).toHaveLength(2))
+    // …and it is never reported as a clean "Saved."
+    expect(screen.queryByText('Saved.')).not.toBeInTheDocument()
+    expect(screen.getByText(/removed 1 incomplete block/i)).toBeInTheDocument()
+  })
+
+  it('still says Saved. when the server kept every block', async () => {
+    render(<ProposalBlockEditor {...base} initialBlocks={[
+      { id: 'a', type: 'paragraph', text: 'One' },
+    ]} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Save document' }))
+    await waitFor(() => expect(screen.getByText('Saved.')).toBeInTheDocument())
+  })
+
+  it('lands an uploaded image url on its own block after an intervening reorder', async () => {
+    // pickImage awaits the upload, so anything index-based resolves against a
+    // stale position: move the image down mid-upload and the url used to be
+    // written onto whatever block had taken index 0.
+    let resolveUpload: (v: { url: string }) => void = () => {}
+    vi.mocked(uploadProposalImage).mockReturnValueOnce(
+      new Promise((r) => { resolveUpload = r }),
+    )
+
+    render(<ProposalBlockEditor {...base} initialBlocks={[
+      { id: 'img', type: 'image', url: '' },
+      { id: 'para', type: 'paragraph', text: 'Body' },
+    ]} />)
+
+    fireEvent.change(screen.getByLabelText('Image 1'), {
+      target: { files: [new File(['x'], 'x.png', { type: 'image/png' })] },
+    })
+    // Reorder while the upload is still in flight.
+    fireEvent.click(screen.getAllByRole('button', { name: 'Move down' })[0])
+
+    resolveUpload({ url: 'https://storage/x.png' })
+    await waitFor(() => expect(screen.getByText('https://storage/x.png')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save document' }))
+    await waitFor(() => expect(updateProposalBlocks).toHaveBeenCalled())
+    const saved = savedBlocksFromCall()
+    const image = saved.find((b) => b.id === 'img') as { url: string }
+    const paragraph = saved.find((b) => b.id === 'para') as Record<string, unknown>
+    expect(image.url).toBe('https://storage/x.png')
+    expect(paragraph.url).toBeUndefined()
+  })
+
+  it('disables every control when the proposal is locked', () => {
+    render(<ProposalBlockEditor {...base} disabled initialBlocks={[
+      { id: 'a', type: 'paragraph', text: 'Locked' },
+    ]} />)
+    expect(screen.getByLabelText('Paragraph 1')).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Delete block' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Add paragraph' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Save document' })).toBeDisabled()
+  })
+
+  it('does not save a locked document even if save is invoked', () => {
+    render(<ProposalBlockEditor {...base} disabled initialBlocks={[
+      { id: 'a', type: 'paragraph', text: 'Locked' },
+    ]} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Save document' }))
+    expect(updateProposalBlocks).not.toHaveBeenCalled()
   })
 
   it('mints ids for new blocks that do not collide with ids persisted in an earlier session', async () => {
