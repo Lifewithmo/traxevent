@@ -383,6 +383,7 @@ export interface LeadWaiting {
 export interface Lead {
   id: string
   name: string
+  title?: string               // the opportunity's own label; falls back to `name` when absent
   email?: string
   phone?: string
   organization?: string

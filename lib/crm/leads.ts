@@ -5,6 +5,7 @@ import type { Lead, LeadStage, LeadWaiting } from '@/lib/types'
 
 export interface LeadUpdate {
   name?: string
+  title?: string | null
   email?: string | null
   phone?: string | null
   organization?: string | null
