@@ -21,13 +21,16 @@ interface ReadinessHeaderProps {
 
 export function ReadinessHeader({ plan, eventName, eventStart, orgId, eventId, orgSlug, eventSlug, complianceWarnings, onPlanChange }: ReadinessHeaderProps) {
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const r = computeReadiness(plan, eventStart)
 
   async function handleAcknowledge() {
-    setSaving(true)
+    setSaving(true); setError(null)
     try {
       await acknowledgeReview(orgId, eventId)
       onPlanChange({ ...plan, needs_review: false })
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to acknowledge')
     } finally {
       setSaving(false)
     }
@@ -58,11 +61,14 @@ export function ReadinessHeader({ plan, eventName, eventStart, orgId, eventId, o
       </div>
 
       {plan.needs_review && (
-        <div className="flex items-center justify-between rounded-md border border-amber-300 bg-amber-50 px-4 py-3">
-          <p className="text-sm text-amber-900 font-medium">
-            Requirements changed — shopping quantities were re-derived. Review the lists below.
-          </p>
-          <Button size="sm" variant="outline" disabled={saving} onClick={handleAcknowledge}>Acknowledge</Button>
+        <div className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-amber-900 font-medium">
+              Requirements changed — shopping quantities were re-derived. Review the lists below.
+            </p>
+            <Button size="sm" variant="outline" disabled={saving} onClick={handleAcknowledge}>Acknowledge</Button>
+          </div>
+          {error && <p className="text-sm text-red-600">{error}</p>}
         </div>
       )}
 

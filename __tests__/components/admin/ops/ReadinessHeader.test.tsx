@@ -44,6 +44,15 @@ describe('ReadinessHeader', () => {
     expect(onPlanChange).toHaveBeenCalledWith(expect.objectContaining({ needs_review: false }))
   })
 
+  it('surfaces an error and does not clear needs_review when acknowledge fails', async () => {
+    const onPlanChange = vi.fn()
+    vi.mocked(acknowledgeReview).mockRejectedValueOnce(new Error('Network error'))
+    render(<ReadinessHeader {...base} onPlanChange={onPlanChange} plan={plan({ needs_review: true })} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Acknowledge' }))
+    await waitFor(() => expect(screen.getByText('Network error')).toBeInTheDocument())
+    expect(onPlanChange).not.toHaveBeenCalled()
+  })
+
   it('lists compliance documents expiring before the event', () => {
     render(<ReadinessHeader {...base} plan={plan()}
       complianceWarnings={[{ name: 'Health permit', expires_on: '2026-09-01' }]} />)
