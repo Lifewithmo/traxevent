@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { deleteLead } from '@/actions/leads'
-import { LEAD_STAGE_LABELS } from '@/lib/leads'
+import { LEAD_STAGE_LABELS, opportunityTitle } from '@/lib/leads'
 import { ContactCard } from '@/components/admin/opportunity/ContactCard'
 import { NextActionBanner } from '@/components/admin/opportunity/NextActionBanner'
 import { TasksPanel } from '@/components/admin/opportunity/TasksPanel'
@@ -48,7 +48,7 @@ export function OpportunityDetailClient({ orgId, orgSlug, lead, customer, tasks,
 
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">{lead.name}</h1>
+          <h1 className="text-2xl font-bold">{opportunityTitle(lead)}</h1>
           <p className="text-sm text-muted-foreground">{LEAD_STAGE_LABELS[lead.stage]}</p>
         </div>
         <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
@@ -67,12 +67,12 @@ export function OpportunityDetailClient({ orgId, orgSlug, lead, customer, tasks,
       <div className="grid gap-4 lg:grid-cols-3">
         {/* Contact card: first on mobile, right column on desktop */}
         <aside className="order-first space-y-4 lg:order-last lg:col-span-1">
-          <ContactCard customer={customer} lead={lead} />
+          <ContactCard orgSlug={orgSlug} customer={customer} lead={lead} />
         </aside>
         <div className="space-y-4 lg:col-span-2">
           <TasksPanel ref={taskInputRef} orgId={orgId} leadId={lead.id} tasks={tasks} />
           <ActivityTimeline orgId={orgId} leadId={lead.id} activity={activity} />
-          <OpportunityDetailsForm orgId={orgId} lead={lead} />
+          <OpportunityDetailsForm orgId={orgId} orgSlug={orgSlug} lead={lead} customer={customer} />
         </div>
       </div>
     </div>

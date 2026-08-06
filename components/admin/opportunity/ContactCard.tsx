@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Phone, Mail, ChevronDown } from 'lucide-react'
@@ -8,11 +9,12 @@ import { initials } from '@/lib/opportunity-detail'
 import type { Customer, Lead } from '@/lib/types'
 
 interface ContactCardProps {
+  orgSlug: string
   customer: Customer | null
   lead: Lead
 }
 
-export function ContactCard({ customer, lead }: ContactCardProps) {
+export function ContactCard({ orgSlug, customer, lead }: ContactCardProps) {
   const [expanded, setExpanded] = useState(false)
 
   const name = customer?.name ?? lead.name
@@ -59,16 +61,23 @@ export function ContactCard({ customer, lead }: ContactCardProps) {
           )}
         </div>
 
-        <button
-          type="button"
-          aria-label={expanded ? 'Collapse contact' : 'Expand contact'}
-          aria-expanded={expanded}
-          onClick={() => setExpanded((v) => !v)}
-          className="flex w-full items-center justify-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-        >
-          {expanded ? 'Less' : 'More'}
-          <ChevronDown className={`h-3.5 w-3.5 transition-transform ${expanded ? 'rotate-180' : ''}`} />
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            aria-label={expanded ? 'Collapse contact' : 'Expand contact'}
+            aria-expanded={expanded}
+            onClick={() => setExpanded((v) => !v)}
+            className="flex flex-1 items-center justify-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+          >
+            {expanded ? 'Less' : 'More'}
+            <ChevronDown className={`h-3.5 w-3.5 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+          </button>
+          {customer && (
+            <Link href={`/${orgSlug}/clients/${customer.id}`} className="text-xs underline text-muted-foreground hover:text-foreground">
+              View customer
+            </Link>
+          )}
+        </div>
 
         {expanded && (
           <dl className="space-y-1.5 border-t border-border pt-3 text-sm">

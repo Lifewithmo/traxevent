@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -9,15 +10,18 @@ import { Label } from '@/components/ui/label'
 import { updateLead } from '@/actions/leads'
 import type { LeadUpdate } from '@/lib/crm/leads'
 import { LEAD_STAGES, LEAD_STAGE_LABELS } from '@/lib/leads'
-import type { Lead, LeadStage } from '@/lib/types'
+import type { Customer, Lead, LeadStage } from '@/lib/types'
 
 interface OpportunityDetailsFormProps {
   orgId: string
+  orgSlug: string
   lead: Lead
+  customer: Customer | null
 }
 
-export function OpportunityDetailsForm({ orgId, lead }: OpportunityDetailsFormProps) {
+export function OpportunityDetailsForm({ orgId, orgSlug, lead, customer }: OpportunityDetailsFormProps) {
   const router = useRouter()
+  const [title, setTitle] = useState(lead.title ?? '')
   const [name, setName] = useState(lead.name)
   const [organization, setOrganization] = useState(lead.organization ?? '')
   const [email, setEmail] = useState(lead.email ?? '')
@@ -41,6 +45,7 @@ export function OpportunityDetailsForm({ orgId, lead }: OpportunityDetailsFormPr
       const parsed = estimatedValue.trim() === '' ? null : Number(estimatedValue)
       if (parsed != null && Number.isNaN(parsed)) { setError('Estimated value must be a number.'); return }
       const updates: LeadUpdate = {
+        title: title.trim() || null,
         name: name.trim(),
         organization: opt(organization),
         email: opt(email),
@@ -67,23 +72,37 @@ export function OpportunityDetailsForm({ orgId, lead }: OpportunityDetailsFormPr
           {error && <p className="text-sm text-destructive">{error}</p>}
           {notice && <p className="text-sm text-muted-foreground">{notice}</p>}
         </div>
+        <div className="space-y-1">
+          <Label htmlFor="oppTitle">Title</Label>
+          <Input id="oppTitle" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Riverside gala" />
+        </div>
+        {!customer && (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1">
+              <Label htmlFor="oppName">Name</Label>
+              <Input id="oppName" value={name} onChange={(e) => setName(e.target.value)} placeholder="Contact name" />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="oppOrg">Organization</Label>
+              <Input id="oppOrg" value={organization} onChange={(e) => setOrganization(e.target.value)} placeholder="Company" />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="oppEmail">Email</Label>
+              <Input id="oppEmail" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.com" />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="oppPhone">Phone</Label>
+              <Input id="oppPhone" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="(555) 555-5555" />
+            </div>
+          </div>
+        )}
+        {customer && (
+          <p className="text-sm text-muted-foreground">
+            Contact details live on the customer record.{' '}
+            <Link href={`/${orgSlug}/clients/${customer.id}`} className="underline">Edit {customer.name}</Link>
+          </p>
+        )}
         <div className="grid gap-3 sm:grid-cols-2">
-          <div className="space-y-1">
-            <Label htmlFor="oppName">Name</Label>
-            <Input id="oppName" value={name} onChange={(e) => setName(e.target.value)} placeholder="Contact name" />
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="oppOrg">Organization</Label>
-            <Input id="oppOrg" value={organization} onChange={(e) => setOrganization(e.target.value)} placeholder="Company" />
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="oppEmail">Email</Label>
-            <Input id="oppEmail" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.com" />
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="oppPhone">Phone</Label>
-            <Input id="oppPhone" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="(555) 555-5555" />
-          </div>
           <div className="space-y-1">
             <Label htmlFor="oppEventType">Event type</Label>
             <Input id="oppEventType" value={eventType} onChange={(e) => setEventType(e.target.value)} placeholder="e.g. Wedding" />
