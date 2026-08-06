@@ -6,6 +6,7 @@ import { randomBytes } from 'crypto'
 import { generateAccessToken } from '@/lib/tokens'
 import { assertOrgMember, assertOrgAdmin } from '@/lib/auth/assert'
 import { PROPOSAL_STATUSES } from '@/lib/proposals'
+import { updateProposalBlocksCore } from '@/lib/proposals/blocks-core'
 import type { Proposal, ProposalLineItem, ProposalStatus, ProposalPackage, ProposalDiscount, ProposalDeposit } from '@/lib/types'
 
 function proposalsRef(orgId: string) {
@@ -152,4 +153,13 @@ export async function deleteProposal(orgId: string, proposalId: string): Promise
     }
   }
   await ref.delete()
+}
+
+export async function updateProposalBlocks(
+  orgId: string,
+  proposalId: string,
+  blocks: unknown,
+): Promise<{ adjustments: string[] }> {
+  await assertOrgAdmin(orgId)
+  return updateProposalBlocksCore(orgId, proposalId, blocks)
 }
