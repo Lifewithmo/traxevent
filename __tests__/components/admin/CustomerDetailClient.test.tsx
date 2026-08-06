@@ -49,4 +49,16 @@ describe('CustomerDetailClient', () => {
     render(<CustomerDetailClient {...props} opportunities={[]} />)
     expect(screen.getByText(/no opportunities yet/i)).toBeInTheDocument()
   })
+
+  it('shows a relative last-contact time when the roll-up has one', () => {
+    render(<CustomerDetailClient {...props} rollup={{ ...rollup, lastActivityAt: '2020-01-01T00:00:00.000Z' }} />)
+    const tile = screen.getByText('Last contact').closest('div') as HTMLElement
+    expect(within(tile).getByText(/ago$/)).toBeInTheDocument()
+  })
+
+  it('shows an em dash for last contact when the roll-up has none', () => {
+    render(<CustomerDetailClient {...props} />)
+    const tile = screen.getByText('Last contact').closest('div') as HTMLElement
+    expect(within(tile).getByText('—')).toBeInTheDocument()
+  })
 })

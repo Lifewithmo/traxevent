@@ -79,7 +79,7 @@ export function CustomerDetailClient({ orgId, orgSlug, customer, opportunities, 
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <div className="rounded-lg border bg-card p-4">
           <p className="text-xs font-medium text-muted-foreground">Lifetime won</p>
           <p className="text-xl font-semibold">${rollup.totalWonValue.toLocaleString()}</p>
@@ -91,6 +91,12 @@ export function CustomerDetailClient({ orgId, orgSlug, customer, opportunities, 
         <div className="rounded-lg border bg-card p-4">
           <p className="text-xs font-medium text-muted-foreground">Won / Lost</p>
           <p className="text-xl font-semibold">{rollup.wonCount} / {rollup.lostCount}</p>
+        </div>
+        <div className="rounded-lg border bg-card p-4">
+          <p className="text-xs font-medium text-muted-foreground">Last contact</p>
+          <p className="text-xl font-semibold">
+            {rollup.lastActivityAt ? formatRelativeTime(rollup.lastActivityAt) : '—'}
+          </p>
         </div>
       </div>
 
