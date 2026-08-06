@@ -7,9 +7,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { instantiateOpsPlan } from '@/actions/event-ops'
 import { formatMoney } from '@/lib/utils'
+import { SITE_NEED_OPTIONS as SITE_NEEDS } from '@/lib/ops/derive'
 import type { OpsPlan, WorkPackage } from '@/lib/types'
-
-const SITE_NEEDS = ['power', 'water', 'ice', 'parking'] as const
 
 interface OpsSetupProps {
   orgId: string

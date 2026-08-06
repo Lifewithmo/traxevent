@@ -6,9 +6,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { completeChecklistStep } from '@/actions/event-ops'
 import { uploadEvidencePhoto } from '@/actions/ops-evidence'
-import type { OpsPlan, ChecklistPhase } from '@/lib/types'
-
-const PHASE_ORDER: ChecklistPhase[] = ['prep', 'load-out', 'setup', 'service-close', 'closeout']
+import { CHECKLIST_PHASES as PHASE_ORDER } from '@/lib/ops/derive'
+import type { OpsPlan } from '@/lib/types'
 
 interface ChecklistsCardProps {
   orgId: string
