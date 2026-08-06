@@ -482,7 +482,7 @@ Run: `npm test -- AdminSidebar` → PASS, then full `npm test`, `npx tsc --noEmi
 - [ ] **Step 5: Commit**
 
 ```bash
-git add "app/(admin)/[orgSlug]/today" components/layout/AdminSidebar.tsx __tests__/components/layout/AdminSidebar.test.tsx
+git add "app/(admin)/[orgSlug]/today" components/layout/AdminSidebar.tsx __tests__/components/AdminSidebar.test.tsx
 git commit -m "feat(crm): Today route and sidebar nav entry"
 ```
 
