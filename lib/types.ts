@@ -798,3 +798,15 @@ export interface OpsCloseout {
   created_at: string
   updated_at?: string
 }
+
+// ── Compliance tracker (spec 2026-08-05 §4.3 — thin, org-configurable) ──
+
+export interface ComplianceDoc {
+  id: string
+  name: string          // 'Health permit', 'Liability insurance'
+  expires_on?: string   // ISO date (YYYY-MM-DD); absent = no expiry
+  link_url?: string     // where the document lives (drive, city portal…)
+  notes?: string
+  created_at: string
+  updated_at?: string
+}
