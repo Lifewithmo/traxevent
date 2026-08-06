@@ -1267,11 +1267,18 @@ Track these as a follow-up increment.
 
 ## Post-merge operational note
 
-`email_lower` is new on `Customer`. Because the deployment is pre-launch, re-run the backfill per org after merge so migrated customers gain the dedup key:
+`email_lower` is new on `Customer`. **`npm run crm:migrate` does NOT backfill it** — `scripts/crm-migrate-customers.ts:38-41` skips every lead that already carries a `customer_id`, so previously-created Customer docs are never touched. An earlier draft of this plan claimed otherwise; that was wrong.
+
+Task 6a adds a dedicated, idempotent, dry-run-capable backfill. Run it per org after merge:
 
 ```bash
-npm run crm:migrate -- <orgId> --dry-run   # inspect first
-npm run crm:migrate -- <orgId>
+npm run crm:backfill-email-lower -- <orgId> --dry-run   # inspect first
+npm run crm:backfill-email-lower -- <orgId>
 ```
 
-The migration is idempotent — already-linked leads are skipped — but it will **not** retroactively add `email_lower` to customers created before this change. Verify with a dry run; if pre-existing customers lack the key, delete and reseed them (safe pre-launch) rather than hand-patching.
+Then the customer migration, as before, for any unlinked leads:
+
+```bash
+npm run crm:migrate -- <orgId> --dry-run
+npm run crm:migrate -- <orgId>
+```
