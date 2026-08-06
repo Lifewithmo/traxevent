@@ -20,7 +20,7 @@ interface AdminSidebarProps {
 
 const ORG_PAGE_SLUGS = new Set([
   'members', 'forms', 'permissions', 'billing', 'email-domain', 'event-types',
-  'departments', 'reports', 'registrants', 'leads', 'clients', 'proposals',
+  'departments', 'reports', 'registrants', 'today', 'leads', 'clients', 'proposals',
   'contracts', 'invoices', 'vendors', 'calendar', 'new-event', 'packages', 'compliance',
 ])
 
@@ -81,6 +81,7 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
   const has = (m: ModuleId) => !enabledModules || enabledModules.includes(m)
 
   const salesLinks = [
+    { module: 'leads' as ModuleId, label: 'Today', slug: 'today' },
     { module: 'leads' as ModuleId, label: 'Pipeline', slug: 'leads' },
     { module: 'clients' as ModuleId, label: 'Clients', slug: 'clients' },
     { module: 'proposals' as ModuleId, label: 'Proposals', slug: 'proposals' },

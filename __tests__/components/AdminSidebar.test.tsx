@@ -92,3 +92,16 @@ describe('Operations nav (phase 3)', () => {
     expect(sidebar).toHaveClass('print:hidden')
   })
 })
+
+describe('AdminSidebar Today nav', () => {
+  it('renders a Today link in the sales nav', () => {
+    render(<AdminSidebar orgSlug="acme" />)
+    const link = screen.getByRole('link', { name: 'Today' })
+    expect(link).toHaveAttribute('href', '/acme/today')
+  })
+
+  it('hides Today when the leads module is disabled', () => {
+    render(<AdminSidebar orgSlug="acme" enabledModules={[]} />)
+    expect(screen.queryByText('Today')).not.toBeInTheDocument()
+  })
+})
