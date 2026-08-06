@@ -1,11 +1,13 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { saveActuals, getCloseoutSummary, completeCloseout } from '@/actions/event-ops'
+import { generateCloseoutInvoice } from '@/actions/invoices'
 import { formatMoney } from '@/lib/utils'
 import type { OpsPlan, OpsCloseout, CloseoutSummary, Lead } from '@/lib/types'
 
@@ -40,6 +42,8 @@ export function CloseoutClient(props: CloseoutClientProps) {
   )
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [leadId, setLeadId] = useState('')
+  const router = useRouter()
 
   async function handleSaveActuals() {
     setSaving(true); setError(null)
@@ -57,6 +61,17 @@ export function CloseoutClient(props: CloseoutClientProps) {
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to save')
     } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleGenerateInvoice() {
+    setSaving(true); setError(null)
+    try {
+      await generateCloseoutInvoice(orgId, eventId, leadId)
+      router.push(`/${props.orgSlug}/leads/${leadId}/invoices`)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to generate invoice')
       setSaving(false)
     }
   }
@@ -157,6 +172,26 @@ export function CloseoutClient(props: CloseoutClientProps) {
           {completed && <p className="text-sm text-green-700">Done. Generate the final invoice below.</p>}
         </CardContent>
       </Card>
+
+      {completed && props.isAdmin && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">4 · Generate final invoice</CardTitle>
+            <p className="text-sm text-gray-500">One line per package at catalog price, as a draft in the invoicing module. Margin numbers stay internal.</p>
+          </CardHeader>
+          <CardContent className="flex items-end gap-2">
+            <div>
+              <Label htmlFor="co-lead">Bill to</Label>
+              <select id="co-lead" value={leadId} onChange={(e) => setLeadId(e.target.value)}
+                className="block h-9 rounded-md border border-gray-300 px-2 text-sm min-w-48">
+                <option value="">Pick a client…</option>
+                {props.leads.map((l) => <option key={l.id} value={l.id}>{l.name}{l.organization ? ` — ${l.organization}` : ''}</option>)}
+              </select>
+            </div>
+            <Button onClick={handleGenerateInvoice} disabled={saving || !leadId}>Generate final invoice</Button>
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }

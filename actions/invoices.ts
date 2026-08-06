@@ -8,6 +8,10 @@ import { previouslyBilled, assertWithinScope, acceptedProposalTotal } from '@/li
 import { assertEditable } from '@/lib/invoice-lock'
 import { getProposal } from '@/actions/proposals'
 import { getLead } from '@/actions/leads'
+import { adminDb } from '@/lib/firebase-admin'
+import { getCloseoutCore } from '@/lib/ops/closeout'
+import { getOpsPlanCore } from '@/lib/ops/event-ops'
+import { getWorkPackagesByIdsCore } from '@/lib/ops/work-packages'
 import {
   invoicesRef,
   listInvoicesCore,
@@ -16,7 +20,7 @@ import {
   recordPaymentCore,
   issueInvoiceCore,
 } from '@/lib/crm/invoices'
-import type { Invoice, InvoiceLineItem, InvoiceType, InvoiceDiscount, NormalizedInvoice } from '@/lib/types'
+import type { Event, Invoice, InvoiceLineItem, InvoiceType, InvoiceDiscount, NormalizedInvoice } from '@/lib/types'
 
 // NOTE: this is a 'use server' module — every export must be an async function.
 // CreateInvoiceInput/InvoiceUpdate/RecordPaymentInput (types) are therefore NOT
@@ -68,6 +72,39 @@ export async function generateFromProposal(
 
   const existing = await listInvoices(orgId, leadId)
   return generateFromProposalCore(orgId, leadId, proposal, existing, opts)
+}
+
+/**
+ * Closeout → invoicing seam (spec §4.4). Bills the plan's packages at catalog
+ * price. Margin/cost numbers are internal and never appear on the invoice.
+ * Event↔lead linkage doesn't exist yet, so the caller picks the lead.
+ */
+export async function generateCloseoutInvoice(orgId: string, eventId: string, leadId: string): Promise<Invoice> {
+  await assertOrgAdmin(orgId)
+
+  const closeout = await getCloseoutCore(orgId, eventId)
+  if (!closeout?.completed) throw new Error('Complete closeout before generating the final invoice')
+
+  const plan = await getOpsPlanCore(orgId, eventId)
+  if (!plan) throw new Error('No ops plan for this event')
+
+  const packages = await getWorkPackagesByIdsCore(orgId, plan.package_ids)
+  const found = new Set(packages.map((p) => p.id))
+  for (const id of plan.package_ids) {
+    if (!found.has(id)) throw new Error(`Package no longer exists: ${id}`)
+  }
+
+  const eventSnap = await adminDb.collection('orgs').doc(orgId).collection('events').doc(eventId).get()
+  if (!eventSnap.exists) throw new Error('Event not found')
+  const event = eventSnap.data() as Event
+
+  const lead = await getLead(orgId, leadId)
+  return createInvoiceCore(orgId, leadId, {
+    type: 'final',
+    title: `Final invoice — ${event.name}`,
+    line_items: packages.map((p) => ({ description: p.name, quantity: 1, unit_price: p.price })),
+    customer_id: lead?.customer_id,
+  })
 }
 
 export interface InvoiceUpdate {

@@ -17,6 +17,7 @@ vi.mock('@/actions/event-ops', () => ({
 vi.mock('@/actions/invoices', () => ({
   generateCloseoutInvoice: vi.fn().mockResolvedValue({ id: 'inv1' }),
 }))
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }))
 
 import { saveActuals, completeCloseout } from '@/actions/event-ops'
 import { CloseoutClient } from '@/components/admin/ops/CloseoutClient'
@@ -75,5 +76,15 @@ describe('CloseoutClient', () => {
   it('hides Complete closeout from non-admins', () => {
     render(<CloseoutClient {...base} isAdmin={false} closeout={{ actuals: { hours_worked: 6 }, completed: false, created_at: 'x' }} />)
     expect(screen.queryByRole('button', { name: 'Complete closeout' })).not.toBeInTheDocument()
+  })
+
+  it('generates the final invoice for the picked lead and navigates to it', async () => {
+    const { generateCloseoutInvoice } = await import('@/actions/invoices')
+    render(<CloseoutClient {...base}
+      closeout={{ actuals: { hours_worked: 6 }, completed: true, created_at: 'x' }}
+      leads={[{ id: 'l1', name: 'Dana', stage: 'won', created_at: 'x' }]} />)
+    fireEvent.change(screen.getByLabelText('Bill to'), { target: { value: 'l1' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Generate final invoice' }))
+    await waitFor(() => expect(generateCloseoutInvoice).toHaveBeenCalledWith('o1', 'e1', 'l1'))
   })
 })
