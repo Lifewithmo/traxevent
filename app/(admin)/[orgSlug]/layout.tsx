@@ -1,6 +1,6 @@
 import { AdminSidebar } from '@/components/layout/AdminSidebar'
 import { requireOrgMember } from '@/lib/auth/guards'
-import { resolveEnabledModules } from '@/lib/industry-packs'
+import { resolveEnabledModules, getIndustryPack, catalogLabel } from '@/lib/industry-packs'
 
 export default async function OrgLayout({
   children,
@@ -16,7 +16,7 @@ export default async function OrgLayout({
   const enabledModules = resolveEnabledModules(org.industry_pack_id)
   return (
     <div className="flex min-h-screen">
-      <AdminSidebar orgSlug={orgSlug} enabledModules={enabledModules} />
+      <AdminSidebar orgSlug={orgSlug} enabledModules={enabledModules} catalogLabel={catalogLabel(getIndustryPack(org.industry_pack_id))} />
       <main className="flex-1 bg-gray-50 overflow-auto">{children}</main>
     </div>
   )

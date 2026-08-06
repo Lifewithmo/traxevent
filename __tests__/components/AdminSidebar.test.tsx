@@ -52,3 +52,37 @@ describe('AdminSidebar event nav roster gating', () => {
     expect(screen.getByText('Check-in')).toBeInTheDocument()
   })
 })
+
+describe('Operations nav (phase 3)', () => {
+  it('shows catalog + compliance links when modules enabled', () => {
+    render(
+      <AdminSidebar
+        orgSlug="acme"
+        enabledModules={['catalog', 'compliance']}
+        catalogLabel="Menu Packages"
+      />
+    )
+    expect(screen.getByText('Menu Packages')).toHaveAttribute('href', '/acme/packages')
+    expect(screen.getByText('Compliance')).toHaveAttribute('href', '/acme/compliance')
+  })
+
+  it('hides the Operations section when neither module is enabled', () => {
+    render(<AdminSidebar orgSlug="acme" enabledModules={['leads']} />)
+    expect(screen.queryByText('Operations')).not.toBeInTheDocument()
+  })
+
+  it('falls back to the universal catalog label', () => {
+    render(<AdminSidebar orgSlug="acme" enabledModules={['catalog']} />)
+    expect(screen.getByText('Packages')).toHaveAttribute('href', '/acme/packages')
+  })
+
+  it('shows Event Ops in the event nav when the ops page is allowed', () => {
+    render(<AdminSidebar orgSlug="acme" eventSlug="gala" allowedEventPages={['ops']} />)
+    expect(screen.getByText('Event Ops')).toHaveAttribute('href', '/acme/gala/ops')
+  })
+
+  it('hides Event Ops when the member lacks the ops grant', () => {
+    render(<AdminSidebar orgSlug="acme" eventSlug="gala" allowedEventPages={['itinerary']} />)
+    expect(screen.queryByText('Event Ops')).not.toBeInTheDocument()
+  })
+})

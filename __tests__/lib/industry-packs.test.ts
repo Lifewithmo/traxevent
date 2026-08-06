@@ -5,6 +5,7 @@ import {
   isModuleEnabled,
   resolveEnabledModules,
   DEFAULT_INDUSTRY_PACK_ID,
+  catalogLabel,
 } from '@/lib/industry-packs'
 
 const ALL_MODULES = [
@@ -65,5 +66,20 @@ describe('industry packs', () => {
 
   it('resolveEnabledModules(undefined) includes attendee-roster (default = general)', () => {
     expect(resolveEnabledModules(undefined)).toContain('attendee-roster')
+  })
+})
+
+describe('catalogLabel', () => {
+  it('maps catalogKind to a vertical label', () => {
+    expect(catalogLabel(getIndustryPack('coffee-cart'))).toBe('Menu Packages')
+    expect(catalogLabel(getIndustryPack('florist'))).toBe('Service Packages')
+    expect(catalogLabel(getIndustryPack('general'))).toBe('Packages')
+  })
+})
+
+describe('compliance module', () => {
+  it('is enabled for coffee-cart and not for general', () => {
+    expect(resolveEnabledModules('coffee-cart')).toContain('compliance')
+    expect(resolveEnabledModules('general')).not.toContain('compliance')
   })
 })
