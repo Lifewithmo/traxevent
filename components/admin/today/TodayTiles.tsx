@@ -6,7 +6,7 @@ interface TodayTilesProps {
   openPipelineValue: number
 }
 
-const money = (n: number) => `$${n.toFixed(2)}`
+const money = (n: number) => `$${n.toLocaleString()}`
 
 export function TodayTiles({ tasksDue, needsAttention, openPipelineValue }: TodayTilesProps) {
   const tiles = [

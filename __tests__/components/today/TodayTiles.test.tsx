@@ -9,6 +9,6 @@ describe('TodayTiles', () => {
     expect(screen.getByText('3')).toBeInTheDocument()
     expect(screen.getByText('Needs attention')).toBeInTheDocument()
     expect(screen.getByText('Open pipeline')).toBeInTheDocument()
-    expect(screen.getByText('$1500.00')).toBeInTheDocument()
+    expect(screen.getByText('$1,500')).toBeInTheDocument()
   })
 })
