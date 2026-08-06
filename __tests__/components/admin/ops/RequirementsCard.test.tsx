@@ -53,4 +53,24 @@ describe('RequirementsCard', () => {
     fireEvent.click(screen.getByText(/change log/i))
     expect(screen.getByText(/guests: 50 → 80/)).toBeInTheDocument()
   })
+
+  it('disables Save when guests is not positive, re-enables once fixed', () => {
+    render(<RequirementsCard orgId="o1" eventId="e1" plan={plan} packages={[pkg]} onPlanChange={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+    fireEvent.change(screen.getByLabelText('Guests'), { target: { value: '0' } })
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+    fireEvent.change(screen.getByLabelText('Guests'), { target: { value: '' } })
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+    fireEvent.change(screen.getByLabelText('Guests'), { target: { value: '100' } })
+    expect(screen.getByRole('button', { name: 'Save' })).not.toBeDisabled()
+  })
+
+  it('resets the draft on Cancel so re-opening Edit shows the original value', () => {
+    render(<RequirementsCard orgId="o1" eventId="e1" plan={plan} packages={[pkg]} onPlanChange={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+    fireEvent.change(screen.getByLabelText('Guests'), { target: { value: '500' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+    expect(screen.getByLabelText('Guests')).toHaveValue(80)
+  })
 })

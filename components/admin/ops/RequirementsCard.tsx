@@ -43,6 +43,16 @@ export function RequirementsCard({ orgId, eventId, plan, packages, onPlanChange 
     return updates
   }
 
+  function handleEdit() {
+    setGuests(String(req.guests))
+    setServiceStart(req.service_start ?? '')
+    setServiceEnd(req.service_end ?? '')
+    setSiteNeeds(req.site_needs ?? [])
+    setNotes(req.notes ?? '')
+    setError(null)
+    setEditing(true)
+  }
+
   async function handleSave() {
     const updates = changedFields()
     if (Object.keys(updates).length === 0) { setEditing(false); return }
@@ -64,7 +74,7 @@ export function RequirementsCard({ orgId, eventId, plan, packages, onPlanChange 
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle className="text-base">Requirements</CardTitle>
-        {!editing && <Button variant="outline" size="sm" onClick={() => setEditing(true)}>Edit</Button>}
+        {!editing && <Button variant="outline" size="sm" onClick={handleEdit}>Edit</Button>}
       </CardHeader>
       <CardContent className="space-y-3">
         {error && <p className="text-sm text-red-600">{error}</p>}
