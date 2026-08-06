@@ -4,7 +4,7 @@ export type ModuleId =
   | 'leads' | 'clients' | 'proposals' | 'contracts' | 'invoices'
   | 'events' | 'registrants' | 'vendors' | 'calendar' | 'reports'
   // Forward-declared for later phases; no nav renders these yet.
-  | 'catalog' | 'inventory' | 'deliverables' | 'routing' | 'pos'
+  | 'catalog' | 'compliance' | 'inventory' | 'deliverables' | 'routing' | 'pos'
   | 'attendee-roster'
 
 export interface IndustryPack {
@@ -40,7 +40,7 @@ const BUILT_IN_PACKS: IndustryPack[] = [
     name: 'Coffee Cart',
     description: 'Mobile beverage vendor booking private events.',
     eventTypeId: 'coffee-service',
-    modules: ['leads', 'clients', 'proposals', 'contracts', 'invoices', 'calendar', 'reports', 'catalog', 'inventory'],
+    modules: ['leads', 'clients', 'proposals', 'contracts', 'invoices', 'calendar', 'reports', 'catalog', 'compliance', 'inventory'],
     catalogKind: 'menu',
     publicMode: false,
   },
@@ -89,4 +89,14 @@ export function isModuleEnabled(pack: IndustryPack, moduleId: ModuleId): boolean
 
 export function resolveEnabledModules(industryPackId?: string): ModuleId[] {
   return getIndustryPack(industryPackId).modules
+}
+
+/** Vertical-skinned label for the catalog module (spec §4: "no shared noun renders untranslated"). */
+export function catalogLabel(pack: IndustryPack): string {
+  switch (pack.catalogKind) {
+    case 'menu': return 'Menu Packages'
+    case 'services': return 'Service Packages'
+    case 'rental-stock': return 'Rental Packages'
+    default: return 'Packages'
+  }
 }

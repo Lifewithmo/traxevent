@@ -15,17 +15,19 @@ interface AdminSidebarProps {
   terminology?: Terminology
   allowedEventPages?: EventPage[]
   enabledModules?: ModuleId[]
+  catalogLabel?: string
 }
 
 const ORG_PAGE_SLUGS = new Set([
   'members', 'forms', 'permissions', 'billing', 'email-domain', 'event-types',
   'departments', 'reports', 'registrants', 'leads', 'clients', 'proposals',
-  'contracts', 'invoices', 'vendors', 'calendar', 'new-event',
+  'contracts', 'invoices', 'vendors', 'calendar', 'new-event', 'packages', 'compliance',
 ])
 
 function getEventNav(terminology: Terminology) {
   return [
     { key: 'dashboard', label: 'Dashboard' },
+    { key: 'ops', label: 'Event Ops' },
     { key: 'families', label: terminology.registrantPlural },
     { key: 'assignments', label: terminology.assignmentPlural },
     { key: 'teams', label: 'Teams' },
@@ -56,7 +58,7 @@ function Section({ label, children }: { label: string; children: React.ReactNode
   )
 }
 
-export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPages, enabledModules }: AdminSidebarProps) {
+export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPages, enabledModules, catalogLabel }: AdminSidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
 
@@ -129,7 +131,7 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
   }
 
   return (
-    <aside className="w-56 bg-gray-900 text-gray-100 min-h-screen flex flex-col flex-shrink-0">
+    <aside className="w-56 bg-gray-900 text-gray-100 min-h-screen flex flex-col flex-shrink-0 print:hidden">
       <div className="px-4 py-5 border-b border-gray-700">
         <Link href={`/${orgSlug}`} className="font-bold text-white text-lg tracking-tight">
           TraxEvent
@@ -179,6 +181,22 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
               ))}
             </Section>
           )}
+
+          {(() => {
+            const opsLinks = [
+              ...(has('catalog') ? [{ label: catalogLabel ?? 'Packages', slug: 'packages' }] : []),
+              ...(has('compliance') ? [{ label: 'Compliance', slug: 'compliance' }] : []),
+            ]
+            return opsLinks.length > 0 && (
+              <Section label="Operations">
+                {opsLinks.map((l) => (
+                  <Link key={l.slug} href={`/${orgSlug}/${l.slug}`} className={navClass(`/${orgSlug}/${l.slug}`)}>
+                    {l.label}
+                  </Link>
+                ))}
+              </Section>
+            )
+          })()}
 
           {has('reports') && (
             <Section label="Insights">
