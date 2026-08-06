@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { updateProposalBlocks } from '@/actions/proposals'
 import { uploadProposalImage } from '@/actions/proposal-images'
 import { Button } from '@/components/ui/button'
@@ -26,6 +26,25 @@ function blankBlock(type: ProposalBlockType, id: string): ProposalBlock {
   }
 }
 
+// New blocks are minted with a `new-N` id that the server keeps verbatim
+// (normalizeBlocks does not rewrite client-supplied ids). A counter that
+// always starts at 0 would collide with a `new-0` block persisted in an
+// earlier session the moment this editor remounts against that proposal's
+// saved blocks. Seed the counter past the highest `new-N` suffix already
+// present in initialBlocks so freshly minted ids can never collide with
+// ones that already made it to Firestore.
+function nextNewBlockId(blocks: ProposalBlock[]): number {
+  let max = -1
+  for (const b of blocks) {
+    const match = /^new-(\d+)$/.exec(b.id)
+    if (match) {
+      const n = Number(match[1])
+      if (n > max) max = n
+    }
+  }
+  return max + 1
+}
+
 export function ProposalBlockEditor({
   orgId, proposalId, initialBlocks,
 }: {
@@ -37,11 +56,16 @@ export function ProposalBlockEditor({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
-  const [nextId, setNextId] = useState(0)
+  // A ref, not state: the counter itself is never rendered, and mutating it
+  // synchronously (rather than via a state updater) means two add() calls
+  // in the same handler can never read a stale value from the render
+  // closure — each call mints its id and advances the counter in one step.
+  const nextIdRef = useRef(nextNewBlockId(initialBlocks))
 
   function add(type: ProposalBlockType) {
-    setBlocks((b) => [...b, blankBlock(type, `new-${nextId}`)])
-    setNextId((n) => n + 1)
+    const id = `new-${nextIdRef.current}`
+    nextIdRef.current += 1
+    setBlocks((b) => [...b, blankBlock(type, id)])
   }
 
   // One documented cast, here rather than at every call site. Spreading a

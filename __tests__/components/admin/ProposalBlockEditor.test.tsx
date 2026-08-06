@@ -74,4 +74,30 @@ describe('ProposalBlockEditor', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save document' }))
     await waitFor(() => expect(screen.getByText(/Shortened a paragraph/)).toBeInTheDocument())
   })
+
+  it('mints ids for new blocks that do not collide with ids persisted in an earlier session', async () => {
+    // Simulates reopening the editor on a proposal that already has a
+    // persisted block literally named "new-0" (normalizeBlocks keeps
+    // client-supplied ids verbatim; it never rewrites them). A counter
+    // that always restarts at 0 would mint a second "new-0" here.
+    render(<ProposalBlockEditor {...base} initialBlocks={[
+      { id: 'new-0', type: 'paragraph', text: 'Existing' },
+    ]} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Add paragraph' }))
+
+    // Distinct rendered rows: if React had reused a key across two blocks
+    // sharing an id, one of these labels wouldn't resolve to its own node.
+    const first = screen.getByLabelText('Paragraph 1')
+    const second = screen.getByLabelText('Paragraph 2')
+    expect(first).not.toBe(second)
+
+    fireEvent.change(second, { target: { value: 'New one' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save document' }))
+
+    await waitFor(() => expect(updateProposalBlocks).toHaveBeenCalled())
+    const [, , savedBlocks] = vi.mocked(updateProposalBlocks).mock.calls[0] as [string, string, { id: string }[]]
+    const ids = savedBlocks.map((b) => b.id)
+    expect(ids).toHaveLength(2)
+    expect(new Set(ids).size).toBe(2)
+  })
 })
