@@ -54,6 +54,7 @@ export function ResourcesTab({ orgId, isAdmin, resources: initial, packages }: R
 
   async function handleCostChange(r: OpsResource, value: string) {
     const unit_cost = value === '' ? null : Number(value)
+    if (unit_cost === (r.unit_cost ?? null)) return
     try {
       await updateResource(orgId, r.id, { unit_cost })
       setResources((prev) => prev.map((x) => (x.id === r.id ? { ...x, unit_cost: unit_cost ?? undefined } : x)))

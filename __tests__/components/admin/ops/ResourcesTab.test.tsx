@@ -10,7 +10,7 @@ vi.mock('@/actions/resources', () => ({
   deleteResource: vi.fn().mockResolvedValue(undefined),
 }))
 
-import { createResource, deleteResource } from '@/actions/resources'
+import { createResource, deleteResource, updateResource } from '@/actions/resources'
 import { ResourcesTab } from '@/components/admin/ops/ResourcesTab'
 import type { OpsResource, WorkPackage } from '@/lib/types'
 
@@ -60,5 +60,12 @@ describe('ResourcesTab', () => {
   it('hides write controls for non-admins', () => {
     render(<ResourcesTab orgId="o1" isAdmin={false} resources={[beans]} packages={[]} />)
     expect(screen.queryByRole('button', { name: 'Add resource' })).not.toBeInTheDocument()
+  })
+
+  it('does not write on blur when the unit cost is unchanged', () => {
+    render(<ResourcesTab orgId="o1" isAdmin resources={[beans]} packages={[]} />)
+    const input = screen.getByLabelText('Unit cost for Espresso beans')
+    fireEvent.blur(input, { target: { value: String(beans.unit_cost) } })
+    expect(updateResource).not.toHaveBeenCalled()
   })
 })
