@@ -120,7 +120,7 @@ export function CustomerDetailClient({ orgId, orgSlug, customer, opportunities, 
                         <Badge variant="outline">{LEAD_STAGE_LABELS[l.stage]}</Badge>
                       </td>
                       <td className="px-3 py-2">{l.event_date ?? '—'}</td>
-                      <td className="px-3 py-2 text-right">${(l.estimated_value ?? 0).toFixed(2)}</td>
+                      <td className="px-3 py-2 text-right">${(l.estimated_value ?? 0).toLocaleString()}</td>
                     </tr>
                   ))}
                 </tbody>

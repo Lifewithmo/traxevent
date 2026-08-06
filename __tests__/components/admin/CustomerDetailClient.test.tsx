@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { describe, it, expect, vi } from 'vitest'
 import { CustomerDetailClient } from '@/components/admin/CustomerDetailClient'
 import type { CustomerRollup } from '@/lib/crm/customer-rollup'
@@ -39,7 +39,10 @@ describe('CustomerDetailClient', () => {
 
   it('surfaces lifetime won value', () => {
     render(<CustomerDetailClient {...props} />)
-    expect(screen.getByText('$1,000')).toBeInTheDocument()
+    // Scoped to the roll-up tile: the "Spring gala" opportunity row also
+    // shows $1,000 (same underlying value), so an unscoped query would match twice.
+    const tile = screen.getByText('Lifetime won').closest('div') as HTMLElement
+    expect(within(tile).getByText('$1,000')).toBeInTheDocument()
   })
 
   it('renders an empty state when the customer has no opportunities', () => {
