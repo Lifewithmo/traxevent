@@ -33,20 +33,17 @@ export function FamilySlideOver({
   const [activeTab, setActiveTab] = useState<Tab>('details')
   const [family, setFamily] = useState<Family | null>(null)
   const [members, setMembers] = useState<FamilyMember[]>([])
-  const [loading, setLoading] = useState(false)
+  // Loading is derived (the loaded family lags the requested id) so the effect
+  // never needs a synchronous setState.
+  const loading = !!familyId && family?.id !== familyId
 
   useEffect(() => {
     if (!familyId) return
-    setLoading(true)
     ;(async () => {
-      try {
-        const result = await getAdminFamily(orgId, eventId, familyId)
-        if (result) {
-          setFamily(result.family)
-          setMembers(result.members)
-        }
-      } finally {
-        setLoading(false)
+      const result = await getAdminFamily(orgId, eventId, familyId)
+      if (result) {
+        setFamily(result.family)
+        setMembers(result.members)
       }
     })()
   }, [familyId, orgId, eventId])

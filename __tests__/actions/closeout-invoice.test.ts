@@ -78,7 +78,7 @@ describe('generateCloseoutInvoice', () => {
 
   it('refuses when a plan package no longer exists in the catalog', async () => {
     vi.mocked(getWorkPackagesByIdsCore).mockResolvedValueOnce([
-      { id: 'p1', name: 'Espresso Bar', price: 900, lines: [] },
+      { id: 'p1', name: 'Espresso Bar', price: 900, lines: [], created_at: 'x' },
     ])
     await expect(generateCloseoutInvoice('o1', 'e1', 'l1')).rejects.toThrow(/Package no longer exists: p2/)
     expect(createInvoiceCore).not.toHaveBeenCalled()

@@ -82,7 +82,7 @@ describe('CloseoutClient', () => {
     const { generateCloseoutInvoice } = await import('@/actions/invoices')
     render(<CloseoutClient {...base}
       closeout={{ actuals: { hours_worked: 6 }, completed: true, created_at: 'x' }}
-      leads={[{ id: 'l1', name: 'Dana', stage: 'won', created_at: 'x' }]} />)
+      leads={[{ id: 'l1', name: 'Dana', stage: 'closed_won', created_at: 'x' }]} />)
     fireEvent.change(screen.getByLabelText('Bill to'), { target: { value: 'l1' } })
     fireEvent.click(screen.getByRole('button', { name: 'Generate final invoice' }))
     await waitFor(() => expect(generateCloseoutInvoice).toHaveBeenCalledWith('o1', 'e1', 'l1'))

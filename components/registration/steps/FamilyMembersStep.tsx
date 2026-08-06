@@ -9,13 +9,16 @@ type MemberInput = Omit<FamilyMember, 'id' | 'family_id'>
 
 type MemberInputWithKey = MemberInput & { _key: string }
 
-function emptyMember(): MemberInputWithKey {
+function blankMember(): MemberInput {
   return {
     first_name: '', last_name: '', birth_year: 0, gender: '', grade: '',
     allergies: '', dietary_restrictions: '', tshirt_size: '', medical_notes: '',
-    _key: Math.random().toString(36).slice(2),
   }
 }
+
+// Keys must not be generated during render (render must stay pure), so initial
+// rows get deterministic keys and only handleAdd draws from this counter.
+let addedKeyCounter = 0
 
 interface FamilyMembersStepProps {
   initial: MemberInput[]
@@ -25,10 +28,10 @@ interface FamilyMembersStepProps {
 }
 
 export function FamilyMembersStep({ initial, onNext, onBack, memberLabel = 'Family Members' }: FamilyMembersStepProps) {
-  const [members, setMembers] = useState<MemberInputWithKey[]>(
+  const [members, setMembers] = useState<MemberInputWithKey[]>(() =>
     initial.length > 0
-      ? initial.map((m) => ({ ...m, _key: Math.random().toString(36).slice(2) }))
-      : [emptyMember()]
+      ? initial.map((m, i) => ({ ...m, _key: `initial-${i}` }))
+      : [{ ...blankMember(), _key: 'initial-0' }]
   )
 
   function handleChange(index: number, updated: MemberInput) {
@@ -42,7 +45,7 @@ export function FamilyMembersStep({ initial, onNext, onBack, memberLabel = 'Fami
   }
 
   function handleAdd() {
-    setMembers((prev) => [...prev, emptyMember()])
+    setMembers((prev) => [...prev, { ...blankMember(), _key: `added-${addedKeyCounter++}` }])
   }
 
   function handleNext() {

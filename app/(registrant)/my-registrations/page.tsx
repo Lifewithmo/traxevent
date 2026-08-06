@@ -10,16 +10,17 @@ import Link from 'next/link'
 
 export default function MyRegistrationsPage() {
   const { user, loading } = useAuth()
-  const [registrations, setRegistrations] = useState<Family[]>([])
+  // null = not fetched yet, so "fetching" is derived instead of set inside the effect
+  const [fetched, setFetched] = useState<Family[] | null>(null)
   const [claimable, setClaimable] = useState<Family[]>([])
-  const [fetching, setFetching] = useState(false)
+  const registrations = fetched ?? []
+  const fetching = !!user && fetched === null
 
   useEffect(() => {
     if (user) {
-      setFetching(true)
       getAllRegistrationsByUid(user.uid)
-        .then(setRegistrations)
-        .finally(() => setFetching(false))
+        .then(setFetched)
+        .catch(() => setFetched([]))
       getClaimableRegistrations().then(setClaimable).catch(() => setClaimable([]))
     }
   }, [user])
@@ -27,7 +28,7 @@ export default function MyRegistrationsPage() {
   async function handleClaim(f: Family) {
     await claimRegistration(f.org_id, f.event_id, f.id)
     setClaimable((prev) => prev.filter((c) => c.id !== f.id))
-    setRegistrations((prev) => [f, ...prev])
+    setFetched((prev) => [f, ...(prev ?? [])])
   }
 
   if (loading || fetching) {
