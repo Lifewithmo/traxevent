@@ -1290,6 +1290,40 @@ These remain unbuilt from the CRM V1 spec and are **not** part of this plan:
 
 Track these as a follow-up increment.
 
+---
+
+## Follow-up backlog (from the reviews of this branch)
+
+Triaged as ship-as-is by the final whole-branch review, but worth picking up next. Ordered roughly by value.
+
+**Product coherence**
+1. **`opportunityTitle` is applied inconsistently.** Used on the opportunity detail page and the customer roll-up, but the pipeline board (`LeadsBoardClient.tsx`) and all three Today lists still render `lead.name`. An opportunity titled "Riverside gala" shows that title on two screens and "Dana Kim" on the others. Also: `CreateLeadInput` has no `title`, so a title can only be added after creation.
+2. **Contact-of-record split brain.** `lib/today.ts` derives company from `lead.organization` while `ContactCard`/`ClientsTable`/`CustomerDetailClient` read `customer.company`. The copies agree today only because `createLead` writes both from one input — which stops being true now that customers are editable. Decide: resolve customers in `getTodayData`, or document `lead.organization` as a display-only cache.
+3. **"Last contact" over-promises.** `rollupCustomer` computes it from max `updated_at`/`created_at` across leads; notes, tasks, and activity events don't touch the lead doc, so a customer you noted yesterday can read "8mo ago". Either rename to "Last update" or widen the roll-up.
+4. **`rollup.openValue` is computed but never rendered on `/clients`.** A customer with a large open pipeline reads the same as one with none.
+5. **No success affordance on the customer contact save.** `OpportunityDetailsForm` sets a "Saved." notice; `CustomerDetailClient`'s new contact form only calls `router.refresh()`, which produces no visible change since the fields already show the saved values. Worth closing given this whole phase existed because edits appeared to do nothing.
+6. **Waiting has one entry point.** It can only be set/cleared from Today; the opportunity detail page shows the waiting banner but offers no "Mark waiting" / "Resume".
+7. **A dateless waiting item never escalates.** `computeHealth` returns `waiting` unconditionally when `lead.waiting` is set, and `followUpDue` stays false forever without a date — so it can sit indefinitely with only a growing "quiet Nd". Consider requiring a follow-up date or escalating past a threshold.
+
+**Correctness / robustness**
+8. **`updateCustomer` has no `email_lower` uniqueness check.** The new contact form is the first UI able to set an email duplicating another Customer's dedup key; `findOrCreateCustomerCore`'s `limit(1)` would then pick one arbitrarily.
+9. **`updateLeadCore` has no server-side non-empty-name validation** — only the client form guards it.
+10. **`lib/crm/customers.ts` returns `snap.docs[0].data() as Customer` with no id fallback.** A legacy customer doc lacking a stored `id` field would yield `customer.id === undefined` during migration.
+11. **`getTodayData` is 1+N on the CRM home screen.** Auth was collapsed to one check (Task 3), but reads are still one subcollection query per open lead. A `collectionGroup('tasks')` query would fix it — tasks would need an `org_id` field first.
+12. **O(n²) grouping loop** in `app/(admin)/[orgSlug]/clients/page.tsx` (`[...(map.get(id) ?? []), l]` per append).
+
+**Accessibility**
+13. Inputs labelled by placeholder alone: `NeedsAttentionList` task/reason inputs (their sibling date inputs correctly use `aria-label`) and the `CustomerDetailClient` notes textarea.
+14. `<th>` elements lack `scope="col"` in `ClientsTable` and the customer detail opportunity table.
+15. Roll-up tiles lack programmatic label/value grouping — tests have to reach for `.closest('div')` to scope assertions, which is the smell.
+
+**Test coverage**
+16. Notes composer interactive path untested (`CustomerDetailClient`); `WaitingList`'s "Still waiting" control untested — it is the one Today control that writes a *derived* date; no test mocks a rejected action to verify the `role="alert"` paths render.
+
+## Accepted tradeoff (endorsed by the final review)
+
+`createLead` writes the Customer before the Lead with no cross-collection transaction, so a failed lead write can orphan a Customer. With an email the orphan self-heals via `email_lower` on the next attempt; without one it leaves a stray Customer with no opportunities, which `/clients` renders harmlessly as an all-zero row. The alternatives are worse: reversing the order reintroduces the invoice-linking no-op that Task 7 exists to fix, and a cross-collection transaction would thread a `Transaction` handle through the core's public signature, contaminating every caller.
+
 ## Post-merge operational note
 
 `email_lower` is new on `Customer`. **`npm run crm:migrate` does NOT backfill it** — `scripts/crm-migrate-customers.ts:38-41` skips every lead that already carries a `customer_id`, so previously-created Customer docs are never touched. An earlier draft of this plan claimed otherwise; that was wrong.
