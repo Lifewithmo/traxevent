@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { ProposalDocument } from '@/components/proposals/ProposalDocument'
 import { ProposalDepositPayment } from './ProposalDepositPayment'
 
 function money(n: number): string {
@@ -195,6 +196,8 @@ export function ProposalResponseClient({
     <main className="flex min-h-screen flex-col bg-gray-50">
       <div className="mx-auto w-full max-w-3xl flex-1 px-6 py-10">
         <h1 className="mb-6 text-2xl font-bold text-gray-900">{proposal.title || 'Proposal'}</h1>
+
+        <ProposalDocument blocks={proposal.blocks} />
 
         {packaged && (
           <Card>
