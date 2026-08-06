@@ -1039,24 +1039,41 @@ git commit -m "feat(crm): customer opportunity roll-up query, pure math, and Fir
 
 Create `__tests__/components/admin/ClientsTable.test.tsx`:
 
+Type the fixture properly — do **not** reach for `as never` or `as any` to silence the compiler. A cast there would hide exactly the prop-shape mismatch these tests exist to catch.
+
 ```tsx
 import { render, screen } from '@testing-library/react'
 import { describe, it, expect } from 'vitest'
 import { ClientsTable } from '@/components/admin/ClientsTable'
+import type { CustomerRollup } from '@/lib/crm/customer-rollup'
+import type { Customer } from '@/lib/types'
 
-const row = {
-  customer: { id: 'c1', name: 'Dana Kim', company: 'Riverside', email: 'dana@riv.co', created_at: 'x' },
-  rollup: { openCount: 1, wonCount: 2, lostCount: 0, totalWonValue: 1500, openValue: 250, lastActivityAt: '2026-03-05T00:00:00.000Z' },
+const row: { customer: Customer; rollup: CustomerRollup } = {
+  customer: {
+    id: 'c1',
+    name: 'Dana Kim',
+    company: 'Riverside',
+    email: 'dana@riv.co',
+    created_at: '2026-01-01T00:00:00.000Z',
+  },
+  rollup: {
+    openCount: 1,
+    wonCount: 2,
+    lostCount: 0,
+    totalWonValue: 1500,
+    openValue: 250,
+    lastActivityAt: '2026-03-05T00:00:00.000Z',
+  },
 }
 
 describe('ClientsTable', () => {
   it('links each customer to their detail page', () => {
-    render(<ClientsTable orgSlug="acme" rows={[row as never]} />)
+    render(<ClientsTable orgSlug="acme" rows={[row]} />)
     expect(screen.getByRole('link', { name: 'Dana Kim' })).toHaveAttribute('href', '/acme/clients/c1')
   })
 
   it('shows repeat-business figures', () => {
-    render(<ClientsTable orgSlug="acme" rows={[row as never]} />)
+    render(<ClientsTable orgSlug="acme" rows={[row]} />)
     expect(screen.getByText('$1,500')).toBeInTheDocument()
     expect(screen.getByText(/2 won/i)).toBeInTheDocument()
   })
@@ -1147,14 +1164,24 @@ import { CustomerDetailClient } from '@/components/admin/CustomerDetailClient'
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }))
 
-const customer = { id: 'c1', name: 'Dana Kim', company: 'Riverside', email: 'dana@riv.co', tags: ['vip'], created_at: 'x' }
-const opportunities = [
-  { id: 'l1', name: 'Dana Kim', title: 'Spring gala', stage: 'closed_won', estimated_value: 1000, created_at: 'x' },
-  { id: 'l2', name: 'Dana Kim', stage: 'inquiry', estimated_value: 250, created_at: 'x' },
-]
-const rollup = { openCount: 1, wonCount: 1, lostCount: 0, totalWonValue: 1000, openValue: 250, lastActivityAt: undefined }
+Type the fixtures properly — do **not** reach for `as never` or `as any`. A cast would hide exactly the prop-shape mismatch these tests exist to catch.
 
-const props = { orgId: 'o1', orgSlug: 'acme', customer, opportunities, rollup, notes: [] } as never
+```tsx
+import type { CustomerRollup } from '@/lib/crm/customer-rollup'
+import type { Customer, Lead, Note } from '@/lib/types'
+
+const customer: Customer = {
+  id: 'c1', name: 'Dana Kim', company: 'Riverside', email: 'dana@riv.co',
+  tags: ['vip'], created_at: '2026-01-01T00:00:00.000Z',
+}
+const opportunities: Lead[] = [
+  { id: 'l1', name: 'Dana Kim', title: 'Spring gala', stage: 'closed_won', estimated_value: 1000, created_at: '2026-02-01T00:00:00.000Z' },
+  { id: 'l2', name: 'Dana Kim', stage: 'inquiry', estimated_value: 250, created_at: '2026-01-15T00:00:00.000Z' },
+]
+const rollup: CustomerRollup = { openCount: 1, wonCount: 1, lostCount: 0, totalWonValue: 1000, openValue: 250 }
+const notes: Note[] = []
+
+const props = { orgId: 'o1', orgSlug: 'acme', customer, opportunities, rollup, notes }
 
 describe('CustomerDetailClient', () => {
   it('shows the customer identity and tags', () => {
