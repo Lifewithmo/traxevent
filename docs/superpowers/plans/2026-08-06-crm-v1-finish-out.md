@@ -1157,18 +1157,16 @@ git commit -m "feat(crm): /clients lists real Customers with repeat-business fig
 
 Create `__tests__/components/admin/CustomerDetailClient.test.tsx`:
 
+Type the fixtures properly — do **not** reach for `as never` or `as any`. A cast would hide exactly the prop-shape mismatch these tests exist to catch.
+
 ```tsx
 import { render, screen } from '@testing-library/react'
 import { describe, it, expect, vi } from 'vitest'
 import { CustomerDetailClient } from '@/components/admin/CustomerDetailClient'
-
-vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }))
-
-Type the fixtures properly — do **not** reach for `as never` or `as any`. A cast would hide exactly the prop-shape mismatch these tests exist to catch.
-
-```tsx
 import type { CustomerRollup } from '@/lib/crm/customer-rollup'
 import type { Customer, Lead, Note } from '@/lib/types'
+
+vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }))
 
 const customer: Customer = {
   id: 'c1', name: 'Dana Kim', company: 'Riverside', email: 'dana@riv.co',
