@@ -2,7 +2,7 @@
 
 import { FieldValue } from 'firebase-admin/firestore'
 import { assertOrgMember, assertOrgAdmin } from '@/lib/auth/assert'
-import { createCustomerCore, customersRef, type CreateCustomerInput } from '@/lib/crm/customers'
+import { createCustomerCore, customersRef, normalizeEmail, type CreateCustomerInput } from '@/lib/crm/customers'
 import type { Customer } from '@/lib/types'
 
 // NOTE: 'use server' module — every export must be an async function. The
@@ -41,6 +41,10 @@ export async function updateCustomer(orgId: string, customerId: string, updates:
   for (const [k, v] of Object.entries(updates)) {
     if (v === undefined) continue
     cleaned[k] = v === null ? FieldValue.delete() : v
+  }
+  if (updates.email !== undefined) {
+    const key = updates.email === null ? null : normalizeEmail(updates.email)
+    cleaned.email_lower = key === null || key === undefined ? FieldValue.delete() : key
   }
   await customersRef(orgId).doc(customerId).update({ ...cleaned, updated_at: new Date().toISOString() })
 }

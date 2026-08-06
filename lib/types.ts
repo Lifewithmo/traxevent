@@ -414,6 +414,7 @@ export interface Customer {
   name: string
   company?: string
   email?: string
+  email_lower?: string   // normalized dedup key; derived from email, never displayed
   phone?: string
   tags?: string[]
   notes?: string
