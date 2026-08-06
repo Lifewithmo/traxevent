@@ -383,6 +383,7 @@ export interface LeadWaiting {
 export interface Lead {
   id: string
   name: string
+  title?: string               // the opportunity's own label; falls back to `name` when absent
   email?: string
   phone?: string
   organization?: string
@@ -414,6 +415,7 @@ export interface Customer {
   name: string
   company?: string
   email?: string
+  email_lower?: string   // normalized dedup key; derived from email, never displayed
   phone?: string
   tags?: string[]
   notes?: string
@@ -638,7 +640,7 @@ export interface ActivityEvent {
   id: string
   parent_type: 'customer' | 'opportunity'
   parent_id: string
-  kind: 'stage' | 'task' | 'note' | 'email' | 'form' | 'created'
+  kind: 'stage' | 'task' | 'note' | 'email' | 'form' | 'created' | 'waiting'
   summary: string
   created_at: string
 }

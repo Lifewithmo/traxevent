@@ -48,3 +48,8 @@ export function pipelineSummary(leads: Lead[]): PipelineSummary {
   const bookedValue = grouped.closed_won.reduce((sum, l) => sum + (l.estimated_value ?? 0), 0)
   return { stages, openCount, openValue, bookedValue }
 }
+
+/** The opportunity's display label — its own title, or the contact name for legacy leads. */
+export function opportunityTitle(lead: Pick<Lead, 'title' | 'name'>): string {
+  return lead.title?.trim() || lead.name
+}

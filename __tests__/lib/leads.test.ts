@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { LEAD_STAGES, LEAD_STAGE_LABELS, OPEN_STAGES, CLOSED_STAGES, groupLeadsByStage, pipelineSummary } from '@/lib/leads'
+import { LEAD_STAGES, LEAD_STAGE_LABELS, OPEN_STAGES, CLOSED_STAGES, groupLeadsByStage, pipelineSummary, opportunityTitle } from '@/lib/leads'
 import type { Lead, LeadStage } from '@/lib/types'
 
 describe('lead stages (V1)', () => {
@@ -50,5 +50,17 @@ describe('pipelineSummary', () => {
     expect(s.openCount).toBe(2)         // inquiry + proposal (not closed_won/closed_lost)
     expect(s.openValue).toBe(1000)      // 1000
     expect(s.bookedValue).toBe(5000)    // closed_won only
+  })
+})
+
+describe('opportunityTitle', () => {
+  it('prefers an explicit title', () => {
+    expect(opportunityTitle({ title: 'Riverside gala', name: 'Dana Kim' })).toBe('Riverside gala')
+  })
+  it('falls back to the contact name for legacy leads', () => {
+    expect(opportunityTitle({ name: 'Dana Kim' })).toBe('Dana Kim')
+  })
+  it('treats a blank title as absent', () => {
+    expect(opportunityTitle({ title: '   ', name: 'Dana Kim' })).toBe('Dana Kim')
   })
 })

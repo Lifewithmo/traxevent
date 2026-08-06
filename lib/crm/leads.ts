@@ -1,10 +1,11 @@
 import { adminDb } from '@/lib/firebase-admin'
 import { FieldValue } from 'firebase-admin/firestore'
 import { LEAD_STAGES } from '@/lib/leads'
-import type { Lead, LeadStage } from '@/lib/types'
+import type { Lead, LeadStage, LeadWaiting } from '@/lib/types'
 
 export interface LeadUpdate {
   name?: string
+  title?: string | null
   email?: string | null
   phone?: string | null
   organization?: string | null
@@ -14,6 +15,7 @@ export interface LeadUpdate {
   stage?: LeadStage
   notes?: string | null
   customer_id?: string | null
+  waiting?: LeadWaiting | null
 }
 
 export function leadsRef(orgId: string) {
@@ -22,6 +24,11 @@ export function leadsRef(orgId: string) {
 
 export async function listLeadsCore(orgId: string): Promise<Lead[]> {
   const snap = await leadsRef(orgId).orderBy('created_at', 'desc').get()
+  return snap.docs.map((d) => d.data() as Lead)
+}
+
+export async function listLeadsByCustomerCore(orgId: string, customerId: string): Promise<Lead[]> {
+  const snap = await leadsRef(orgId).where('customer_id', '==', customerId).orderBy('created_at', 'desc').get()
   return snap.docs.map((d) => d.data() as Lead)
 }
 

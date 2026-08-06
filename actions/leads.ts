@@ -4,8 +4,9 @@ import { assertOrgMember, assertOrgAdmin } from '@/lib/auth/assert'
 import { LEAD_STAGES } from '@/lib/leads'
 import { logActivity } from '@/lib/activity'
 import { leadsRef, listLeadsCore, updateLeadCore, type LeadUpdate } from '@/lib/crm/leads'
+import { findOrCreateCustomerCore } from '@/lib/crm/customers'
 import { randomBytes } from 'crypto'
-import type { Lead, LeadStage } from '@/lib/types'
+import type { Lead, LeadStage, LeadWaiting } from '@/lib/types'
 
 // NOTE: this is a 'use server' module — every export must be an async function.
 // LeadUpdate (a type) is therefore NOT re-exported here; import it from
@@ -39,12 +40,19 @@ export async function createLead(orgId: string, input: CreateLeadInput): Promise
   if (!input.name?.trim()) throw new Error('Name is required')
   const stage = input.stage ?? 'inquiry'
   if (!LEAD_STAGES.includes(stage)) throw new Error('Invalid stage')
+  const { customer } = await findOrCreateCustomerCore(orgId, {
+    name: input.name.trim(),
+    ...(input.organization?.trim() ? { company: input.organization.trim() } : {}),
+    ...(input.email?.trim() ? { email: input.email.trim() } : {}),
+    ...(input.phone?.trim() ? { phone: input.phone.trim() } : {}),
+  })
   const id = randomBytes(8).toString('hex')
   const lead: Lead = {
     id,
     name: input.name.trim(),
     stage,
     created_at: new Date().toISOString(),
+    customer_id: customer.id,
     ...(input.email?.trim() ? { email: input.email.trim() } : {}),
     ...(input.phone?.trim() ? { phone: input.phone.trim() } : {}),
     ...(input.organization?.trim() ? { organization: input.organization.trim() } : {}),
@@ -80,4 +88,29 @@ export async function setLeadStage(orgId: string, leadId: string, stage: LeadSta
 export async function deleteLead(orgId: string, leadId: string): Promise<void> {
   await assertOrgAdmin(orgId)
   await leadsRef(orgId).doc(leadId).delete()
+}
+
+export async function setLeadWaiting(
+  orgId: string,
+  leadId: string,
+  input: { reason: string; follow_up_date?: string }
+): Promise<void> {
+  await assertOrgAdmin(orgId)
+  if (!input.reason?.trim()) throw new Error('A reason is required')
+  const waiting: LeadWaiting = {
+    reason: input.reason.trim(),
+    ...(input.follow_up_date?.trim() ? { follow_up_date: input.follow_up_date.trim() } : {}),
+  }
+  await updateLeadCore(orgId, leadId, { waiting })
+  await logActivity(orgId, {
+    parent_type: 'opportunity', parent_id: leadId, kind: 'waiting', summary: `Waiting: ${waiting.reason}`,
+  })
+}
+
+export async function clearLeadWaiting(orgId: string, leadId: string): Promise<void> {
+  await assertOrgAdmin(orgId)
+  await updateLeadCore(orgId, leadId, { waiting: null })
+  await logActivity(orgId, {
+    parent_type: 'opportunity', parent_id: leadId, kind: 'waiting', summary: 'Resumed — cleared waiting',
+  })
 }

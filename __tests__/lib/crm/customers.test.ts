@@ -22,4 +22,10 @@ describe('createCustomerCore', () => {
     const written = custDoc.set.mock.calls[0][0]
     expect('phone' in written).toBe(false)
   })
+  it('derives email_lower from a mixed-case email', async () => {
+    await createCustomerCore('o1', { name: 'Dana Kim', email: 'Dana@Riv.CO' })
+    expect(custDoc.set).toHaveBeenCalledWith(
+      expect.objectContaining({ email: 'Dana@Riv.CO', email_lower: 'dana@riv.co' })
+    )
+  })
 })
