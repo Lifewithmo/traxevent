@@ -3,6 +3,7 @@ import 'server-only'
 import { initializeApp, getApps, cert, type App } from 'firebase-admin/app'
 import { getAuth } from 'firebase-admin/auth'
 import { getFirestore } from 'firebase-admin/firestore'
+import { getStorage } from 'firebase-admin/storage'
 
 function getAdminApp(): App {
   if (getApps().length > 0) return getApps()[0]
@@ -29,3 +30,9 @@ function getAdminApp(): App {
 const adminApp = getAdminApp()
 export const adminAuth = getAuth(adminApp)
 export const adminDb = getFirestore(adminApp)
+
+// Default GCS bucket for ops evidence photos. Reuses the client-side bucket
+// env when a server-specific one isn't set.
+export const adminBucket = getStorage(adminApp).bucket(
+  process.env.FIREBASE_STORAGE_BUCKET ?? process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
+)
