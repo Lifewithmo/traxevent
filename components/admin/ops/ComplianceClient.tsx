@@ -52,6 +52,7 @@ export function ComplianceClient({ orgId, isAdmin, docs: initial }: ComplianceCl
   }
 
   async function handleExpiryChange(d: ComplianceDoc, value: string) {
+    if (value === (d.expires_on ?? '')) return
     try {
       await updateComplianceDoc(orgId, d.id, { expires_on: value || null })
       setDocs((prev) => prev.map((x) => (x.id === d.id ? { ...x, expires_on: value || undefined } : x)))

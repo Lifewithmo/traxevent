@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { createChecklistTemplate, deleteChecklistTemplate } from '@/actions/work-packages'
+import { CHECKLIST_PHASES as PHASES } from '@/lib/ops/derive'
 import type { ChecklistTemplate, ChecklistPhase, ChecklistTemplateStep, EvidenceType } from '@/lib/types'
 
 interface ChecklistTemplatesTabProps {
@@ -16,7 +17,6 @@ interface ChecklistTemplatesTabProps {
   ownTemplateIds: string[]
 }
 
-const PHASES: ChecklistPhase[] = ['prep', 'load-out', 'setup', 'service-close', 'closeout']
 const EVIDENCE: EvidenceType[] = ['none', 'photo', 'number']
 
 export function ChecklistTemplatesTab({ orgId, isAdmin, templates: initial, ownTemplateIds: initialOwn }: ChecklistTemplatesTabProps) {

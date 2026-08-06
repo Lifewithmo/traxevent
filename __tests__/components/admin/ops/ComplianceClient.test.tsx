@@ -9,7 +9,7 @@ vi.mock('@/actions/compliance', () => ({
   deleteComplianceDoc: vi.fn().mockResolvedValue(undefined),
 }))
 
-import { createComplianceDoc, deleteComplianceDoc } from '@/actions/compliance'
+import { createComplianceDoc, deleteComplianceDoc, updateComplianceDoc } from '@/actions/compliance'
 import { ComplianceClient } from '@/components/admin/ops/ComplianceClient'
 import type { ComplianceDoc } from '@/lib/types'
 
@@ -48,5 +48,12 @@ describe('ComplianceClient', () => {
   it('hides write controls for non-admins', () => {
     render(<ComplianceClient orgId="o1" isAdmin={false} docs={[valid]} />)
     expect(screen.queryByRole('button', { name: 'Add document' })).not.toBeInTheDocument()
+  })
+
+  it('does not write on blur when the expiry value is unchanged', () => {
+    render(<ComplianceClient orgId="o1" isAdmin docs={[valid]} />)
+    const input = screen.getByLabelText('Expiry for Liability insurance')
+    fireEvent.blur(input, { target: { value: valid.expires_on } })
+    expect(updateComplianceDoc).not.toHaveBeenCalled()
   })
 })

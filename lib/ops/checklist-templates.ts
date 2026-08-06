@@ -1,7 +1,7 @@
 import { adminDb } from '@/lib/firebase-admin'
+import { CHECKLIST_PHASES as PHASES } from '@/lib/ops/derive'
 import type { ChecklistTemplate, ChecklistPhase, ChecklistTemplateStep, EvidenceType } from '@/lib/types'
 
-const PHASES: ChecklistPhase[] = ['prep', 'load-out', 'setup', 'service-close', 'closeout']
 const EVIDENCE_TYPES: EvidenceType[] = ['none', 'photo', 'number']
 
 export interface CreateChecklistTemplateInput {

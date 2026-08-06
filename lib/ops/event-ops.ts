@@ -45,7 +45,7 @@ export async function instantiateOpsPlanCore(
   eventId: string,
   input: InstantiateOpsPlanInput,
 ): Promise<OpsPlan> {
-  if (input.requirements.guests <= 0) throw new Error('Guest count must be positive')
+  if (!Number.isFinite(input.requirements.guests) || input.requirements.guests <= 0) throw new Error('Guest count must be positive')
   const ref = opsPlanRef(orgId, eventId)
   const existing = await ref.get()
   if (existing.exists) throw new Error('Ops plan already exists for this event')
@@ -117,7 +117,7 @@ export async function updateOpsRequirementsCore(
       throw new Error(`Unknown requirement field: ${field}`)
     }
   }
-  if (updates.guests !== undefined && updates.guests <= 0) throw new Error('Guest count must be positive')
+  if (updates.guests !== undefined && (!Number.isFinite(updates.guests) || updates.guests <= 0)) throw new Error('Guest count must be positive')
 
   const ref = opsPlanRef(orgId, eventId)
   await adminDb.runTransaction(async (tx) => {

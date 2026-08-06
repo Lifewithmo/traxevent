@@ -3,9 +3,15 @@
 // × guests → lists; event date × pack → deadlines; templates → checklist
 // instances.
 import type {
-  WorkPackage, OpsResource, ChecklistTemplate,
+  WorkPackage, OpsResource, ChecklistTemplate, ChecklistPhase,
   OpsDeadline, OpsListItem, OpsChecklist, CloseoutSummary,
 } from '@/lib/types'
+
+/** Canonical checklist phase order (spec §3.3) — shared by ChecklistsCard (sort order) and ChecklistTemplatesTab (grouping). */
+export const CHECKLIST_PHASES: ChecklistPhase[] = ['prep', 'load-out', 'setup', 'service-close', 'closeout']
+
+/** Canonical on-site needs options — shared by OpsSetup and RequirementsCard. */
+export const SITE_NEED_OPTIONS = ['power', 'water', 'ice', 'parking'] as const
 
 export const DEADLINE_TEMPLATES: Record<string, { id: string; label: string; days_before: number }[]> = {
   'coffee-cart': [

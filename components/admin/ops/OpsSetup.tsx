@@ -7,9 +7,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { instantiateOpsPlan } from '@/actions/event-ops'
 import { formatMoney } from '@/lib/utils'
+import { SITE_NEED_OPTIONS as SITE_NEEDS } from '@/lib/ops/derive'
 import type { OpsPlan, WorkPackage } from '@/lib/types'
-
-const SITE_NEEDS = ['power', 'water', 'ice', 'parking'] as const
 
 interface OpsSetupProps {
   orgId: string
@@ -118,7 +117,7 @@ export function OpsSetup({ orgId, eventId, packages, eventStart, industryPackId,
           <Input id="ops-notes" value={notes} onChange={(e) => setNotes(e.target.value)} />
         </div>
         {error && <p className="text-sm text-red-600">{error}</p>}
-        <Button onClick={handleCreate} disabled={saving || selected.length === 0 || !guests || Number(guests) <= 0}>
+        <Button onClick={handleCreate} disabled={saving || selected.length === 0 || !guests || !Number.isFinite(Number(guests)) || Number(guests) <= 0}>
           Set up ops plan
         </Button>
       </CardContent>
