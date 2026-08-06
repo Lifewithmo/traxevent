@@ -17,7 +17,7 @@
 - **No new npm dependencies.** No zod, no markdown library, no drag-and-drop library.
 - **Never use `dangerouslySetInnerHTML`.** The public proposal page is unauthenticated and its content will later be model-generated.
 - **All types live in `lib/types.ts`.** Never re-export a type from a `'use server'` module.
-- **Do not modify** the pricing/selection/signature/deposit code paths: `lib/proposals.ts` money helpers, `signProposal`, the deposit webhook, or the existing pricing UI in `ProposalResponseClient`.
+- **Do not modify the pricing/selection/signature/deposit logic**: `lib/proposals.ts` money helpers, the deposit webhook, or any existing state, handler, or JSX of the pricing UI inside `ProposalResponseClient`. Tasks 7 and 8 do edit that file, but only **additively** — two new lines rendering `<ProposalDocument>` and a Download PDF link. Task 9 adds one guard to `signProposal`. Nothing else in those paths changes.
 - Money stays in dollars; timestamps are ISO strings from `new Date().toISOString()`.
 
 ## Two spec corrections locked in here
@@ -1018,8 +1018,12 @@ export function ProposalBlockEditor({
     setNextId((n) => n + 1)
   }
 
-  function patch(index: number, changes: Partial<ProposalBlock>) {
-    setBlocks((b) => b.map((blk, i) => (i === index ? { ...blk, ...changes } as ProposalBlock : blk)))
+  // One documented cast, here rather than at every call site. Spreading a
+  // partial onto a discriminated union cannot be expressed type-safely in
+  // TypeScript; callers only ever pass fields that exist on the block they
+  // are editing, and normalizeBlocks re-validates everything server-side.
+  function patch(index: number, changes: Record<string, unknown>) {
+    setBlocks((b) => b.map((blk, i) => (i === index ? ({ ...blk, ...changes } as ProposalBlock) : blk)))
   }
 
   function move(index: number, delta: number) {
@@ -1043,7 +1047,7 @@ export function ProposalBlockEditor({
       const form = new FormData()
       form.set('file', file)
       const { url } = await uploadProposalImage(orgId, proposalId, form)
-      patch(index, { url } as Partial<ProposalBlock>)
+      patch(index, { url })
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Image upload failed')
     }
@@ -1085,19 +1089,19 @@ export function ProposalBlockEditor({
 
           {block.type === 'heading' && (
             <Input aria-label={`Heading ${i + 1}`} value={block.text}
-              onChange={(e) => patch(i, { text: e.target.value } as Partial<ProposalBlock>)} />
+              onChange={(e) => patch(i, { text: e.target.value })} />
           )}
 
           {block.type === 'paragraph' && (
             <textarea aria-label={`Paragraph ${i + 1}`} rows={4} value={block.text}
               className="w-full rounded-md border px-3 py-2 text-sm"
-              onChange={(e) => patch(i, { text: e.target.value } as Partial<ProposalBlock>)} />
+              onChange={(e) => patch(i, { text: e.target.value })} />
           )}
 
           {block.type === 'list' && (
             <textarea aria-label={`List ${i + 1}`} rows={4} value={block.items.join('\n')}
               className="w-full rounded-md border px-3 py-2 text-sm"
-              onChange={(e) => patch(i, { items: e.target.value.split('\n') } as Partial<ProposalBlock>)} />
+              onChange={(e) => patch(i, { items: e.target.value.split('\n') })} />
           )}
 
           {block.type === 'image' && (
@@ -1107,7 +1111,7 @@ export function ProposalBlockEditor({
               {block.url && <p className="truncate text-xs text-gray-500">{block.url}</p>}
               <Input aria-label={`Image ${i + 1} alt text`} placeholder="Alt text"
                 value={block.alt ?? ''}
-                onChange={(e) => patch(i, { alt: e.target.value } as Partial<ProposalBlock>)} />
+                onChange={(e) => patch(i, { alt: e.target.value })} />
             </div>
           )}
 
@@ -1115,10 +1119,10 @@ export function ProposalBlockEditor({
             <div className="space-y-2">
               <textarea aria-label={`Testimonial ${i + 1}`} rows={3} value={block.quote}
                 className="w-full rounded-md border px-3 py-2 text-sm"
-                onChange={(e) => patch(i, { quote: e.target.value } as Partial<ProposalBlock>)} />
+                onChange={(e) => patch(i, { quote: e.target.value })} />
               <Input aria-label={`Testimonial ${i + 1} attribution`} placeholder="Attribution"
                 value={block.attribution ?? ''}
-                onChange={(e) => patch(i, { attribution: e.target.value } as Partial<ProposalBlock>)} />
+                onChange={(e) => patch(i, { attribution: e.target.value })} />
             </div>
           )}
         </div>
