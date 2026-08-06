@@ -22,6 +22,20 @@ interface RegistrationFormProps {
 }
 
 export function RegistrationForm({ event, org }: RegistrationFormProps) {
+  const { user } = useAuth()
+  // Keying on the uid remounts the form on sign-in/sign-out, so pre-filled
+  // state resets without calling setState synchronously inside an effect.
+  return (
+    <RegistrationFormInner
+      key={user?.uid ?? 'anonymous'}
+      event={event}
+      org={org}
+      registrantUid={user?.uid}
+    />
+  )
+}
+
+function RegistrationFormInner({ event, org, registrantUid }: RegistrationFormProps & { registrantUid?: string }) {
   const router = useRouter()
   const registrationUnit = event.registration_type
   const terminology = resolveTerminology(event.event_type_id, event.event_type_terminology)
@@ -42,21 +56,11 @@ export function RegistrationForm({ event, org }: RegistrationFormProps) {
   const [members, setMembers] = useState<MemberInput[]>([])
   const [familyId, setFamilyId] = useState<string>('')
 
-  const { user } = useAuth()
-  const [registrantUid, setRegistrantUid] = useState<string | undefined>()
   const [profileKey, setProfileKey] = useState('empty')
 
   useEffect(() => {
-    if (!user?.uid) {
-      // User signed out — clear pre-filled data
-      setContact({})
-      setMembers([])
-      setRegistrantUid(undefined)
-      setProfileKey('empty')
-      return
-    }
-    setRegistrantUid(user.uid)
-    getRegistrantProfile(user.uid).then((profile) => {
+    if (!registrantUid) return
+    getRegistrantProfile(registrantUid).then((profile) => {
       if (!profile) return
       // Split display_name into first + last name
       const spaceIdx = profile.display_name.indexOf(' ')
@@ -87,7 +91,7 @@ export function RegistrationForm({ event, org }: RegistrationFormProps) {
       // Force ContactStep to remount with the pre-filled initial values
       setProfileKey('filled')
     })
-  }, [user?.uid, registrationUnit])
+  }, [registrantUid, registrationUnit])
 
   const currentStep = steps[stepIndex]
 

@@ -68,15 +68,24 @@ export function ProposalDepositPayment({
   consent,
   selection,
 }: ProposalDepositPaymentProps) {
-  const [clientSecret, setClientSecret] = useState<string | null>(null)
-  const [stripeAccountId, setStripeAccountId] = useState<string | null>(null)
-  const [loadError, setLoadError] = useState<string | null>(null)
+  // The intent is keyed by the request that produced it, so a stale intent
+  // from a previous token/beforeAccept is simply ignored instead of being
+  // cleared with synchronous setStates inside the effect.
+  const requestKey = `${token}:${beforeAccept ? '1' : '0'}`
+  const [intent, setIntent] = useState<{
+    key: string
+    clientSecret?: string
+    stripeAccountId?: string
+    error?: string
+  } | null>(null)
+  const current = intent?.key === requestKey ? intent : null
+  const clientSecret = current?.clientSecret ?? null
+  const stripeAccountId = current?.stripeAccountId ?? null
+  const loadError = current?.error ?? null
 
   useEffect(() => {
     let cancelled = false
-    setClientSecret(null)
-    setStripeAccountId(null)
-    setLoadError(null)
+    const key = `${token}:${beforeAccept ? '1' : '0'}`
     fetch('/api/payments/proposal-deposit/intent', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -96,14 +105,13 @@ export function ProposalDepositPayment({
       .then((data) => {
         if (cancelled) return
         if (data.error) {
-          setLoadError(data.error)
+          setIntent({ key, error: data.error })
         } else {
-          setClientSecret(data.clientSecret)
-          setStripeAccountId(data.stripeAccountId)
+          setIntent({ key, clientSecret: data.clientSecret, stripeAccountId: data.stripeAccountId })
         }
       })
       .catch(() => {
-        if (!cancelled) setLoadError('Failed to initialize payment')
+        if (!cancelled) setIntent({ key, error: 'Failed to initialize payment' })
       })
     return () => {
       cancelled = true

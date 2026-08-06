@@ -40,7 +40,6 @@ export default function EditRegistrationPage() {
       setLoading(false)
     }
     if (token) load()
-    else { setError('No access token provided'); setLoading(false) }
   }, [params.orgSlug, params.eventSlug, token])
 
   async function handleContactSave(data: ContactData) {
@@ -49,6 +48,7 @@ export default function EditRegistrationPage() {
     setStep('members')
   }
 
+  if (!token) return <div className="py-12 text-center text-red-500">No access token provided</div>
   if (loading) return <div className="py-12 text-center text-gray-400">Loading…</div>
   if (error) return <div className="py-12 text-center text-red-500">{error}</div>
   if (!family || !org || !event) return null

@@ -276,7 +276,7 @@ export default function EventSettingsPage() {
                 placeholder={`${event.name} at Your Business`}
               />
               <p className="text-xs text-muted-foreground">
-                How your org appears in the "From" field of emails. Defaults to TraxEvent if left blank.
+                How your org appears in the &ldquo;From&rdquo; field of emails. Defaults to TraxEvent if left blank.
               </p>
             </div>
 

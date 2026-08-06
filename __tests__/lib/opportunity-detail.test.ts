@@ -3,6 +3,11 @@ import {
   initials, addDays, dueStatus, todayYmd, formatRelativeTime,
   bannerContent, attachmentChips,
 } from '@/lib/opportunity-detail'
+import type { Proposal, Invoice, Contract } from '@/lib/types'
+
+const asProposal = (p: Partial<Proposal>) => p as Proposal
+const asInvoice = (v: Partial<Invoice>) => v as Invoice
+const asContract = (c: Partial<Contract>) => c as Contract
 
 describe('initials', () => {
   it('takes first+last initial', () => expect(initials('Ada Lovelace')).toBe('AL'))
@@ -68,9 +73,9 @@ const unpaidInvoice = { line_items: [{ description: 'x', quantity: 1, unit_price
 describe('attachmentChips', () => {
   it('summarizes counts and hints', () => {
     const chips = attachmentChips({
-      proposals: [{ status: 'accepted' } as any, { status: 'draft' } as any],
-      invoices: [unpaidInvoice as any],
-      contracts: [{ status: 'signed' } as any],
+      proposals: [asProposal({ status: 'accepted' }), asProposal({ status: 'draft' })],
+      invoices: [asInvoice(unpaidInvoice)],
+      contracts: [asContract({ status: 'signed' })],
       vendors: [],
     })
     const byKind = Object.fromEntries(chips.map((c) => [c.kind, c]))
@@ -84,15 +89,15 @@ describe('attachmentChips', () => {
 
   it('treats a fully-paid live invoice as paid', () => {
     const paid = { line_items: [{ description: 'x', quantity: 1, unit_price: 100 }], payments: [{ amount: 100, recorded_at: '' }] }
-    const chips = attachmentChips({ proposals: [], invoices: [paid as any], contracts: [], vendors: [] })
+    const chips = attachmentChips({ proposals: [], invoices: [asInvoice(paid)], contracts: [], vendors: [] })
     const invoice = chips.find((c) => c.kind === 'invoice')!
     expect(invoice.count).toBe(1)
     expect(invoice.hint).toBe('paid')
   })
 
   it('does not count a voided invoice as unpaid, and shows no hint when all are void', () => {
-    const voided = { lifecycle: 'voided', line_items: [{ description: 'x', quantity: 1, unit_price: 100 }], payments: [] }
-    const chips = attachmentChips({ proposals: [], invoices: [voided as any], contracts: [], vendors: [] })
+    const voided: Partial<Invoice> = { lifecycle: 'voided', line_items: [{ description: 'x', quantity: 1, unit_price: 100 }], payments: [] }
+    const chips = attachmentChips({ proposals: [], invoices: [asInvoice(voided)], contracts: [], vendors: [] })
     const invoice = chips.find((c) => c.kind === 'invoice')!
     expect(invoice.count).toBe(1)
     expect(invoice.hint).toBeUndefined()
