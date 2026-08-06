@@ -50,8 +50,16 @@ export function normalizeBlocks(input: unknown): NormalizeResult {
     if (!raw || typeof raw !== 'object') return
     const b = raw as Record<string, unknown>
 
+    // The `blk-<n>` fallback must itself be checked for collision: a block can
+    // legitimately CARRY the id `blk-1` (nothing reserves that prefix), which
+    // would collide with the fallback minted for the block at index 1 and
+    // yield two blocks sharing an id. Walk forward until the id is free.
     let id = str(b.id).trim()
-    if (!id || seen.has(id)) id = `blk-${index}`
+    if (!id || seen.has(id)) {
+      let n = index
+      while (seen.has(`blk-${n}`)) n += 1
+      id = `blk-${n}`
+    }
     seen.add(id)
 
     switch (b.type) {

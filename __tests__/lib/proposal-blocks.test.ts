@@ -49,6 +49,29 @@ describe('normalizeBlocks', () => {
     expect(blocks[2].id).toBe('blk-2')
   })
 
+  it('never lets a generated fallback id collide with a supplied one', () => {
+    // The fallback is `blk-<index>`, so a block that legitimately CARRIES the
+    // id `blk-1` collides with the fallback minted for the block at index 1.
+    // Unreachable from today's editor, but increment 2's AI generator becomes
+    // a producer of externally-authored ids.
+    const { blocks } = normalizeBlocks([
+      { id: 'blk-1', type: 'paragraph', text: 'one' },
+      { type: 'paragraph', text: 'two' },
+    ])
+    expect(blocks).toHaveLength(2)
+    expect(blocks[0].id).toBe('blk-1')
+    expect(new Set(blocks.map((b) => b.id)).size).toBe(2)
+  })
+
+  it('resolves a chain of fallback collisions', () => {
+    const { blocks } = normalizeBlocks([
+      { id: 'blk-1', type: 'paragraph', text: 'one' },
+      { id: 'blk-2', type: 'paragraph', text: 'two' },
+      { type: 'paragraph', text: 'three' },
+    ])
+    expect(new Set(blocks.map((b) => b.id)).size).toBe(3)
+  })
+
   it('truncates to MAX_BLOCKS and reports it', () => {
     const many = Array.from({ length: MAX_BLOCKS + 5 }, (_, i) => ({
       id: `b${i}`, type: 'paragraph', text: 'x',
