@@ -3,7 +3,7 @@
 // × guests → lists; event date × pack → deadlines; templates → checklist
 // instances.
 import type {
-  WorkPackage, OpsResource, ChecklistTemplate,
+  WorkPackage, OpsResource, ChecklistTemplate, ChecklistPhase,
   OpsDeadline, OpsListItem, OpsChecklist, CloseoutSummary,
 } from '@/lib/types'
 
