@@ -1,14 +1,10 @@
 'use server'
 
-import { adminDb } from '@/lib/firebase-admin'
 import { randomBytes } from 'crypto'
 import { assertOrgMember, assertOrgAdmin } from '@/lib/auth/assert'
 import { logActivity } from '@/lib/activity'
+import { tasksRef, listTasksCore } from '@/lib/crm/tasks'
 import type { Task } from '@/lib/types'
-
-function tasksRef(orgId: string, leadId: string) {
-  return adminDb.collection('orgs').doc(orgId).collection('leads').doc(leadId).collection('tasks')
-}
 
 export interface CreateTaskInput {
   title: string
@@ -33,8 +29,7 @@ export async function createTask(orgId: string, leadId: string, input: CreateTas
 
 export async function listTasks(orgId: string, leadId: string): Promise<Task[]> {
   await assertOrgMember(orgId)
-  const snap = await tasksRef(orgId, leadId).orderBy('created_at').get()
-  return snap.docs.map((d) => d.data() as Task)
+  return listTasksCore(orgId, leadId)
 }
 
 export async function completeTask(orgId: string, leadId: string, taskId: string): Promise<void> {
