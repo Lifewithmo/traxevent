@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
+import { ProposalBlockEditor } from '@/components/admin/ProposalBlockEditor'
 import { updateProposal, sendProposal, deleteProposal, voidProposal } from '@/actions/proposals'
 import {
   lineItemSubtotal,
@@ -417,6 +418,20 @@ export function ProposalEditorClient({ orgId, orgSlug, leadId, proposal }: Propo
           </CardContent>
         </Card>
       )}
+
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle>Document</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ProposalBlockEditor
+            orgId={orgId}
+            proposalId={proposal.id}
+            initialBlocks={proposal.blocks ?? []}
+            disabled={locked}
+          />
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader className="flex-row items-center justify-between space-y-0">

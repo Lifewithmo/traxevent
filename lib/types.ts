@@ -441,6 +441,16 @@ export interface ProposalLineItem {
   taxable?: boolean            // default true; stored now, honored in a later increment
 }
 
+export const PROPOSAL_BLOCK_TYPES = ['heading', 'paragraph', 'list', 'image', 'testimonial'] as const
+export type ProposalBlockType = (typeof PROPOSAL_BLOCK_TYPES)[number]
+
+export type ProposalBlock =
+  | { id: string; type: 'heading'; text: string; level?: 2 | 3 }
+  | { id: string; type: 'paragraph'; text: string }
+  | { id: string; type: 'list'; items: string[]; ordered?: boolean }
+  | { id: string; type: 'image'; url: string; alt?: string; caption?: string }
+  | { id: string; type: 'testimonial'; quote: string; attribution?: string }
+
 export interface ProposalDiscount { type: 'percent' | 'fixed'; value: number }
 export interface ProposalDeposit { type: 'percent' | 'fixed'; value: number }  // captured now, collected later
 
@@ -463,8 +473,9 @@ export interface Proposal {
   discount?: ProposalDiscount
   tax_rate?: number            // percent, e.g. 8.25
   deposit?: ProposalDeposit
-  expires_at?: string          // ISO; display-only this increment
+  expires_at?: string          // ISO; enforced both when signing (signProposal) and when starting a before_accept deposit payment (proposal-deposit/intent route)
   notes?: string
+  blocks?: ProposalBlock[]     // document content, rendered above the pricing section
   selection?: ProposalSelection
   client_response_at?: string  // set when the client accepts/rejects
   void_reason?: string         // set when status transitions to 'voided'

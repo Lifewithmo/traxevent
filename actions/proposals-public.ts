@@ -3,13 +3,13 @@
 import { headers } from 'next/headers'
 import { FieldValue } from 'firebase-admin/firestore'
 import { adminDb } from '@/lib/firebase-admin'
-import { computeSelectedTotal, depositAmount } from '@/lib/proposals'
+import { computeSelectedTotal, depositAmount, proposalExpiryInstant } from '@/lib/proposals'
 import { signedDocumentHash } from '@/lib/proposal-signature'
 import { sendProposalSignedConfirmation } from '@/lib/email'
 import { getVerifiedSendingDomain } from '@/actions/domains'
 import type {
   Proposal, ProposalStatus, ProposalLineItem, ProposalPackage,
-  ProposalDiscount, ProposalDeposit, ProposalSelection, PaymentStatus,
+  ProposalDiscount, ProposalDeposit, ProposalSelection, PaymentStatus, ProposalBlock,
 } from '@/lib/types'
 
 // Public-safe projection of a Proposal. Deliberately OMITS the secret
@@ -30,6 +30,7 @@ export interface PublicProposal {
   payment_status?: PaymentStatus
   expires_at?: string
   notes?: string
+  blocks?: ProposalBlock[]
   selection?: ProposalSelection
   client_response_at?: string
   created_at: string
@@ -67,6 +68,7 @@ export async function getPublicProposal(token: string): Promise<PublicProposal |
   }
   if (proposal.title !== undefined) publicProposal.title = proposal.title
   if (proposal.notes !== undefined) publicProposal.notes = proposal.notes
+  if (proposal.blocks !== undefined) publicProposal.blocks = proposal.blocks
   if (proposal.packages !== undefined) publicProposal.packages = proposal.packages
   if (proposal.discount !== undefined) publicProposal.discount = proposal.discount
   if (proposal.tax_rate !== undefined) publicProposal.tax_rate = proposal.tax_rate
@@ -148,6 +150,9 @@ export async function signProposal(token: string, input: {
   const proposal = doc.data() as Proposal
   if (proposal.status !== 'sent' || proposal.signature) {
     throw new Error('This proposal is no longer awaiting a response')
+  }
+  if (proposal.expires_at && Date.now() > proposalExpiryInstant(proposal.expires_at)) {
+    throw new Error('This proposal has expired. Please ask for an updated proposal.')
   }
 
   // 2. validate the selection against THIS proposal (same rules as Increment 1)

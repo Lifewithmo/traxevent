@@ -99,3 +99,40 @@ export function proposalDisplayRange(
   if (selectedTotal != null) return { min: selectedTotal, max: selectedTotal }
   return proposalRange(proposal)
 }
+
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/
+
+// The single source of truth for "what instant does this proposal's
+// expires_at resolve to" — used by both signing guards (actions/
+// proposals-public.ts, the before_accept deposit-intent route) and by the
+// customer-facing "This proposal expires ..." display, so all three can
+// never disagree.
+//
+// The admin editor's expiry field is a bare <input type="date">, which is
+// the ONLY format this field holds in practice (not an edge case to shrug
+// off). A bare YYYY-MM-DD parsed the naive way (`new Date('2026-08-06')`)
+// resolves to 2026-08-06T00:00:00Z — i.e. the proposal would already read as
+// expired for the entire day the admin meant to include. So a date-only
+// value is resolved to the END of that calendar day (23:59:59.999 UTC)
+// instead, meaning the whole named day is still valid. A value that already
+// carries a time component (e.g. a full ISO datetime) is used as-is.
+//
+// An unparseable value deliberately does NOT resolve to "expired": returning
+// +Infinity means such a proposal is never treated as past its expiry.
+// Silently bricking a proposal because of a malformed stored date string
+// would be worse than not enforcing expiry at all — enforcement here is
+// fail-closed on genuine expiry, not fail-closed on bad data.
+//
+// KNOWN RESIDUAL: resolving to end-of-day UTC (not end-of-day in the
+// customer's own local time) still cuts a proposal off early for anyone west
+// of UTC — e.g. a Pacific-time customer loses several hours of their final
+// valid day. Fixing that properly needs an org- or customer-level timezone,
+// which this data model does not have. End-of-day UTC is the improvement
+// available without inventing one.
+export function proposalExpiryInstant(expiresAt: string): number {
+  if (DATE_ONLY.test(expiresAt)) {
+    return new Date(`${expiresAt}T23:59:59.999Z`).getTime()
+  }
+  const t = new Date(expiresAt).getTime()
+  return Number.isNaN(t) ? Infinity : t
+}

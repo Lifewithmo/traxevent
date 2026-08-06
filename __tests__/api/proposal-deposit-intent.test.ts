@@ -250,4 +250,80 @@ describe('POST /api/payments/proposal-deposit/intent', () => {
     expect(proposalUpdateSpy).not.toHaveBeenCalled()
     expect(createPaymentIntentSpy).not.toHaveBeenCalled()
   })
+
+  // Regression: an expired `before_accept` proposal must not be able to start
+  // a deposit payment — this is the same "no signing an expired proposal"
+  // rule as signProposal, reached through the other door (pay-then-promote
+  // instead of sign-then-pay). Nothing may be written and no PaymentIntent
+  // may be created.
+  it('before_accept: rejects an expired proposal without writing pending_signature or creating an intent', async () => {
+    mockProposalSnapshot(
+      { ...sentBeforeAcceptProposal(), expires_at: '2020-01-01T00:00:00.000Z' },
+      { id: 'org-1', stripe_account_id: 'acct_abc' },
+    )
+    const req = new Request('http://localhost/api/payments/proposal-deposit/intent', {
+      method: 'POST',
+      body: JSON.stringify({
+        token: 'tok-1',
+        signer_name: 'Dana',
+        signer_email: 'd@x.co',
+        consent: true,
+        selection: { package_id: 'good', optional_item_ids: ['o1'] },
+      }),
+    })
+    const res = await POST(req)
+    expect(res.status).toBe(400)
+    const body = await res.json()
+    expect(body.error).toMatch(/expired/i)
+    expect(proposalUpdateSpy).not.toHaveBeenCalled()
+    expect(createPaymentIntentSpy).not.toHaveBeenCalled()
+  })
+
+  // Regression: expires_at from the admin editor's <input type="date"> is a
+  // bare YYYY-MM-DD with no time component. A date-only expiry of "today"
+  // must still allow starting the deposit — proposalExpiryInstant resolves
+  // it to the end of that day in UTC, not UTC midnight.
+  it('before_accept: still proceeds when a date-only expiry is today', async () => {
+    const today = new Date().toISOString().slice(0, 10)
+    mockProposalSnapshot(
+      { ...sentBeforeAcceptProposal(), expires_at: today },
+      { id: 'org-1', stripe_account_id: 'acct_abc' },
+    )
+    const req = new Request('http://localhost/api/payments/proposal-deposit/intent', {
+      method: 'POST',
+      body: JSON.stringify({
+        token: 'tok-1',
+        signer_name: 'Dana',
+        signer_email: 'd@x.co',
+        consent: true,
+        selection: { package_id: 'good', optional_item_ids: ['o1'] },
+      }),
+    })
+    const res = await POST(req)
+    expect(res.status).toBe(200)
+    expect(proposalUpdateSpy).toHaveBeenCalledTimes(1)
+    expect(createPaymentIntentSpy).toHaveBeenCalledTimes(1)
+  })
+
+  // Mirror-image: a future expiry does not interfere with the normal flow.
+  it('before_accept: still proceeds when the expiry is in the future', async () => {
+    mockProposalSnapshot(
+      { ...sentBeforeAcceptProposal(), expires_at: '2999-01-01T00:00:00.000Z' },
+      { id: 'org-1', stripe_account_id: 'acct_abc' },
+    )
+    const req = new Request('http://localhost/api/payments/proposal-deposit/intent', {
+      method: 'POST',
+      body: JSON.stringify({
+        token: 'tok-1',
+        signer_name: 'Dana',
+        signer_email: 'd@x.co',
+        consent: true,
+        selection: { package_id: 'good', optional_item_ids: ['o1'] },
+      }),
+    })
+    const res = await POST(req)
+    expect(res.status).toBe(200)
+    expect(proposalUpdateSpy).toHaveBeenCalledTimes(1)
+    expect(createPaymentIntentSpy).toHaveBeenCalledTimes(1)
+  })
 })

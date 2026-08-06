@@ -148,6 +148,38 @@ describe('getPublicProposal', () => {
     expect('token' in (result as object)).toBe(false)
     expect('org_id' in (result as object)).toBe(false)
   })
+
+  it('exposes blocks when present', async () => {
+    mockSnapshot({
+      id: 'p1', org_id: 'org-1', lead_id: 'l1', token: 'tok',
+      status: 'sent', line_items: [], created_at: 'x',
+      blocks: [{ id: 'a', type: 'paragraph', text: 'Hello' }],
+    })
+    const result = await getPublicProposal('tok')
+    expect(result?.blocks).toEqual([{ id: 'a', type: 'paragraph', text: 'Hello' }])
+  })
+
+  it('omits blocks entirely when the proposal has none', async () => {
+    mockSnapshot({
+      id: 'p1', org_id: 'org-1', lead_id: 'l1', token: 'tok',
+      status: 'sent', line_items: [], created_at: 'x',
+    })
+    const result = await getPublicProposal('tok')
+    expect('blocks' in (result as object)).toBe(false)
+  })
+
+  it('still never leaks token, org_id, lead_id or id', async () => {
+    mockSnapshot({
+      id: 'p1', org_id: 'org-1', lead_id: 'l1', token: 'tok',
+      status: 'sent', line_items: [], created_at: 'x',
+      blocks: [{ id: 'a', type: 'paragraph', text: 'Hello' }],
+    })
+    const result = await getPublicProposal('tok') as unknown as Record<string, unknown>
+    expect(result.token).toBeUndefined()
+    expect(result.org_id).toBeUndefined()
+    expect(result.lead_id).toBeUndefined()
+    expect(result.id).toBeUndefined()
+  })
 })
 
 describe('respondToProposal', () => {
@@ -476,6 +508,46 @@ describe('signProposal', () => {
     expect(sendProposalSignedConfirmation).toHaveBeenCalledWith(
       expect.objectContaining({ to: 'a@a.co', signerName: 'A', fromDomain: undefined }),
     )
+  })
+
+  it('refuses to sign an expired proposal', async () => {
+    mockSnapshot({
+      id: 'p1', org_id: 'org-1', lead_id: 'l1', token: 'tok',
+      status: 'sent', line_items: [], created_at: 'x',
+      expires_at: '2020-01-01T00:00:00.000Z',
+    })
+    await expect(
+      signProposal('tok', { signer_name: 'Dana', signer_email: 'd@x.com', consent: true }),
+    ).rejects.toThrow(/expired/i)
+    expect(proposalUpdateSpy).not.toHaveBeenCalled()
+  })
+
+  it('allows signing when the expiry is in the future', async () => {
+    mockSnapshot({
+      id: 'p1', org_id: 'org-1', lead_id: 'l1', token: 'tok',
+      status: 'sent', line_items: [], created_at: 'x',
+      expires_at: '2999-01-01T00:00:00.000Z',
+    })
+    await expect(
+      signProposal('tok', { signer_name: 'Dana', signer_email: 'd@x.com', consent: true }),
+    ).resolves.toBeDefined()
+  })
+
+  // Regression: the admin editor's expiry field is a bare <input
+  // type="date">, so `expires_at` is stored as YYYY-MM-DD with no time
+  // component. Naively parsing that as UTC midnight would reject signing for
+  // the entire final valid day. A date-only expires_at of "today" must still
+  // be signable — proposalExpiryInstant resolves it to end-of-day UTC.
+  it('still allows signing when a date-only expiry is today', async () => {
+    const today = new Date().toISOString().slice(0, 10)
+    mockSnapshot({
+      id: 'p1', org_id: 'org-1', lead_id: 'l1', token: 'tok',
+      status: 'sent', line_items: [], created_at: 'x',
+      expires_at: today,
+    })
+    await expect(
+      signProposal('tok', { signer_name: 'Dana', signer_email: 'd@x.com', consent: true }),
+    ).resolves.toBeDefined()
   })
 })
 
