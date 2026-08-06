@@ -25,7 +25,9 @@ describe('lead waiting mutations', () => {
   })
 
   it('sets waiting with a trimmed reason and omits an absent follow-up date', async () => {
+    const { assertOrgAdmin } = await import('@/lib/auth/assert')
     await setLeadWaiting('o1', 'l1', { reason: '  awaiting deposit  ' })
+    expect(assertOrgAdmin).toHaveBeenCalledWith('o1')
     expect(updateLeadCore).toHaveBeenCalledWith('o1', 'l1', { waiting: { reason: 'awaiting deposit' } })
     expect(logActivity).toHaveBeenCalledWith('o1', {
       parent_type: 'opportunity', parent_id: 'l1', kind: 'waiting', summary: 'Waiting: awaiting deposit',
@@ -40,7 +42,9 @@ describe('lead waiting mutations', () => {
   })
 
   it('clears waiting by passing null through the core', async () => {
+    const { assertOrgAdmin } = await import('@/lib/auth/assert')
     await clearLeadWaiting('o1', 'l1')
+    expect(assertOrgAdmin).toHaveBeenCalledWith('o1')
     expect(updateLeadCore).toHaveBeenCalledWith('o1', 'l1', { waiting: null })
     expect(logActivity).toHaveBeenCalledWith('o1', {
       parent_type: 'opportunity', parent_id: 'l1', kind: 'waiting', summary: 'Resumed — cleared waiting',

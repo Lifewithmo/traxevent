@@ -82,11 +82,13 @@ describe('leads actions', () => {
   })
 
   it('links a customer on create, reusing one that matches by email', async () => {
+    const { assertOrgAdmin } = await import('@/lib/auth/assert')
     vi.mocked(findOrCreateCustomerCore).mockResolvedValue({
       customer: { id: 'c1', name: 'Dana Kim', created_at: 'x' },
       created: false,
     })
     const lead = await createLead('o1', { name: 'Dana Kim', email: 'dana@riv.co', organization: 'Riverside' })
+    expect(assertOrgAdmin).toHaveBeenCalledWith('o1')
     expect(findOrCreateCustomerCore).toHaveBeenCalledWith('o1', {
       name: 'Dana Kim', email: 'dana@riv.co', company: 'Riverside',
     })

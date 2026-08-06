@@ -1,9 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 const custDoc = vi.hoisted(() => ({ set: vi.fn().mockResolvedValue(undefined), get: vi.fn(), update: vi.fn().mockResolvedValue(undefined) }))
 const collRef = vi.hoisted(() => ({ doc: vi.fn(() => custDoc), orderBy: vi.fn(() => ({ get: vi.fn() })) }))
+const listLeadsByCustomerCore = vi.hoisted(() => vi.fn().mockResolvedValue([]))
 vi.mock('@/lib/firebase-admin', () => ({ adminDb: { collection: () => ({ doc: () => ({ collection: () => collRef }) }) } }))
 vi.mock('@/lib/auth/assert', () => ({ assertOrgMember: vi.fn().mockResolvedValue({}), assertOrgAdmin: vi.fn().mockResolvedValue({}) }))
-import { createCustomer, updateCustomer } from '@/actions/customers'
+vi.mock('@/lib/crm/leads', () => ({ listLeadsByCustomerCore }))
+import { createCustomer, updateCustomer, listCustomerOpportunities } from '@/actions/customers'
 
 describe('createCustomer', () => {
   beforeEach(() => vi.clearAllMocks())
@@ -42,5 +44,17 @@ describe('updateCustomer email_lower sync', () => {
     const written = custDoc.update.mock.calls[0][0]
     expect('email' in written).toBe(false)
     expect('email_lower' in written).toBe(false)
+  })
+})
+
+describe('listCustomerOpportunities', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('requires org membership', async () => {
+    const { assertOrgMember } = await import('@/lib/auth/assert')
+    listLeadsByCustomerCore.mockResolvedValue([])
+    await listCustomerOpportunities('o1', 'c1')
+    expect(assertOrgMember).toHaveBeenCalledWith('o1')
+    expect(listLeadsByCustomerCore).toHaveBeenCalledWith('o1', 'c1')
   })
 })
