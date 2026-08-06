@@ -27,6 +27,11 @@ export async function listLeadsCore(orgId: string): Promise<Lead[]> {
   return snap.docs.map((d) => d.data() as Lead)
 }
 
+export async function listLeadsByCustomerCore(orgId: string, customerId: string): Promise<Lead[]> {
+  const snap = await leadsRef(orgId).where('customer_id', '==', customerId).orderBy('created_at', 'desc').get()
+  return snap.docs.map((d) => d.data() as Lead)
+}
+
 /** Guard-free lead update. Validates stage; performs no auth and logs no activity. */
 export async function updateLeadCore(orgId: string, leadId: string, updates: LeadUpdate): Promise<void> {
   if (updates.stage && !LEAD_STAGES.includes(updates.stage)) throw new Error('Invalid stage')
