@@ -6,6 +6,9 @@ const leadDocUpdateSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const leadDocDeleteSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const listLeadsSpy = vi.hoisted(() => vi.fn())
 const fieldValueDeleteSentinel = vi.hoisted(() => ({ __op: 'delete' }))
+const findOrCreateCustomerCore = vi.hoisted(() =>
+  vi.fn().mockResolvedValue({ customer: { id: 'default-customer-id', name: 'x', created_at: 'x' }, created: true })
+)
 
 vi.mock('@/lib/firebase-admin', () => {
   const leadsCol = {
@@ -42,6 +45,8 @@ vi.mock('firebase-admin/firestore', () => ({
 
 vi.mock('@/lib/activity', () => ({ logActivity: vi.fn().mockResolvedValue(undefined) }))
 
+vi.mock('@/lib/crm/customers', () => ({ findOrCreateCustomerCore }))
+
 import {
   listLeads,
   getLead,
@@ -74,6 +79,27 @@ describe('leads actions', () => {
     const written = leadDocSetSpy.mock.calls[0][0]
     expect(written).not.toHaveProperty('email')
     expect(written).not.toHaveProperty('organization')
+  })
+
+  it('links a customer on create, reusing one that matches by email', async () => {
+    vi.mocked(findOrCreateCustomerCore).mockResolvedValue({
+      customer: { id: 'c1', name: 'Dana Kim', created_at: 'x' },
+      created: false,
+    })
+    const lead = await createLead('o1', { name: 'Dana Kim', email: 'dana@riv.co', organization: 'Riverside' })
+    expect(findOrCreateCustomerCore).toHaveBeenCalledWith('o1', {
+      name: 'Dana Kim', email: 'dana@riv.co', company: 'Riverside',
+    })
+    expect(lead.customer_id).toBe('c1')
+  })
+
+  it('still creates the lead when no email is supplied', async () => {
+    vi.mocked(findOrCreateCustomerCore).mockResolvedValue({
+      customer: { id: 'c2', name: 'Walk-in', created_at: 'x' },
+      created: true,
+    })
+    const lead = await createLead('o1', { name: 'Walk-in' })
+    expect(lead.customer_id).toBe('c2')
   })
 
   it('createLead throws "Name is required" for blank name and does not write', async () => {

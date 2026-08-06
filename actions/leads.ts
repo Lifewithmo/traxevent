@@ -4,6 +4,7 @@ import { assertOrgMember, assertOrgAdmin } from '@/lib/auth/assert'
 import { LEAD_STAGES } from '@/lib/leads'
 import { logActivity } from '@/lib/activity'
 import { leadsRef, listLeadsCore, updateLeadCore, type LeadUpdate } from '@/lib/crm/leads'
+import { findOrCreateCustomerCore } from '@/lib/crm/customers'
 import { randomBytes } from 'crypto'
 import type { Lead, LeadStage, LeadWaiting } from '@/lib/types'
 
@@ -39,12 +40,19 @@ export async function createLead(orgId: string, input: CreateLeadInput): Promise
   if (!input.name?.trim()) throw new Error('Name is required')
   const stage = input.stage ?? 'inquiry'
   if (!LEAD_STAGES.includes(stage)) throw new Error('Invalid stage')
+  const { customer } = await findOrCreateCustomerCore(orgId, {
+    name: input.name.trim(),
+    ...(input.organization?.trim() ? { company: input.organization.trim() } : {}),
+    ...(input.email?.trim() ? { email: input.email.trim() } : {}),
+    ...(input.phone?.trim() ? { phone: input.phone.trim() } : {}),
+  })
   const id = randomBytes(8).toString('hex')
   const lead: Lead = {
     id,
     name: input.name.trim(),
     stage,
     created_at: new Date().toISOString(),
+    customer_id: customer.id,
     ...(input.email?.trim() ? { email: input.email.trim() } : {}),
     ...(input.phone?.trim() ? { phone: input.phone.trim() } : {}),
     ...(input.organization?.trim() ? { organization: input.organization.trim() } : {}),
