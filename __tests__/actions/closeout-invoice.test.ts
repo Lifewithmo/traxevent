@@ -42,7 +42,9 @@ vi.mock('@/lib/firebase-admin', () => ({
 
 import { assertOrgAdmin } from '@/lib/auth/assert'
 import { getCloseoutCore } from '@/lib/ops/closeout'
+import { getWorkPackagesByIdsCore } from '@/lib/ops/work-packages'
 import { createInvoiceCore } from '@/lib/crm/invoices'
+import { getLead } from '@/actions/leads'
 import { generateCloseoutInvoice } from '@/actions/invoices'
 
 beforeEach(() => vi.clearAllMocks())
@@ -66,5 +68,19 @@ describe('generateCloseoutInvoice', () => {
   it('refuses when closeout is not complete', async () => {
     vi.mocked(getCloseoutCore).mockResolvedValueOnce({ actuals: {}, completed: false, created_at: 'x' })
     await expect(generateCloseoutInvoice('o1', 'e1', 'l1')).rejects.toThrow('Complete closeout before generating the final invoice')
+  })
+
+  it('refuses when the lead no longer exists', async () => {
+    vi.mocked(getLead).mockResolvedValueOnce(null)
+    await expect(generateCloseoutInvoice('o1', 'e1', 'l1')).rejects.toThrow('Lead not found')
+    expect(createInvoiceCore).not.toHaveBeenCalled()
+  })
+
+  it('refuses when a plan package no longer exists in the catalog', async () => {
+    vi.mocked(getWorkPackagesByIdsCore).mockResolvedValueOnce([
+      { id: 'p1', name: 'Espresso Bar', price: 900, lines: [] },
+    ])
+    await expect(generateCloseoutInvoice('o1', 'e1', 'l1')).rejects.toThrow(/Package no longer exists: p2/)
+    expect(createInvoiceCore).not.toHaveBeenCalled()
   })
 })

@@ -99,11 +99,12 @@ export async function generateCloseoutInvoice(orgId: string, eventId: string, le
   const event = eventSnap.data() as Event
 
   const lead = await getLead(orgId, leadId)
+  if (!lead) throw new Error('Lead not found')
   return createInvoiceCore(orgId, leadId, {
     type: 'final',
     title: `Final invoice — ${event.name}`,
     line_items: packages.map((p) => ({ description: p.name, quantity: 1, unit_price: p.price })),
-    customer_id: lead?.customer_id,
+    customer_id: lead.customer_id,
   })
 }
 
