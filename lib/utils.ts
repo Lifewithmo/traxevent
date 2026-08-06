@@ -7,5 +7,5 @@ export function cn(...inputs: ClassValue[]) {
 
 /** Display rounding for all ops money (margins, costs). Storage stays float dollars. */
 export function formatMoney(n: number): string {
-  return `$${n.toFixed(2)}`
+  return n < 0 ? `-$${Math.abs(n).toFixed(2)}` : `$${n.toFixed(2)}`
 }

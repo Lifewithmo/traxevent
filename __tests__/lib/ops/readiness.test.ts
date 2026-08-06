@@ -58,4 +58,12 @@ describe('formatMoney', () => {
     expect(formatMoney(1234.5)).toBe('$1234.50')
     expect(formatMoney(0.125 * 3)).toBe('$0.38')
   })
+
+  it('renders negative amounts with the sign before the dollar sign', () => {
+    expect(formatMoney(-12)).toBe('-$12.00')
+  })
+
+  it('renders negative zero as $0.00', () => {
+    expect(formatMoney(-0)).toBe('$0.00')
+  })
 })
