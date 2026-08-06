@@ -148,6 +148,38 @@ describe('getPublicProposal', () => {
     expect('token' in (result as object)).toBe(false)
     expect('org_id' in (result as object)).toBe(false)
   })
+
+  it('exposes blocks when present', async () => {
+    mockSnapshot({
+      id: 'p1', org_id: 'org-1', lead_id: 'l1', token: 'tok',
+      status: 'sent', line_items: [], created_at: 'x',
+      blocks: [{ id: 'a', type: 'paragraph', text: 'Hello' }],
+    })
+    const result = await getPublicProposal('tok')
+    expect(result?.blocks).toEqual([{ id: 'a', type: 'paragraph', text: 'Hello' }])
+  })
+
+  it('omits blocks entirely when the proposal has none', async () => {
+    mockSnapshot({
+      id: 'p1', org_id: 'org-1', lead_id: 'l1', token: 'tok',
+      status: 'sent', line_items: [], created_at: 'x',
+    })
+    const result = await getPublicProposal('tok')
+    expect('blocks' in (result as object)).toBe(false)
+  })
+
+  it('still never leaks token, org_id, lead_id or id', async () => {
+    mockSnapshot({
+      id: 'p1', org_id: 'org-1', lead_id: 'l1', token: 'tok',
+      status: 'sent', line_items: [], created_at: 'x',
+      blocks: [{ id: 'a', type: 'paragraph', text: 'Hello' }],
+    })
+    const result = await getPublicProposal('tok') as unknown as Record<string, unknown>
+    expect(result.token).toBeUndefined()
+    expect(result.org_id).toBeUndefined()
+    expect(result.lead_id).toBeUndefined()
+    expect(result.id).toBeUndefined()
+  })
 })
 
 describe('respondToProposal', () => {
