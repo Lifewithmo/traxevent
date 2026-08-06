@@ -473,7 +473,7 @@ export interface Proposal {
   discount?: ProposalDiscount
   tax_rate?: number            // percent, e.g. 8.25
   deposit?: ProposalDeposit
-  expires_at?: string          // ISO; display-only this increment
+  expires_at?: string          // ISO; enforced at signing time
   notes?: string
   blocks?: ProposalBlock[]     // document content, rendered above the pricing section
   selection?: ProposalSelection

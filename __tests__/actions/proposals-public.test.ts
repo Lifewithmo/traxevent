@@ -509,6 +509,29 @@ describe('signProposal', () => {
       expect.objectContaining({ to: 'a@a.co', signerName: 'A', fromDomain: undefined }),
     )
   })
+
+  it('refuses to sign an expired proposal', async () => {
+    mockSnapshot({
+      id: 'p1', org_id: 'org-1', lead_id: 'l1', token: 'tok',
+      status: 'sent', line_items: [], created_at: 'x',
+      expires_at: '2020-01-01T00:00:00.000Z',
+    })
+    await expect(
+      signProposal('tok', { signer_name: 'Dana', signer_email: 'd@x.com', consent: true }),
+    ).rejects.toThrow(/expired/i)
+    expect(proposalUpdateSpy).not.toHaveBeenCalled()
+  })
+
+  it('allows signing when the expiry is in the future', async () => {
+    mockSnapshot({
+      id: 'p1', org_id: 'org-1', lead_id: 'l1', token: 'tok',
+      status: 'sent', line_items: [], created_at: 'x',
+      expires_at: '2999-01-01T00:00:00.000Z',
+    })
+    await expect(
+      signProposal('tok', { signer_name: 'Dana', signer_email: 'd@x.com', consent: true }),
+    ).resolves.toBeDefined()
+  })
 })
 
 describe('respondToProposal decline', () => {

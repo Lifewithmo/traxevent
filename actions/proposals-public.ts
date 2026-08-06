@@ -151,6 +151,9 @@ export async function signProposal(token: string, input: {
   if (proposal.status !== 'sent' || proposal.signature) {
     throw new Error('This proposal is no longer awaiting a response')
   }
+  if (proposal.expires_at && new Date(proposal.expires_at).getTime() < Date.now()) {
+    throw new Error('This proposal has expired. Please ask for an updated proposal.')
+  }
 
   // 2. validate the selection against THIS proposal (same rules as Increment 1)
   const packages = proposal.packages ?? []
