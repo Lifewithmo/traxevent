@@ -473,7 +473,7 @@ export interface Proposal {
   discount?: ProposalDiscount
   tax_rate?: number            // percent, e.g. 8.25
   deposit?: ProposalDeposit
-  expires_at?: string          // ISO; enforced at signing time
+  expires_at?: string          // ISO; enforced both when signing (signProposal) and when starting a before_accept deposit payment (proposal-deposit/intent route)
   notes?: string
   blocks?: ProposalBlock[]     // document content, rendered above the pricing section
   selection?: ProposalSelection

@@ -61,6 +61,12 @@ export async function POST(req: Request) {
         { status: 400 }
       )
     }
+    if (proposal.expires_at && new Date(proposal.expires_at).getTime() < Date.now()) {
+      return NextResponse.json(
+        { error: 'This proposal has expired. Please ask for an updated proposal.' },
+        { status: 400 }
+      )
+    }
 
     const name = typeof body?.signer_name === 'string' ? body.signer_name.trim() : ''
     const email = typeof body?.signer_email === 'string' ? body.signer_email.trim() : ''
