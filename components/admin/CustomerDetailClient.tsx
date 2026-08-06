@@ -6,8 +6,11 @@ import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Mail, Phone } from 'lucide-react'
 import { createNote } from '@/actions/notes'
+import { updateCustomer } from '@/actions/customers'
 import { LEAD_STAGE_LABELS, opportunityTitle } from '@/lib/leads'
 import { formatRelativeTime } from '@/lib/opportunity-detail'
 import type { CustomerRollup } from '@/lib/crm/customer-rollup'
@@ -22,11 +25,23 @@ interface CustomerDetailClientProps {
   notes: Note[]
 }
 
+// Blank -> null (clears the field via CustomerUpdate's FieldValue.delete() mapping);
+// otherwise the trimmed value. `undefined` is never sent — every field is always
+// part of the save payload, matching OpportunityDetailsForm's `opt` helper.
+const opt = (v: string): string | null => (v.trim() === '' ? null : v.trim())
+
 export function CustomerDetailClient({ orgId, orgSlug, customer, opportunities, rollup, notes }: CustomerDetailClientProps) {
   const router = useRouter()
   const [body, setBody] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const [name, setName] = useState(customer.name)
+  const [company, setCompany] = useState(customer.company ?? '')
+  const [email, setEmail] = useState(customer.email ?? '')
+  const [phone, setPhone] = useState(customer.phone ?? '')
+  const [contactBusy, setContactBusy] = useState(false)
+  const [contactError, setContactError] = useState<string | null>(null)
 
   async function handleAddNote() {
     if (!body.trim()) return
@@ -36,6 +51,21 @@ export function CustomerDetailClient({ orgId, orgSlug, customer, opportunities, 
       setBody(''); router.refresh()
     } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Could not add note') }
     finally { setBusy(false) }
+  }
+
+  async function handleSaveContact() {
+    if (!name.trim()) { setContactError('Name is required.'); return }
+    setContactBusy(true); setContactError(null)
+    try {
+      await updateCustomer(orgId, customer.id, {
+        name: name.trim(),
+        company: opt(company),
+        email: opt(email),
+        phone: opt(phone),
+      })
+      router.refresh()
+    } catch (e: unknown) { setContactError(e instanceof Error ? e.message : 'Could not save contact details') }
+    finally { setContactBusy(false) }
   }
 
   const sortedOpportunities = [...opportunities].sort((a, b) => b.created_at.localeCompare(a.created_at))
@@ -61,7 +91,6 @@ export function CustomerDetailClient({ orgId, orgSlug, customer, opportunities, 
           {customer.email && (
             <a
               href={`mailto:${customer.email}`}
-              aria-label="Email"
               className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-border px-3 text-sm hover:bg-muted"
             >
               <Mail className="h-4 w-4" /> Email
@@ -70,7 +99,6 @@ export function CustomerDetailClient({ orgId, orgSlug, customer, opportunities, 
           {customer.phone && (
             <a
               href={`tel:${customer.phone}`}
-              aria-label="Call"
               className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-border px-3 text-sm hover:bg-muted"
             >
               <Phone className="h-4 w-4" /> Call
@@ -78,6 +106,36 @@ export function CustomerDetailClient({ orgId, orgSlug, customer, opportunities, 
           )}
         </div>
       </div>
+
+      <Card>
+        <CardHeader><CardTitle className="text-base">Contact details</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          {contactError && <p className="text-sm text-destructive" role="alert">{contactError}</p>}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1">
+              <Label htmlFor="custName">Name</Label>
+              <Input id="custName" value={name} onChange={(e) => setName(e.target.value)} placeholder="Contact name" />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="custCompany">Company</Label>
+              <Input id="custCompany" value={company} onChange={(e) => setCompany(e.target.value)} placeholder="Company" />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="custEmail">Email</Label>
+              <Input id="custEmail" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.com" />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="custPhone">Phone</Label>
+              <Input id="custPhone" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="(555) 555-5555" />
+            </div>
+          </div>
+          <div>
+            <Button size="sm" onClick={handleSaveContact} disabled={contactBusy}>
+              {contactBusy ? 'Saving…' : 'Save'}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <div className="rounded-lg border bg-card p-4">
