@@ -131,7 +131,7 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
   }
 
   return (
-    <aside className="w-56 bg-gray-900 text-gray-100 min-h-screen flex flex-col flex-shrink-0">
+    <aside className="w-56 bg-gray-900 text-gray-100 min-h-screen flex flex-col flex-shrink-0 print:hidden">
       <div className="px-4 py-5 border-b border-gray-700">
         <Link href={`/${orgSlug}`} className="font-bold text-white text-lg tracking-tight">
           TraxEvent

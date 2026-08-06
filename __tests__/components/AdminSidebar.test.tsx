@@ -85,4 +85,10 @@ describe('Operations nav (phase 3)', () => {
     render(<AdminSidebar orgSlug="acme" eventSlug="gala" allowedEventPages={['itinerary']} />)
     expect(screen.queryByText('Event Ops')).not.toBeInTheDocument()
   })
+
+  it('applies print:hidden class to the sidebar', () => {
+    render(<AdminSidebar orgSlug="acme" />)
+    const sidebar = document.querySelector('aside')
+    expect(sidebar).toHaveClass('print:hidden')
+  })
 })
