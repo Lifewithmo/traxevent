@@ -197,6 +197,11 @@ export function ProposalResponseClient({
       <div className="mx-auto w-full max-w-3xl flex-1 px-6 py-10">
         <h1 className="mb-6 text-2xl font-bold text-gray-900">{proposal.title || 'Proposal'}</h1>
 
+        <a href={`/proposals/${token}/print`} target="_blank" rel="noreferrer"
+           className="mb-6 inline-block text-sm text-gray-600 underline print:hidden">
+          Download PDF
+        </a>
+
         <ProposalDocument blocks={proposal.blocks} />
 
         {packaged && (
