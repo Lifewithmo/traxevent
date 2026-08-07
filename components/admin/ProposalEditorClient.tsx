@@ -31,6 +31,7 @@ interface ProposalEditorClientProps {
   orgSlug: string
   leadId: string
   proposal: Proposal
+  aiEnabled?: boolean
 }
 
 const money = (n: number) => `$${n.toFixed(2)}`
@@ -47,7 +48,7 @@ function isBlankRow(item: ProposalLineItem): boolean {
   return item.description.trim() === '' && !(item.quantity > 0) && !(item.unit_price > 0)
 }
 
-export function ProposalEditorClient({ orgId, orgSlug, leadId, proposal }: ProposalEditorClientProps) {
+export function ProposalEditorClient({ orgId, orgSlug, leadId, proposal, aiEnabled = false }: ProposalEditorClientProps) {
   const router = useRouter()
 
   const [title, setTitle] = useState(proposal.title ?? '')
@@ -429,6 +430,7 @@ export function ProposalEditorClient({ orgId, orgSlug, leadId, proposal }: Propo
             proposalId={proposal.id}
             initialBlocks={proposal.blocks ?? []}
             disabled={locked}
+            aiEnabled={aiEnabled}
           />
         </CardContent>
       </Card>
