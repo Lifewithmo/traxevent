@@ -46,6 +46,10 @@ describe('parseSeedArgs', () => {
     expect(() => parseSeedArgs(['--password='])).toThrow(/Password cannot be empty/)
   })
 
+  it('rejects a whitespace-only password, like a whitespace-only email', () => {
+    expect(() => parseSeedArgs(['--password=   '])).toThrow(/Password cannot be empty/)
+  })
+
   // These three tests lock in the guard's rejection surface against future refactors.
   // Each one catches a specific, plausible regression (case-insensitive prefix check,
   // validating inside the loop, or trimming before the check).
@@ -59,5 +63,28 @@ describe('parseSeedArgs', () => {
 
   it('rejects an org id with leading whitespace before the prefix', () => {
     expect(() => parseSeedArgs(['--org-id= demo-brewtrax'])).toThrow(/must start with "demo-"/)
+  })
+
+  // The guard is an anchored character allow-list, not a prefix test: nothing
+  // outside [a-z0-9-] may reach a Firestore document path, so the safety of the
+  // recursive delete does not depend on what the server happens to reject.
+  it('rejects an org id containing a path separator', () => {
+    expect(() => parseSeedArgs(['--org-id=demo-x/y'])).toThrow(/must start with "demo-"/)
+  })
+
+  it('rejects an org id containing path traversal segments', () => {
+    expect(() => parseSeedArgs(['--org-id=demo-../../orgs'])).toThrow(/must start with "demo-"/)
+  })
+
+  it('rejects an org id with a trailing space after the prefix', () => {
+    expect(() => parseSeedArgs(['--org-id=demo- '])).toThrow(/must start with "demo-"/)
+  })
+
+  it('rejects an org id whose first character after the prefix is a hyphen', () => {
+    expect(() => parseSeedArgs(['--org-id=demo--x'])).toThrow(/must start with "demo-"/)
+  })
+
+  it('rejects an org id with uppercase after the prefix', () => {
+    expect(() => parseSeedArgs(['--org-id=demo-BrewTrax'])).toThrow(/must start with "demo-"/)
   })
 })

@@ -1,3 +1,4 @@
+import type { UserRecord } from 'firebase-admin/auth'
 import { adminDb, adminAuth } from '@/lib/firebase-admin'
 import { findOrCreateCustomerCore } from '@/lib/crm/customers'
 import { leadsRef } from '@/lib/crm/leads'
@@ -40,11 +41,11 @@ async function resetOrg(orgId: string): Promise<void> {
 }
 
 /** Look up the demo auth user by email, creating it only if absent. */
-async function resolveDemoUser(args: SeedArgs): Promise<string> {
+async function resolveDemoUser(args: SeedArgs): Promise<UserRecord> {
   try {
     const existing = await adminAuth.getUserByEmail(args.email)
     console.log(`  reusing auth user ${args.email} (${existing.uid})`)
-    return existing.uid
+    return existing
   } catch (err) {
     const code = (err as { code?: string }).code
     if (code !== 'auth/user-not-found') throw err
@@ -55,13 +56,56 @@ async function resolveDemoUser(args: SeedArgs): Promise<string> {
       emailVerified: true,
     })
     console.log(`  created auth user ${args.email} (${created.uid})`)
-    return created.uid
+    return created
   }
 }
 
-async function main(): Promise<void> {
-  const args = parseSeedArgs(process.argv.slice(2))
+/**
+ * Refuse to claim an account that carries claims this seeder did not write.
+ *
+ * The seeder replaces the account's custom claims wholesale (setCustomUserClaims
+ * REPLACES — see actions/auth.ts mergeCustomUserClaims), and `--email` has no
+ * `demo-` guard of its own, so a mistyped address would otherwise strip a real
+ * user's access. The only safe shapes are:
+ *
+ *   - NO claims at all (a freshly created demo user), or
+ *   - claims already scoped to a `demo-` org (a previous run of this seeder).
+ *
+ * Anything else is refused. In particular a platform admin is
+ * `{ role: 'platform_admin' }` with NO `orgId` key (actions/auth.ts
+ * setPlatformAdminClaim), and lib/auth/guards.ts gates all-org access on that
+ * role — so an orgId-only check would happily overwrite it and there is no
+ * in-repo path to put it back.
+ */
+function assertClaimsAreDemoOwned(user: UserRecord, email: string): void {
+  const claims = user.customClaims ?? {}
+  const orgId = claims.orgId
+  const isDemoClaims = typeof orgId === 'string' && orgId.startsWith('demo-')
+  if (Object.keys(claims).length > 0 && !isDemoClaims) {
+    throw new Error(
+      `Refusing to overwrite auth claims on ${email}: that account already carries custom claims ` +
+        `${JSON.stringify(claims)}. The seeder replaces claims wholesale, so it only claims accounts ` +
+        `with no custom claims at all or claims already scoped to a demo- org.`,
+    )
+  }
+}
 
+interface Preflight {
+  projectId: string
+  user: UserRecord
+}
+
+/**
+ * Everything that can refuse, ordered before anything that can destroy or create
+ * data in the target project. `main()` must not reset, write, or set claims until
+ * this returns.
+ *
+ * `resolveDemoUser` creates the auth user when absent — itself a side effect on a
+ * real project — so it sits after the project-id check but still ahead of the
+ * recursive delete. A newly created user has no claims and passes the claims check
+ * trivially, which is the intended outcome.
+ */
+async function preflight(args: SeedArgs): Promise<Preflight> {
   const projectId = process.env.FIREBASE_PROJECT_ID
   if (!projectId) throw new Error('FIREBASE_PROJECT_ID is not set — refusing to run')
 
@@ -70,6 +114,19 @@ async function main(): Promise<void> {
   console.log(`  org:     ${args.orgId}`)
   console.log(`  reset:   ${args.reset}\n`)
 
+  const user = await resolveDemoUser(args)
+  assertClaimsAreDemoOwned(user, args.email)
+
+  return { projectId, user }
+}
+
+async function main(): Promise<void> {
+  const args = parseSeedArgs(process.argv.slice(2))
+
+  // Guards first — nothing below this line is reversible.
+  const { user } = await preflight(args)
+  const uid = user.uid
+
   const ref = orgRef(args.orgId)
   if (args.reset) {
     await resetOrg(args.orgId)
@@ -77,7 +134,6 @@ async function main(): Promise<void> {
     throw new Error(`Org "${args.orgId}" already exists. Re-run with --reset to replace it.`)
   }
 
-  const uid = await resolveDemoUser(args)
   const seed = buildBrewtraxSeed(new Date())
 
   // Org + owner membership.
@@ -95,18 +151,8 @@ async function main(): Promise<void> {
   // Set directly via the admin SDK: actions/auth.ts setOrgClaims is 'use server'
   // and unreachable from a script. Re-applied on every run so --reset keeps the
   // login working against the recreated org.
-  // setCustomUserClaims REPLACES all claims (see actions/auth.ts mergeCustomUserClaims).
-  // --email has no demo- guard of its own, so a mistyped address would otherwise
-  // strip a real user's org access. Refuse when the resolved account already
-  // belongs to a non-demo org; absent or demo- claims are safe to overwrite.
-  const existingClaims = (await adminAuth.getUser(uid)).customClaims ?? {}
-  const existingOrgId = existingClaims.orgId
-  if (typeof existingOrgId === 'string' && !existingOrgId.startsWith('demo-')) {
-    throw new Error(
-      `Refusing to overwrite auth claims on ${args.email}: that account already belongs to org "${existingOrgId}". ` +
-        `The seeder only claims accounts with no org or a demo- org.`,
-    )
-  }
+  // The account was already vetted by assertClaimsAreDemoOwned in preflight(),
+  // before anything destructive ran.
   await adminAuth.setCustomUserClaims(uid, {
     orgId: args.orgId,
     orgSlug: org.slug,
