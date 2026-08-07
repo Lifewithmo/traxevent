@@ -74,4 +74,24 @@ describe('buildCalendar', () => {
     )
     expect(items[0].title).toBe('Dana Kim')
   })
+
+  it('shows a converted lead once, as the event, not twice', () => {
+    const items = buildCalendar(
+      'my-org',
+      [event({ id: 'c1', name: 'Nguyen Wedding', slug: 'nguyen-wedding-2026', event_start: '2026-09-12', lead_id: 'l1' } as Partial<Event>)],
+      [lead({ id: 'l1', name: 'Nguyen Wedding', event_date: '2026-09-12' })]
+    )
+    expect(items).toHaveLength(1)
+    expect(items[0]).toMatchObject({ id: 'c1', kind: 'event' })
+  })
+
+  it('still lists an unconverted lead alongside unrelated events', () => {
+    const items = buildCalendar(
+      'my-org',
+      [event({ id: 'c1', name: 'Other Job', slug: 'other-job-2026', event_start: '2026-09-12', lead_id: 'l2' } as Partial<Event>)],
+      [lead({ id: 'l1', name: 'Nguyen Wedding', event_date: '2026-09-12' })]
+    )
+    expect(items.map((i) => i.id)).toEqual(expect.arrayContaining(['c1', 'l1']))
+    expect(items).toHaveLength(2)
+  })
 })
