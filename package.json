@@ -14,6 +14,7 @@
     "crm:backfill-email-lower": "tsx --conditions=react-server scripts/crm-backfill-email-lower.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.115.0",
     "@base-ui/react": "^1.5.0",
     "@stripe/react-stripe-js": "^6.6.0",
     "@stripe/stripe-js": "^9.7.0",
