@@ -2,7 +2,8 @@
 
 import { adminDb } from '@/lib/firebase-admin'
 import { setOrgClaims } from '@/actions/auth'
-import type { Org, OrgRole } from '@/lib/types'
+import type { Org, OrgBranding, OrgRole } from '@/lib/types'
+import { parseOrgBranding } from '@/lib/branding'
 import { slugify } from '@/lib/slug'
 import { assertOrgAdmin } from '@/lib/auth/assert'
 import { getAllIndustryPacks } from '@/lib/industry-packs'
@@ -72,6 +73,18 @@ export async function getOrgBySlug(slug: string): Promise<Org | null> {
     .get()
   if (snap.empty) return null
   return snap.docs[0].data() as Org
+}
+
+/**
+ * Replace the org's brand kit. Input is validated by parseOrgBranding —
+ * cleared fields simply vanish from the stored map, so a full overwrite is
+ * also the delete path (spec §2: never store un-validated).
+ */
+export async function updateOrgBranding(orgId: string, input: OrgBranding): Promise<OrgBranding> {
+  await assertOrgAdmin(orgId)
+  const branding = parseOrgBranding(input)
+  await adminDb.collection('orgs').doc(orgId).update({ branding })
+  return branding
 }
 
 export async function setOrgIndustry(orgId: string, industryPackId: string): Promise<void> {
