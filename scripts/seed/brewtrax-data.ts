@@ -192,8 +192,11 @@ export function buildBrewtraxSeed(today: Date): BrewtraxSeed {
   // settings), so every real Event carries a date-only string, and the readers
   // assume it: the org landing page prints `{event_start} → {event_end}` raw,
   // and the settings form loads the value straight into a date input that
-  // rejects a datetime. Time of day belongs on the itinerary items and on
-  // `ops.plan.requirements.service_start/end`, which do use isoFrom.
+  // rejects a datetime. Time of day belongs on the itinerary items, whose
+  // `start_time`/`end_time` are bare `HH:mm`, and on
+  // `ops.plan.requirements.service_start/end`, which are `YYYY-MM-DDTHH:mm`
+  // via `datetimeLocalFrom` — NOT isoFrom either. Three fields, three formats,
+  // none of them full ISO; each one matches the input that writes it.
   const events: BrewtraxSeed['events'] = [
     {
       key: 'event-oakline', event: {

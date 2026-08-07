@@ -747,7 +747,11 @@ export interface OpsChecklist {
 
 export interface OpsRequirements {
   guests: number
-  service_start?: string     // ISO datetime
+  // `YYYY-MM-DDTHH:mm` — NOT full ISO. The only writers are
+  // <Input type="datetime-local"> (RequirementsCard, OpsSetup), which emits
+  // that shape and rejects a trailing `Z` by rendering the field empty.
+  // RequirementsCard also prints the stored value raw when not editing.
+  service_start?: string
   service_end?: string
   site_needs?: string[]      // e.g. ['power', 'water', 'ice', 'parking']
   notes?: string
