@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 
 const ORIGINAL_KEY = process.env.ANTHROPIC_API_KEY

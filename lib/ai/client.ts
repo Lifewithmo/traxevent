@@ -21,6 +21,6 @@ export function isAiEnabled(): boolean {
 
 export function getAnthropicClient(): Anthropic {
   if (!isAiEnabled()) throw new Error('AI is not configured')
-  if (!client) client = new Anthropic({ dangerouslyAllowBrowser: true })
+  if (!client) client = new Anthropic()
   return client
 }
