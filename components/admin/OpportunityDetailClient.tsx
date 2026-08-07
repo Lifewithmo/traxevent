@@ -11,7 +11,9 @@ import { NextActionBanner } from '@/components/admin/opportunity/NextActionBanne
 import { TasksPanel } from '@/components/admin/opportunity/TasksPanel'
 import { ActivityTimeline } from '@/components/admin/opportunity/ActivityTimeline'
 import { OpportunityDetailsForm } from '@/components/admin/opportunity/OpportunityDetailsForm'
-import type { ActivityEvent, Customer, Lead, Task } from '@/lib/types'
+import { ConvertToWorkCard } from '@/components/admin/opportunity/ConvertToWorkCard'
+import type { ActivityEvent, Customer, Event, Lead, Task } from '@/lib/types'
+import type { EventType } from '@/lib/event-types'
 
 interface OpportunityDetailClientProps {
   orgId: string
@@ -20,9 +22,11 @@ interface OpportunityDetailClientProps {
   customer: Customer | null
   tasks: Task[]
   activity: ActivityEvent[]
+  job: Event | null
+  eventTypes: EventType[]
 }
 
-export function OpportunityDetailClient({ orgId, orgSlug, lead, customer, tasks, activity }: OpportunityDetailClientProps) {
+export function OpportunityDetailClient({ orgId, orgSlug, lead, customer, tasks, activity, job, eventTypes }: OpportunityDetailClientProps) {
   const router = useRouter()
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -63,6 +67,8 @@ export function OpportunityDetailClient({ orgId, orgSlug, lead, customer, tasks,
         tasks={tasks}
         onAddNextStep={() => taskInputRef.current?.focus()}
       />
+
+      <ConvertToWorkCard orgId={orgId} orgSlug={orgSlug} lead={lead} job={job} eventTypes={eventTypes} />
 
       <div className="grid gap-4 lg:grid-cols-3">
         {/* Contact card: first on mobile, right column on desktop */}
