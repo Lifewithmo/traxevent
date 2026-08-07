@@ -111,6 +111,28 @@ describe('normalizeBlocks', () => {
     ])
     expect(blocks).toEqual([])
   })
+
+  it('preserves placeholder: true on every block type', () => {
+    const { blocks } = normalizeBlocks([
+      { id: 'h', type: 'heading', text: 'H', placeholder: true },
+      { id: 'p', type: 'paragraph', text: 'P', placeholder: true },
+      { id: 'l', type: 'list', items: ['x'], placeholder: true },
+      { id: 'i', type: 'image', url: 'https://x.test/a.png', placeholder: true },
+      { id: 't', type: 'testimonial', quote: 'Q', placeholder: true },
+    ])
+    expect(blocks).toHaveLength(5)
+    for (const b of blocks) expect(b.placeholder).toBe(true)
+  })
+
+  it('drops non-true placeholder values instead of persisting junk', () => {
+    const { blocks } = normalizeBlocks([
+      { id: 'a', type: 'paragraph', text: 'A', placeholder: false },
+      { id: 'b', type: 'paragraph', text: 'B', placeholder: 'yes' },
+      { id: 'c', type: 'paragraph', text: 'C', placeholder: 1 },
+    ])
+    expect(blocks).toHaveLength(3)
+    for (const b of blocks) expect('placeholder' in b).toBe(false)
+  })
 })
 
 describe('parseInline', () => {

@@ -62,12 +62,17 @@ export function normalizeBlocks(input: unknown): NormalizeResult {
     }
     seen.add(id)
 
+    // Skeleton-authored placeholder marker: preserved verbatim (true only) so
+    // the builder can grey it and public/print can skip it. Any other value
+    // is untrusted noise and is dropped rather than stored.
+    const placeholder = b.placeholder === true ? { placeholder: true as const } : {}
+
     switch (b.type) {
       case 'heading': {
         const text = str(b.text).trim()
         if (!text) return
         const level = b.level === 3 ? 3 : 2
-        blocks.push({ id, type: 'heading', text, level })
+        blocks.push({ id, type: 'heading', text, level, ...placeholder })
         return
       }
       case 'paragraph': {
@@ -77,7 +82,7 @@ export function normalizeBlocks(input: unknown): NormalizeResult {
           text = text.slice(0, MAX_PARAGRAPH_CHARS)
           adjustments.push(`Shortened a paragraph to ${MAX_PARAGRAPH_CHARS} characters.`)
         }
-        blocks.push({ id, type: 'paragraph', text })
+        blocks.push({ id, type: 'paragraph', text, ...placeholder })
         return
       }
       case 'list': {
@@ -91,7 +96,10 @@ export function normalizeBlocks(input: unknown): NormalizeResult {
         items = items.map((i) =>
           i.length > MAX_LIST_ITEM_CHARS ? i.slice(0, MAX_LIST_ITEM_CHARS) : i,
         )
-        blocks.push({ id, type: 'list', items, ...(b.ordered === true ? { ordered: true } : {}) })
+        blocks.push({
+          id, type: 'list', items,
+          ...(b.ordered === true ? { ordered: true } : {}), ...placeholder,
+        })
         return
       }
       case 'image': {
@@ -100,7 +108,7 @@ export function normalizeBlocks(input: unknown): NormalizeResult {
         const caption = str(b.caption).trim()
         blocks.push({
           id, type: 'image', url: str(b.url),
-          ...(alt ? { alt } : {}), ...(caption ? { caption } : {}),
+          ...(alt ? { alt } : {}), ...(caption ? { caption } : {}), ...placeholder,
         })
         return
       }
@@ -108,7 +116,10 @@ export function normalizeBlocks(input: unknown): NormalizeResult {
         const quote = str(b.quote).trim()
         if (!quote) return
         const attribution = str(b.attribution).trim()
-        blocks.push({ id, type: 'testimonial', quote, ...(attribution ? { attribution } : {}) })
+        blocks.push({
+          id, type: 'testimonial', quote,
+          ...(attribution ? { attribution } : {}), ...placeholder,
+        })
         return
       }
       default:
