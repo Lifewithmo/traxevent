@@ -50,6 +50,12 @@ describe('ClientsTable', () => {
     expect(screen.getByText(/no clients yet/i)).toBeInTheDocument()
   })
 
+  it('labels the last-update column honestly', () => {
+    render(<ClientsTable orgSlug="acme" rows={[row]} />)
+    expect(screen.getByText('Last update')).toBeInTheDocument()
+    expect(screen.queryByText('Last activity')).not.toBeInTheDocument()
+  })
+
   it('renders a customer with zero opportunities and no last activity sensibly', () => {
     render(<ClientsTable orgSlug="acme" rows={[newCustomerRow]} />)
     expect(screen.getByText('$0')).toBeInTheDocument()

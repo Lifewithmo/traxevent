@@ -25,7 +25,7 @@ export function ClientsTable({ orgSlug, rows }: ClientsTableProps) {
               <th className="px-3 py-2 text-right font-medium text-muted-foreground">Open</th>
               <th className="px-3 py-2 text-right font-medium text-muted-foreground">Won</th>
               <th className="px-3 py-2 text-right font-medium text-muted-foreground">Lifetime value</th>
-              <th className="px-3 py-2 text-left font-medium text-muted-foreground">Last activity</th>
+              <th className="px-3 py-2 text-left font-medium text-muted-foreground">Last update</th>
             </tr>
           </thead>
           <tbody>
