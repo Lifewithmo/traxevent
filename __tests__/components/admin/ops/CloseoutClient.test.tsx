@@ -33,7 +33,7 @@ const plan: OpsPlan = {
 
 const base = {
   orgId: 'o1', eventId: 'e1', orgSlug: 'acme', isAdmin: true, eventName: 'Nguyen Wedding',
-  plan, closeout: null, summary, summaryError: null, leads: [],
+  plan, closeout: null, summary, summaryError: null, leads: [], linkedLead: null,
 }
 
 beforeEach(() => vi.clearAllMocks())
@@ -86,5 +86,22 @@ describe('CloseoutClient', () => {
     fireEvent.change(screen.getByLabelText('Bill to'), { target: { value: 'l1' } })
     fireEvent.click(screen.getByRole('button', { name: 'Generate final invoice' }))
     await waitFor(() => expect(generateCloseoutInvoice).toHaveBeenCalledWith('o1', 'e1', 'l1'))
+  })
+
+  it('shows the linked opportunity instead of a picker', () => {
+    render(<CloseoutClient {...base}
+      closeout={{ actuals: { hours_worked: 6 }, completed: true, created_at: 'x' }}
+      linkedLead={{ id: 'l1', title: 'Nguyen Wedding' }} leads={[]} />)
+    expect(screen.getByText('Nguyen Wedding')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Bill to')).not.toBeInTheDocument()
+  })
+
+  it('warns when the link is broken and falls back to the picker', () => {
+    render(<CloseoutClient {...base}
+      closeout={{ actuals: { hours_worked: 6 }, completed: true, created_at: 'x' }}
+      linkedLead={null} linkBroken
+      leads={[{ id: 'l1', name: 'Dana', stage: 'closed_won', created_at: 'x' }]} />)
+    expect(screen.getByRole('status')).toHaveTextContent(/no longer exists/i)
+    expect(screen.getByLabelText('Bill to')).toBeInTheDocument()
   })
 })

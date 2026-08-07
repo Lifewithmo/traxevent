@@ -79,7 +79,7 @@ export async function generateFromProposal(
  * price. Margin/cost numbers are internal and never appear on the invoice.
  * Event↔lead linkage doesn't exist yet, so the caller picks the lead.
  */
-export async function generateCloseoutInvoice(orgId: string, eventId: string, leadId: string): Promise<Invoice> {
+export async function generateCloseoutInvoice(orgId: string, eventId: string, leadId?: string): Promise<Invoice> {
   await assertOrgAdmin(orgId)
 
   const closeout = await getCloseoutCore(orgId, eventId)
@@ -98,9 +98,15 @@ export async function generateCloseoutInvoice(orgId: string, eventId: string, le
   if (!eventSnap.exists) throw new Error('Event not found')
   const event = eventSnap.data() as Event
 
-  const lead = await getLead(orgId, leadId)
+  // A converted job knows its own opportunity. leadId is still accepted so a
+  // manually-created event — or a linked one whose opportunity was deleted —
+  // can be billed through the picker.
+  const resolvedLeadId = leadId ?? event.lead_id
+  if (!resolvedLeadId) throw new Error('No opportunity linked to this event')
+
+  const lead = await getLead(orgId, resolvedLeadId)
   if (!lead) throw new Error('Lead not found')
-  return createInvoiceCore(orgId, leadId, {
+  return createInvoiceCore(orgId, resolvedLeadId, {
     type: 'final',
     title: `Final invoice — ${event.name}`,
     line_items: packages.map((p) => ({ description: p.name, quantity: 1, unit_price: p.price })),

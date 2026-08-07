@@ -3,7 +3,8 @@ export const dynamic = 'force-dynamic'
 import { redirect } from 'next/navigation'
 import { requireEventPage } from '@/lib/auth/guards'
 import { getOpsPlan, getCloseout, getCloseoutSummary } from '@/actions/event-ops'
-import { listLeads } from '@/actions/leads'
+import { listLeads, getLead } from '@/actions/leads'
+import { opportunityTitle } from '@/lib/leads'
 import { CloseoutClient } from '@/components/admin/ops/CloseoutClient'
 import type { CloseoutSummary } from '@/lib/types'
 
@@ -18,7 +19,12 @@ export default async function CloseoutPage({
   if (!plan) redirect(`/${orgSlug}/${eventSlug}/ops`)
 
   const closeout = await getCloseout(orgId, eventId)
-  const leads = await listLeads(orgId)
+  // A linked job needs no picker, and no read to populate one. A link whose
+  // opportunity was since deleted falls back to the picker rather than
+  // dead-ending the one screen where money lands.
+  const linkedLead = event.lead_id ? await getLead(orgId, event.lead_id) : null
+  const linkBroken = !!event.lead_id && !linkedLead
+  const leads = linkedLead ? [] : await listLeads(orgId)
   let summary: CloseoutSummary | null = null
   let summaryError: string | null = null
   try {
@@ -39,6 +45,8 @@ export default async function CloseoutPage({
       summary={summary}
       summaryError={summaryError}
       leads={leads}
+      linkedLead={linkedLead ? { id: linkedLead.id, title: opportunityTitle(linkedLead) } : null}
+      linkBroken={linkBroken}
     />
   )
 }
