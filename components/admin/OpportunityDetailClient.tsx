@@ -29,7 +29,7 @@ export function OpportunityDetailClient({ orgId, orgSlug, lead, customer, tasks,
   const taskInputRef = useRef<HTMLInputElement>(null)
 
   async function handleDelete() {
-    if (!confirm(`Delete "${lead.name}"? This cannot be undone.`)) return
+    if (!confirm(`Delete "${opportunityTitle(lead)}"? This cannot be undone.`)) return
     setDeleting(true); setError(null)
     try {
       await deleteLead(orgId, lead.id)

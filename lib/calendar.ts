@@ -1,4 +1,5 @@
 import type { Event, Lead } from '@/lib/types'
+import { opportunityTitle } from '@/lib/leads'
 
 export interface CalendarItem {
   id: string
@@ -19,7 +20,7 @@ export function buildCalendar(orgSlug: string, events: Event[], leads: Lead[]): 
   }
   for (const l of leads) {
     if (l.event_date) {
-      items.push({ id: l.id, title: l.name, date: l.event_date, kind: 'lead', href: `/${orgSlug}/leads/${l.id}` })
+      items.push({ id: l.id, title: opportunityTitle(l), date: l.event_date, kind: 'lead', href: `/${orgSlug}/leads/${l.id}` })
     }
   }
   return items.sort((a, b) => a.date.localeCompare(b.date))
