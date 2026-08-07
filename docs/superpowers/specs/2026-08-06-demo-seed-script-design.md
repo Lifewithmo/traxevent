@@ -5,7 +5,7 @@
 
 ## Context
 
-There is no way to stand up a populated tenant today. Every screen — pipeline, proposals, invoice aging, ops readiness, reports — is empty until someone clicks through the product creating records by hand. That blocks two concrete needs:
+There is no way to stand up a populated tenant today. Every screen — pipeline, proposals, invoice aging, ops readiness — is empty until someone clicks through the product creating records by hand. That blocks two concrete needs:
 
 1. **Presentation.** A live walkthrough of BrewTrax (mobile beverage, the first vertical launch) needs a tenant that already looks like a real, running business.
 2. **Test.** Manual verification of a screen needs data in the states that screen is about — an overdue invoice, a stalled lead, a partly-complete ops checklist.
@@ -25,19 +25,23 @@ This design covers one script that serves both. It is a **demo/dev tool, not a m
 - **Not an emulator setup.** The repo has no Firestore emulator configured; the Admin SDK talks to whatever project `.env.local` points at. Adding emulator support is a larger, separate change.
 - **Not volume/load data.** ~10 leads, not 10,000. Query and index performance testing is a different tool.
 - **Not the registrant side.** Families, forms, and check-ins are out of scope — BrewTrax is a booked-job business with `key_contacts`, not an attendee roster.
+- **Not the org Reports page.** It follows from the line above rather than being a separate decision: the org-level Reports screen is built entirely from `Family`/registration data, so with the registrant side out of scope it stays a page of zeros in the demo tenant. Populating it means seeding registrants, which is a different demo than this one.
 
 ## Environment reality and the safety model
 
 Because writes land in a real Firebase project, safety cannot rest on "be careful." It rests on a structural constraint:
 
-**Every org id the script touches must start with `demo-`.** This is checked before any read, write, or delete. The default is `demo-brewtrax`; `--org-id` can override it but cannot escape the prefix. The recursive delete in `--reset` is scoped to `orgs/{that id}` and its subcollections. There is no code path in which the script deletes a document outside a `demo-`-prefixed org.
+**Every org id the script touches must match `/^demo-[a-z0-9][a-z0-9-]*$/`.** This is checked before any read, write, or delete. The default is `demo-brewtrax`; `--org-id` can override it but cannot escape the pattern. It is an anchored character allow-list rather than a prefix test on purpose: a prefix check leaves the rest of the id unconstrained, which would leave the safety of a recursive delete resting on whatever the Firestore server happens to reject (`..`, `/`) — an invariant this repo does not own. The recursive delete in `--reset` is scoped to `orgs/{that id}` and its subcollections. There is no code path in which the script deletes a document outside a `demo-`-prefixed org.
 
 Supporting guards:
 
 - Refuse to start if `FIREBASE_PROJECT_ID` is unset.
 - Print the resolved project id and org id before the first write, so the operator sees which project they are about to populate.
+- Refuse to overwrite the auth claims of an account that is not demo-shaped (see [Demo login](#demo-login)).
 - A plain run against an org that already exists exits with a message pointing at `--reset`, rather than merging into existing data.
 - `--reset` against an org that does not exist is a no-op followed by a normal create, not an error. Reset is the safe default to reach for.
+
+**Ordering is part of the guard, not a detail.** A guard that runs after the recursive delete has already refused nothing. All of the checks above live in a single `preflight(args)` in `scripts/seed-demo.ts` that runs to completion before `--reset` fires and before the first document is written, so a mistyped `--email` or `--org-id` costs nothing. The one side effect inside preflight is creating the demo auth user when it is absent — that has to happen before the claims check has anything to check, and it sits after the project-id check.
 
 ## Entry point
 
@@ -93,15 +97,31 @@ The reason is scope discipline in the other direction. That extraction was justi
 
 The mitigation is the type system. The seed builds `Lead`, `Event`, and `Proposal` values against the exported interfaces, so any required-field change breaks the build rather than producing a malformed document. The upgrade path stays open: if a second off-request caller ever needs these, extract the cores then and switch the seeder over — the writer is the only file that would change.
 
+**What that mitigation does not cover: string *format* conventions.** A field typed `string` carries no information about the shape the rest of the app agrees on, so bypassing the real writer silently forfeits that agreement. The concrete instance: `Event.event_start`/`event_end` are typed `string`, but the app's only writers are `<Input type="date">` fields, so every event created through the product holds a bare `YYYY-MM-DD`. The seeder wrote full ISO datetimes instead. `Omit<Event, …>` accepted both, `tsc` was green, and the divergence survived six task reviews and a live run before anyone opened the org landing page — which prints `{event_start} → {event_end}` unformatted, and so showed `2026-08-13T15:00:00.000Z → 2026-08-13T19:00:00.000Z`. The event settings form, loading the same value into a `type="date"` input, rendered it blank.
+
+The lesson generalises past this one field: wherever the seeder writes directly, the check that the value matches what the product would have written has to be made by reading the actual writer and reader, not by leaning on the type. Format-sensitive fields already in the graph — `event_start`, `event_end`, `Lead.event_date`, `Task.due_date`, `Invoice.due_date`, `ComplianceDoc.expires_on` (all date-only) versus `created_at`, `issuedAt`, proposal event timestamps, and `OpsRequirements.service_start`/`service_end` (all full ISO) — are worth re-checking against their forms whenever this fixture grows.
+
 ## Demo login
 
-Org membership is keyed by Firebase Auth uid, so the tenant needs a real auth user to be reachable.
+Reaching the tenant takes **two** things, and the member doc is the lesser of them.
+
+`requireOrgMember` (`lib/auth/guards.ts`) resolves the caller's org from `user.orgId`, read off the **verified session custom claims**, and `notFound()`s before it ever looks at the members subcollection. A member doc with the right uid and no matching claim is invisible to the app: the login authenticates and every org page 404s. So the script must set Firebase custom claims (`{ orgId, orgSlug, role }`) on the demo account in addition to writing `orgs/{id}/members/{uid}`.
+
+It sets them with `adminAuth.setCustomUserClaims` directly. `actions/auth.ts` `setOrgClaims` does the same thing but lives in a `'use server'` module, which a script cannot call. Claims are re-applied on every run so `--reset` leaves the login working against the recreated org.
+
+**Guard: `setCustomUserClaims` REPLACES the claim object wholesale.** `--email` has no `demo-` prefix guard of its own — it names an arbitrary account — so a mistyped address would silently strip a real user's access with no in-repo way to restore it. Before anything is written, the script refuses unless the resolved account's existing claims are either **empty** or already scoped to a `demo-` org. Note that "empty" is the operative case for a platform admin: `setPlatformAdminClaim` writes `{ role: 'platform_admin' }` with *no* `orgId` key, so a check that only inspected `orgId` would wave it through and demote it. The refusal is on any non-demo-shaped claim object, not on a non-demo `orgId`.
 
 The script looks up `--email` (default `demo@brewtrax.test`) via the Admin SDK. If absent it creates the user with `--password` (default `BrewTrax!Demo1`); if present it reuses that uid and leaves the account alone. Either way the uid becomes the org's `owner` member.
 
 `--reset` deletes the org, **not** the auth user. The uid and therefore the credentials are stable across runs, which is what makes it safe to hand the login to someone before a presentation and reset the data afterward.
 
 The default address uses the reserved `.test` TLD: it is a valid auth identifier and cannot receive mail, so no seeded record can accidentally email a real inbox.
+
+### The default credentials are published
+
+`demo@brewtrax.test` / `BrewTrax!Demo1` are literals in `scripts/seed/args.ts`, and the account they name is a live Firebase Auth user in whatever project `FIREBASE_PROJECT_ID` points at — today, production. Anyone who can read the repo can log in as it.
+
+They stay defaults because `npm run seed:demo` has to work with no arguments, and the claims scope the blast radius to a `demo-` org. That is a real bound but not a small one: an org `owner` reaches that org's communicate module and settings. **If the app is reachable from the internet, run the seeder with `--password=...` and rotate the account's password out of band** rather than relying on a value that is public.
 
 The script prints the email, the password, and the org URL on completion.
 
