@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { ProposalBlockEditor } from '@/components/admin/ProposalBlockEditor'
 
 vi.mock('@/actions/proposals', () => ({
@@ -12,6 +13,7 @@ vi.mock('@/actions/proposal-ai', () => ({ generateProposalDraft: vi.fn() }))
 
 import { updateProposalBlocks } from '@/actions/proposals'
 import { uploadProposalImage } from '@/actions/proposal-images'
+import { generateProposalDraft } from '@/actions/proposal-ai'
 import type { ProposalBlock } from '@/lib/types'
 
 const base = { orgId: 'o1', proposalId: 'p1' }
@@ -202,5 +204,46 @@ describe('ProposalBlockEditor', () => {
     const ids = savedBlocks.map((b) => b.id)
     expect(ids).toHaveLength(2)
     expect(new Set(ids).size).toBe(2)
+  })
+
+  it('appends re-minted AI-drafted blocks, retaining prior blocks and stripping model-supplied ids', async () => {
+    vi.mocked(generateProposalDraft).mockResolvedValue({
+      blocks: [
+        { id: 'model-id-1', type: 'paragraph', text: 'Drafted paragraph' },
+        { id: 'model-id-2', type: 'heading', text: 'Drafted heading', level: 2 },
+      ],
+      suggested_package_ids: [],
+      suggested_packages: [],
+      rationale: '',
+      adjustments: [],
+    })
+
+    const user = userEvent.setup()
+    render(<ProposalBlockEditor {...base} aiEnabled initialBlocks={[
+      { id: 'a', type: 'paragraph', text: 'Existing' },
+    ]} />)
+
+    await user.type(screen.getByLabelText(/notes for ai draft/i), 'client wants a coffee cart')
+    await user.click(screen.getByRole('button', { name: /generate draft/i }))
+    await user.click(await screen.findByRole('button', { name: /append/i }))
+
+    // Prior block retained.
+    expect(screen.getByLabelText('Paragraph 1')).toHaveValue('Existing')
+    // New blocks present.
+    expect(screen.getByLabelText('Paragraph 2')).toHaveValue('Drafted paragraph')
+    expect(screen.getByLabelText('Heading 3')).toHaveValue('Drafted heading')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save document' }))
+    await waitFor(() => expect(updateProposalBlocks).toHaveBeenCalled())
+    const saved = savedBlocksFromCall()
+    expect(saved).toHaveLength(3)
+    expect(saved[0].id).toBe('a')
+    // No applied (AI-drafted) block keeps a model-supplied id — each was
+    // re-minted through the editor's own counter.
+    const appliedIds = saved.slice(1).map((b) => b.id)
+    for (const id of appliedIds) {
+      expect(id).toMatch(/^new-\d+$/)
+    }
+    expect(new Set(appliedIds).size).toBe(2)
   })
 })
