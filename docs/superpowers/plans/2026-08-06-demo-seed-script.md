@@ -374,7 +374,7 @@ git commit -m "feat(seed): pure BrewTrax fixture builder — org, customers, lea
 - Test: `__tests__/scripts/seed-data.test.ts`
 
 **Interfaces:**
-- Consumes: `daysFrom`, `isoFrom`, `BrewtraxSeed` from Task 1; `Event`, `ItineraryItem`, `Proposal` from `@/lib/types`; `proposalTotal` from `@/lib/proposals`.
+- Consumes: `daysFrom`, `isoFrom`, `BrewtraxSeed` from Task 1; `Event`, `ItineraryItem`, `Proposal` from `@/lib/types`; `computeSelectedTotal` from `@/lib/proposals` (tax-aware; `proposalTotal` is a raw line-item sum that ignores tax and discount).
 - Produces: `SeedEvent`, `SeedProposal`; `BrewtraxSeed` gains `events: SeedEvent[]` and `proposals: SeedProposal[]`.
 
 - [ ] **Step 1: Write the failing tests**
@@ -382,7 +382,7 @@ git commit -m "feat(seed): pure BrewTrax fixture builder — org, customers, lea
 Append to `__tests__/scripts/seed-data.test.ts`:
 
 ```ts
-import { proposalTotal } from '@/lib/proposals'
+import { computeSelectedTotal } from '@/lib/proposals'
 
 describe('buildBrewtraxSeed — events and proposals', () => {
   it('has three active upcoming jobs and two archived past jobs', () => {
@@ -440,7 +440,7 @@ describe('buildBrewtraxSeed — events and proposals', () => {
     expect(accepted.proposal.deposit).toBeDefined()
     expect(accepted.proposal.selection).toBeDefined()
     expect(accepted.proposal.selection!.selected_total)
-      .toBe(proposalTotal(accepted.proposal.line_items))
+      .toBe(computeSelectedTotal(accepted.proposal, { optional_item_ids: [] }))
   })
 })
 ```
@@ -481,7 +481,7 @@ export interface BrewtraxSeed {
 
 - [ ] **Step 4: Add events and proposals to the fixture**
 
-In `scripts/seed/brewtrax-data.ts`, add `import { proposalTotal } from '@/lib/proposals'`, then build these before the `return` and add them to it.
+In `scripts/seed/brewtrax-data.ts`, add `import { computeSelectedTotal } from '@/lib/proposals'`, then build these before the `return` and add them to it.
 
 `Event.slug` is normally produced by `buildEventSlug(name, year)`; the literals below are exactly what it returns for these names, and Task 6 asserts that at write time.
 
@@ -609,7 +609,7 @@ In `scripts/seed/brewtrax-data.ts`, add `import { proposalTotal } from '@/lib/pr
         deposit: { type: 'percent', value: 50 }, deposit_gate: 'after_accept',
         deposit_terms: '50% deposit due at booking.',
         payment_status: 'deposit_paid',
-        selection: { optional_item_ids: [], selected_total: proposalTotal(oaklineLines), selected_at: isoFrom(today, -30) },
+        selection: { optional_item_ids: [], selected_total: computeSelectedTotal({ line_items: oaklineLines, tax_rate: 6 }, { optional_item_ids: [] }), selected_at: isoFrom(today, -30) },
         client_response_at: isoFrom(today, -30),
         created_at: isoFrom(today, -35), updated_at: isoFrom(today, -30),
         events: [
