@@ -4,23 +4,24 @@ import { assertOrgAdmin } from '@/lib/auth/assert'
 import { adminBucket } from '@/lib/firebase-admin'
 import { assertImageUpload, safeUploadName } from '@/lib/uploads'
 
+const ASSET_KINDS = ['logo', 'cover']
+
 /**
- * Upload a proposal document image and return a stable public URL.
- *
- * Unlike ops evidence photos (where public-by-obscure-URL is a documented
- * tradeoff), proposal images are intended to be visible to anyone holding the
- * proposal link, so makePublic() is the correct behavior rather than a
- * compromise.
+ * Upload an org brand asset (logo / cover) and return a stable public URL.
+ * Same caps and public-visibility rationale as uploadProposalImage — brand
+ * assets render on public proposal pages — but org-scoped, not
+ * proposal-scoped (spec §2).
  */
-export async function uploadProposalImage(
+export async function uploadOrgAsset(
   orgId: string,
-  proposalId: string,
+  kind: 'logo' | 'cover',
   formData: FormData,
 ): Promise<{ url: string }> {
   await assertOrgAdmin(orgId)
+  if (!ASSET_KINDS.includes(kind)) throw new Error('Unknown asset kind')
 
   const file = assertImageUpload(formData.get('file'))
-  const path = `proposal-images/${orgId}/${proposalId}/${Date.now()}-${safeUploadName(file.name)}`
+  const path = `org-assets/${orgId}/${kind}/${Date.now()}-${safeUploadName(file.name)}`
   const blob = adminBucket.file(path)
   await blob.save(Buffer.from(await file.arrayBuffer()), {
     contentType: file.type,
