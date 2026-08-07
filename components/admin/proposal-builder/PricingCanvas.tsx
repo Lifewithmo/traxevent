@@ -12,11 +12,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { InlineText } from '@/components/admin/proposal-builder/InlineText'
 import { ItemPopover } from '@/components/admin/proposal-builder/ItemPopover'
-import {
-  packagePrice,
-  type ProposalLineItem,
-  type ProposalPackage,
-} from '@/lib/proposal-builder-stubs'
+import { packagePrice } from '@/lib/proposals'
+import type { ProposalLineItem, ProposalPackage } from '@/lib/types'
 
 const money = (n: number) => `$${n.toFixed(2)}`
 

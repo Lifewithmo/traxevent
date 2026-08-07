@@ -9,12 +9,11 @@ import {
   ProposalIncludedItems,
   ProposalOptionalItems,
   ProposalTotals,
+  packageOptionDisplay,
 } from '@/components/proposals/ProposalPricing'
 import { proposalDisplayRange } from '@/lib/proposals'
-import { ProposalThemeStub } from '@/components/proposals/ProposalThemeStub'
-// TEMPORARY stub imports (Track C): branding arrives on the payload with
-// Track B; composed-package display helpers move to lib/proposals with Track A.
-import { composedPackageDisplay, type OrgBranding, type ProposalPackage as ComposedPackage } from '@/lib/proposal-builder-stubs'
+import { ProposalTheme } from '@/components/proposals/ProposalTheme'
+import type { OrgBranding } from '@/lib/types'
 
 export default async function ProposalPrintPage({
   params,
@@ -67,7 +66,7 @@ export default async function ProposalPrintPage({
   const branding = (proposal as { branding?: OrgBranding }).branding
 
   return (
-    <ProposalThemeStub branding={branding}>
+    <ProposalTheme branding={branding}>
     {/* Print restyle (spec §6): restrained ink — no background fills; the
         accent lands on headings only (ProposalBlockView) and page-break
         rules keep blocks and package cards whole. */}
@@ -117,11 +116,7 @@ export default async function ProposalPrintPage({
                 key={pkg.id}
                 pkg={pkg}
                 selected={pkg.id === selectedPackageId}
-                {...composedPackageDisplay(
-                  pkg as ComposedPackage,
-                  packages as ComposedPackage[],
-                  proposal.line_items,
-                )}
+                {...packageOptionDisplay(pkg, packages, proposal.line_items)}
               />
             ))}
           </div>
@@ -170,6 +165,6 @@ export default async function ProposalPrintPage({
         </section>
       )}
     </main>
-    </ProposalThemeStub>
+    </ProposalTheme>
   )
 }

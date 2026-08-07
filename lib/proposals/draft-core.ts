@@ -21,8 +21,8 @@ const CLEARABLE_FIELDS = [
 
 /**
  * Guard-free consolidated draft write (spec §5) — the single autosave path
- * for title, notes, blocks, line items, packages, and pricing terms. Mirrors
- * blocks-core.ts: no auth assertions here; the caller owns authorization.
+ * for title, notes, blocks, line items, packages, and pricing terms.
+ * No auth assertions here; the caller owns authorization (house core pattern).
  *
  * Returns the draft it actually WROTE (normalized, composed prices
  * recomputed) plus adjustments, so the editor can re-seed its state from the

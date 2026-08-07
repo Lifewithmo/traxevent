@@ -8,7 +8,7 @@ import { signedDocumentHash } from '@/lib/proposal-signature'
 import { sendProposalSignedConfirmation } from '@/lib/email'
 import { getVerifiedSendingDomain } from '@/actions/domains'
 import type {
-  Proposal, ProposalStatus, ProposalLineItem, ProposalPackage,
+  OrgBranding, Proposal, ProposalStatus, ProposalLineItem, ProposalPackage,
   ProposalDiscount, ProposalDeposit, ProposalSelection, PaymentStatus, ProposalBlock,
 } from '@/lib/types'
 
@@ -35,6 +35,9 @@ export interface PublicProposal {
   client_response_at?: string
   created_at: string
   signed?: { signer_name: string; signed_at: string }
+  // The org's public brand kit (spec §2 — every field public-safe by
+  // construction; validated server-side before it is ever stored).
+  branding?: OrgBranding
 }
 
 async function findProposalByToken(token: string) {
@@ -88,6 +91,13 @@ export async function getPublicProposal(token: string): Promise<PublicProposal |
       signer_name: proposal.signature.signer_name,
       signed_at: proposal.signature.signed_at,
     }
+  }
+  // Brand kit for the themed public rendering. org_id is denormalized onto
+  // the proposal for exactly this kind of lookup; the id itself stays omitted.
+  if (proposal.org_id) {
+    const orgSnap = await adminDb.collection('orgs').doc(proposal.org_id).get()
+    const branding = (orgSnap.data() as { branding?: OrgBranding } | undefined)?.branding
+    if (branding !== undefined) publicProposal.branding = branding
   }
   return publicProposal
 }

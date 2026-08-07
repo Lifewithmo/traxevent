@@ -17,16 +17,11 @@ import {
   ProposalIncludedItems,
   ProposalOptionalItems,
   ProposalTotals,
+  packageOptionDisplay,
 } from '@/components/proposals/ProposalPricing'
 import { ProposalDepositPayment } from './ProposalDepositPayment'
-import { ProposalThemeStub } from '@/components/proposals/ProposalThemeStub'
-// TEMPORARY stub imports (Track C) — composed-package display + branding
-// types come from the stubs module until Tracks A/B land; presentation only.
-import {
-  composedPackageDisplay,
-  type OrgBranding,
-  type ProposalPackage as ComposedPackage,
-} from '@/lib/proposal-builder-stubs'
+import { ProposalTheme } from '@/components/proposals/ProposalTheme'
+import type { OrgBranding } from '@/lib/types'
 
 // Local, immediate confirmation shown right after a successful `signProposal`
 // call in THIS session — the server doesn't echo signed_at back, so it's
@@ -211,7 +206,7 @@ export function ProposalResponseClient({
   const hasHero = Boolean(branding?.cover_image_url || branding?.logo_url)
 
   return (
-    <ProposalThemeStub branding={branding}>
+    <ProposalTheme branding={branding}>
     <main className="flex min-h-screen flex-col bg-gray-50">
       {hasHero && (
         <div
@@ -267,11 +262,7 @@ export function ProposalResponseClient({
                     selected={packageId === pkg.id}
                     selectable={editable}
                     onSelect={() => setPackageId(pkg.id)}
-                    {...composedPackageDisplay(
-                      pkg as ComposedPackage,
-                      proposal.packages as ComposedPackage[],
-                      proposal.line_items,
-                    )}
+                    {...packageOptionDisplay(pkg, proposal.packages!, proposal.line_items)}
                   />
                 ))}
               </div>
@@ -478,6 +469,6 @@ export function ProposalResponseClient({
         </div>
       </div>
     </main>
-    </ProposalThemeStub>
+    </ProposalTheme>
   )
 }

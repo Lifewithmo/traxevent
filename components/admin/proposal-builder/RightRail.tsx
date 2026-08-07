@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ProposalAiPanel } from '@/components/admin/proposal-builder/ProposalAiPanel'
 import type { SaveStatus } from '@/components/admin/proposal-builder/useDraftAutosave'
-import type { ProposalDraftUpdate } from '@/lib/proposal-builder-stubs'
+import type { ProposalDraftUpdate } from '@/lib/proposals/draft'
 import type { Proposal, ProposalBlock } from '@/lib/types'
 
 function toNumber(v: string): number {

@@ -8,8 +8,6 @@ const push = vi.fn()
 
 vi.mock('@/actions/proposals', () => ({
   createProposal: (...a: unknown[]) => createProposal(...a),
-}))
-vi.mock('@/actions/proposal-builder-stubs', () => ({
   updateProposalDraft: (...a: unknown[]) => updateProposalDraft(...a),
 }))
 vi.mock('next/navigation', () => ({
@@ -19,7 +17,7 @@ vi.mock('next/navigation', () => ({
 beforeEach(() => {
   vi.clearAllMocks()
   createProposal.mockResolvedValue({ id: 'new-p' })
-  updateProposalDraft.mockResolvedValue({ draft: {}, adjustments: [] })
+  updateProposalDraft.mockResolvedValue({ proposal: {}, adjustments: [] })
 })
 
 function mount() {

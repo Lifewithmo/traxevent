@@ -1,10 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-const { getSpy, proposalUpdateSpy, leadUpdateSpy, leadDocSpy } = vi.hoisted(() => ({
+const { getSpy, proposalUpdateSpy, leadUpdateSpy, leadDocSpy, orgGetSpy } = vi.hoisted(() => ({
   getSpy: vi.fn(),
   proposalUpdateSpy: vi.fn().mockResolvedValue(undefined),
   leadUpdateSpy: vi.fn().mockResolvedValue(undefined),
   leadDocSpy: vi.fn(),
+  // The org read behind the public `branding` projection. Defaults to an
+  // org with no branding — the neutral theme — so every existing projection
+  // assertion is exercised with the lookup in place.
+  orgGetSpy: vi.fn().mockResolvedValue({ data: () => undefined }),
 }))
 
 vi.mock('@/lib/firebase-admin', () => ({
@@ -13,6 +17,9 @@ vi.mock('@/lib/firebase-admin', () => ({
     where: vi.fn().mockReturnThis(),
     limit: vi.fn().mockReturnThis(),
     get: getSpy,
+    collection: vi.fn().mockReturnValue({
+      doc: vi.fn().mockReturnValue({ get: orgGetSpy }),
+    }),
   },
 }))
 
@@ -329,6 +336,23 @@ describe('getPublicProposal — signature/audit projection', () => {
     })
     const r = await getPublicProposal('tok')
     expect('signed' in (r as object)).toBe(false)
+  })
+
+  it('projects the org branding for the themed public rendering, and omits it when the org has none', async () => {
+    const doc = {
+      id: 'p1', org_id: 'org-1', lead_id: 'lead-1', token: 'secret',
+      status: 'sent', line_items: [], created_at: '2026-05-01T00:00:00.000Z',
+    }
+    mockSnapshot(doc)
+    orgGetSpy.mockResolvedValueOnce({
+      data: () => ({ name: 'Acme', branding: { display_name: 'Acme Events', accent_color: '#123456' } }),
+    })
+    const branded = await getPublicProposal('tok')
+    expect(branded?.branding).toEqual({ display_name: 'Acme Events', accent_color: '#123456' })
+
+    mockSnapshot(doc)
+    const unbranded = await getPublicProposal('tok')
+    expect('branding' in (unbranded as object)).toBe(false)
   })
 })
 

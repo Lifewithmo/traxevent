@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { mergeDraftIntoBlocks } from '@/components/admin/proposal-builder/merge-draft'
-import type { PlaceholderBlock } from '@/lib/proposal-builder-stubs'
+import type { ProposalBlock as PlaceholderBlock } from '@/lib/types'
 import type { ProposalBlock } from '@/lib/types'
 
 const current: PlaceholderBlock[] = [

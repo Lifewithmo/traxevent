@@ -11,19 +11,23 @@ import { ProposalAiPanel } from '@/components/admin/proposal-builder/ProposalAiP
 
 const DRAFT = {
   blocks: [{ id: 'x1', type: 'paragraph', text: 'Drafted paragraph' }],
-  suggested_package_ids: [],
-  // v2 shape (spec §1): packages compose items. The panel renders name +
-  // item count + summed price; the legacy {id,name,price} shape (still
-  // returned until Track A lands) renders name + price.
+  // Minted v2 shape (spec §1): generateProposalDraft returns full
+  // ProposalPackages — server-minted ids, denormalized member-sum price —
+  // plus the member pool in suggested_line_items. The panel renders
+  // name + member count + price.
   suggested_packages: [
     {
+      id: 'ai-pkg-1',
       name: 'Coffee Cart',
       recommended: true,
-      items: [
-        { description: 'Two baristas', quantity: 4, unit_price: 150 },
-        { description: 'Espresso bar', quantity: 1, unit_price: 600 },
-      ],
+      includes: [],
+      price: 1200,
+      item_ids: ['ai-1', 'ai-2'],
     },
+  ],
+  suggested_line_items: [
+    { id: 'ai-1', description: 'Two baristas', quantity: 4, unit_price: 150 },
+    { id: 'ai-2', description: 'Espresso bar', quantity: 1, unit_price: 600 },
   ],
   rationale: 'Because the notes mentioned coffee.',
   adjustments: ['Dropped a suggested package not in your catalog: "wp-ghost".'],

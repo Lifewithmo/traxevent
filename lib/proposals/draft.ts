@@ -1,6 +1,7 @@
 import { normalizeBlocks } from '@/lib/proposals/blocks'
 import { isComposedPackage, packagePrice } from '@/lib/proposals'
 import type {
+  Proposal,
   ProposalBlock,
   ProposalDeposit,
   ProposalDiscount,
@@ -9,6 +10,42 @@ import type {
 } from '@/lib/types'
 
 export const MAX_PACKAGES = 3
+
+// The builder's typed client-side draft state — structurally assignable to
+// ProposalDraftInput (whose content fields are `unknown` because they accept
+// untrusted input; this is the shape the builder actually holds).
+export interface ProposalDraftUpdate {
+  title?: string
+  notes?: string
+  blocks?: ProposalBlock[]
+  line_items?: ProposalLineItem[]
+  packages?: ProposalPackage[]
+  discount?: ProposalDiscount
+  tax_rate?: number
+  deposit?: ProposalDeposit
+  deposit_gate?: 'before_accept' | 'after_accept'
+  deposit_terms?: string
+  expires_at?: string
+}
+
+// Projects a persisted Proposal back down to the draft fields the builder
+// edits — used to re-seed editor state from updateProposalDraft's response
+// so the client never lies about what was stored.
+export function draftFromProposal(p: Proposal): ProposalDraftUpdate {
+  const draft: ProposalDraftUpdate = {}
+  if (p.title !== undefined) draft.title = p.title
+  if (p.notes !== undefined) draft.notes = p.notes
+  if (p.blocks !== undefined) draft.blocks = p.blocks
+  if (p.line_items !== undefined) draft.line_items = p.line_items
+  if (p.packages !== undefined) draft.packages = p.packages
+  if (p.discount !== undefined) draft.discount = p.discount
+  if (p.tax_rate !== undefined) draft.tax_rate = p.tax_rate
+  if (p.deposit !== undefined) draft.deposit = p.deposit
+  if (p.deposit_gate !== undefined) draft.deposit_gate = p.deposit_gate
+  if (p.deposit_terms !== undefined) draft.deposit_terms = p.deposit_terms
+  if (p.expires_at !== undefined) draft.expires_at = p.expires_at
+  return draft
+}
 
 // Structural violations — a client bug, not user content to clean up. These
 // reject the whole write; content problems (empty descriptions, bad numbers)

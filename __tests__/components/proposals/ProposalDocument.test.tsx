@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { ProposalDocument, ProposalBlockView } from '@/components/proposals/ProposalDocument'
-import { ProposalThemeStub } from '@/components/proposals/ProposalThemeStub'
-import type { PlaceholderBlock } from '@/lib/proposal-builder-stubs'
+import { ProposalTheme } from '@/components/proposals/ProposalTheme'
+import type { ProposalBlock as PlaceholderBlock } from '@/lib/types'
 import type { ProposalBlock } from '@/lib/types'
 
 describe('ProposalDocument', () => {
@@ -82,12 +82,12 @@ describe('ProposalBlockView', () => {
   })
 })
 
-describe('ProposalThemeStub', () => {
+describe('ProposalTheme', () => {
   it('sets accent variables from branding on the wrapper', () => {
     const { container } = render(
-      <ProposalThemeStub branding={{ accent_color: '#123456' }}>
+      <ProposalTheme branding={{ accent_color: '#123456' }}>
         <p>inside</p>
-      </ProposalThemeStub>,
+      </ProposalTheme>,
     )
     const wrapper = container.firstElementChild as HTMLElement
     expect(wrapper.style.getPropertyValue('--proposal-accent')).toBe('#123456')
@@ -95,9 +95,9 @@ describe('ProposalThemeStub', () => {
 
   it('renders children with neutral defaults when branding is absent', () => {
     const { container } = render(
-      <ProposalThemeStub>
+      <ProposalTheme>
         <p>inside</p>
-      </ProposalThemeStub>,
+      </ProposalTheme>,
     )
     expect(screen.getByText('inside')).toBeInTheDocument()
     const wrapper = container.firstElementChild as HTMLElement

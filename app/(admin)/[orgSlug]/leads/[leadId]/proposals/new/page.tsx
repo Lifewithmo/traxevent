@@ -5,8 +5,7 @@ import { adminDb } from '@/lib/firebase-admin'
 import { getLead } from '@/actions/leads'
 import { getCustomer } from '@/actions/customers'
 import { SkeletonPicker } from '@/components/admin/proposal-builder/SkeletonPicker'
-// TEMPORARY stub type — Track B lands `branding` on the org document type.
-import type { OrgBranding } from '@/lib/proposal-builder-stubs'
+import type { OrgBranding } from '@/lib/types'
 
 // "New proposal" (spec §3): full-screen skeleton picker with CRM autofill —
 // the title and intro greeting come from the org and the opportunity, so no

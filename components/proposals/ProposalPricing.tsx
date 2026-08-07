@@ -15,8 +15,27 @@
 // and gets a read-only rendering of the same rows.
 
 import type { CSSProperties } from 'react'
-import { lineItemSubtotal, depositAmount, proposalExpiryInstant } from '@/lib/proposals'
+import {
+  lineItemSubtotal,
+  depositAmount,
+  packageDisplayBullets,
+  proposalExpiryInstant,
+} from '@/lib/proposals'
 import type { ProposalLineItem, ProposalPackage, ProposalDeposit } from '@/lib/types'
+
+/**
+ * Bridges lib/proposals.packageDisplayBullets to ProposalPackageOption's
+ * display props: `everything_in` becomes the `supersetLabel` line. Legacy
+ * packages come back as their `includes` bullets unchanged.
+ */
+export function packageOptionDisplay(
+  pkg: ProposalPackage,
+  packages: ProposalPackage[],
+  items: ProposalLineItem[],
+): { bullets: string[]; supersetLabel?: string } {
+  const { everything_in, bullets } = packageDisplayBullets(pkg, packages, items)
+  return { bullets, ...(everything_in ? { supersetLabel: `Everything in ${everything_in}` } : {}) }
+}
 
 export function money(n: number): string {
   return `$${n.toFixed(2)}`

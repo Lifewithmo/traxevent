@@ -9,7 +9,7 @@
 import { useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { InlineText } from '@/components/admin/proposal-builder/InlineText'
-import type { PlaceholderBlock } from '@/lib/proposal-builder-stubs'
+import type { ProposalBlock as PlaceholderBlock } from '@/lib/types'
 import type { ProposalBlockType } from '@/lib/types'
 
 const BLOCK_TYPES: Array<{ type: ProposalBlockType; label: string }> = [

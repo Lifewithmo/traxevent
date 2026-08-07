@@ -3,7 +3,7 @@
 // Overwrite-protection is structural — the placeholder flag clears on first
 // human edit, and only flagged blocks are ever fillable — so a generation
 // returning after the user hand-edited a placeholder cannot overwrite it.
-import type { PlaceholderBlock } from '@/lib/proposal-builder-stubs'
+import type { ProposalBlock as PlaceholderBlock } from '@/lib/types'
 import type { ProposalBlock } from '@/lib/types'
 
 export function mergeDraftIntoBlocks(

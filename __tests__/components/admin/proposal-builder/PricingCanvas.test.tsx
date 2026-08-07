@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { useState } from 'react'
 import { render, screen, fireEvent, within } from '@testing-library/react'
 import { PricingCanvas } from '@/components/admin/proposal-builder/PricingCanvas'
-import type { ProposalLineItem, ProposalPackage } from '@/lib/proposal-builder-stubs'
+import type { ProposalLineItem, ProposalPackage } from '@/lib/types'
 
 const items: ProposalLineItem[] = [
   { id: 'i1', description: 'Setup crew', quantity: 2, unit_price: 100, unit: 'hr' },

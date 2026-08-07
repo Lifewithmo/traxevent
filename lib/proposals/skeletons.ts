@@ -5,7 +5,7 @@
 // public page and print silently skip it, and the flag clears on first human
 // edit. CRM autofill happens here only for the intro greeting; the proposal
 // title is autofilled by the creation route.
-import type { PlaceholderBlock } from '@/lib/proposal-builder-stubs'
+import type { ProposalBlock as PlaceholderBlock } from '@/lib/types'
 
 export type SkeletonKey = 'full' | 'quick' | 'visual' | 'blank'
 

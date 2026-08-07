@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { BlockCanvas } from '@/components/admin/proposal-builder/BlockCanvas'
-import type { PlaceholderBlock } from '@/lib/proposal-builder-stubs'
+import type { ProposalBlock as PlaceholderBlock } from '@/lib/types'
 
 const blocks: PlaceholderBlock[] = [
   { id: 'h1', type: 'heading', text: 'Our offer', level: 2 },

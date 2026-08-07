@@ -1,5 +1,5 @@
 import { parseInline } from '@/lib/proposals/blocks'
-import type { PlaceholderBlock } from '@/lib/proposal-builder-stubs'
+import type { ProposalBlock as PlaceholderBlock } from '@/lib/types'
 import type { ProposalBlock } from '@/lib/types'
 
 function Inline({ text }: { text: string }) {

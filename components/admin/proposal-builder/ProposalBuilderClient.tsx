@@ -8,15 +8,10 @@ import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { sendProposal, deleteProposal, voidProposal } from '@/actions/proposals'
 import { uploadProposalImage } from '@/actions/proposal-images'
-import { proposalRange, depositAmount } from '@/lib/proposals'
-import {
-  packagePrice,
-  upgradeLegacyPackages,
-  type OrgBranding,
-  type PlaceholderBlock,
-  type ProposalDraftUpdate,
-} from '@/lib/proposal-builder-stubs'
-import { ProposalThemeStub } from '@/components/proposals/ProposalThemeStub'
+import { proposalRange, depositAmount, packagePrice } from '@/lib/proposals'
+import { upgradeLegacyProposal } from '@/lib/proposals/upgrade'
+import type { ProposalDraftUpdate } from '@/lib/proposals/draft'
+import { ProposalTheme } from '@/components/proposals/ProposalTheme'
 import { BlockCanvas } from '@/components/admin/proposal-builder/BlockCanvas'
 import { PricingCanvas } from '@/components/admin/proposal-builder/PricingCanvas'
 import { TopBar, type Viewport } from '@/components/admin/proposal-builder/TopBar'
@@ -24,7 +19,13 @@ import { RightRail } from '@/components/admin/proposal-builder/RightRail'
 import { useDraftAutosave } from '@/components/admin/proposal-builder/useDraftAutosave'
 import { mergeDraftIntoBlocks } from '@/components/admin/proposal-builder/merge-draft'
 import { Card, CardContent } from '@/components/ui/card'
-import type { Proposal, ProposalBlock, ProposalStatus } from '@/lib/types'
+import type {
+  OrgBranding,
+  Proposal,
+  ProposalBlock,
+  ProposalBlock as PlaceholderBlock,
+  ProposalStatus,
+} from '@/lib/types'
 
 const money = (n: number) => `$${n.toFixed(2)}`
 
@@ -70,11 +71,10 @@ export function ProposalBuilderClient({
       expires_at: proposal.expires_at,
     }
     if (!base.packages?.length) return { draft: base, upgraded: false }
-    const res = upgradeLegacyPackages(base.line_items ?? [], base.packages)
-    const upgraded = res.packages !== base.packages
+    const res = upgradeLegacyProposal({ line_items: base.line_items ?? [], packages: base.packages })
     return {
       draft: { ...base, line_items: res.line_items, packages: res.packages },
-      upgraded: upgraded && !locked,
+      upgraded: res.changed && !locked,
     }
   }, [proposal, locked])
 
@@ -205,7 +205,7 @@ export function ProposalBuilderClient({
             </Card>
           )}
 
-          <ProposalThemeStub
+          <ProposalTheme
             branding={branding}
             className={`mx-auto rounded-lg bg-white p-8 shadow-sm ${viewport === 'mobile' ? 'max-w-sm' : 'max-w-3xl'}`}
           >
@@ -228,7 +228,7 @@ export function ProposalBuilderClient({
                 disabled={locked}
               />
             </div>
-          </ProposalThemeStub>
+          </ProposalTheme>
 
           <div className="sticky bottom-0 mx-auto mt-6 max-w-3xl rounded-t-lg border bg-white/95 px-6 py-3 backdrop-blur">
             <div className="flex items-center justify-between">

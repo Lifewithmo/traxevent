@@ -6,8 +6,8 @@
 // persisted"); a failed save parks in 'retrying' with the edits intact —
 // nothing is thrown away client-side while the tab is open.
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { updateProposalDraft } from '@/actions/proposal-builder-stubs'
-import type { ProposalDraftUpdate } from '@/lib/proposal-builder-stubs'
+import { updateProposalDraft } from '@/actions/proposals'
+import { draftFromProposal, type ProposalDraftUpdate } from '@/lib/proposals/draft'
 
 export type SaveStatus = 'saved' | 'dirty' | 'saving' | 'retrying'
 
@@ -58,7 +58,7 @@ export function useDraftAutosave({
         const res = await updateProposalDraft(orgId, proposalId, draftRef.current)
         setAdjustments(res.adjustments)
         if (versionRef.current === version) {
-          setDraft((d) => ({ ...d, ...res.draft }))
+          setDraft((d) => ({ ...d, ...draftFromProposal(res.proposal) }))
           setStatus('saved')
         } else {
           // Newer edits arrived mid-flight; leave them dirty so the effect

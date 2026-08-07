@@ -6,8 +6,7 @@
 // pre-addressed to the lead contact), and enters the builder.
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createProposal } from '@/actions/proposals'
-import { updateProposalDraft } from '@/actions/proposal-builder-stubs'
+import { createProposal, updateProposalDraft } from '@/actions/proposals'
 import { PROPOSAL_SKELETONS, type SkeletonKey } from '@/lib/proposals/skeletons'
 
 // Miniature "thumbnail" strokes suggesting each skeleton's shape.

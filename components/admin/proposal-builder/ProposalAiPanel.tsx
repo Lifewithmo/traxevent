@@ -11,35 +11,23 @@ import type { ProposalDraft } from '@/lib/ai/proposal-draft'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import type { ProposalBlock } from '@/lib/types'
-import type { SuggestedPackageV2 } from '@/lib/proposal-builder-stubs'
+import type { ProposalPackage } from '@/lib/types'
 
 const money = (n: number) => `$${n.toLocaleString()}`
 
-// Until Track A lands, generateProposalDraft still returns the v1 suggestion
-// shape ({id, name, price}); afterwards it returns SuggestedPackageV2 with
-// composed items. Render both so this panel works on either side of the
-// rebase — the v1 branch dies with the stubs at integration.
-type SuggestedPackage = SuggestedPackageV2 | { id: string; name: string; price: number }
-
-function SuggestedPackages({ packages }: { packages: SuggestedPackage[] }) {
+// generateProposalDraft returns fully-minted composed packages (spec §1: the
+// server mints ids, members sum to the denormalized price, AI never sets an
+// override) — so this summary reads id/name/price plus the member count.
+function SuggestedPackages({ packages }: { packages: ProposalPackage[] }) {
   return (
     <>
-      {packages.map((p, i) => {
-        if ('items' in p) {
-          const total = p.items.reduce((s, it) => s + it.quantity * it.unit_price, 0)
-          return (
-            <p key={i} className="text-xs text-muted-foreground">
-              Suggested: {p.name} — {p.items.length} items, {money(total)}
-              {p.recommended ? ' (recommended)' : ''}
-            </p>
-          )
-        }
-        return (
-          <p key={i} className="text-xs text-muted-foreground">
-            Suggested: {p.name} ({money(p.price)})
-          </p>
-        )
-      })}
+      {packages.map((p) => (
+        <p key={p.id} className="text-xs text-muted-foreground">
+          Suggested: {p.name}
+          {p.item_ids?.length ? ` — ${p.item_ids.length} items,` : ''} {money(p.price)}
+          {p.recommended ? ' (recommended)' : ''}
+        </p>
+      ))}
     </>
   )
 }
@@ -117,7 +105,7 @@ export function ProposalAiPanel({
             ))}
           </div>
           {draft.rationale && <p className="text-xs text-muted-foreground">{draft.rationale}</p>}
-          <SuggestedPackages packages={draft.suggested_packages as SuggestedPackage[]} />
+          <SuggestedPackages packages={draft.suggested_packages} />
           {draft.adjustments.map((a, i) => (
             <p key={i} className="text-xs text-amber-700">{a}</p>
           ))}

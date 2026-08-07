@@ -2,13 +2,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, act, within } from '@testing-library/react'
 import { ProposalBuilderClient } from '@/components/admin/proposal-builder/ProposalBuilderClient'
 import type { Proposal } from '@/lib/types'
-import type { ProposalDraftUpdate } from '@/lib/proposal-builder-stubs'
+import type { ProposalDraftUpdate } from '@/lib/proposals/draft'
 
 const updateProposalDraft = vi.fn()
-vi.mock('@/actions/proposal-builder-stubs', () => ({
-  updateProposalDraft: (...a: unknown[]) => updateProposalDraft(...a),
-}))
 vi.mock('@/actions/proposals', () => ({
+  updateProposalDraft: (...a: unknown[]) => updateProposalDraft(...a),
   sendProposal: vi.fn().mockResolvedValue(undefined),
   deleteProposal: vi.fn().mockResolvedValue(undefined),
   voidProposal: vi.fn().mockResolvedValue(undefined),
@@ -61,7 +59,12 @@ function lastDraft(): ProposalDraftUpdate {
 
 beforeEach(() => {
   vi.useFakeTimers()
-  updateProposalDraft.mockImplementation(async (_o, _p, draft) => ({ draft, adjustments: [] }))
+  // The real action returns the persisted Proposal; echoing the submitted
+  // draft fields on a proposal-shaped object gives the hook the same re-seed.
+  updateProposalDraft.mockImplementation(async (_o, _p, draft) => ({
+    proposal: { ...makeProposal(), ...draft },
+    adjustments: [],
+  }))
 })
 
 afterEach(() => {
@@ -100,7 +103,7 @@ describe('ProposalBuilderClient autosave', () => {
 
   it('re-seeds from what the server persisted, so a dropped block disappears', async () => {
     updateProposalDraft.mockImplementation(async (_o, _p, draft: ProposalDraftUpdate) => ({
-      draft: { ...draft, blocks: draft.blocks!.slice(0, 1) },
+      proposal: { ...makeProposal(), ...draft, blocks: draft.blocks!.slice(0, 1) },
       adjustments: ['Dropped an incomplete block.'],
     }))
     mount()
