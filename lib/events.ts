@@ -21,13 +21,32 @@ export interface CreateEventCoreInput {
   lead_id?: string
 }
 
+/**
+ * Resolves a name+year into a slug guaranteed unique within the org, appending
+ * -2, -3, … on collision. Every event-creation path shares this: slugs are
+ * resolved with a `.where('slug', '==', …).limit(1)` query (getEventBySlug,
+ * requireEventPage), so a collision would silently route navigation to the
+ * FIRST event with that slug rather than the one just created.
+ */
+export async function resolveUniqueEventSlug(orgId: string, name: string, year: number): Promise<string> {
+  const baseSlug = buildEventSlug(name, year)
+  let slug = baseSlug
+  let suffix = 2
+  while (!(await eventsRef(orgId).where('slug', '==', slug).limit(1).get()).empty) {
+    slug = `${baseSlug}-${suffix}`
+    suffix++
+  }
+  return slug
+}
+
 /** Guard-free event create. Authorization is the caller's responsibility. */
 export async function createEventCore(orgId: string, input: CreateEventCoreInput): Promise<Event> {
   const eventRef = eventsRef(orgId).doc()
+  const slug = await resolveUniqueEventSlug(orgId, input.name, input.year)
   const event: Event = {
     id: eventRef.id,
     name: input.name,
-    slug: buildEventSlug(input.name, input.year),
+    slug,
     year: input.year,
     status: 'draft',
     registration_type: input.registration_type,

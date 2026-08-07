@@ -2,9 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const setSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const whereGet = vi.hoisted(() => vi.fn())
+// Slug-collision check: `.where('slug', '==', …).limit(1).get()`. Defaults to
+// "no collision" so tests that don't care about slugs are unaffected.
+const slugLimitGet = vi.hoisted(() => vi.fn().mockResolvedValue({ empty: true }))
 const collRef = vi.hoisted(() => ({
   doc: vi.fn(() => ({ id: 'evt-1', set: setSpy })),
-  where: vi.fn(() => ({ get: whereGet })),
+  where: vi.fn(() => ({ get: whereGet, limit: vi.fn(() => ({ get: slugLimitGet })) })),
   orderBy: vi.fn(() => ({ get: vi.fn().mockResolvedValue({ docs: [] }) })),
 }))
 
@@ -12,7 +15,7 @@ vi.mock('@/lib/firebase-admin', () => ({
   adminDb: { collection: () => ({ doc: () => ({ collection: () => collRef }) }) },
 }))
 
-import { createEventCore, listEventsByLeadCore } from '@/lib/events'
+import { createEventCore, listEventsCore, listEventsByLeadCore } from '@/lib/events'
 
 const base = {
   name: 'Nguyen Wedding',
@@ -42,6 +45,35 @@ describe('createEventCore', () => {
   it('defaults event_type_id when omitted', async () => {
     const event = await createEventCore('o1', base)
     expect(event.event_type_id).toBe('event')
+  })
+
+  it('appends a numeric suffix when the slug already exists', async () => {
+    slugLimitGet
+      .mockResolvedValueOnce({ empty: false }) // 'nguyen-wedding-2026' taken
+      .mockResolvedValueOnce({ empty: true })  // 'nguyen-wedding-2026-2' free
+    const event = await createEventCore('o1', base)
+    expect(event.slug).toBe('nguyen-wedding-2026-2')
+  })
+})
+
+describe('listEventsCore', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('lists events newest first via orderBy', async () => {
+    const orderByGet = vi.fn().mockResolvedValue({
+      docs: [
+        { data: () => ({ id: 'e1', name: 'A' }) },
+        { data: () => ({ id: 'e2', name: 'B' }) },
+      ],
+    })
+    collRef.orderBy.mockReturnValueOnce({ get: orderByGet })
+    const events = await listEventsCore('o1')
+    expect(collRef.orderBy).toHaveBeenCalledWith('created_at', 'desc')
+    expect(events.map((e) => e.id)).toEqual(['e1', 'e2'])
+  })
+
+  it('returns an empty array when there are no events', async () => {
+    expect(await listEventsCore('o1')).toEqual([])
   })
 })
 

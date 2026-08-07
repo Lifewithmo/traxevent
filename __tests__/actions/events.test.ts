@@ -6,9 +6,12 @@ vi.mock('@/lib/auth/assert', () => ({
   assertEventPage: vi.fn().mockResolvedValue({ role: 'admin', event_access: {} }),
 }))
 
-const { eventUpdateSpy, eventDocGetSpy } = vi.hoisted(() => ({
+const { eventUpdateSpy, eventDocGetSpy, slugQueryGetSpy } = vi.hoisted(() => ({
   eventUpdateSpy: vi.fn().mockResolvedValue(undefined),
   eventDocGetSpy: vi.fn(),
+  // Slug-collision check inside createEventCore: `.where(...).limit(1).get()`.
+  // Defaults to "no collision" so existing createEvent tests are unaffected.
+  slugQueryGetSpy: vi.fn().mockResolvedValue({ empty: true }),
 }))
 
 vi.mock('@/lib/firebase-admin', () => ({
@@ -18,6 +21,7 @@ vi.mock('@/lib/firebase-admin', () => ({
     set: vi.fn().mockResolvedValue(undefined),
     id: 'camp-id-123',
     orderBy: vi.fn().mockReturnThis(),
+    where: vi.fn(() => ({ limit: vi.fn(() => ({ get: slugQueryGetSpy })) })),
     get: eventDocGetSpy,
     update: eventUpdateSpy,
   },
@@ -62,6 +66,26 @@ describe('createEvent — event_type_id', () => {
       event_end: '2026-06-07',
     })
     expect(event.event_type_id).toBe('event')
+  })
+})
+
+describe('createEvent — slug collisions', () => {
+  beforeEach(() => {
+    slugQueryGetSpy.mockReset()
+  })
+
+  it('appends a numeric suffix when the slug already exists', async () => {
+    slugQueryGetSpy
+      .mockResolvedValueOnce({ empty: false }) // 'smith-wedding-2026' taken
+      .mockResolvedValueOnce({ empty: true })  // 'smith-wedding-2026-2' free
+    const event = await createEvent('org-1', {
+      name: 'Smith Wedding',
+      year: 2026,
+      registration_type: 'individual',
+      event_start: '2026-09-12',
+      event_end: '2026-09-12',
+    })
+    expect(event.slug).toBe('smith-wedding-2026-2')
   })
 })
 
