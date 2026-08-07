@@ -24,7 +24,7 @@
 - Reads require `assertOrgMember`; writes require `assertOrgAdmin`.
 - **Green gate every task:** `npx tsc --noEmit` clean, `npm test` passing, `npm run lint` 0 errors (20 pre-existing warnings expected). Baseline is **153 test files / 1044 tests / 0 failures**; the count only goes up.
 - **Run `npm run build` before declaring Tasks 3, 4 and 7 green** — `tsc` alone does not catch the `'use server'` type re-export failure.
-- **Worktree:** all work happens in `/Users/rm/vw/traxevent/.worktrees/convert-to-work` on branch `claude/convert-to-work`. Confirm `git rev-parse --abbrev-ref HEAD` before every commit. **Never commit to `main`.**
+- **Worktree:** all work happens in `/Users/rm/vw/traxevent/.claude/worktrees/convert-to-work` on branch `claude/convert-to-work`. Confirm `git rev-parse --abbrev-ref HEAD` before every commit. **Never commit to `main`.**
 - **Never run vitest from the primary checkout.** It scans sibling worktrees and produces thousands of false failures. From the worktree, run `npm test`. If you must run from the primary checkout, add `--exclude '**/.claude/**' --exclude '**/.worktrees/**'`.
 
 ---
