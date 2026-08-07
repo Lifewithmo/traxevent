@@ -20,6 +20,14 @@ type SignableSelection = Pick<ProposalSelection, 'package_id' | 'optional_item_i
 // A canonical serialization of EXACTLY what the customer agreed to — scope,
 // selection, pricing, and terms. Deliberately excludes volatile/non-agreed
 // fields (id, token, status, timestamps).
+//
+// Pricing model v2 note: packages and line_items are serialized as stored, so
+// the v2 fields (unit, item_ids, price_override) participate in the hash
+// exactly when PRESENT and serialize nothing when absent. Signed legacy
+// documents therefore keep producing their original digests — pinned forever
+// by __tests__/lib/proposal-signature-goldens.test.ts (fixtures generated
+// from this file at main/5fa2230, pre-v2; never regenerate them to make a
+// failure pass).
 export function canonicalProposalDocument(proposal: Proposal | SignableProposal, selection: ProposalSelection | SignableSelection): string {
   const doc = {
     title: proposal.title ?? null,
