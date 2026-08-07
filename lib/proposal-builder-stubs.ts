@@ -135,6 +135,27 @@ export function supersetBase(
 }
 
 /**
+ * Display shape for one composed package on a customer surface: the superset
+ * prefix collapses to "Everything in {smaller tier}" and only the remaining
+ * member descriptions render as bullets. Legacy packages return {} so the
+ * renderer falls back to `includes`. Pure, display-only.
+ */
+export function composedPackageDisplay(
+  pkg: ProposalPackage,
+  allPackages: ProposalPackage[],
+  items: ProposalLineItem[],
+): { bullets?: string[]; supersetLabel?: string } {
+  if (!pkg.item_ids) return {}
+  const base = supersetBase(pkg, allPackages)
+  const baseIds = new Set(base?.item_ids ?? [])
+  const bullets = packageBullets(
+    { ...pkg, item_ids: pkg.item_ids.filter((id) => !baseIds.has(id)) },
+    items,
+  )
+  return { bullets, ...(base ? { supersetLabel: `Everything in ${base.name}` } : {}) }
+}
+
+/**
  * Upgrade-on-open adapter (spec §1, drafts/sent-unsigned only — the CALLER
  * enforces that): converts each legacy bullet to a qty-1 / price-0 line item
  * appended to the pool, sets item_ids, and sets price_override to the old

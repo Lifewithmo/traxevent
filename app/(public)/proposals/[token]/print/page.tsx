@@ -11,6 +11,10 @@ import {
   ProposalTotals,
 } from '@/components/proposals/ProposalPricing'
 import { proposalDisplayRange } from '@/lib/proposals'
+import { ProposalThemeStub } from '@/components/proposals/ProposalThemeStub'
+// TEMPORARY stub imports (Track C): branding arrives on the payload with
+// Track B; composed-package display helpers move to lib/proposals with Track A.
+import { composedPackageDisplay, type OrgBranding, type ProposalPackage as ComposedPackage } from '@/lib/proposal-builder-stubs'
 
 export default async function ProposalPrintPage({
   params,
@@ -60,10 +64,27 @@ export default async function ProposalPrintPage({
   const requiredItems = proposal.line_items.filter((i) => i.optional !== true)
   const optionalItems = proposal.line_items.filter((i) => i.optional === true && i.id)
 
+  const branding = (proposal as { branding?: OrgBranding }).branding
+
   return (
+    <ProposalThemeStub branding={branding}>
+    {/* Print restyle (spec §6): restrained ink — no background fills; the
+        accent lands on headings only (ProposalBlockView) and page-break
+        rules keep blocks and package cards whole. */}
     <main className="mx-auto max-w-3xl px-8 py-10 text-gray-900">
       <div className="mb-6 flex items-start justify-between">
-        <h1 className="text-2xl font-bold">{proposal.title || 'Proposal'}</h1>
+        <div>
+          {branding?.logo_url && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={branding.logo_url} alt={`${branding.display_name ?? 'Company'} logo`} className="mb-3 h-10 w-auto" />
+          )}
+          <h1 className="text-2xl font-bold" style={{ color: 'var(--proposal-accent, #111827)' }}>
+            {proposal.title || 'Proposal'}
+          </h1>
+          {branding?.display_name && (
+            <p className="mt-1 text-sm text-gray-500">{branding.display_name}</p>
+          )}
+        </div>
         <PrintButton />
       </div>
 
@@ -90,12 +111,17 @@ export default async function ProposalPrintPage({
       {packages.length > 0 && (
         <section className="mt-8">
           <h2 className="mb-3 text-lg font-bold">Options</h2>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 break-inside-avoid sm:grid-cols-3">
             {packages.map((pkg) => (
               <ProposalPackageOption
                 key={pkg.id}
                 pkg={pkg}
                 selected={pkg.id === selectedPackageId}
+                {...composedPackageDisplay(
+                  pkg as ComposedPackage,
+                  packages as ComposedPackage[],
+                  proposal.line_items,
+                )}
               />
             ))}
           </div>
@@ -144,5 +170,6 @@ export default async function ProposalPrintPage({
         </section>
       )}
     </main>
+    </ProposalThemeStub>
   )
 }
