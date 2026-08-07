@@ -21,7 +21,18 @@ export interface Org {
   sending_domain_status?: SendingDomainStatus
   sending_domain_records?: DomainDnsRecord[]
   tips_enabled?: boolean
+  branding?: OrgBranding
   created_at: string
+}
+
+// Brand kit (proposal builder redesign spec §2). All fields are public-safe
+// by construction — this object is shipped verbatim to public proposal pages.
+export interface OrgBranding {
+  display_name?: string        // customer-facing; falls back to org name
+  logo_url?: string
+  cover_image_url?: string     // hero behind the proposal title
+  accent_color?: string        // #rrggbb
+  secondary_color?: string     // #rrggbb
 }
 
 export const EVENT_PAGES = [
