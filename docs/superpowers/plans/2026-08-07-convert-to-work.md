@@ -14,8 +14,8 @@
 
 - **This is NOT the Next.js you know.** Read the relevant guide in `node_modules/next/dist/docs/` before any routing/server-action work; heed deprecation notices. (AGENTS.md)
 - **`'use server'` modules export async functions ONLY.** Never re-export a type from `actions/*` — it passes `tsc` and breaks `next build` (RSC compiler). See the NOTE comments in `actions/leads.ts`, `actions/today.ts`, `actions/customers.ts`.
-- **Cores (`lib/crm/*.ts`, `lib/ops/*.ts`, and the new `lib/events.ts`) carry no `'use server'`, no `import 'server-only'`, and call no `assert*`.**
-- **Cores do data; actions log activity.** `lib/activity.ts` carries `import 'server-only'`, so a core must never import `logActivity`. This mirrors `setLeadWaiting`/`clearLeadWaiting` in `actions/leads.ts`: core mutates, action logs. **This is a deliberate refinement of the spec**, which described activity logging inside the convert core.
+- **Cores (`lib/crm/*.ts`, `lib/ops/*.ts`, and the new `lib/events.ts`) carry no `'use server'` directive, no `import 'server-only'` directive of their own, and call no `assert*`.** (They do reach `server-only` transitively through `@/lib/firebase-admin`; the rule is about the core's own directives, matching every existing core.)
+- **Cores do data; actions log activity.** A core must never import `logActivity`. This mirrors `setLeadWaiting`/`clearLeadWaiting` in `actions/leads.ts`: the core mutates, the action logs — so activity logging stays where authorization already happened, and a core stays a pure data operation any caller can compose. **This is a deliberate refinement of the spec**, which described activity logging inside the convert core.
 - **Cores validate their own inputs.** Precedent: `updateLeadCore` validates stage; `instantiateOpsPlanCore` validates guests.
 - **`opportunityTitle(lead)` from `lib/leads.ts` is the single canonical way to label an opportunity.** Never inline the `title ?? name` fallback.
 - **Health stays derived** — never store an `active`/`waiting`/`needs_attention` flag.
@@ -431,6 +431,7 @@ vi.mock('@/lib/crm/leads', async (orig) => ({
 }))
 
 import { convertOpportunityToWorkCore } from '@/lib/crm/convert'
+import { getEventType } from '@/lib/event-types'
 
 const input = {
   name: 'Nguyen Wedding',
@@ -470,7 +471,7 @@ describe('convertOpportunityToWorkCore', () => {
   })
 
   it('passes custom terminology through when present', async () => {
-    const terminology = { registrantSingular: 'Client' } as never
+    const terminology = getEventType('event').terminology
     await convertOpportunityToWorkCore('o1', 'l1', { ...input, event_type_terminology: terminology })
     expect(createEventCore.mock.calls[0][1].event_type_terminology).toBe(terminology)
   })
