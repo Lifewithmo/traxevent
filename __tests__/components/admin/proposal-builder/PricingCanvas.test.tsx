@@ -16,12 +16,12 @@ const packages: ProposalPackage[] = [
   { id: 'pb', name: 'Better', includes: [], price: 700, item_ids: ['i1', 'i2'], recommended: true },
 ]
 
-let onItemsChange: ReturnType<typeof vi.fn>
-let onPackagesChange: ReturnType<typeof vi.fn>
+let onItemsChange: ReturnType<typeof vi.fn<(next: ProposalLineItem[]) => void>>
+let onPackagesChange: ReturnType<typeof vi.fn<(next: ProposalPackage[]) => void>>
 
 beforeEach(() => {
-  onItemsChange = vi.fn()
-  onPackagesChange = vi.fn()
+  onItemsChange = vi.fn<(next: ProposalLineItem[]) => void>()
+  onPackagesChange = vi.fn<(next: ProposalPackage[]) => void>()
 })
 
 // PricingCanvas is controlled: in the app the builder client re-renders it

@@ -8,16 +8,19 @@ const blocks: PlaceholderBlock[] = [
   { id: 'p1', type: 'paragraph', text: 'Replace this intro', placeholder: true },
 ]
 
-function lastChange(onChange: ReturnType<typeof vi.fn>): PlaceholderBlock[] {
-  return onChange.mock.calls[onChange.mock.calls.length - 1][0] as PlaceholderBlock[]
+type OnChange = (next: PlaceholderBlock[]) => void
+type OnUpload = (file: File) => Promise<{ url: string }>
+
+function lastChange(fn: ReturnType<typeof vi.fn<OnChange>>): PlaceholderBlock[] {
+  return fn.mock.calls[fn.mock.calls.length - 1][0]
 }
 
-let onChange: ReturnType<typeof vi.fn>
-let onUploadImage: ReturnType<typeof vi.fn>
+let onChange: ReturnType<typeof vi.fn<OnChange>>
+let onUploadImage: ReturnType<typeof vi.fn<OnUpload>>
 
 beforeEach(() => {
-  onChange = vi.fn()
-  onUploadImage = vi.fn().mockResolvedValue({ url: 'https://storage/x.png' })
+  onChange = vi.fn<OnChange>()
+  onUploadImage = vi.fn<OnUpload>().mockResolvedValue({ url: 'https://storage/x.png' })
 })
 
 function canvas(over: Partial<Parameters<typeof BlockCanvas>[0]> = {}) {
