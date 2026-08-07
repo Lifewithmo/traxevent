@@ -33,7 +33,7 @@ function Row({ orgId, orgSlug, item }: { orgId: string; orgSlug: string; item: N
     <div className="rounded-md border border-border px-3 py-2">
       <div className="flex items-center justify-between gap-3">
         <Link href={`/${orgSlug}/leads/${item.leadId}`} className="min-w-0 flex-1 hover:underline">
-          <span className="text-sm font-medium">{item.name}</span>
+          <span className="text-sm font-medium">{item.title}</span>
           {item.company && <span className="ml-2 text-xs text-muted-foreground">{item.company}</span>}
         </Link>
         <div className="flex shrink-0 gap-2">

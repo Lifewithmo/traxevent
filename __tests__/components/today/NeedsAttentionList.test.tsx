@@ -11,7 +11,7 @@ vi.mock('@/actions/leads', () => ({ setLeadWaiting: (...a: unknown[]) => setLead
 import { NeedsAttentionList } from '@/components/admin/today/NeedsAttentionList'
 import type { NeedsAttentionItem } from '@/lib/today'
 
-const items: NeedsAttentionItem[] = [{ leadId: 'l1', name: 'Ann', company: 'Acme', stage: 'inquiry' }]
+const items: NeedsAttentionItem[] = [{ leadId: 'l1', title: 'Ann', company: 'Acme', stage: 'inquiry' }]
 
 describe('NeedsAttentionList', () => {
   beforeEach(() => { refresh.mockClear(); createTask.mockClear(); setLeadWaiting.mockClear() })
@@ -19,6 +19,11 @@ describe('NeedsAttentionList', () => {
   it('empty state', () => {
     render(<NeedsAttentionList orgId="o1" orgSlug="acme" items={[]} />)
     expect(screen.getByText(/nothing needs attention/i)).toBeInTheDocument()
+  })
+
+  it('renders the opportunity title', () => {
+    render(<NeedsAttentionList orgId="o1" orgSlug="acme" items={[{ leadId: 'l1', title: 'Riverside gala', company: 'Acme', stage: 'inquiry' }]} />)
+    expect(screen.getByText('Riverside gala')).toBeInTheDocument()
   })
 
   it('adds a next step', async () => {
