@@ -45,4 +45,19 @@ describe('parseSeedArgs', () => {
   it('rejects an empty password', () => {
     expect(() => parseSeedArgs(['--password='])).toThrow(/Password cannot be empty/)
   })
+
+  // These three tests lock in the guard's rejection surface against future refactors.
+  // Each one catches a specific, plausible regression (case-insensitive prefix check,
+  // validating inside the loop, or trimming before the check).
+  it('rejects an org id whose demo- prefix differs in case', () => {
+    expect(() => parseSeedArgs(['--org-id=DEMO-brewtrax'])).toThrow(/must start with "demo-"/)
+  })
+
+  it('validates the last --org-id when the flag is repeated', () => {
+    expect(() => parseSeedArgs(['--org-id=demo-first', '--org-id=acme-corp'])).toThrow(/must start with "demo-"/)
+  })
+
+  it('rejects an org id with leading whitespace before the prefix', () => {
+    expect(() => parseSeedArgs(['--org-id= demo-brewtrax'])).toThrow(/must start with "demo-"/)
+  })
 })
