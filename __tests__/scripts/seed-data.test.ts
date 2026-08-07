@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest'
 import { buildBrewtraxSeed } from '@/scripts/seed/brewtrax-data'
 import { LEAD_STAGES } from '@/lib/leads'
 import { computeSelectedTotal } from '@/lib/proposals'
+import { invoiceBalance } from '@/lib/invoices'
+import { deriveAging } from '@/lib/invoice-status'
 
 const TODAY = new Date('2026-08-06T12:00:00.000Z')
 
@@ -119,5 +121,104 @@ describe('buildBrewtraxSeed — events and proposals', () => {
     expect(accepted.proposal.selection!.selected_total).toBe(
       computeSelectedTotal(accepted.proposal, { optional_item_ids: [] }),
     )
+  })
+})
+
+describe('buildBrewtraxSeed — invoices', () => {
+  it('points every invoice at a lead and a customer in the graph', () => {
+    const seed = buildBrewtraxSeed(TODAY)
+    const leadKeys = new Set(seed.leads.map((l) => l.key))
+    const customerKeys = new Set(seed.customers.map((c) => c.key))
+    for (const inv of seed.invoices) {
+      expect(leadKeys).toContain(inv.leadKey)
+      expect(customerKeys).toContain(inv.customerKey)
+    }
+  })
+
+  it('covers the aging buckets the demo is meant to show', () => {
+    const seed = buildBrewtraxSeed(TODAY)
+    const buckets = new Set(
+      seed.invoices
+        .filter((inv) => inv.issue)
+        .map((inv) => {
+          const balance = invoiceBalance({
+            line_items: inv.input.line_items ?? [],
+            payments: inv.payments.map((p) => ({ amount: p.amount, recorded_at: TODAY.toISOString() })),
+          })
+          return deriveAging({ dueDate: inv.input.due_date, balance, lifecycle: 'issued' }, TODAY)
+        }),
+    )
+    expect(buckets).toContain('current')   // paid in full
+    expect(buckets).toContain('due_soon')
+    expect(buckets).toContain('d31_60')
+  })
+
+  it('has exactly one draft, one fully paid, and one partially paid invoice', () => {
+    const seed = buildBrewtraxSeed(TODAY)
+    expect(seed.invoices.filter((i) => !i.issue)).toHaveLength(1)
+
+    const paidStates = seed.invoices.filter((i) => i.issue).map((inv) => {
+      const due = (inv.input.line_items ?? []).reduce((s, li) => s + li.quantity * li.unit_price, 0)
+      const paid = inv.payments.reduce((s, p) => s + p.amount, 0)
+      return paid === 0 ? 'unpaid' : paid >= due ? 'paid' : 'partial'
+    })
+    expect(paidStates.filter((s) => s === 'paid')).toHaveLength(1)
+    expect(paidStates.filter((s) => s === 'partial')).toHaveLength(1)
+  })
+
+  it('never records a payment larger than the invoice total', () => {
+    const seed = buildBrewtraxSeed(TODAY)
+    for (const inv of seed.invoices) {
+      const due = (inv.input.line_items ?? []).reduce((s, li) => s + li.quantity * li.unit_price, 0)
+      const paid = inv.payments.reduce((s, p) => s + p.amount, 0)
+      expect(paid).toBeLessThanOrEqual(due)
+    }
+  })
+})
+
+describe('buildBrewtraxSeed — ops', () => {
+  it('covers all three resource kinds', () => {
+    const seed = buildBrewtraxSeed(TODAY)
+    const kinds = new Set(seed.ops.resources.map((r) => r.input.kind))
+    expect(kinds).toContain('consumable')
+    expect(kinds).toContain('reusable')
+    expect(kinds).toContain('serialized')
+  })
+
+  it('references only resource keys that exist', () => {
+    const seed = buildBrewtraxSeed(TODAY)
+    const resourceKeys = new Set(seed.ops.resources.map((r) => r.key))
+    for (const pkg of seed.ops.workPackages) {
+      for (const line of pkg.lines) {
+        if (line.kind === 'labor') continue
+        expect(resourceKeys).toContain(line.resourceKey)
+      }
+    }
+  })
+
+  it('attaches the ops plan to an upcoming event with a positive guest count', () => {
+    const seed = buildBrewtraxSeed(TODAY)
+    const event = seed.events.find((e) => e.key === seed.ops.plan.eventKey)
+    expect(event).toBeDefined()
+    expect(event!.event.event_start > TODAY.toISOString()).toBe(true)
+    expect(seed.ops.plan.requirements.guests).toBeGreaterThan(0)
+  })
+
+  it('references only work package keys that exist', () => {
+    const seed = buildBrewtraxSeed(TODAY)
+    const pkgKeys = new Set(seed.ops.workPackages.map((p) => p.key))
+    for (const key of seed.ops.plan.packageKeys) expect(pkgKeys).toContain(key)
+  })
+
+  it('has one open and one resolved issue', () => {
+    const seed = buildBrewtraxSeed(TODAY)
+    expect(seed.ops.issues.filter((i) => !i.resolution)).toHaveLength(1)
+    expect(seed.ops.issues.filter((i) => i.resolution)).toHaveLength(1)
+  })
+
+  it('has a compliance doc expiring within 60 days', () => {
+    const seed = buildBrewtraxSeed(TODAY)
+    const soon = new Date(TODAY.getTime() + 60 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+    expect(seed.ops.complianceDocs.some((d) => d.expires_on && d.expires_on <= soon)).toBe(true)
   })
 })

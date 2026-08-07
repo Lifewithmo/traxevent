@@ -289,5 +289,111 @@ export function buildBrewtraxSeed(today: Date): BrewtraxSeed {
     },
   ]
 
-  return { org, customers, leads, tasks, events, proposals }
+  const invoices: BrewtraxSeed['invoices'] = [
+    {
+      key: 'inv-summerfest-paid', leadKey: 'lead-vance-gala', customerKey: 'cust-harper',
+      input: {
+        title: 'Meridian Summerfest — vendor day', type: 'final', due_date: daysFrom(today, -14),
+        line_items: [{ description: 'Full-day drip and iced service', quantity: 1, unit_price: 1800 }],
+      },
+      issue: { issuedAt: isoFrom(today, -28) },
+      payments: [{ amount: 1800, method: 'card', note: 'Paid in full on site' }],
+    },
+    {
+      key: 'inv-oakline-deposit', leadKey: 'lead-oakline-offsite', customerKey: 'cust-oakline',
+      input: {
+        title: 'Oakline Q3 offsite — deposit', type: 'deposit', due_date: daysFrom(today, -40),
+        line_items: [{ description: 'Cold brew bar — 50% deposit', quantity: 1, unit_price: 775 }],
+      },
+      issue: { issuedAt: isoFrom(today, -45) },
+      payments: [{ amount: 400, method: 'ach', note: 'Partial — remainder promised by end of month' }],
+    },
+    {
+      key: 'inv-harper-deposit', leadKey: 'lead-harper-wedding', customerKey: 'cust-harper',
+      input: {
+        title: 'Harper wedding — deposit', type: 'deposit', due_date: daysFrom(today, 2),
+        line_items: [{ description: 'Espresso bar deposit', quantity: 1, unit_price: 1200 }],
+      },
+      issue: { issuedAt: isoFrom(today, -5) },
+      payments: [],
+    },
+    {
+      key: 'inv-riverbend-quick', leadKey: 'lead-riverbend-block', customerKey: 'cust-riverbend',
+      input: {
+        title: 'Riverbend block party — balance', type: 'quick', due_date: daysFrom(today, 12),
+        line_items: [{ description: 'Community event service — 4 hours', quantity: 1, unit_price: 1600 }],
+      },
+      issue: { issuedAt: isoFrom(today, -3) },
+      payments: [],
+    },
+    {
+      key: 'inv-larkin-draft', leadKey: 'lead-larkin-anniversary', customerKey: 'cust-larkin',
+      input: {
+        title: 'Larkin anniversary — draft', type: 'quick',
+        line_items: [{ description: 'Drip coffee service — 2 hours', quantity: 1, unit_price: 650 }],
+      },
+      payments: [],
+    },
+  ]
+
+  const ops: BrewtraxSeed['ops'] = {
+    resources: [
+      { key: 'res-beans', input: { name: 'Single-origin espresso beans', kind: 'consumable', unit: 'lb', unit_cost: 14.5 } },
+      { key: 'res-cups', input: { name: '12oz compostable cups', kind: 'consumable', unit: 'each', unit_cost: 0.18 } },
+      { key: 'res-milk', input: { name: 'Whole milk', kind: 'consumable', unit: 'gal', unit_cost: 4.25 } },
+      { key: 'res-cart', input: { name: 'Copper mobile cart', kind: 'reusable', notes: 'Primary cart — fits through a 36" doorway' } },
+      { key: 'res-grinder', input: { name: 'Mahlkonig E65S grinder', kind: 'serialized', notes: 'Serial MK-2291' } },
+      { key: 'res-espresso-machine', input: { name: 'La Marzocco Linea Mini', kind: 'serialized', notes: 'Serial LM-88413' } },
+    ],
+    workPackages: [
+      {
+        key: 'pkg-espresso-bar', name: 'Espresso Bar — 4 hour', price: 1450, max_guests: 150,
+        scope: 'Two baristas, full espresso menu, cups and compostable lids included.',
+        setup_minutes: 90, teardown_minutes: 45,
+        lines: [
+          { kind: 'consumable', resourceKey: 'res-beans', qty_per_guest: 0.02, base_qty: 1 },
+          { kind: 'consumable', resourceKey: 'res-cups', qty_per_guest: 1.3 },
+          { kind: 'consumable', resourceKey: 'res-milk', qty_per_guest: 0.05 },
+          { kind: 'equipment', resourceKey: 'res-cart', qty: 1 },
+          { kind: 'equipment', resourceKey: 'res-espresso-machine', qty: 1 },
+          { kind: 'equipment', resourceKey: 'res-grinder', qty: 1 },
+          { kind: 'labor', role: 'Barista', count: 2 },
+        ],
+      },
+      {
+        key: 'pkg-cold-brew', name: 'Cold Brew Bar — 3 hour', price: 1200, max_guests: 120,
+        scope: 'Self-serve cold brew on tap with one barista attending.',
+        setup_minutes: 60, teardown_minutes: 30,
+        lines: [
+          { kind: 'consumable', resourceKey: 'res-cups', qty_per_guest: 1.1 },
+          { kind: 'equipment', resourceKey: 'res-cart', qty: 1 },
+          { kind: 'labor', role: 'Barista', count: 1 },
+        ],
+      },
+    ],
+    plan: {
+      eventKey: 'event-oakline',
+      packageKeys: ['pkg-cold-brew'],
+      requirements: {
+        guests: 85,
+        service_start: isoFrom(today, 7, '15:00'),
+        service_end: isoFrom(today, 7, '19:00'),
+        site_needs: ['power', 'ice', 'parking'],
+        notes: 'Load in through the north lot; badge required at the gate.',
+      },
+      completeStepCount: 3,
+      completeDeadlineCount: 1,
+    },
+    issues: [
+      { type: 'equipment', severity: 'medium', note: 'Grinder burrs are due for replacement — grind is running coarse.' },
+      { type: 'logistics', severity: 'low', note: 'Load-in gate was locked on arrival.', resolution: 'Venue now sends a gate code with the confirmation email.' },
+    ],
+    complianceDocs: [
+      { name: 'General liability certificate', expires_on: daysFrom(today, 24), notes: 'Renew with the broker — Riverbend HOA needs a copy.' },
+      { name: 'Food handler permit — Ada County', expires_on: daysFrom(today, 210) },
+      { name: 'Mobile vendor license', expires_on: daysFrom(today, 145) },
+    ],
+  }
+
+  return { org, customers, leads, tasks, events, proposals, invoices, ops }
 }
