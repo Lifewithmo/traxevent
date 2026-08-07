@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { createLead, setLeadStage } from '@/actions/leads'
-import { LEAD_STAGES, LEAD_STAGE_LABELS, groupLeadsByStage, pipelineSummary } from '@/lib/leads'
+import { LEAD_STAGES, LEAD_STAGE_LABELS, groupLeadsByStage, pipelineSummary, opportunityTitle } from '@/lib/leads'
 import type { Lead, LeadStage } from '@/lib/types'
 
 interface LeadsBoardClientProps {
@@ -25,6 +25,7 @@ export function LeadsBoardClient({ orgId, orgSlug, leads: initial }: LeadsBoardC
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const [title, setTitle] = useState('')
   const [name, setName] = useState('')
   const [organization, setOrganization] = useState('')
   const [email, setEmail] = useState('')
@@ -38,7 +39,7 @@ export function LeadsBoardClient({ orgId, orgSlug, leads: initial }: LeadsBoardC
   const summary = pipelineSummary(leads)
 
   function resetForm() {
-    setName(''); setOrganization(''); setEmail(''); setPhone('')
+    setTitle(''); setName(''); setOrganization(''); setEmail(''); setPhone('')
     setEventType(''); setEventDate(''); setEstimatedValue(''); setNotes('')
   }
 
@@ -49,6 +50,7 @@ export function LeadsBoardClient({ orgId, orgSlug, leads: initial }: LeadsBoardC
       const parsedValue = estimatedValue.trim() === '' ? undefined : Number(estimatedValue)
       const lead = await createLead(orgId, {
         name: name.trim(),
+        title: title.trim() || undefined,
         organization: organization.trim() || undefined,
         email: email.trim() || undefined,
         phone: phone.trim() || undefined,
@@ -97,6 +99,10 @@ export function LeadsBoardClient({ orgId, orgSlug, leads: initial }: LeadsBoardC
         <Card>
           <CardHeader><CardTitle className="text-base">New lead</CardTitle></CardHeader>
           <CardContent className="space-y-3">
+            <div className="space-y-1">
+              <Label htmlFor="leadTitle">Title</Label>
+              <Input id="leadTitle" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Riverside gala" />
+            </div>
             <div className="space-y-1">
               <Label htmlFor="leadName">Name</Label>
               <Input id="leadName" value={name} onChange={(e) => setName(e.target.value)} placeholder="Contact name" />
@@ -155,7 +161,7 @@ export function LeadsBoardClient({ orgId, orgSlug, leads: initial }: LeadsBoardC
                 <Card key={lead.id}>
                   <CardContent className="py-3 space-y-2">
                     <Link href={`/${orgSlug}/leads/${lead.id}`} className="block space-y-1">
-                      <p className="text-sm font-medium">{lead.name}</p>
+                      <p className="text-sm font-medium">{opportunityTitle(lead)}</p>
                       {lead.organization && <p className="text-xs text-muted-foreground">{lead.organization}</p>}
                       {(lead.event_type || lead.event_date) && (
                         <p className="text-xs text-muted-foreground">
@@ -169,7 +175,7 @@ export function LeadsBoardClient({ orgId, orgSlug, leads: initial }: LeadsBoardC
                     <select
                       value={lead.stage}
                       onChange={(e) => handleStageChange(lead, e.target.value as LeadStage)}
-                      aria-label={`Stage for ${lead.name}`}
+                      aria-label={`Stage for ${opportunityTitle(lead)}`}
                       className="w-full rounded-md border border-input bg-transparent px-2 py-1 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                     >
                       {LEAD_STAGES.map((s) => (

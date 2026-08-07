@@ -104,6 +104,18 @@ describe('leads actions', () => {
     expect(lead.customer_id).toBe('c2')
   })
 
+  it('persists a title when one is supplied', async () => {
+    findOrCreateCustomerCore.mockResolvedValue({ customer: { id: 'c1', name: 'Dana Kim', created_at: 'x' }, created: true })
+    const lead = await createLead('o1', { name: 'Dana Kim', title: '  Riverside gala  ' })
+    expect(lead.title).toBe('Riverside gala')
+  })
+
+  it('omits title entirely when blank', async () => {
+    findOrCreateCustomerCore.mockResolvedValue({ customer: { id: 'c1', name: 'Dana Kim', created_at: 'x' }, created: true })
+    const lead = await createLead('o1', { name: 'Dana Kim', title: '   ' })
+    expect('title' in lead).toBe(false)
+  })
+
   it('createLead throws "Name is required" for blank name and does not write', async () => {
     await expect(createLead('org-1', { name: '   ' })).rejects.toThrow('Name is required')
     expect(leadDocSetSpy).not.toHaveBeenCalled()
