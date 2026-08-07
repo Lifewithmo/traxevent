@@ -7,6 +7,8 @@ import { generateAccessToken } from '@/lib/tokens'
 import { assertOrgMember, assertOrgAdmin } from '@/lib/auth/assert'
 import { PROPOSAL_STATUSES } from '@/lib/proposals'
 import { updateProposalBlocksCore } from '@/lib/proposals/blocks-core'
+import { updateProposalDraftCore } from '@/lib/proposals/draft-core'
+import type { ProposalDraftInput } from '@/lib/proposals/draft'
 import type { Proposal, ProposalLineItem, ProposalStatus, ProposalPackage, ProposalDiscount, ProposalDeposit, ProposalBlock } from '@/lib/types'
 
 function proposalsRef(orgId: string) {
@@ -83,6 +85,11 @@ export interface ProposalUpdate {
   deposit_terms?: string
 }
 
+/**
+ * @deprecated Replaced by updateProposalDraft (redesign spec §5). Kept only
+ * because ProposalEditorClient still imports it; deleted in the integration
+ * pass together with that component (Track C removes the callers).
+ */
 export async function updateProposal(orgId: string, proposalId: string, updates: ProposalUpdate): Promise<void> {
   await assertOrgAdmin(orgId)
   if (updates.status && !PROPOSAL_STATUSES.includes(updates.status)) throw new Error('Invalid status')
@@ -155,6 +162,11 @@ export async function deleteProposal(orgId: string, proposalId: string): Promise
   await ref.delete()
 }
 
+/**
+ * @deprecated Replaced by updateProposalDraft (redesign spec §5). Kept only
+ * because ProposalBlockEditor still imports it; deleted in the integration
+ * pass together with that component (Track C removes the callers).
+ */
 export async function updateProposalBlocks(
   orgId: string,
   proposalId: string,
@@ -162,4 +174,17 @@ export async function updateProposalBlocks(
 ): Promise<{ blocks: ProposalBlock[]; adjustments: string[] }> {
   await assertOrgAdmin(orgId)
   return updateProposalBlocksCore(orgId, proposalId, blocks)
+}
+
+// The consolidated autosave action (spec §5): one debounced write covering
+// title, notes, blocks, line items, packages, and discount/tax/deposit/gate/
+// terms/expiry. Validation, normalization, and composed-price recompute live
+// in the guard-free core; this wrapper only adds authorization.
+export async function updateProposalDraft(
+  orgId: string,
+  proposalId: string,
+  input: ProposalDraftInput,
+): Promise<{ proposal: Proposal; adjustments: string[] }> {
+  await assertOrgAdmin(orgId)
+  return updateProposalDraftCore(orgId, proposalId, input)
 }
