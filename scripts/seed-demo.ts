@@ -4,7 +4,16 @@ import { leadsRef } from '@/lib/crm/leads'
 import { tasksRef } from '@/lib/crm/tasks'
 import { parseSeedArgs, assertDemoOrgId, type SeedArgs } from '@/scripts/seed/args'
 import { buildBrewtraxSeed } from '@/scripts/seed/brewtrax-data'
-import type { Org, OrgMember, Lead, Task } from '@/lib/types'
+import type { Org, OrgMember, Lead, Task, Event, ItineraryItem, Proposal } from '@/lib/types'
+import { generateAccessToken } from '@/lib/tokens'
+import { buildEventSlug } from '@/lib/slug'
+import { createInvoiceCore, issueInvoiceCore, recordPaymentCore } from '@/lib/crm/invoices'
+import { createResourceCore } from '@/lib/ops/resources'
+import { createWorkPackageCore } from '@/lib/ops/work-packages'
+import { instantiateOpsPlanCore, completeChecklistStepCore, toggleDeadlineCore } from '@/lib/ops/event-ops'
+import { createIssueCore, resolveIssueCore } from '@/lib/ops/issues'
+import { createComplianceDocCore } from '@/lib/ops/compliance'
+import type { WorkPackageLine } from '@/lib/types'
 
 // Run via `npm run seed:demo` — it sets --conditions=react-server so 'server-only'
 // (imported transitively via lib/firebase-admin) resolves to its no-throw module under tsx.
@@ -106,6 +115,132 @@ async function main(): Promise<void> {
     await tasksRef(args.orgId, leadId).doc(task.id).set(task)
   }
   console.log(`  ${seed.tasks.length} tasks`)
+
+  // Events + itinerary. The fixture's literal slug must match what the app
+  // would generate, or demo URLs diverge from real ones.
+  for (const e of seed.events) {
+    const expected = buildEventSlug(e.event.name, e.event.year)
+    if (e.event.slug !== expected) {
+      throw new Error(`Event ${e.key} slug "${e.event.slug}" does not match buildEventSlug: "${expected}"`)
+    }
+    const eventDoc: Event = e.event
+    const eventRef = ref.collection('events').doc(eventDoc.id)
+    await eventRef.set(eventDoc)
+    for (const item of e.itinerary) {
+      const itineraryItem: ItineraryItem = item
+      await eventRef.collection('itinerary').doc(itineraryItem.id).set(itineraryItem)
+    }
+  }
+  console.log(`  ${seed.events.length} events`)
+
+  const eventIds = new Map(seed.events.map((e) => [e.key, e.event.id]))
+
+  // Proposals. Written directly (no guard-free core exists); token minted here.
+  for (const p of seed.proposals) {
+    const leadId = leadIds.get(p.leadKey)
+    if (!leadId) throw new Error(`Proposal ${p.proposal.id} references unknown lead ${p.leadKey}`)
+    const proposal: Proposal = {
+      ...p.proposal,
+      org_id: args.orgId,
+      lead_id: leadId,
+      token: generateAccessToken(),
+    }
+    await ref.collection('proposals').doc(proposal.id).set(proposal)
+  }
+  console.log(`  ${seed.proposals.length} proposals`)
+
+  // Invoices go through the real transitions — create, issue, then pay — so
+  // lifecycle, number, balance, and aging come out of production code rather
+  // than being guessed at in the fixture.
+  for (const inv of seed.invoices) {
+    const leadId = leadIds.get(inv.leadKey)
+    if (!leadId) throw new Error(`Invoice ${inv.key} references unknown lead ${inv.leadKey}`)
+    const customerId = customerIds.get(inv.customerKey)
+    if (!customerId) throw new Error(`Invoice ${inv.key} references unknown customer ${inv.customerKey}`)
+
+    const created = await createInvoiceCore(args.orgId, leadId, { ...inv.input, customer_id: customerId })
+    if (inv.issue) await issueInvoiceCore(args.orgId, created.id, { issuedAt: inv.issue.issuedAt })
+    for (const payment of inv.payments) {
+      await recordPaymentCore(args.orgId, created.id, payment)
+    }
+  }
+  console.log(`  ${seed.invoices.length} invoices`)
+
+  // Ops: resources first (work package lines reference their ids), then
+  // packages, then the plan derived from them.
+  const resourceIds = new Map<string, string>()
+  for (const r of seed.ops.resources) {
+    const resource = await createResourceCore(args.orgId, r.input)
+    resourceIds.set(r.key, resource.id)
+  }
+
+  const packageIds = new Map<string, string>()
+  for (const p of seed.ops.workPackages) {
+    const lines: WorkPackageLine[] = p.lines.map((line) => {
+      if (line.kind === 'labor') return { kind: 'labor', role: line.role, count: line.count }
+      const resourceId = resourceIds.get(line.resourceKey)
+      if (!resourceId) throw new Error(`Work package ${p.key} references unknown resource ${line.resourceKey}`)
+      return line.kind === 'consumable'
+        ? { kind: 'consumable', resource_id: resourceId, qty_per_guest: line.qty_per_guest, ...(line.base_qty !== undefined ? { base_qty: line.base_qty } : {}) }
+        : { kind: 'equipment', resource_id: resourceId, qty: line.qty }
+    })
+    // Third arg is the validation allow-list: createWorkPackageCore rejects a
+    // line pointing at a resource id outside this set.
+    const pkg = await createWorkPackageCore(args.orgId, {
+      name: p.name, price: p.price, lines,
+      ...(p.description ? { description: p.description } : {}),
+      ...(p.scope ? { scope: p.scope } : {}),
+      ...(p.max_guests !== undefined ? { max_guests: p.max_guests } : {}),
+      ...(p.setup_minutes !== undefined ? { setup_minutes: p.setup_minutes } : {}),
+      ...(p.teardown_minutes !== undefined ? { teardown_minutes: p.teardown_minutes } : {}),
+    }, new Set(resourceIds.values()))
+    packageIds.set(p.key, pkg.id)
+  }
+  console.log(`  ${resourceIds.size} resources, ${packageIds.size} work packages`)
+
+  const planEventId = eventIds.get(seed.ops.plan.eventKey)
+  if (!planEventId) throw new Error(`Ops plan references unknown event ${seed.ops.plan.eventKey}`)
+  const planPackageIds = seed.ops.plan.packageKeys.map((key) => {
+    const id = packageIds.get(key)
+    if (!id) throw new Error(`Ops plan references unknown work package ${key}`)
+    return id
+  })
+
+  const plan = await instantiateOpsPlanCore(args.orgId, planEventId, {
+    package_ids: planPackageIds,
+    requirements: seed.ops.plan.requirements,
+    event_start: seed.events.find((e) => e.key === seed.ops.plan.eventKey)!.event.event_start,
+    industry_pack_id: seed.org.industry_pack_id,
+    actor_uid: uid,
+  })
+
+  // Partially complete the plan so readiness reads as in-progress, not 0% or 100%.
+  let stepsRemaining = seed.ops.plan.completeStepCount
+  for (const checklist of plan.checklists) {
+    for (let i = 0; i < checklist.steps.length && stepsRemaining > 0; i++) {
+      await completeChecklistStepCore(args.orgId, planEventId, checklist.id, i, { done: true, actor_uid: uid })
+      stepsRemaining--
+    }
+    if (stepsRemaining === 0) break
+  }
+  for (const deadline of plan.deadlines.slice(0, seed.ops.plan.completeDeadlineCount)) {
+    await toggleDeadlineCore(args.orgId, planEventId, deadline.id, true)
+  }
+  console.log(`  ops plan on event ${planEventId}`)
+
+  for (const issue of seed.ops.issues) {
+    const created = await createIssueCore(args.orgId, planEventId, {
+      type: issue.type, severity: issue.severity, note: issue.note, created_by: uid,
+    })
+    if (issue.resolution) {
+      await resolveIssueCore(args.orgId, planEventId, created.id, issue.resolution)
+    }
+  }
+
+  for (const doc of seed.ops.complianceDocs) {
+    await createComplianceDocCore(args.orgId, doc)
+  }
+  console.log(`  ${seed.ops.issues.length} issues, ${seed.ops.complianceDocs.length} compliance docs`)
 
   console.log(`\nDone.`)
   console.log(`  login: ${args.email} / ${args.password}`)
