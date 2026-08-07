@@ -2,11 +2,9 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { createProposal } from '@/actions/proposals'
 import { proposalDisplayRange, PROPOSAL_STATUS_LABELS } from '@/lib/proposals'
 import type { Proposal } from '@/lib/types'
 
@@ -19,22 +17,9 @@ interface LeadProposalsClientProps {
 
 const money = (n: number) => `$${n.toFixed(2)}`
 
-export function LeadProposalsClient({ orgId, orgSlug, leadId, proposals }: LeadProposalsClientProps) {
-  const router = useRouter()
-  const [creating, setCreating] = useState(false)
+export function LeadProposalsClient({ orgSlug, leadId, proposals }: LeadProposalsClientProps) {
   const [copied, setCopied] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-
-  async function handleCreate() {
-    setCreating(true); setError(null)
-    try {
-      const created = await createProposal(orgId, leadId, {})
-      router.push(`/${orgSlug}/leads/${leadId}/proposals/${created.id}`)
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to create proposal')
-      setCreating(false)
-    }
-  }
 
   async function handleCopy(token: string) {
     setError(null)
@@ -51,9 +36,12 @@ export function LeadProposalsClient({ orgId, orgSlug, leadId, proposals }: LeadP
       <Card>
         <CardHeader className="flex-row items-center justify-between space-y-0">
           <CardTitle className="text-base">Proposals</CardTitle>
-          <Button onClick={handleCreate} disabled={creating}>
-            {creating ? 'Creating…' : 'New proposal'}
-          </Button>
+          <Link
+            href={`/${orgSlug}/leads/${leadId}/proposals/new`}
+            className="inline-flex h-8 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+          >
+            New proposal
+          </Link>
         </CardHeader>
         <CardContent className="space-y-3">
           <div aria-live="polite" aria-atomic="true">
