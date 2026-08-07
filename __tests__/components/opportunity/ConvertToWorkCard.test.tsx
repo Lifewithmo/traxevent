@@ -31,6 +31,12 @@ describe('ConvertToWorkCard', () => {
     expect(screen.queryByRole('button', { name: /convert to work/i })).not.toBeInTheDocument()
   })
 
+  it('keeps showing the linked job even after the stage moves off closed_won', () => {
+    const job = { id: 'e1', slug: 'nguyen-wedding-2026', name: 'Nguyen Wedding' } as Event
+    render(<ConvertToWorkCard {...props} lead={{ ...won, stage: 'proposal' } as Lead} job={job} />)
+    expect(screen.getByRole('link', { name: /view job/i })).toHaveAttribute('href', '/acme/nguyen-wedding-2026/ops')
+  })
+
   it('prefills the form from the opportunity', () => {
     render(<ConvertToWorkCard {...props} />)
     fireEvent.click(screen.getByRole('button', { name: /convert to work/i }))

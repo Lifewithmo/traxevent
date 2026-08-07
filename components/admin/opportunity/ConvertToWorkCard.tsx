@@ -31,9 +31,9 @@ export function ConvertToWorkCard({ orgId, orgSlug, lead, job, eventTypes }: Con
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Conversion is the booking's consequence; nothing to offer before it.
-  if (lead.stage !== 'closed_won') return null
-
+  // A linked job stays visible no matter what the opportunity's stage does
+  // later (e.g. moved back to `proposal` as a correction) — otherwise the
+  // job would be orphaned from its opportunity until it is re-won.
   if (job) {
     return (
       <div className="rounded-md border border-border px-3 py-2 text-sm">
@@ -42,6 +42,9 @@ export function ConvertToWorkCard({ orgId, orgSlug, lead, job, eventTypes }: Con
       </div>
     )
   }
+
+  // Conversion is the booking's consequence; nothing to offer before it.
+  if (lead.stage !== 'closed_won') return null
 
   async function handleConvert() {
     const type = eventTypes.find((t) => t.id === eventTypeId)
