@@ -5,8 +5,9 @@ import { LEAD_STAGES } from '@/lib/leads'
 import { logActivity } from '@/lib/activity'
 import { leadsRef, listLeadsCore, updateLeadCore, type LeadUpdate } from '@/lib/crm/leads'
 import { findOrCreateCustomerCore } from '@/lib/crm/customers'
+import { convertOpportunityToWorkCore, type ConvertToWorkInput } from '@/lib/crm/convert'
 import { randomBytes } from 'crypto'
-import type { Lead, LeadStage, LeadWaiting } from '@/lib/types'
+import type { Lead, LeadStage, LeadWaiting, Event } from '@/lib/types'
 
 // NOTE: this is a 'use server' module — every export must be an async function.
 // LeadUpdate (a type) is therefore NOT re-exported here; import it from
@@ -115,4 +116,20 @@ export async function clearLeadWaiting(orgId: string, leadId: string): Promise<v
   await logActivity(orgId, {
     parent_type: 'opportunity', parent_id: leadId, kind: 'waiting', summary: 'Resumed — cleared waiting',
   })
+}
+
+export async function convertOpportunityToWork(
+  orgId: string,
+  leadId: string,
+  input: ConvertToWorkInput
+): Promise<Event> {
+  await assertOrgAdmin(orgId)
+  const event = await convertOpportunityToWorkCore(orgId, leadId, input)
+  await logActivity(orgId, {
+    parent_type: 'opportunity',
+    parent_id: leadId,
+    kind: 'converted',
+    summary: `Scheduled as ${event.name}`,
+  })
+  return event
 }
