@@ -46,7 +46,7 @@ Forced into a single Event, these produce a shopping list that is wrong for both
 
 The decision costs nothing today: it means **not writing a uniqueness constraint**, not building a jobs list.
 
-Known tradeoff, deliberately unresolved: `generateCloseoutInvoice` runs per event, so a two-event opportunity would produce two final invoices. Whether that is correct or annoying depends on how a weekend is billed. It is not resolved here because the double-conversion guard below makes a second job unreachable in this increment — the question becomes live only when that guard is relaxed, and should be answered then.
+Known tradeoff, deliberately unresolved: `generateCloseoutInvoice` runs per event, so a two-event opportunity would produce two final invoices. Whether that is correct or annoying depends on how a weekend is billed. It is not resolved here because the double-conversion guard below makes a second job unreachable through the normal UI in this increment — a rare read-then-write race (see `lib/crm/convert.ts`) can still let one through, so the question becomes common, not merely live, only when that guard is deliberately relaxed, and should be answered fully then.
 
 ## Data model
 
@@ -77,7 +77,7 @@ Cores carry no `'use server'`, no `import 'server-only'`, and call no `assert*`.
 
 ### The double-conversion guard
 
-The **schema** has no uniqueness constraint; the **action** refuses a second conversion. `convertOpportunityToWork` queries for an existing linked event and throws `'This opportunity is already scheduled'`. That protects against the realistic failure — a double-click or a second browser tab — without a constraint to migrate out later. If the wedding-weekend case arrives, one `if` in an action relaxes.
+The **schema** has no uniqueness constraint; the **action** refuses a second conversion. `convertOpportunityToWork` queries for an existing linked event and throws `'This opportunity is already scheduled'`. That protects against the common case — an in-tab double-click, caught by the form's own `disabled={saving}` — without a constraint to migrate out later. A second browser tab racing the same read-then-write is not fully closed by this guard; that gap is accepted and documented in `lib/crm/convert.ts`, not covered. If the wedding-weekend case arrives, one `if` in an action relaxes.
 
 Guard in behaviour, freedom in the model.
 

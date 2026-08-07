@@ -31,8 +31,10 @@ const DATE_FORMAT = /^\d{4}-\d{2}-\d{2}$/
  * of the same opportunity can therefore both pass the check and both create a
  * job. This is accepted rather than fixed: the failure mode is a duplicate
  * *draft* event on an opportunity whose schema already permits multiple jobs
- * by design (see above) — untidy and trivially deletable, not data
- * corruption. Closing the race would mean threading a Firestore `Transaction`
+ * by design (see above) — untidy, but it does not corrupt data. There is no
+ * `deleteEvent` in this repo today, so cleaning one up means a Firestore
+ * console operation, not a UI action; that is a real cost, accepted along
+ * with the race itself. Closing the race would mean threading a Firestore `Transaction`
  * handle through `createEventCore`'s public signature, which `/new-event`
  * also calls and has no need for; the repo already rejected that shape of
  * tradeoff for `createLead` in the CRM finish-out plan's "Accepted tradeoff"
