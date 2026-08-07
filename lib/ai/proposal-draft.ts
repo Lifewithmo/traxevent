@@ -61,6 +61,15 @@ export interface DraftResult {
   adjustments: string[]
 }
 
+// Enriched shape returned by the action: suggested_package_ids alone is not
+// renderable — the operator needs a name and a price to know what was
+// suggested. Prices are looked up server-side from the catalog (never
+// model-authored); parseDraftResponse only knows ids, so the enrichment
+// happens in the action, one layer up, where the catalog is already in scope.
+export interface ProposalDraft extends DraftResult {
+  suggested_packages: Array<{ id: string; name: string; price: number }>
+}
+
 export function parseDraftResponse(message: DraftMessage, validPackageIds: string[]): DraftResult {
   // stop_reason is checked BEFORE content: a refusal has empty/partial
   // content, and max_tokens means truncated (unparseable) JSON.

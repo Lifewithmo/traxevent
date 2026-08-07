@@ -111,6 +111,11 @@ describe('generateProposalDraft', () => {
     expect(r.adjustments.some((a) => a.includes('wp-ghost'))).toBe(true)
   })
 
+  it('enriches suggested package ids with catalog name and price, dropping unknown ids', async () => {
+    const r = await generateProposalDraft('o1', 'p1', 'notes')
+    expect(r.suggested_packages).toEqual([{ id: 'wp-a', name: 'A', price: 100 }])
+  })
+
   it('logs usage with the proposal_draft feature tag', async () => {
     await generateProposalDraft('o1', 'p1', 'notes')
     expect(logAiUsage).toHaveBeenCalledWith('o1', 'proposal_draft', {

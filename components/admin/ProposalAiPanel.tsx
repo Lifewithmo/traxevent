@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { generateProposalDraft } from '@/actions/proposal-ai'
-import type { DraftResult } from '@/lib/ai/proposal-draft'
+import type { ProposalDraft } from '@/lib/ai/proposal-draft'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import type { ProposalBlock } from '@/lib/types'
@@ -18,7 +18,7 @@ export function ProposalAiPanel({
 }) {
   const [notes, setNotes] = useState('')
   const [generating, setGenerating] = useState(false)
-  const [draft, setDraft] = useState<DraftResult | null>(null)
+  const [draft, setDraft] = useState<ProposalDraft | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   async function generate() {
@@ -52,12 +52,12 @@ export function ProposalAiPanel({
         onChange={(e) => setNotes(e.target.value)}
         disabled={disabled || generating}
       />
-      <Button type="button" onClick={generate} disabled={disabled || generating || !notes.trim()}>
+      <Button type="button" onClick={generate} disabled={disabled || generating || !notes.trim()} aria-busy={generating}>
         {generating ? 'Generating…' : 'Generate draft'}
       </Button>
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
       {draft && (
-        <div className="space-y-2">
+        <div className="space-y-2" aria-live="polite">
           <div className="rounded bg-muted p-2 text-sm space-y-1">
             {draft.blocks.map((b) => (
               <p key={b.id}>
@@ -69,6 +69,11 @@ export function ProposalAiPanel({
             ))}
           </div>
           {draft.rationale && <p className="text-xs text-muted-foreground">{draft.rationale}</p>}
+          {draft.suggested_packages.map((p) => (
+            <p key={p.id} className="text-xs text-muted-foreground">
+              Suggested: {p.name} (${p.price.toLocaleString()})
+            </p>
+          ))}
           {draft.adjustments.map((a, i) => (
             <p key={i} className="text-xs text-amber-700">{a}</p>
           ))}
