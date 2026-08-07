@@ -1,6 +1,6 @@
 import type { BrewtraxSeed } from '@/scripts/seed/types'
 import { daysFrom, isoFrom, datetimeLocalFrom } from '@/scripts/seed/dates'
-import { computeSelectedTotal } from '@/lib/proposals'
+import { computeSelectedTotal, depositAmount } from '@/lib/proposals'
 
 /**
  * The BrewTrax demo tenant as a pure function of `today`. Every date is an
@@ -27,6 +27,7 @@ export function buildBrewtraxSeed(today: Date): BrewtraxSeed {
     { key: 'cust-benoit', input: { name: 'Camille Benoit', email: 'camille.benoit@example.com', phone: '208-555-0163' } },
     { key: 'cust-northgate', input: { name: 'Tess Alvarado', email: 'tess@northgateschool.example.com', phone: '208-555-0155', company: 'Northgate School District' } },
     { key: 'cust-piney', input: { name: 'Rowan Fitch', email: 'rowan@pineyfork.example.com', phone: '208-555-0128', company: 'Piney Fork Brewing' } },
+    { key: 'cust-meridian', input: { name: 'Nina Torres', email: 'nina@meridiansummerfest.example.com', phone: '208-555-0201', company: 'Meridian Summerfest' } },
   ]
 
   const leads: BrewtraxSeed['leads'] = [
@@ -131,6 +132,19 @@ export function buildBrewtraxSeed(today: Date): BrewtraxSeed {
         notes: 'Lost on price — went with an in-house caterer.',
       },
     },
+    {
+      // The won job behind the Meridian Summerfest event and its invoice. Both
+      // used to hang off the lost Vance gala above, which put collected revenue
+      // on a deal that never closed.
+      key: 'lead-summerfest-vendor', customerKey: 'cust-meridian',
+      lead: {
+        id: 'demo-lead-11', name: 'Nina Torres', title: 'Meridian Summerfest — vendor day',
+        email: 'nina@meridiansummerfest.example.com', phone: '208-555-0201', organization: 'Meridian Summerfest',
+        event_type: 'Festival', event_date: daysFrom(today, -21), estimated_value: 3600,
+        stage: 'closed_won', created_at: isoFrom(today, -100),
+        notes: 'Delivered. Festival office short-paid the deposit and the balance is still open.',
+      },
+    },
   ]
 
   const tasks: BrewtraxSeed['tasks'] = [
@@ -161,13 +175,25 @@ export function buildBrewtraxSeed(today: Date): BrewtraxSeed {
     { id: 'li-2', description: 'Pastry pairing', quantity: 60, unit_price: 4.5, optional: true, taxable: true },
   ]
 
+  // The Oakline proposal and its deposit invoice are one story, so the money is
+  // derived once here and shared. `oaklineDepositDue` is what production's
+  // generateFromProposalCore would mint — depositAmount() over the TAX-AWARE
+  // accepted total, not over the pre-tax subtotal.
+  const oaklineTaxRate = 6
+  const oaklineDeposit = { type: 'percent' as const, value: 50 }
+  const oaklineAcceptedTotal = computeSelectedTotal(
+    { line_items: oaklineLines, tax_rate: oaklineTaxRate },
+    { optional_item_ids: [] },
+  )
+  const oaklineDepositDue = depositAmount(oaklineAcceptedTotal, oaklineDeposit)
+
   // `event_start`/`event_end` are bare `YYYY-MM-DD`, NOT full ISO datetimes.
   // The app's only writers are <Input type="date"> fields (new-event and event
   // settings), so every real Event carries a date-only string, and the readers
   // assume it: the org landing page prints `{event_start} → {event_end}` raw,
   // and the settings form loads the value straight into a date input that
   // rejects a datetime. Time of day belongs on the itinerary items and on
-  // `ops.plan.requirements.service_start/end`.
+  // `ops.plan.requirements.service_start/end`, which do use isoFrom.
   const events: BrewtraxSeed['events'] = [
     {
       key: 'event-oakline', event: {
@@ -271,11 +297,13 @@ export function buildBrewtraxSeed(today: Date): BrewtraxSeed {
       leadKey: 'lead-oakline-offsite',
       proposal: {
         id: 'demo-prop-02', title: 'Oakline Q3 offsite — cold brew bar',
-        status: 'accepted', line_items: oaklineLines, tax_rate: 6,
-        deposit: { type: 'percent', value: 50 }, deposit_gate: 'after_accept',
+        status: 'accepted', line_items: oaklineLines, tax_rate: oaklineTaxRate,
+        deposit: oaklineDeposit, deposit_gate: 'after_accept',
         deposit_terms: '50% deposit due at booking.',
+        // Backed by inv-oakline-deposit, which is issued after this acceptance
+        // and paid in full — see the invoices block below.
         payment_status: 'deposit_paid',
-        selection: { optional_item_ids: [], selected_total: computeSelectedTotal({ line_items: oaklineLines, tax_rate: 6 }, { optional_item_ids: [] }), selected_at: isoFrom(today, -30) },
+        selection: { optional_item_ids: [], selected_total: oaklineAcceptedTotal, selected_at: isoFrom(today, -30) },
         client_response_at: isoFrom(today, -30),
         created_at: isoFrom(today, -35), updated_at: isoFrom(today, -30),
         events: [
@@ -298,22 +326,30 @@ export function buildBrewtraxSeed(today: Date): BrewtraxSeed {
 
   const invoices: BrewtraxSeed['invoices'] = [
     {
-      key: 'inv-summerfest-paid', leadKey: 'lead-vance-gala', customerKey: 'cust-harper',
+      // Carries the d31_60 aging bucket: booked well ahead, deposit short-paid,
+      // job already delivered, $600 still open. Attached to the WON Summerfest
+      // lead — an invoice on the lost Vance gala read as revenue from a deal
+      // that never closed.
+      key: 'inv-summerfest-deposit', leadKey: 'lead-summerfest-vendor', customerKey: 'cust-meridian',
       input: {
-        title: 'Meridian Summerfest — vendor day', type: 'final', due_date: daysFrom(today, -14),
-        line_items: [{ description: 'Full-day drip and iced service', quantity: 1, unit_price: 1800 }],
+        title: 'Meridian Summerfest — vendor day deposit', type: 'deposit', due_date: daysFrom(today, -40),
+        line_items: [{ description: 'Full-day drip and iced service — 50% deposit', quantity: 1, unit_price: 1800 }],
       },
-      issue: { issuedAt: isoFrom(today, -28) },
-      payments: [{ amount: 1800, method: 'card', note: 'Paid in full on site' }],
+      issue: { issuedAt: isoFrom(today, -55) },
+      payments: [{ amount: 1200, method: 'ach', note: 'Partial — festival office paid short of the deposit' }],
     },
     {
+      // The deposit behind demo-prop-02. Amount derived from the same tax-aware
+      // accepted total the proposal shows, issued AFTER the proposal was
+      // accepted (day -30), and paid in full — which is what the proposal's
+      // `deposit_paid` status claims, on a job that is only a week out.
       key: 'inv-oakline-deposit', leadKey: 'lead-oakline-offsite', customerKey: 'cust-oakline',
       input: {
-        title: 'Oakline Q3 offsite — deposit', type: 'deposit', due_date: daysFrom(today, -40),
-        line_items: [{ description: 'Cold brew bar — 50% deposit', quantity: 1, unit_price: 775 }],
+        title: 'Oakline Q3 offsite — deposit', type: 'deposit', due_date: daysFrom(today, -22),
+        line_items: [{ description: 'Cold brew bar — 50% deposit', quantity: 1, unit_price: oaklineDepositDue }],
       },
-      issue: { issuedAt: isoFrom(today, -45) },
-      payments: [{ amount: 400, method: 'ach', note: 'Partial — remainder promised by end of month' }],
+      issue: { issuedAt: isoFrom(today, -29) },
+      payments: [{ amount: oaklineDepositDue, method: 'ach', note: 'Deposit paid in full at booking' }],
     },
     {
       key: 'inv-harper-deposit', leadKey: 'lead-harper-wedding', customerKey: 'cust-harper',

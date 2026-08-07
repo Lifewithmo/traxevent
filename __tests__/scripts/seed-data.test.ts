@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { buildBrewtraxSeed } from '@/scripts/seed/brewtrax-data'
 import { LEAD_STAGES } from '@/lib/leads'
-import { computeSelectedTotal } from '@/lib/proposals'
+import { computeSelectedTotal, depositAmount } from '@/lib/proposals'
 import { invoiceBalance } from '@/lib/invoices'
 import { deriveAging } from '@/lib/invoice-status'
 
@@ -175,6 +175,56 @@ describe('buildBrewtraxSeed — invoices', () => {
     })
     expect(paidStates.filter((s) => s === 'paid')).toHaveLength(1)
     expect(paidStates.filter((s) => s === 'partial')).toHaveLength(1)
+  })
+
+  it('never attaches an invoice to a lost deal', () => {
+    const seed = buildBrewtraxSeed(TODAY)
+    const lostKeys = new Set(seed.leads.filter((l) => l.lead.stage === 'closed_lost').map((l) => l.key))
+    expect(lostKeys.size).toBeGreaterThan(0)
+    for (const inv of seed.invoices) expect(lostKeys.has(inv.leadKey)).toBe(false)
+  })
+
+  // generateFromProposalCore derives the deposit with depositAmount() over the
+  // TAX-AWARE accepted total. Billing half the pre-tax subtotal instead would
+  // put the demo's arithmetic at odds with what the product would produce.
+  it('bills the accepted proposal deposit off the tax-aware total, not the pre-tax subtotal', () => {
+    const seed = buildBrewtraxSeed(TODAY)
+    const accepted = seed.proposals.find((p) => p.proposal.status === 'accepted')!
+    const deposit = seed.invoices.find(
+      (i) => i.leadKey === accepted.leadKey && i.input.type === 'deposit',
+    )!
+    const billed = (deposit.input.line_items ?? []).reduce((s, li) => s + li.quantity * li.unit_price, 0)
+
+    expect(billed).toBe(
+      depositAmount(computeSelectedTotal(accepted.proposal, { optional_item_ids: [] }), accepted.proposal.deposit),
+    )
+    const preTaxHalf =
+      (accepted.proposal.line_items ?? [])
+        .filter((li) => !li.optional)
+        .reduce((s, li) => s + li.quantity * li.unit_price, 0) / 2
+    expect(billed).not.toBe(preTaxHalf)
+  })
+
+  it('issues the deposit invoice on or after the proposal was accepted', () => {
+    const seed = buildBrewtraxSeed(TODAY)
+    const accepted = seed.proposals.find((p) => p.proposal.status === 'accepted')!
+    const deposit = seed.invoices.find(
+      (i) => i.leadKey === accepted.leadKey && i.input.type === 'deposit',
+    )!
+    expect(deposit.issue!.issuedAt >= accepted.proposal.client_response_at!).toBe(true)
+  })
+
+  it('backs a proposal claiming deposit_paid with a fully paid deposit invoice', () => {
+    const seed = buildBrewtraxSeed(TODAY)
+    const claiming = seed.proposals.filter((p) => p.proposal.payment_status === 'deposit_paid')
+    expect(claiming.length).toBeGreaterThan(0)
+    for (const p of claiming) {
+      const deposit = seed.invoices.find((i) => i.leadKey === p.leadKey && i.input.type === 'deposit')
+      expect(deposit).toBeDefined()
+      const due = (deposit!.input.line_items ?? []).reduce((s, li) => s + li.quantity * li.unit_price, 0)
+      const paid = deposit!.payments.reduce((s, x) => s + x.amount, 0)
+      expect(paid).toBe(due)
+    }
   })
 
   it('never records a payment larger than the invoice total', () => {
