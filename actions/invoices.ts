@@ -77,7 +77,9 @@ export async function generateFromProposal(
 /**
  * Closeout → invoicing seam (spec §4.4). Bills the plan's packages at catalog
  * price. Margin/cost numbers are internal and never appear on the invoice.
- * Event↔lead linkage doesn't exist yet, so the caller picks the lead.
+ * A converted job knows its own opportunity via Event.lead_id, so that is the
+ * primary path; leadId is still accepted as the fallback for a manually
+ * created event, or a linked one whose opportunity was since deleted.
  */
 export async function generateCloseoutInvoice(orgId: string, eventId: string, leadId?: string): Promise<Invoice> {
   await assertOrgAdmin(orgId)
