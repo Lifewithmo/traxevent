@@ -6,8 +6,8 @@ import { assertOrgMember, assertOrgAdmin } from '@/lib/auth/assert'
 import { FieldValue } from 'firebase-admin/firestore'
 import type { Event, EventRegistrationType } from '@/lib/types'
 import { buildEventSlug } from '@/lib/slug'
-import { DEFAULT_EVENT_TYPE_ID } from '@/lib/event-types'
 import type { Terminology } from '@/lib/event-types'
+import { createEventCore, listEventsCore, listEventsByLeadCore, type CreateEventCoreInput } from '@/lib/events'
 
 export async function createEvent(
   orgId: string,
@@ -23,44 +23,17 @@ export async function createEvent(
   }
 ): Promise<Event> {
   await assertOrgAdmin(orgId)
-  const eventRef = adminDb
-    .collection('orgs').doc(orgId)
-    .collection('events').doc()
-
-  const event: Event = {
-    id: eventRef.id,
-    name: input.name,
-    slug: buildEventSlug(input.name, input.year),
-    year: input.year,
-    status: 'draft',
-    registration_type: input.registration_type,
-    event_type_id: input.event_type_id ?? DEFAULT_EVENT_TYPE_ID,
-    ...(input.event_type_terminology ? { event_type_terminology: input.event_type_terminology } : {}),
-    ...(input.department_id ? { department_id: input.department_id } : {}),
-    features: {
-      accommodations: true,
-      teams: true,
-      budget: true,
-      itinerary: true,
-      communicate: true,
-    },
-    event_start: input.event_start,
-    event_end: input.event_end,
-    created_at: new Date().toISOString(),
-  }
-
-  await eventRef.set(event)
-  return event
+  return createEventCore(orgId, input)
 }
 
 export async function listEvents(orgId: string): Promise<Event[]> {
   await assertOrgMember(orgId)
-  const snap = await adminDb
-    .collection('orgs').doc(orgId)
-    .collection('events')
-    .orderBy('created_at', 'desc')
-    .get()
-  return snap.docs.map((d) => d.data() as Event)
+  return listEventsCore(orgId)
+}
+
+export async function listEventsByLead(orgId: string, leadId: string): Promise<Event[]> {
+  await assertOrgMember(orgId)
+  return listEventsByLeadCore(orgId, leadId)
 }
 
 export async function getEventBySlug(orgId: string, slug: string): Promise<Event | null> {

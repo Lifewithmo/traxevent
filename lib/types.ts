@@ -80,6 +80,7 @@ export interface Event {
   registration_close?: string        // ISO date, optional
   capacity?: number                  // max registrants, optional
   headcount?: number                 // booked-job path: expected guest count (no per-person roster)
+  lead_id?: string                   // the opportunity this job came from; absent for manual events
   key_contacts?: EventKeyContact[]   // booked-job path: a few contacts instead of an attendee roster
   created_at: string
   updated_at?: string                // set on every updateEvent call
@@ -640,7 +641,7 @@ export interface ActivityEvent {
   id: string
   parent_type: 'customer' | 'opportunity'
   parent_id: string
-  kind: 'stage' | 'task' | 'note' | 'email' | 'form' | 'created' | 'waiting'
+  kind: 'stage' | 'task' | 'note' | 'email' | 'form' | 'created' | 'waiting' | 'converted'
   summary: string
   created_at: string
 }
