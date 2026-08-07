@@ -1414,3 +1414,17 @@ Do **not** pick these up here — see the spec's "Out of scope":
 - Backfilling `lead_id` onto existing events (pre-launch; nothing to backfill).
 - Automatic conversion on proposal acceptance.
 - Any item from the CRM V1 follow-up backlog in `docs/superpowers/plans/2026-08-06-crm-v1-finish-out.md`.
+
+---
+
+## Known residuals at merge
+
+Surfaced by the final whole-branch review and its fix wave, adjudicated as non-blocking. Recorded here because the execution workspace is scratch and does not survive.
+
+- **`resolveUniqueEventSlug`'s JSDoc says "guaranteed unique"** but the function is itself a read-then-write: two concurrent creations of the same name+year can both find the base slug free. Strictly better than the deterministic collision it replaced, but the docstring overclaims. Same class as the accepted conversion race.
+- **`generateCloseoutInvoice`'s JSDoc calls `event.lead_id` "the primary path"** while the code is `leadId ?? event.lead_id` — the explicit parameter wins, and `CloseoutClient` always passes it (prefilled from the link). Substantively true, technically inverted.
+- **Today's row lost its explicit "Convert to work" button** when the row collapsed to a single link (required, to stop two tab stops pointing at one href). The row still navigates to the opportunity, where the real affordance lives — but the Today screen no longer names the action.
+- **`__tests__/actions/events.test.ts:74` uses `mockReset()`** where `mockClear()` would preserve the mock's `{ empty: true }` default. Harmless today; a future `createEvent` test added after that block would get `undefined` from `.get()`.
+- **`components/admin/today/WonUnscheduledList.tsx`'s comment** describes the removed two-link state in the present tense.
+
+Also unchanged from the plan: scenarios 6, 7, 18 and 19 in "Manual walkthrough before merge" have **not** been walked by hand.
