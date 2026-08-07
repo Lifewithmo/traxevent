@@ -95,6 +95,18 @@ async function main(): Promise<void> {
   // Set directly via the admin SDK: actions/auth.ts setOrgClaims is 'use server'
   // and unreachable from a script. Re-applied on every run so --reset keeps the
   // login working against the recreated org.
+  // setCustomUserClaims REPLACES all claims (see actions/auth.ts mergeCustomUserClaims).
+  // --email has no demo- guard of its own, so a mistyped address would otherwise
+  // strip a real user's org access. Refuse when the resolved account already
+  // belongs to a non-demo org; absent or demo- claims are safe to overwrite.
+  const existingClaims = (await adminAuth.getUser(uid)).customClaims ?? {}
+  const existingOrgId = existingClaims.orgId
+  if (typeof existingOrgId === 'string' && !existingOrgId.startsWith('demo-')) {
+    throw new Error(
+      `Refusing to overwrite auth claims on ${args.email}: that account already belongs to org "${existingOrgId}". ` +
+        `The seeder only claims accounts with no org or a demo- org.`,
+    )
+  }
   await adminAuth.setCustomUserClaims(uid, {
     orgId: args.orgId,
     orgSlug: org.slug,
