@@ -24,10 +24,21 @@ vi.mock('@/lib/ops/resources', () => ({
   listResourcesCore: (...a: unknown[]) => listResourcesCore(...a),
 }))
 
+interface StreamRequest {
+  model: string
+  max_tokens: number
+  betas: string[]
+  fallbacks: string
+  thinking?: unknown
+  output_config: { effort: string; format: { type: string; schema: unknown } }
+  system: Array<{ type: string; text: string; cache_control?: { type: string } }>
+  messages: unknown[]
+}
+
 const finalMessage = vi.fn()
 // Typed with an explicit param (vs. `() => ...`) so `.mock.calls[0][0]` below
 // isn't inferred as an empty tuple under strict mode.
-const streamFn = vi.fn((_req: Record<string, any>) => ({ finalMessage }))
+const streamFn = vi.fn((_req: StreamRequest) => ({ finalMessage }))
 vi.mock('@/lib/ai/client', () => ({
   isAiEnabled: () => true,
   getAnthropicClient: () => ({ beta: { messages: { stream: streamFn } } }),
