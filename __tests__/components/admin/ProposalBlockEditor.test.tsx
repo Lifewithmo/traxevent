@@ -8,6 +8,7 @@ vi.mock('@/actions/proposals', () => ({
 vi.mock('@/actions/proposal-images', () => ({
   uploadProposalImage: vi.fn().mockResolvedValue({ url: 'https://storage/x.png' }),
 }))
+vi.mock('@/actions/proposal-ai', () => ({ generateProposalDraft: vi.fn() }))
 
 import { updateProposalBlocks } from '@/actions/proposals'
 import { uploadProposalImage } from '@/actions/proposal-images'
