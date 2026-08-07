@@ -12,5 +12,14 @@ export default async function ProposalEditorPage({ params }: { params: Promise<{
   const orgId = orgSnap.docs[0].id
   const proposal = await getProposal(orgId, proposalId)
   if (!proposal || proposal.lead_id !== leadId) notFound()
-  return <ProposalEditorClient orgId={orgId} orgSlug={orgSlug} leadId={leadId} proposal={proposal} />
+  const aiEnabled = !!process.env.ANTHROPIC_API_KEY
+  return (
+    <ProposalEditorClient
+      orgId={orgId}
+      orgSlug={orgSlug}
+      leadId={leadId}
+      proposal={proposal}
+      aiEnabled={aiEnabled}
+    />
+  )
 }

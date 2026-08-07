@@ -3,6 +3,7 @@
 import { useRef, useState } from 'react'
 import { updateProposalBlocks } from '@/actions/proposals'
 import { uploadProposalImage } from '@/actions/proposal-images'
+import { ProposalAiPanel } from '@/components/admin/ProposalAiPanel'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -46,7 +47,7 @@ function nextNewBlockId(blocks: ProposalBlock[]): number {
 }
 
 export function ProposalBlockEditor({
-  orgId, proposalId, initialBlocks, disabled = false,
+  orgId, proposalId, initialBlocks, disabled = false, aiEnabled = false,
 }: {
   orgId: string
   proposalId: string
@@ -56,6 +57,9 @@ export function ProposalBlockEditor({
   // read-only. The server re-checks all three (updateProposalBlocksCore) —
   // this only keeps the UI honest.
   disabled?: boolean
+  // Gated on ANTHROPIC_API_KEY by the server page — computed there so this
+  // client component never reads process.env itself.
+  aiEnabled?: boolean
 }) {
   const [blocks, setBlocks] = useState<ProposalBlock[]>(initialBlocks)
   const [saving, setSaving] = useState(false)
@@ -149,6 +153,26 @@ export function ProposalBlockEditor({
 
   return (
     <div className="space-y-4">
+      {aiEnabled && (
+        <ProposalAiPanel
+          orgId={orgId}
+          proposalId={proposalId}
+          hasBlocks={blocks.length > 0}
+          disabled={disabled}
+          onApply={(draftBlocks, mode) => {
+            // Re-mint ids through the editor's own counter so a model-supplied id
+            // can never collide with an existing block id (same invariant as
+            // nextNewBlockId for hand-added blocks).
+            const reminted = draftBlocks.map((b) => {
+              const id = `new-${nextIdRef.current}`
+              nextIdRef.current += 1
+              return { ...b, id }
+            })
+            setBlocks((prev) => (mode === 'append' ? [...prev, ...reminted] : reminted))
+          }}
+        />
+      )}
+
       {blocks.length === 0 && (
         <p className="text-sm text-muted-foreground">No content yet. Add a block to start the document.</p>
       )}
