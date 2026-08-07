@@ -56,4 +56,22 @@ describe('buildCalendar', () => {
     expect(ld.kind).toBe('lead')
     expect(ld.href).toBe('/my-org/leads/l1')
   })
+
+  it('uses the lead title for the calendar item title when present', () => {
+    const items = buildCalendar(
+      'my-org',
+      [],
+      [lead({ id: 'l1', name: 'Dana Kim', title: 'Riverside gala', event_date: '2026-07-05' })]
+    )
+    expect(items[0].title).toBe('Riverside gala')
+  })
+
+  it('falls back to the contact name when the lead has no title', () => {
+    const items = buildCalendar(
+      'my-org',
+      [],
+      [lead({ id: 'l1', name: 'Dana Kim', title: undefined, event_date: '2026-07-05' })]
+    )
+    expect(items[0].title).toBe('Dana Kim')
+  })
 })

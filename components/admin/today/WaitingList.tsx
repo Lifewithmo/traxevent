@@ -28,7 +28,7 @@ function Row({ orgId, orgSlug, item }: { orgId: string; orgSlug: string; item: W
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0 flex-1">
           <Link href={`/${orgSlug}/leads/${item.leadId}`} className="hover:underline">
-            <span className="text-sm font-medium">{item.name}</span>
+            <span className="text-sm font-medium">{item.title}</span>
             {item.company && <span className="ml-2 text-xs text-muted-foreground">{item.company}</span>}
           </Link>
           <p className="text-xs text-muted-foreground">{item.reason} · quiet {item.quietDays}d</p>

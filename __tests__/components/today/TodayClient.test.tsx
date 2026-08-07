@@ -10,8 +10,8 @@ import type { TodayData } from '@/lib/today'
 
 const data: TodayData = {
   tiles: { tasksDue: 1, needsAttention: 1, openPipelineValue: 500 },
-  needsAttention: [{ leadId: 'l1', name: 'Ann', stage: 'inquiry' }],
-  dueTasks: [{ task: { id: 't1', lead_id: 'l1', title: 'Call', due_date: '2026-08-05', done: false, created_at: '' }, leadId: 'l1', leadName: 'Ann', status: 'today' }],
+  needsAttention: [{ leadId: 'l1', title: 'Ann', stage: 'inquiry' }],
+  dueTasks: [{ task: { id: 't1', lead_id: 'l1', title: 'Call', due_date: '2026-08-05', done: false, created_at: '' }, leadId: 'l1', leadTitle: 'Ann', status: 'today' }],
   waiting: [],
 }
 

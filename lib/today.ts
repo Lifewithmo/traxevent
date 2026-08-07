@@ -1,6 +1,6 @@
 import type { Lead, Task, LeadStage } from '@/lib/types'
 import { computeHealth } from '@/lib/opportunity-health'
-import { OPEN_STAGES, pipelineSummary } from '@/lib/leads'
+import { OPEN_STAGES, pipelineSummary, opportunityTitle } from '@/lib/leads'
 import { dueStatus } from '@/lib/opportunity-detail'
 
 export interface TodayTiles {
@@ -11,7 +11,7 @@ export interface TodayTiles {
 
 export interface NeedsAttentionItem {
   leadId: string
-  name: string
+  title: string
   company?: string
   stage: LeadStage
 }
@@ -19,14 +19,14 @@ export interface NeedsAttentionItem {
 export interface DueTaskItem {
   task: Task
   leadId: string
-  leadName: string
+  leadTitle: string
   company?: string
   status: 'overdue' | 'today'
 }
 
 export interface WaitingItem {
   leadId: string
-  name: string
+  title: string
   company?: string
   reason: string
   followUpDate?: string
@@ -68,12 +68,12 @@ export function buildToday(input: {
     const health = computeHealth(lead, tasks)
 
     if (health === 'needs_attention') {
-      needsAttention.push({ leadId: lead.id, name: lead.name, company: lead.organization, stage: lead.stage })
+      needsAttention.push({ leadId: lead.id, title: opportunityTitle(lead), company: lead.organization, stage: lead.stage })
     } else if (health === 'waiting' && lead.waiting) {
       const followUpDate = lead.waiting.follow_up_date
       waiting.push({
         leadId: lead.id,
-        name: lead.name,
+        title: opportunityTitle(lead),
         company: lead.organization,
         reason: lead.waiting.reason,
         followUpDate,
@@ -88,7 +88,7 @@ export function buildToday(input: {
       dueTasks.push({
         task: t,
         leadId: lead.id,
-        leadName: lead.name,
+        leadTitle: opportunityTitle(lead),
         company: lead.organization,
         status: dueStatus(t.due_date, today) === 'overdue' ? 'overdue' : 'today',
       })

@@ -1297,11 +1297,14 @@ Track these as a follow-up increment.
 Triaged as ship-as-is by the final whole-branch review, but worth picking up next. Ordered roughly by value.
 
 **Product coherence**
-1. **`opportunityTitle` is applied inconsistently.** Used on the opportunity detail page and the customer roll-up, but the pipeline board (`LeadsBoardClient.tsx`) and all three Today lists still render `lead.name`. An opportunity titled "Riverside gala" shows that title on two screens and "Dana Kim" on the others. Also: `CreateLeadInput` has no `title`, so a title can only be added after creation.
+
+> **Items 1, 3 and 5 were closed by the product-coherence increment** — see `docs/superpowers/plans/2026-08-06-crm-product-coherence.md`. `opportunityTitle` now labels the opportunity on the board, all three Today lists, the delete-confirm dialog and the calendar, and `title` is settable at creation. The tile is honestly labelled "Last update" on both screens (true last-contact remains deferred — see below). The customer contact save now confirms with a "Saved." notice. The three items are struck below for the record.
+
+1. ~~**`opportunityTitle` is applied inconsistently.**~~ **DONE.** One label surface was deliberately left alone: the "Bill to" picker in `components/admin/ops/CloseoutClient.tsx` renders `name — organization` under a "Pick a client…" label; it is a billing-contact picker, not an opportunity label, and an opportunity title would read worse there.
 2. **Contact-of-record split brain.** `lib/today.ts` derives company from `lead.organization` while `ContactCard`/`ClientsTable`/`CustomerDetailClient` read `customer.company`. The copies agree today only because `createLead` writes both from one input — which stops being true now that customers are editable. Decide: resolve customers in `getTodayData`, or document `lead.organization` as a display-only cache.
-3. **"Last contact" over-promises.** `rollupCustomer` computes it from max `updated_at`/`created_at` across leads; notes, tasks, and activity events don't touch the lead doc, so a customer you noted yesterday can read "8mo ago". Either rename to "Last update" or widen the roll-up.
+3. ~~**"Last contact" over-promises.**~~ **PARTLY DONE** — relabelled to "Last update" on both screens, which is honest about what it measures. **Still open:** true last-contact, which needs a denormalized `last_contact_at` stamped by `logActivity` on every touch (note, task, stage, waiting) plus a backfill. Decided and deferred, not forgotten.
 4. **`rollup.openValue` is computed but never rendered on `/clients`.** A customer with a large open pipeline reads the same as one with none.
-5. **No success affordance on the customer contact save.** `OpportunityDetailsForm` sets a "Saved." notice; `CustomerDetailClient`'s new contact form only calls `router.refresh()`, which produces no visible change since the fields already show the saved values. Worth closing given this whole phase existed because edits appeared to do nothing.
+5. ~~**No success affordance on the customer contact save.**~~ **DONE.**
 6. **Waiting has one entry point.** It can only be set/cleared from Today; the opportunity detail page shows the waiting banner but offers no "Mark waiting" / "Resume".
 7. **A dateless waiting item never escalates.** `computeHealth` returns `waiting` unconditionally when `lead.waiting` is set, and `followUpDue` stays false forever without a date — so it can sit indefinitely with only a growing "quiet Nd". Consider requiring a follow-up date or escalating past a threshold.
 
@@ -1313,7 +1316,7 @@ Triaged as ship-as-is by the final whole-branch review, but worth picking up nex
 12. **O(n²) grouping loop** in `app/(admin)/[orgSlug]/clients/page.tsx` (`[...(map.get(id) ?? []), l]` per append).
 
 **Accessibility**
-13. Inputs labelled by placeholder alone: `NeedsAttentionList` task/reason inputs (their sibling date inputs correctly use `aria-label`) and the `CustomerDetailClient` notes textarea.
+13. Inputs labelled by placeholder alone: `NeedsAttentionList` task/reason inputs (their sibling date inputs correctly use `aria-label`) and the `CustomerDetailClient` notes textarea. Also: `CustomerDetailClient`'s contact-save "Saved." notice is a bare `<p>` with no `role`/`aria-live`, so it is silent to assistive tech &mdash; `OpportunityDetailsForm` wraps its equivalent in `aria-live="polite"`.
 14. `<th>` elements lack `scope="col"` in `ClientsTable` and the customer detail opportunity table.
 15. Roll-up tiles lack programmatic label/value grouping — tests have to reach for `.closest('div')` to scope assertions, which is the smell.
 

@@ -14,6 +14,7 @@ import type { Lead, LeadStage, LeadWaiting } from '@/lib/types'
 
 export interface CreateLeadInput {
   name: string
+  title?: string
   email?: string
   phone?: string
   organization?: string
@@ -53,6 +54,7 @@ export async function createLead(orgId: string, input: CreateLeadInput): Promise
     stage,
     created_at: new Date().toISOString(),
     customer_id: customer.id,
+    ...(input.title?.trim() ? { title: input.title.trim() } : {}),
     ...(input.email?.trim() ? { email: input.email.trim() } : {}),
     ...(input.phone?.trim() ? { phone: input.phone.trim() } : {}),
     ...(input.organization?.trim() ? { organization: input.organization.trim() } : {}),

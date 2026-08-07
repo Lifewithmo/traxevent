@@ -15,7 +15,7 @@ import type { DueTaskItem } from '@/lib/today'
 
 const items: DueTaskItem[] = [{
   task: { id: 't1', lead_id: 'l1', title: 'Call venue', due_date: '2026-08-01', done: false, created_at: '' },
-  leadId: 'l1', leadName: 'Ann', company: 'Acme', status: 'overdue',
+  leadId: 'l1', leadTitle: 'Ann', company: 'Acme', status: 'overdue',
 }]
 
 describe('DueTasksList', () => {
@@ -24,6 +24,15 @@ describe('DueTasksList', () => {
   it('empty state', () => {
     render(<DueTasksList orgId="o1" orgSlug="acme" items={[]} />)
     expect(screen.getByText(/nothing due/i)).toBeInTheDocument()
+  })
+
+  it('renders the opportunity title', () => {
+    const withTitle: DueTaskItem[] = [{
+      task: { id: 't1', lead_id: 'l1', title: 'Call venue', due_date: '2026-08-01', done: false, created_at: '' },
+      leadId: 'l1', leadTitle: 'Riverside gala', company: 'Acme', status: 'overdue',
+    }]
+    render(<DueTasksList orgId="o1" orgSlug="acme" items={withTitle} />)
+    expect(screen.getByText(/Riverside gala/)).toBeInTheDocument()
   })
 
   it('renders and completes', async () => {

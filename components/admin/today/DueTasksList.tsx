@@ -28,7 +28,7 @@ function Row({ orgId, orgSlug, item }: { orgId: string; orgSlug: string; item: D
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium">{item.task.title}</p>
           <Link href={`/${orgSlug}/leads/${item.leadId}`} className="text-xs text-muted-foreground hover:underline">
-            {item.leadName}{item.company ? ` · ${item.company}` : ''}
+            {item.leadTitle}{item.company ? ` · ${item.company}` : ''}
           </Link>
         </div>
         <span className={`shrink-0 text-xs font-medium ${item.status === 'overdue' ? 'text-destructive' : 'text-amber-600 dark:text-amber-400'}`}>

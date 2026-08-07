@@ -42,6 +42,7 @@ export function CustomerDetailClient({ orgId, orgSlug, customer, opportunities, 
   const [phone, setPhone] = useState(customer.phone ?? '')
   const [contactBusy, setContactBusy] = useState(false)
   const [contactError, setContactError] = useState<string | null>(null)
+  const [contactNotice, setContactNotice] = useState<string | null>(null)
 
   async function handleAddNote() {
     if (!body.trim()) return
@@ -54,8 +55,8 @@ export function CustomerDetailClient({ orgId, orgSlug, customer, opportunities, 
   }
 
   async function handleSaveContact() {
-    if (!name.trim()) { setContactError('Name is required.'); return }
-    setContactBusy(true); setContactError(null)
+    if (!name.trim()) { setContactError('Name is required.'); setContactNotice(null); return }
+    setContactBusy(true); setContactError(null); setContactNotice(null)
     try {
       await updateCustomer(orgId, customer.id, {
         name: name.trim(),
@@ -63,6 +64,7 @@ export function CustomerDetailClient({ orgId, orgSlug, customer, opportunities, 
         email: opt(email),
         phone: opt(phone),
       })
+      setContactNotice('Saved.')
       router.refresh()
     } catch (e: unknown) { setContactError(e instanceof Error ? e.message : 'Could not save contact details') }
     finally { setContactBusy(false) }
@@ -111,6 +113,7 @@ export function CustomerDetailClient({ orgId, orgSlug, customer, opportunities, 
         <CardHeader><CardTitle className="text-base">Contact details</CardTitle></CardHeader>
         <CardContent className="space-y-3">
           {contactError && <p className="text-sm text-destructive" role="alert">{contactError}</p>}
+          {contactNotice && <p className="text-sm text-muted-foreground">{contactNotice}</p>}
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1">
               <Label htmlFor="custName">Name</Label>
@@ -151,7 +154,7 @@ export function CustomerDetailClient({ orgId, orgSlug, customer, opportunities, 
           <p className="text-xl font-semibold">{rollup.wonCount} / {rollup.lostCount}</p>
         </div>
         <div className="rounded-lg border bg-card p-4">
-          <p className="text-xs font-medium text-muted-foreground">Last contact</p>
+          <p className="text-xs font-medium text-muted-foreground">Last update</p>
           <p className="text-xl font-semibold">
             {rollup.lastActivityAt ? formatRelativeTime(rollup.lastActivityAt) : '—'}
           </p>

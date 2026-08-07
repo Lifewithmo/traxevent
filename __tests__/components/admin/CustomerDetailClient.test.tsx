@@ -54,16 +54,22 @@ describe('CustomerDetailClient', () => {
     expect(screen.getByText(/no opportunities yet/i)).toBeInTheDocument()
   })
 
-  it('shows a relative last-contact time when the roll-up has one', () => {
+  it('shows a relative last-update time when the roll-up has one', () => {
     render(<CustomerDetailClient {...props} rollup={{ ...rollup, lastActivityAt: '2020-01-01T00:00:00.000Z' }} />)
-    const tile = screen.getByText('Last contact').closest('div') as HTMLElement
+    const tile = screen.getByText('Last update').closest('div') as HTMLElement
     expect(within(tile).getByText(/ago$/)).toBeInTheDocument()
   })
 
-  it('shows an em dash for last contact when the roll-up has none', () => {
+  it('shows an em dash for last update when the roll-up has none', () => {
     render(<CustomerDetailClient {...props} />)
-    const tile = screen.getByText('Last contact').closest('div') as HTMLElement
+    const tile = screen.getByText('Last update').closest('div') as HTMLElement
     expect(within(tile).getByText('—')).toBeInTheDocument()
+  })
+
+  it('labels the roll-up tile "Last update"', () => {
+    render(<CustomerDetailClient {...props} />)
+    expect(screen.getByText('Last update')).toBeInTheDocument()
+    expect(screen.queryByText('Last contact')).not.toBeInTheDocument()
   })
 })
 
@@ -109,5 +115,24 @@ describe('CustomerDetailClient — editing contact details', () => {
     fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
     expect(await screen.findByText(/name is required/i)).toBeInTheDocument()
     expect(updateCustomer).not.toHaveBeenCalled()
+  })
+
+  it('confirms a successful contact save', async () => {
+    render(<CustomerDetailClient {...props} />)
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Dana K' } })
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
+    expect(await screen.findByText('Saved.')).toBeInTheDocument()
+  })
+
+  it('clears a stale "Saved." notice when a subsequent save fails', async () => {
+    render(<CustomerDetailClient {...props} />)
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Dana K' } })
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
+    expect(await screen.findByText('Saved.')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: '   ' } })
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
+    expect(await screen.findByText(/name is required/i)).toBeInTheDocument()
+    expect(screen.queryByText('Saved.')).not.toBeInTheDocument()
   })
 })

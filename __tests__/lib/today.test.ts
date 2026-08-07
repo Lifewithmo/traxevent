@@ -91,4 +91,23 @@ describe('buildToday', () => {
     expect(d.waiting[0].quietDays).toBe(4)
     expect(d.waiting[1].quietDays).toBe(1)
   })
+
+  it('labels items with the opportunity title, falling back to the contact name', () => {
+    const leads = [
+      { id: 'l1', name: 'Dana Kim', title: 'Riverside gala', stage: 'inquiry', created_at: '2026-08-01T00:00:00.000Z' },
+      { id: 'l2', name: 'Sam Lee', stage: 'proposal', created_at: '2026-08-01T00:00:00.000Z', waiting: { reason: 'deposit' } },
+    ] as Lead[]
+    const out = buildToday({ leads, tasksByLeadId: {}, today: '2026-08-06' })
+    expect(out.needsAttention[0].title).toBe('Riverside gala')
+    expect(out.waiting[0].title).toBe('Sam Lee')
+  })
+
+  it('labels due tasks with the opportunity title', () => {
+    const leads = [{ id: 'l1', name: 'Dana Kim', title: 'Riverside gala', stage: 'inquiry', created_at: '2026-08-01T00:00:00.000Z' }] as Lead[]
+    const tasksByLeadId = {
+      l1: [{ id: 't1', lead_id: 'l1', title: 'Call venue', due_date: '2026-08-06', done: false, created_at: 'x' }],
+    } as Record<string, Task[]>
+    const out = buildToday({ leads, tasksByLeadId, today: '2026-08-06' })
+    expect(out.dueTasks[0].leadTitle).toBe('Riverside gala')
+  })
 })

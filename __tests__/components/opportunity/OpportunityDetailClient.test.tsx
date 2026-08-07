@@ -13,6 +13,7 @@ import { OpportunityDetailClient } from '@/components/admin/OpportunityDetailCli
 import type { Lead } from '@/lib/types'
 
 const lead: Lead = { id: 'l1', name: 'Ada Wedding', stage: 'proposal', created_at: '' }
+const titledLead: Lead = { id: 'l2', name: 'Dana Kim', title: 'Riverside gala', stage: 'proposal', created_at: '' }
 
 describe('OpportunityDetailClient', () => {
   beforeEach(() => { push.mockClear(); deleteLead.mockClear() })
@@ -32,5 +33,12 @@ describe('OpportunityDetailClient', () => {
     fireEvent.click(screen.getByRole('button', { name: /delete/i }))
     await waitFor(() => expect(deleteLead).toHaveBeenCalledWith('o1', 'l1'))
     await waitFor(() => expect(push).toHaveBeenCalledWith('/acme/leads'))
+  })
+
+  it('confirms deletion using the opportunity title, not the contact name', () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    render(<OpportunityDetailClient orgId="o1" orgSlug="acme" lead={titledLead} customer={null} tasks={[]} activity={[]} />)
+    fireEvent.click(screen.getByRole('button', { name: /delete/i }))
+    expect(confirmSpy).toHaveBeenCalledWith('Delete "Riverside gala"? This cannot be undone.')
   })
 })
