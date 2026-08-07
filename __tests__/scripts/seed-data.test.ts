@@ -82,6 +82,17 @@ describe('buildBrewtraxSeed — events and proposals', () => {
     }
   })
 
+  // The app's only event-date writers are <Input type="date"> fields, so every
+  // real Event carries a bare YYYY-MM-DD. The org landing page prints these raw
+  // and event settings loads them into a date input, which rejects a datetime.
+  it('writes event dates in the bare YYYY-MM-DD form the app itself produces', () => {
+    const seed = buildBrewtraxSeed(TODAY)
+    for (const e of seed.events) {
+      expect(e.event.event_start).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+      expect(e.event.event_end).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    }
+  })
+
   it('scopes every itinerary item to a day within its own event', () => {
     const seed = buildBrewtraxSeed(TODAY)
     for (const e of seed.events) {
@@ -194,6 +205,14 @@ describe('buildBrewtraxSeed — ops', () => {
         expect(resourceKeys).toContain(line.resourceKey)
       }
     }
+  })
+
+  // RequirementsCard edits these through <Input type="datetime-local">, which
+  // rejects a trailing Z and renders empty, and prints them raw when not editing.
+  it('writes service times in the datetime-local form the requirements form produces', () => {
+    const seed = buildBrewtraxSeed(TODAY)
+    expect(seed.ops.plan.requirements.service_start).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/)
+    expect(seed.ops.plan.requirements.service_end).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/)
   })
 
   it('attaches the ops plan to an upcoming event with a positive guest count', () => {

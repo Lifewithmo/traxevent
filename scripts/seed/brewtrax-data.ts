@@ -1,5 +1,5 @@
 import type { BrewtraxSeed } from '@/scripts/seed/types'
-import { daysFrom, isoFrom } from '@/scripts/seed/dates'
+import { daysFrom, isoFrom, datetimeLocalFrom } from '@/scripts/seed/dates'
 import { computeSelectedTotal } from '@/lib/proposals'
 
 /**
@@ -161,13 +161,20 @@ export function buildBrewtraxSeed(today: Date): BrewtraxSeed {
     { id: 'li-2', description: 'Pastry pairing', quantity: 60, unit_price: 4.5, optional: true, taxable: true },
   ]
 
+  // `event_start`/`event_end` are bare `YYYY-MM-DD`, NOT full ISO datetimes.
+  // The app's only writers are <Input type="date"> fields (new-event and event
+  // settings), so every real Event carries a date-only string, and the readers
+  // assume it: the org landing page prints `{event_start} → {event_end}` raw,
+  // and the settings form loads the value straight into a date input that
+  // rejects a datetime. Time of day belongs on the itinerary items and on
+  // `ops.plan.requirements.service_start/end`.
   const events: BrewtraxSeed['events'] = [
     {
       key: 'event-oakline', event: {
         id: 'demo-event-01', name: 'Oakline Q3 Offsite', slug: `oakline-q3-offsite-${yearOf(7)}`,
         year: yearOf(7), status: 'active', registration_type: 'individual', event_type_id: 'event',
         features: { accommodations: false, teams: false, budget: true, itinerary: true, communicate: true },
-        event_start: isoFrom(today, 7, '15:00'), event_end: isoFrom(today, 7, '19:00'),
+        event_start: daysFrom(today, 7), event_end: daysFrom(today, 7),
         headcount: 85, created_at: isoFrom(today, -38),
         key_contacts: [
           { name: 'Marcus Oakline', role: 'Client', phone: '208-555-0177', email: 'marcus@oaklinetech.example.com' },
@@ -185,7 +192,7 @@ export function buildBrewtraxSeed(today: Date): BrewtraxSeed {
         id: 'demo-event-02', name: 'Harper Wedding', slug: `harper-wedding-${yearOf(14)}`,
         year: yearOf(14), status: 'active', registration_type: 'individual', event_type_id: 'event',
         features: { accommodations: false, teams: false, budget: true, itinerary: true, communicate: true },
-        event_start: isoFrom(today, 14, '16:00'), event_end: isoFrom(today, 14, '22:00'),
+        event_start: daysFrom(today, 14), event_end: daysFrom(today, 14),
         headcount: 120, created_at: isoFrom(today, -52),
         key_contacts: [
           { name: 'Dana Harper', role: 'Planner', phone: '208-555-0134', email: 'dana.harper@example.com' },
@@ -202,7 +209,7 @@ export function buildBrewtraxSeed(today: Date): BrewtraxSeed {
         id: 'demo-event-03', name: 'Riverbend Block Party', slug: `riverbend-block-party-${yearOf(28)}`,
         year: yearOf(28), status: 'active', registration_type: 'individual', event_type_id: 'event',
         features: { accommodations: false, teams: false, budget: true, itinerary: true, communicate: true },
-        event_start: isoFrom(today, 28, '10:00'), event_end: isoFrom(today, 28, '14:00'),
+        event_start: daysFrom(today, 28), event_end: daysFrom(today, 28),
         headcount: 200, created_at: isoFrom(today, -25),
         key_contacts: [{ name: 'Priya Raman', role: 'HOA board', phone: '208-555-0192', email: 'priya@riverbendhoa.example.com' }],
       },
@@ -216,7 +223,7 @@ export function buildBrewtraxSeed(today: Date): BrewtraxSeed {
         id: 'demo-event-04', name: 'Meridian Summerfest', slug: `meridian-summerfest-${yearOf(-21)}`,
         year: yearOf(-21), status: 'archived', registration_type: 'individual', event_type_id: 'event',
         features: { accommodations: false, teams: false, budget: true, itinerary: true, communicate: true },
-        event_start: isoFrom(today, -21, '11:00'), event_end: isoFrom(today, -21, '17:00'),
+        event_start: daysFrom(today, -21), event_end: daysFrom(today, -21),
         headcount: 300, created_at: isoFrom(today, -90),
         key_contacts: [{ name: 'Nina Torres', role: 'Festival ops', phone: '208-555-0201' }],
       },
@@ -229,7 +236,7 @@ export function buildBrewtraxSeed(today: Date): BrewtraxSeed {
         id: 'demo-event-05', name: 'Vance Corporate Retreat', slug: `vance-corporate-retreat-${yearOf(-56)}`,
         year: yearOf(-56), status: 'archived', registration_type: 'individual', event_type_id: 'event',
         features: { accommodations: false, teams: false, budget: true, itinerary: true, communicate: true },
-        event_start: isoFrom(today, -56, '08:00'), event_end: isoFrom(today, -56, '12:00'),
+        event_start: daysFrom(today, -56), event_end: daysFrom(today, -56),
         headcount: 45, created_at: isoFrom(today, -110),
         key_contacts: [{ name: 'Alex Vance', role: 'Client', phone: '208-555-0139' }],
       },
@@ -376,8 +383,9 @@ export function buildBrewtraxSeed(today: Date): BrewtraxSeed {
       packageKeys: ['pkg-cold-brew'],
       requirements: {
         guests: 85,
-        service_start: isoFrom(today, 7, '15:00'),
-        service_end: isoFrom(today, 7, '19:00'),
+        // datetime-local shape, not full ISO — see datetimeLocalFrom.
+        service_start: datetimeLocalFrom(today, 7, '15:00'),
+        service_end: datetimeLocalFrom(today, 7, '19:00'),
         site_needs: ['power', 'ice', 'parking'],
         notes: 'Load in through the north lot; badge required at the gate.',
       },

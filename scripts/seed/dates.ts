@@ -12,3 +12,13 @@ export function daysFrom(today: Date, n: number): string {
 export function isoFrom(today: Date, n: number, hhmm = '12:00'): string {
   return `${daysFrom(today, n)}T${hhmm}:00.000Z`
 }
+
+/**
+ * `YYYY-MM-DDTHH:mm` — the value an `<Input type="datetime-local">` produces.
+ * That control rejects a trailing `Z` and renders empty, so fields written by
+ * one (today: `OpsRequirements.service_start`/`service_end`) must use this and
+ * not `isoFrom`.
+ */
+export function datetimeLocalFrom(today: Date, n: number, hhmm: string): string {
+  return `${daysFrom(today, n)}T${hhmm}`
+}
