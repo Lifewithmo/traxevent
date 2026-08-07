@@ -13,6 +13,7 @@ const data: TodayData = {
   needsAttention: [{ leadId: 'l1', title: 'Ann', stage: 'inquiry' }],
   dueTasks: [{ task: { id: 't1', lead_id: 'l1', title: 'Call', due_date: '2026-08-05', done: false, created_at: '' }, leadId: 'l1', leadTitle: 'Ann', status: 'today' }],
   waiting: [],
+  wonUnscheduled: [],
 }
 
 describe('TodayClient', () => {

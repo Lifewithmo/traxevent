@@ -34,11 +34,20 @@ export interface WaitingItem {
   quietDays: number
 }
 
+export interface WonUnscheduledItem {
+  leadId: string
+  title: string
+  company?: string
+  eventDate?: string
+  value?: number
+}
+
 export interface TodayData {
   tiles: TodayTiles
   needsAttention: NeedsAttentionItem[]
   dueTasks: DueTaskItem[]
   waiting: WaitingItem[]
+  wonUnscheduled: WonUnscheduledItem[]
 }
 
 /** Whole days between an ISO timestamp (or YYYY-MM-DD) and `today` (YYYY-MM-DD), never negative. */
@@ -53,11 +62,13 @@ export function buildToday(input: {
   leads: Lead[]
   tasksByLeadId: Record<string, Task[]>
   today: string
+  scheduledLeadIds: string[]
 }): TodayData {
-  const { leads, tasksByLeadId, today } = input
+  const { leads, tasksByLeadId, today, scheduledLeadIds } = input
   const isOpen = (s: LeadStage) => (OPEN_STAGES as LeadStage[]).includes(s)
   const openLeads = leads.filter((l) => isOpen(l.stage))
   const byId = new Map(leads.map((l) => [l.id, l]))
+  const scheduled = new Set(scheduledLeadIds)
 
   const needsAttention: NeedsAttentionItem[] = []
   const dueTasks: DueTaskItem[] = []
@@ -95,6 +106,18 @@ export function buildToday(input: {
     }
   }
 
+  // A won deal that never became work is the same orphan the open-stage
+  // lists exist to catch, one stage later.
+  const wonUnscheduled: WonUnscheduledItem[] = leads
+    .filter((l) => l.stage === 'closed_won' && !scheduled.has(l.id))
+    .map((l) => ({
+      leadId: l.id,
+      title: opportunityTitle(l),
+      company: l.organization,
+      eventDate: l.event_date,
+      value: l.estimated_value,
+    }))
+
   const staleKey = (leadId: string) => byId.get(leadId)?.updated_at ?? byId.get(leadId)?.created_at ?? ''
   needsAttention.sort((a, b) => staleKey(a.leadId).localeCompare(staleKey(b.leadId)))
   dueTasks.sort((a, b) =>
@@ -103,6 +126,11 @@ export function buildToday(input: {
       : a.task.due_date!.localeCompare(b.task.due_date!)
   )
   waiting.sort((a, b) => (a.followUpDue !== b.followUpDue ? (a.followUpDue ? -1 : 1) : b.quietDays - a.quietDays))
+  wonUnscheduled.sort((a, b) => {
+    if (!a.eventDate) return b.eventDate ? 1 : 0
+    if (!b.eventDate) return -1
+    return a.eventDate.localeCompare(b.eventDate)
+  })
 
   return {
     tiles: {
@@ -113,5 +141,6 @@ export function buildToday(input: {
     needsAttention,
     dueTasks,
     waiting,
+    wonUnscheduled,
   }
 }
