@@ -89,4 +89,11 @@ describe('convertOpportunityToWorkCore', () => {
   it('requires a date', async () => {
     await expect(convertOpportunityToWorkCore('o1', 'l1', { ...input, date: '' })).rejects.toThrow('A job date is required')
   })
+
+  it('rejects a malformed date before reading the opportunity', async () => {
+    await expect(convertOpportunityToWorkCore('o1', 'l1', { ...input, date: '09/12/2026' })).rejects.toThrow(
+      'A job date must be in YYYY-MM-DD format'
+    )
+    expect(leadGet).not.toHaveBeenCalled()
+  })
 })

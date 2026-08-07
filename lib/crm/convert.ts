@@ -12,6 +12,8 @@ export interface ConvertToWorkInput {
   headcount?: number
 }
 
+const DATE_FORMAT = /^\d{4}-\d{2}-\d{2}$/
+
 /**
  * Turn a won opportunity into a scheduled job.
  *
@@ -22,6 +24,19 @@ export interface ConvertToWorkInput {
  *
  * Logs no activity: lib/activity.ts is server-only and cores must stay
  * importable by scripts. The calling action logs.
+ *
+ * Known accepted race: the "already scheduled" check below reads
+ * `listEventsByLeadCore` and then, in a separate write, `createEventCore`
+ * creates the job — the two are not transactional. Two concurrent conversions
+ * of the same opportunity can therefore both pass the check and both create a
+ * job. This is accepted rather than fixed: the failure mode is a duplicate
+ * *draft* event on an opportunity whose schema already permits multiple jobs
+ * by design (see above) — untidy and trivially deletable, not data
+ * corruption. Closing the race would mean threading a Firestore `Transaction`
+ * handle through `createEventCore`'s public signature, which `/new-event`
+ * also calls and has no need for; the repo already rejected that shape of
+ * tradeoff for `createLead` in the CRM finish-out plan's "Accepted tradeoff"
+ * section, and the same reasoning applies here.
  */
 export async function convertOpportunityToWorkCore(
   orgId: string,
@@ -30,6 +45,7 @@ export async function convertOpportunityToWorkCore(
 ): Promise<Event> {
   if (!input.name?.trim()) throw new Error('A job name is required')
   if (!input.date?.trim()) throw new Error('A job date is required')
+  if (!DATE_FORMAT.test(input.date.trim())) throw new Error('A job date must be in YYYY-MM-DD format')
 
   const snap = await leadsRef(orgId).doc(leadId).get()
   if (!snap.exists) throw new Error('Opportunity not found')
