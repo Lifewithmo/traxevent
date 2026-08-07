@@ -429,8 +429,15 @@ export interface ProposalPackage {
   id: string
   name: string                 // builder-named: "Good" / "Better" / "Best"
   description?: string
-  includes: string[]           // bullet lines shown to the customer
-  price: number                // the tier's all-in price (dollars)
+  // LEGACY pair — written only by pre-v2 documents. A package with no
+  // `item_ids` is legacy: `includes` + `price` are authoritative, read-only.
+  includes: string[]
+  price: number                // legacy: authoritative flat price.
+                               // composed: DERIVED (sum or override), recomputed
+                               // server-side on write and stored denormalized.
+  // COMPOSED pair — presence of `item_ids` marks a v2 package.
+  item_ids?: string[]          // ordered refs into the proposal's line_items pool
+  price_override?: number      // optional round-number override of the computed sum
   recommended?: boolean
 }
 
@@ -439,6 +446,7 @@ export interface ProposalLineItem {
   description: string
   quantity: number
   unit_price: number           // dollars (may be decimal)
+  unit?: string                // optional: "hr", "each", "day" — display + future invoicing
   optional?: boolean           // true = customer-toggleable add-on; missing/false = required base scope
   taxable?: boolean            // default true; stored now, honored in a later increment
 }
@@ -446,12 +454,14 @@ export interface ProposalLineItem {
 export const PROPOSAL_BLOCK_TYPES = ['heading', 'paragraph', 'list', 'image', 'testimonial'] as const
 export type ProposalBlockType = (typeof PROPOSAL_BLOCK_TYPES)[number]
 
+// `placeholder` marks skeleton-authored content: greyed in the builder,
+// silently skipped on public/print render, cleared on first human edit.
 export type ProposalBlock =
-  | { id: string; type: 'heading'; text: string; level?: 2 | 3 }
-  | { id: string; type: 'paragraph'; text: string }
-  | { id: string; type: 'list'; items: string[]; ordered?: boolean }
-  | { id: string; type: 'image'; url: string; alt?: string; caption?: string }
-  | { id: string; type: 'testimonial'; quote: string; attribution?: string }
+  | { id: string; type: 'heading'; text: string; level?: 2 | 3; placeholder?: boolean }
+  | { id: string; type: 'paragraph'; text: string; placeholder?: boolean }
+  | { id: string; type: 'list'; items: string[]; ordered?: boolean; placeholder?: boolean }
+  | { id: string; type: 'image'; url: string; alt?: string; caption?: string; placeholder?: boolean }
+  | { id: string; type: 'testimonial'; quote: string; attribution?: string; placeholder?: boolean }
 
 export interface ProposalDiscount { type: 'percent' | 'fixed'; value: number }
 export interface ProposalDeposit { type: 'percent' | 'fixed'; value: number }  // captured now, collected later
