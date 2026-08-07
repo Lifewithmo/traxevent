@@ -17,6 +17,16 @@ describe('WonUnscheduledList', () => {
     expect(screen.getByRole('link', { name: /nguyen wedding/i })).toHaveAttribute('href', '/acme/leads/l1')
   })
 
+  it('gives each row exactly one navigational target', () => {
+    render(<WonUnscheduledList orgSlug="acme" items={[item]} />)
+    expect(screen.getAllByRole('link')).toHaveLength(1)
+  })
+
+  it('keeps the date/value text out of the link\'s accessible name', () => {
+    render(<WonUnscheduledList orgSlug="acme" items={[item]} />)
+    expect(screen.getByRole('link', { name: /nguyen wedding/i })).not.toHaveAccessibleName(/2026-09-12/)
+  })
+
   it('shows the job date and value', () => {
     render(<WonUnscheduledList orgSlug="acme" items={[item]} />)
     expect(screen.getByText(/2026-09-12/)).toBeInTheDocument()
