@@ -100,4 +100,79 @@ describe('proposalInvoiceLines', () => {
     const lines = proposalInvoiceLines(p)
     expect(lines).toEqual([{ description: 'Base', quantity: 1, unit_price: 1000, source: { type: 'proposal', id: 'p1' } }])
   })
+
+  const src = { type: 'proposal' as const, id: 'p1' }
+
+  it('composed selection → one line per member item, in item_ids order', () => {
+    const p = { id: 'p1',
+      packages: [{ id: 'std', name: 'Standard', includes: [], price: 1460, item_ids: ['i2', 'i1'] }],
+      line_items: [
+        { id: 'i1', description: 'Setup', quantity: 1, unit_price: 500 },
+        { id: 'i2', description: 'Service', quantity: 8, unit_price: 120 }],
+      selection: { package_id: 'std', optional_item_ids: [], selected_total: 1460, selected_at: '' } }
+    expect(proposalInvoiceLines(p)).toEqual([
+      { description: 'Service', quantity: 8, unit_price: 120, source: src },
+      { description: 'Setup', quantity: 1, unit_price: 500, source: src },
+    ])
+  })
+
+  it('price_override below the sum → negative adjustment line for the delta', () => {
+    const p = { id: 'p1',
+      packages: [{ id: 'std', name: 'Standard', includes: [], price: 1400, item_ids: ['i1', 'i2'], price_override: 1400 }],
+      line_items: [
+        { id: 'i1', description: 'Setup', quantity: 1, unit_price: 500 },
+        { id: 'i2', description: 'Service', quantity: 8, unit_price: 120 }],
+      selection: { package_id: 'std', optional_item_ids: [], selected_total: 1400, selected_at: '' } }
+    expect(proposalInvoiceLines(p)).toEqual([
+      { description: 'Setup', quantity: 1, unit_price: 500, source: src },
+      { description: 'Service', quantity: 8, unit_price: 120, source: src },
+      { description: 'Package price adjustment — Standard', quantity: 1, unit_price: -60, source: src },
+    ])
+  })
+
+  it('price_override above the sum → positive adjustment line', () => {
+    const p = { id: 'p1',
+      packages: [{ id: 'std', name: 'Standard', includes: [], price: 1500, item_ids: ['i1'], price_override: 1500 }],
+      line_items: [{ id: 'i1', description: 'Setup', quantity: 1, unit_price: 500 }],
+      selection: { package_id: 'std', optional_item_ids: [], selected_total: 1500, selected_at: '' } }
+    expect(proposalInvoiceLines(p)).toEqual([
+      { description: 'Setup', quantity: 1, unit_price: 500, source: src },
+      { description: 'Package price adjustment — Standard', quantity: 1, unit_price: 1000, source: src },
+    ])
+  })
+
+  it('price_override equal to the sum → no adjustment line', () => {
+    const p = { id: 'p1',
+      packages: [{ id: 'std', name: 'Standard', includes: [], price: 500, item_ids: ['i1'], price_override: 500 }],
+      line_items: [{ id: 'i1', description: 'Setup', quantity: 1, unit_price: 500 }],
+      selection: { package_id: 'std', optional_item_ids: [], selected_total: 500, selected_at: '' } }
+    expect(proposalInvoiceLines(p)).toEqual([
+      { description: 'Setup', quantity: 1, unit_price: 500, source: src },
+    ])
+  })
+
+  it('upgraded-legacy tier ($0 members + override) itemizes and totals to the flat price', () => {
+    const p = { id: 'p1',
+      packages: [{ id: 'good', name: 'Good', includes: [], price: 1200, item_ids: ['g0', 'g1'], price_override: 1200 }],
+      line_items: [
+        { id: 'g0', description: 'Install', quantity: 1, unit_price: 0 },
+        { id: 'g1', description: 'Cleanup', quantity: 1, unit_price: 0 }],
+      selection: { package_id: 'good', optional_item_ids: [], selected_total: 1200, selected_at: '' } }
+    const lines = proposalInvoiceLines(p)
+    expect(lines.map((l) => l.description)).toEqual(['Install', 'Cleanup', 'Package price adjustment — Good'])
+    expect(lines.reduce((s, l) => s + l.quantity * l.unit_price, 0)).toBe(1200)
+  })
+
+  it('composed selection still appends chosen optional add-ons after the tier lines', () => {
+    const p = { id: 'p1',
+      packages: [{ id: 'std', name: 'Standard', includes: [], price: 500, item_ids: ['i1'] }],
+      line_items: [
+        { id: 'i1', description: 'Setup', quantity: 1, unit_price: 500 },
+        { id: 'o1', description: 'Drone', quantity: 1, unit_price: 300, optional: true }],
+      selection: { package_id: 'std', optional_item_ids: ['o1'], selected_total: 800, selected_at: '' } }
+    expect(proposalInvoiceLines(p)).toEqual([
+      { description: 'Setup', quantity: 1, unit_price: 500, source: src },
+      { description: 'Drone', quantity: 1, unit_price: 300, source: src },
+    ])
+  })
 })
