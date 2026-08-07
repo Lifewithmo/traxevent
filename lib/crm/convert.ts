@@ -46,6 +46,9 @@ export async function convertOpportunityToWorkCore(
   if (!input.name?.trim()) throw new Error('A job name is required')
   if (!input.date?.trim()) throw new Error('A job date is required')
   if (!DATE_FORMAT.test(input.date.trim())) throw new Error('A job date must be in YYYY-MM-DD format')
+  if (input.headcount !== undefined && (!Number.isFinite(input.headcount) || input.headcount <= 0)) {
+    throw new Error('Headcount must be a positive number')
+  }
 
   const snap = await leadsRef(orgId).doc(leadId).get()
   if (!snap.exists) throw new Error('Opportunity not found')

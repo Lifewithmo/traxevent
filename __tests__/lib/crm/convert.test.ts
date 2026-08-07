@@ -96,4 +96,23 @@ describe('convertOpportunityToWorkCore', () => {
     )
     expect(leadGet).not.toHaveBeenCalled()
   })
+
+  it('rejects a negative headcount before reading the opportunity', async () => {
+    await expect(convertOpportunityToWorkCore('o1', 'l1', { ...input, headcount: -5 })).rejects.toThrow(
+      'Headcount must be a positive number'
+    )
+    expect(leadGet).not.toHaveBeenCalled()
+  })
+
+  it('rejects a non-finite headcount', async () => {
+    await expect(convertOpportunityToWorkCore('o1', 'l1', { ...input, headcount: NaN })).rejects.toThrow(
+      'Headcount must be a positive number'
+    )
+  })
+
+  it('rejects a zero headcount', async () => {
+    await expect(convertOpportunityToWorkCore('o1', 'l1', { ...input, headcount: 0 })).rejects.toThrow(
+      'Headcount must be a positive number'
+    )
+  })
 })
