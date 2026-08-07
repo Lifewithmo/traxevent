@@ -9,10 +9,10 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
-    "crm:migrate": "tsx --env-file=.env.local --conditions=react-server scripts/crm-migrate-customers.ts",
-    "crm:backfill-stages": "tsx --env-file=.env.local --conditions=react-server scripts/crm-backfill-stages.ts",
-    "crm:backfill-email-lower": "tsx --env-file=.env.local --conditions=react-server scripts/crm-backfill-email-lower.ts",
-    "seed:demo": "tsx --env-file=.env.local --conditions=react-server scripts/seed-demo.ts"
+    "crm:migrate": "tsx --env-file-if-exists=.env.local --conditions=react-server scripts/crm-migrate-customers.ts",
+    "crm:backfill-stages": "tsx --env-file-if-exists=.env.local --conditions=react-server scripts/crm-backfill-stages.ts",
+    "crm:backfill-email-lower": "tsx --env-file-if-exists=.env.local --conditions=react-server scripts/crm-backfill-email-lower.ts",
+    "seed:demo": "tsx --env-file-if-exists=.env.local --conditions=react-server scripts/seed-demo.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",
