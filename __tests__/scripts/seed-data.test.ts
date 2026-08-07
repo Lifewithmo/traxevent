@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { buildBrewtraxSeed } from '@/scripts/seed/brewtrax-data'
 import { LEAD_STAGES } from '@/lib/leads'
+import { proposalTotal } from '@/lib/proposals'
 
 const TODAY = new Date('2026-08-06T12:00:00.000Z')
 
@@ -57,5 +58,65 @@ describe('buildBrewtraxSeed — CRM slice', () => {
     const later = buildBrewtraxSeed(new Date('2027-01-15T12:00:00.000Z'))
     const openLater = later.tasks.filter((t) => !t.task.done && t.task.due_date)
     expect(openLater.some((t) => t.task.due_date! > '2027-01-15')).toBe(true)
+  })
+})
+
+describe('buildBrewtraxSeed — events and proposals', () => {
+  it('has three active upcoming jobs and two archived past jobs', () => {
+    const seed = buildBrewtraxSeed(TODAY)
+    const upcoming = seed.events.filter((e) => e.event.event_start > '2026-08-06')
+    const past = seed.events.filter((e) => e.event.event_start < '2026-08-06')
+    expect(upcoming).toHaveLength(3)
+    expect(past).toHaveLength(2)
+    expect(upcoming.every((e) => e.event.status === 'active')).toBe(true)
+    expect(past.every((e) => e.event.status === 'archived')).toBe(true)
+  })
+
+  it('gives every upcoming job a headcount and at least one key contact', () => {
+    const seed = buildBrewtraxSeed(TODAY)
+    for (const e of seed.events.filter((e) => e.event.event_start > '2026-08-06')) {
+      expect(e.event.headcount).toBeGreaterThan(0)
+      expect(e.event.key_contacts?.length ?? 0).toBeGreaterThan(0)
+    }
+  })
+
+  it('scopes every itinerary item to a day within its own event', () => {
+    const seed = buildBrewtraxSeed(TODAY)
+    for (const e of seed.events) {
+      for (const item of e.itinerary) {
+        expect(item.day >= e.event.event_start.slice(0, 10)).toBe(true)
+        expect(item.day <= e.event.event_end.slice(0, 10)).toBe(true)
+      }
+    }
+  })
+
+  it('covers draft, sent, and accepted proposal statuses', () => {
+    const seed = buildBrewtraxSeed(TODAY)
+    const statuses = new Set(seed.proposals.map((p) => p.proposal.status))
+    expect(statuses).toContain('draft')
+    expect(statuses).toContain('sent')
+    expect(statuses).toContain('accepted')
+  })
+
+  it('points every proposal at a lead in the graph', () => {
+    const seed = buildBrewtraxSeed(TODAY)
+    const leadKeys = new Set(seed.leads.map((l) => l.key))
+    for (const p of seed.proposals) expect(leadKeys).toContain(p.leadKey)
+  })
+
+  it('gives the sent proposal an expiry in the near future', () => {
+    const seed = buildBrewtraxSeed(TODAY)
+    const sent = seed.proposals.find((p) => p.proposal.status === 'sent')
+    expect(sent?.proposal.expires_at).toBeDefined()
+    expect(sent!.proposal.expires_at! > TODAY.toISOString()).toBe(true)
+  })
+
+  it('gives the accepted proposal a deposit and a selection whose total is the real computed total', () => {
+    const seed = buildBrewtraxSeed(TODAY)
+    const accepted = seed.proposals.find((p) => p.proposal.status === 'accepted')!
+    expect(accepted.proposal.deposit).toBeDefined()
+    expect(accepted.proposal.selection).toBeDefined()
+    expect(accepted.proposal.selection!.selected_total)
+      .toBe(proposalTotal(accepted.proposal.line_items))
   })
 })

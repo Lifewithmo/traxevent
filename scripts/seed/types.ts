@@ -1,4 +1,4 @@
-import type { Org, Lead, Task } from '@/lib/types'
+import type { Org, Lead, Task, Event, ItineraryItem, Proposal } from '@/lib/types'
 import type { CreateCustomerInput } from '@/lib/crm/customers'
 
 /**
@@ -29,10 +29,24 @@ export interface SeedTask {
   task: Omit<Task, 'lead_id'>
 }
 
+export interface SeedEvent {
+  key: string
+  event: Event
+  itinerary: ItineraryItem[]
+}
+
+export interface SeedProposal {
+  leadKey: string
+  /** `org_id`, `lead_id`, and `token` are filled by the writer. */
+  proposal: Omit<Proposal, 'org_id' | 'lead_id' | 'token'>
+}
+
 export interface BrewtraxSeed {
   /** `id` comes from --org-id at write time. */
   org: Omit<Org, 'id'>
   customers: SeedCustomer[]
   leads: SeedLead[]
   tasks: SeedTask[]
+  events: SeedEvent[]
+  proposals: SeedProposal[]
 }

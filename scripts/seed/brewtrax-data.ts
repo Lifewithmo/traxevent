@@ -1,5 +1,6 @@
 import type { BrewtraxSeed } from '@/scripts/seed/types'
 import { daysFrom, isoFrom } from '@/scripts/seed/dates'
+import { proposalTotal } from '@/lib/proposals'
 
 /**
  * The BrewTrax demo tenant as a pure function of `today`. Every date is an
@@ -142,5 +143,151 @@ export function buildBrewtraxSeed(today: Date): BrewtraxSeed {
     { leadKey: 'lead-oakline-offsite', task: { id: 'demo-task-07', title: 'Send updated cold brew menu', due_date: daysFrom(today, -18), done: true, done_at: isoFrom(today, -19), created_at: isoFrom(today, -34) } },
   ]
 
-  return { org, customers, leads, tasks }
+  /** Calendar year of the date `n` days out — an event near a year boundary
+   *  must carry its own year, not today's, or its slug misreports it. */
+  const yearOf = (n: number) => Number(daysFrom(today, n).slice(0, 4))
+
+  const summitLines = [
+    { id: 'li-1', description: 'Espresso bar service — 4 hours', quantity: 1, unit_price: 1450, taxable: true },
+    { id: 'li-2', description: 'Second barista', quantity: 1, unit_price: 450, taxable: true },
+    { id: 'li-3', description: 'Branded cup sleeves (250)', quantity: 1, unit_price: 180, optional: true, taxable: true },
+  ]
+  const oaklineLines = [
+    { id: 'li-1', description: 'Cold brew bar — 3 hours', quantity: 1, unit_price: 1200, taxable: true },
+    { id: 'li-2', description: 'Nitro tap add-on', quantity: 1, unit_price: 350, taxable: true },
+  ]
+  const larkinLines = [
+    { id: 'li-1', description: 'Drip coffee service — 2 hours', quantity: 1, unit_price: 650, taxable: true },
+    { id: 'li-2', description: 'Pastry pairing', quantity: 60, unit_price: 4.5, optional: true, taxable: true },
+  ]
+
+  const events: BrewtraxSeed['events'] = [
+    {
+      key: 'event-oakline', event: {
+        id: 'demo-event-01', name: 'Oakline Q3 Offsite', slug: `oakline-q3-offsite-${yearOf(7)}`,
+        year: yearOf(7), status: 'active', registration_type: 'individual', event_type_id: 'event',
+        features: { accommodations: false, teams: false, budget: true, itinerary: true, communicate: true },
+        event_start: isoFrom(today, 7, '15:00'), event_end: isoFrom(today, 7, '19:00'),
+        headcount: 85, created_at: isoFrom(today, -38),
+        key_contacts: [
+          { name: 'Marcus Oakline', role: 'Client', phone: '208-555-0177', email: 'marcus@oaklinetech.example.com' },
+          { name: 'Riley Chen', role: 'Venue coordinator', phone: '208-555-0181' },
+        ],
+      },
+      itinerary: [
+        { id: 'demo-itin-01', day: daysFrom(today, 7), start_time: '13:30', end_time: '15:00', title: 'Load in and cart setup', location: 'Oakline HQ — north lot', sort_order: 1, created_at: isoFrom(today, -20) },
+        { id: 'demo-itin-02', day: daysFrom(today, 7), start_time: '15:00', end_time: '19:00', title: 'Cold brew service', location: 'Courtyard', sort_order: 2, created_at: isoFrom(today, -20) },
+        { id: 'demo-itin-03', day: daysFrom(today, 7), start_time: '19:00', end_time: '20:00', title: 'Teardown', sort_order: 3, created_at: isoFrom(today, -20) },
+      ],
+    },
+    {
+      key: 'event-harper', event: {
+        id: 'demo-event-02', name: 'Harper Wedding', slug: `harper-wedding-${yearOf(14)}`,
+        year: yearOf(14), status: 'active', registration_type: 'individual', event_type_id: 'event',
+        features: { accommodations: false, teams: false, budget: true, itinerary: true, communicate: true },
+        event_start: isoFrom(today, 14, '16:00'), event_end: isoFrom(today, 14, '22:00'),
+        headcount: 120, created_at: isoFrom(today, -52),
+        key_contacts: [
+          { name: 'Dana Harper', role: 'Planner', phone: '208-555-0134', email: 'dana.harper@example.com' },
+          { name: 'Alex Vance', role: 'Day-of coordinator', phone: '208-555-0139' },
+        ],
+      },
+      itinerary: [
+        { id: 'demo-itin-04', day: daysFrom(today, 14), start_time: '14:00', end_time: '16:00', title: 'Setup — copper cart, ceremony lawn', location: 'Wildrose Barn', sort_order: 1, created_at: isoFrom(today, -25) },
+        { id: 'demo-itin-05', day: daysFrom(today, 14), start_time: '18:00', end_time: '22:00', title: 'Espresso bar — reception', location: 'Wildrose Barn', sort_order: 2, created_at: isoFrom(today, -25) },
+      ],
+    },
+    {
+      key: 'event-riverbend', event: {
+        id: 'demo-event-03', name: 'Riverbend Block Party', slug: `riverbend-block-party-${yearOf(28)}`,
+        year: yearOf(28), status: 'active', registration_type: 'individual', event_type_id: 'event',
+        features: { accommodations: false, teams: false, budget: true, itinerary: true, communicate: true },
+        event_start: isoFrom(today, 28, '10:00'), event_end: isoFrom(today, 28, '14:00'),
+        headcount: 200, created_at: isoFrom(today, -25),
+        key_contacts: [{ name: 'Priya Raman', role: 'HOA board', phone: '208-555-0192', email: 'priya@riverbendhoa.example.com' }],
+      },
+      itinerary: [
+        { id: 'demo-itin-06', day: daysFrom(today, 28), start_time: '08:30', end_time: '10:00', title: 'Setup on Riverbend Ct', sort_order: 1, created_at: isoFrom(today, -10) },
+        { id: 'demo-itin-07', day: daysFrom(today, 28), start_time: '10:00', end_time: '14:00', title: 'Drip + iced service', sort_order: 2, created_at: isoFrom(today, -10) },
+      ],
+    },
+    {
+      key: 'event-summerfest', event: {
+        id: 'demo-event-04', name: 'Meridian Summerfest', slug: `meridian-summerfest-${yearOf(-21)}`,
+        year: yearOf(-21), status: 'archived', registration_type: 'individual', event_type_id: 'event',
+        features: { accommodations: false, teams: false, budget: true, itinerary: true, communicate: true },
+        event_start: isoFrom(today, -21, '11:00'), event_end: isoFrom(today, -21, '17:00'),
+        headcount: 300, created_at: isoFrom(today, -90),
+        key_contacts: [{ name: 'Nina Torres', role: 'Festival ops', phone: '208-555-0201' }],
+      },
+      itinerary: [
+        { id: 'demo-itin-08', day: daysFrom(today, -21), start_time: '09:00', end_time: '11:00', title: 'Setup — vendor row', sort_order: 1, created_at: isoFrom(today, -60) },
+      ],
+    },
+    {
+      key: 'event-vance-retreat', event: {
+        id: 'demo-event-05', name: 'Vance Corporate Retreat', slug: `vance-corporate-retreat-${yearOf(-56)}`,
+        year: yearOf(-56), status: 'archived', registration_type: 'individual', event_type_id: 'event',
+        features: { accommodations: false, teams: false, budget: true, itinerary: true, communicate: true },
+        event_start: isoFrom(today, -56, '08:00'), event_end: isoFrom(today, -56, '12:00'),
+        headcount: 45, created_at: isoFrom(today, -110),
+        key_contacts: [{ name: 'Alex Vance', role: 'Client', phone: '208-555-0139' }],
+      },
+      itinerary: [
+        { id: 'demo-itin-09', day: daysFrom(today, -56), start_time: '07:00', end_time: '08:00', title: 'Morning setup', sort_order: 1, created_at: isoFrom(today, -80) },
+      ],
+    },
+  ]
+
+  const proposals: BrewtraxSeed['proposals'] = [
+    {
+      leadKey: 'lead-summit-launch',
+      proposal: {
+        id: 'demo-prop-01', title: 'Summit Creative — product launch coffee service',
+        status: 'sent', line_items: summitLines, tax_rate: 6,
+        deposit: { type: 'percent', value: 25 }, deposit_gate: 'after_accept',
+        deposit_terms: '25% deposit holds the date; balance due on completion.',
+        expires_at: isoFrom(today, 6, '23:59'),
+        created_at: isoFrom(today, -8), updated_at: isoFrom(today, -8),
+        notes: 'Tiered options discussed on the discovery call.',
+        blocks: [
+          { id: 'blk-1', type: 'heading', text: 'What we bring', level: 2 },
+          { id: 'blk-2', type: 'paragraph', text: 'A full mobile espresso bar, two baristas, and everything needed to serve 150 drinks in four hours.' },
+          { id: 'blk-3', type: 'list', items: ['Copper mobile cart', 'Single-origin espresso + two milk options', 'Compostable cups and lids', 'Setup and teardown included'] },
+        ],
+        events: [
+          { kind: 'sent', at: isoFrom(today, -8) }, { kind: 'viewed', at: isoFrom(today, -7) }
+        ],
+      },
+    },
+    {
+      leadKey: 'lead-oakline-offsite',
+      proposal: {
+        id: 'demo-prop-02', title: 'Oakline Q3 offsite — cold brew bar',
+        status: 'accepted', line_items: oaklineLines, tax_rate: 6,
+        deposit: { type: 'percent', value: 50 }, deposit_gate: 'after_accept',
+        deposit_terms: '50% deposit due at booking.',
+        payment_status: 'deposit_paid',
+        selection: { optional_item_ids: [], selected_total: proposalTotal(oaklineLines), selected_at: isoFrom(today, -30) },
+        client_response_at: isoFrom(today, -30),
+        created_at: isoFrom(today, -35), updated_at: isoFrom(today, -30),
+        events: [
+          { kind: 'sent', at: isoFrom(today, -35) },
+          { kind: 'viewed', at: isoFrom(today, -34) },
+          { kind: 'accepted', at: isoFrom(today, -30) },
+        ],
+      },
+    },
+    {
+      leadKey: 'lead-larkin-anniversary',
+      proposal: {
+        id: 'demo-prop-03', title: 'Larkin 40th anniversary — coffee service',
+        status: 'draft', line_items: larkinLines,
+        created_at: isoFrom(today, -1),
+        notes: 'Hold until the guest count lands.',
+      },
+    },
+  ]
+
+  return { org, customers, leads, tasks, events, proposals }
 }
