@@ -51,9 +51,11 @@ describe('buildDraftSystemBlocks', () => {
     expect(blocks[1].cache_control).toEqual({ type: 'ephemeral' })
   })
 
-  it('the system prompt forbids inventing prices and instructs ids-only suggestions', () => {
+  it('the system prompt forbids inventing prices and instructs composed package suggestions', () => {
     const [prompt] = buildDraftSystemBlocks('x')
     expect(prompt.text).toMatch(/never.*(invent|make up).*(price|pricing)/i)
-    expect(prompt.text).toMatch(/suggested_package_ids/)
+    expect(prompt.text).toMatch(/suggested_packages/)
+    expect(prompt.text).toMatch(/unit_price/)
+    expect(prompt.text).not.toMatch(/suggested_package_ids/)
   })
 })

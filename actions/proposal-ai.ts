@@ -1,12 +1,13 @@
 'use server'
 
+import { randomBytes } from 'crypto'
 import { adminDb } from '@/lib/firebase-admin'
 import { assertOrgAdmin } from '@/lib/auth/assert'
 import { listWorkPackagesCore } from '@/lib/ops/work-packages'
 import { listResourcesCore } from '@/lib/ops/resources'
 import { getAnthropicClient, AI_MODEL, AI_MAX_TOKENS, AI_EFFORT, AI_BETAS } from '@/lib/ai/client'
 import { serializeCatalog, buildDraftSystemBlocks } from '@/lib/ai/grounding'
-import { PROPOSAL_DRAFT_SCHEMA, parseDraftResponse, type ProposalDraft } from '@/lib/ai/proposal-draft'
+import { PROPOSAL_DRAFT_SCHEMA, parseDraftResponse, mintSuggestedPackages, type ProposalDraft } from '@/lib/ai/proposal-draft'
 import { logAiUsage } from '@/lib/ai/usage'
 import type { Proposal } from '@/lib/types'
 
@@ -64,16 +65,16 @@ export async function generateProposalDraft(
     cache_read_input_tokens: message.usage.cache_read_input_tokens ?? 0,
   })
 
-  const draft = parseDraftResponse(message, packages.map((p) => p.id))
+  const draft = parseDraftResponse(message)
 
-  // Prices are read from the catalog fetched above, never from the model's
-  // output — parseDraftResponse only kept ids that already passed the
-  // catalog-membership check, so every lookup here is guaranteed to hit.
-  const byId = new Map(packages.map((p) => [p.id, p]))
-  const suggested_packages = draft.suggested_package_ids.flatMap((id) => {
-    const pkg = byId.get(id)
-    return pkg ? [{ id: pkg.id, name: pkg.name, price: pkg.price }] : []
-  })
+  // Pricing model v2: suggestions arrive as composed tiers with line items.
+  // Every id is minted HERE, server-side — the model's output carries none —
+  // so suggested item_ids can only reference the suggested pool items, never
+  // real document state. randomBytes keeps ids unguessable and collision-free.
+  const { packages: suggested_packages, line_items: suggested_line_items } = mintSuggestedPackages(
+    draft.suggested_packages,
+    () => `ai-${randomBytes(4).toString('hex')}`,
+  )
 
-  return { ...draft, suggested_packages }
+  return { ...draft, suggested_packages, suggested_line_items }
 }

@@ -212,8 +212,8 @@ describe('ProposalBlockEditor', () => {
         { id: 'model-id-1', type: 'paragraph', text: 'Drafted paragraph' },
         { id: 'model-id-2', type: 'heading', text: 'Drafted heading', level: 2 },
       ],
-      suggested_package_ids: [],
       suggested_packages: [],
+      suggested_line_items: [],
       rationale: '',
       adjustments: [],
     })
