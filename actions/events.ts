@@ -7,7 +7,7 @@ import { FieldValue } from 'firebase-admin/firestore'
 import type { Event, EventRegistrationType } from '@/lib/types'
 import { buildEventSlug } from '@/lib/slug'
 import type { Terminology } from '@/lib/event-types'
-import { createEventCore, listEventsCore, listEventsByLeadCore, type CreateEventCoreInput } from '@/lib/events'
+import { createEventCore, listEventsCore, listEventsByLeadCore } from '@/lib/events'
 
 export async function createEvent(
   orgId: string,
