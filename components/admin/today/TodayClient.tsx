@@ -4,6 +4,7 @@ import { TodayTiles } from '@/components/admin/today/TodayTiles'
 import { NeedsAttentionList } from '@/components/admin/today/NeedsAttentionList'
 import { DueTasksList } from '@/components/admin/today/DueTasksList'
 import { WaitingList } from '@/components/admin/today/WaitingList'
+import { WonUnscheduledList } from '@/components/admin/today/WonUnscheduledList'
 import type { TodayData } from '@/lib/today'
 
 interface TodayClientProps {
@@ -24,6 +25,7 @@ export function TodayClient({ orgId, orgSlug, data }: TodayClientProps) {
       <NeedsAttentionList orgId={orgId} orgSlug={orgSlug} items={data.needsAttention} />
       <DueTasksList orgId={orgId} orgSlug={orgSlug} items={data.dueTasks} />
       <WaitingList orgId={orgId} orgSlug={orgSlug} items={data.waiting} />
+      <WonUnscheduledList orgSlug={orgSlug} items={data.wonUnscheduled} />
     </div>
   )
 }

@@ -26,4 +26,9 @@ describe('TodayClient', () => {
     expect(screen.getByText('Waiting on')).toBeInTheDocument()
     expect(screen.getByText('Call')).toBeInTheDocument()
   })
+
+  it('mounts the won-unscheduled list', () => {
+    render(<TodayClient orgId="o1" orgSlug="acme" data={data} />)
+    expect(screen.getByText('Won, not scheduled')).toBeInTheDocument()
+  })
 })
