@@ -89,6 +89,19 @@ async function main(): Promise<void> {
   await ref.collection('members').doc(uid).set(member)
   console.log(`  org + owner member written`)
 
+  // The app resolves org access from Firebase custom claims, not the member doc
+  // (lib/auth/session.ts reads orgId/orgSlug/role off the verified session cookie).
+  // Without these the demo login authenticates but every org guard rejects it.
+  // Set directly via the admin SDK: actions/auth.ts setOrgClaims is 'use server'
+  // and unreachable from a script. Re-applied on every run so --reset keeps the
+  // login working against the recreated org.
+  await adminAuth.setCustomUserClaims(uid, {
+    orgId: args.orgId,
+    orgSlug: org.slug,
+    role: 'owner',
+  })
+  console.log(`  org claims set on ${args.email}`)
+
   // Customers — findOrCreateCustomerCore mints its own ids, so map key -> id.
   const customerIds = new Map<string, string>()
   for (const c of seed.customers) {
