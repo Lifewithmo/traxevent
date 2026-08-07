@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { buildBrewtraxSeed } from '@/scripts/seed/brewtrax-data'
 import { LEAD_STAGES } from '@/lib/leads'
-import { proposalTotal } from '@/lib/proposals'
+import { computeSelectedTotal } from '@/lib/proposals'
 
 const TODAY = new Date('2026-08-06T12:00:00.000Z')
 
@@ -116,7 +116,8 @@ describe('buildBrewtraxSeed — events and proposals', () => {
     const accepted = seed.proposals.find((p) => p.proposal.status === 'accepted')!
     expect(accepted.proposal.deposit).toBeDefined()
     expect(accepted.proposal.selection).toBeDefined()
-    expect(accepted.proposal.selection!.selected_total)
-      .toBe(proposalTotal(accepted.proposal.line_items))
+    expect(accepted.proposal.selection!.selected_total).toBe(
+      computeSelectedTotal(accepted.proposal, { optional_item_ids: [] }),
+    )
   })
 })

@@ -1,6 +1,6 @@
 import type { BrewtraxSeed } from '@/scripts/seed/types'
 import { daysFrom, isoFrom } from '@/scripts/seed/dates'
-import { proposalTotal } from '@/lib/proposals'
+import { computeSelectedTotal } from '@/lib/proposals'
 
 /**
  * The BrewTrax demo tenant as a pure function of `today`. Every date is an
@@ -268,7 +268,7 @@ export function buildBrewtraxSeed(today: Date): BrewtraxSeed {
         deposit: { type: 'percent', value: 50 }, deposit_gate: 'after_accept',
         deposit_terms: '50% deposit due at booking.',
         payment_status: 'deposit_paid',
-        selection: { optional_item_ids: [], selected_total: proposalTotal(oaklineLines), selected_at: isoFrom(today, -30) },
+        selection: { optional_item_ids: [], selected_total: computeSelectedTotal({ line_items: oaklineLines, tax_rate: 6 }, { optional_item_ids: [] }), selected_at: isoFrom(today, -30) },
         client_response_at: isoFrom(today, -30),
         created_at: isoFrom(today, -35), updated_at: isoFrom(today, -30),
         events: [
