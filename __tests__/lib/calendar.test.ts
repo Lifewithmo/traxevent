@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { buildCalendar } from '@/lib/calendar'
-import type { Event, Lead } from '@/lib/types'
+import { buildCalendar, calendarRangeItems } from '@/lib/calendar'
+import type { Event, Lead, Task } from '@/lib/types'
 
 function event(overrides: Partial<Event>): Event {
   return {
@@ -93,5 +93,34 @@ describe('buildCalendar', () => {
     )
     expect(items.map((i) => i.id)).toEqual(expect.arrayContaining(['c1', 'l1']))
     expect(items).toHaveLength(2)
+  })
+})
+
+describe('calendarRangeItems', () => {
+  const event = (over: Partial<Event>): Event => ({
+    id: 'e1', name: 'Gala', slug: 'gala', event_start: '2026-08-12', ...over,
+  } as Event)
+  const lead = (over: Partial<Lead>): Lead => ({
+    id: 'l1', name: 'Dana', stage: 'consultation', created_at: '2026-07-01T00:00:00.000Z', ...over,
+  } as Lead)
+  const task = (over: Partial<Task>): Task => ({
+    id: 't1', lead_id: 'l1', title: 'Site visit', done: false, created_at: '2026-08-01T00:00:00.000Z', ...over,
+  } as Task)
+
+  it('merges events, tentative leads, and dated open tasks inside the range, sorted', () => {
+    const l = lead({ event_date: '2026-08-15' })
+    const items = calendarRangeItems('demo', [event({})], [l],
+      [{ lead: l, tasks: [task({ due_date: '2026-08-10' })] }], '2026-08-09', '2026-08-18')
+    expect(items.map((i) => `${i.kind}:${i.id}`)).toEqual(['task:t1', 'event:e1', 'lead:l1'])
+    expect(items[0].href).toBe('/demo/leads/l1')
+  })
+  it('excludes items outside the range, done tasks, undated tasks, and scheduled leads', () => {
+    const scheduled = lead({ id: 'l2', event_date: '2026-08-15' })
+    const items = calendarRangeItems('demo',
+      [event({ event_start: '2026-08-25' }), event({ id: 'e2', lead_id: 'l2', event_start: '2026-08-15' })],
+      [scheduled],
+      [{ lead: scheduled, tasks: [task({ done: true, due_date: '2026-08-10' }), task({ id: 't2' })] }],
+      '2026-08-09', '2026-08-18')
+    expect(items.map((i) => `${i.kind}:${i.id}`)).toEqual(['event:e2'])
   })
 })

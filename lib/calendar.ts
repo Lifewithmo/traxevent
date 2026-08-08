@@ -1,11 +1,11 @@
-import type { Event, Lead } from '@/lib/types'
+import type { Event, Lead, Task } from '@/lib/types'
 import { opportunityTitle } from '@/lib/leads'
 
 export interface CalendarItem {
   id: string
   title: string
   date: string          // ISO date (YYYY-MM-DD or full ISO)
-  kind: 'event' | 'lead'
+  kind: 'event' | 'lead' | 'task'
   href: string
 }
 
@@ -27,6 +27,31 @@ export function buildCalendar(orgSlug: string, events: Event[], leads: Lead[]): 
   for (const l of leads) {
     if (l.event_date && !scheduledLeadIds.has(l.id)) {
       items.push({ id: l.id, title: opportunityTitle(l), date: l.event_date, kind: 'lead', href: `/${orgSlug}/leads/${l.id}` })
+    }
+  }
+  return items.sort((a, b) => a.date.localeCompare(b.date))
+}
+
+/** Everything on the calendar in [fromYmd, toYmd]: booked events, tentative
+ *  (unconverted) opportunity dates, and open dated tasks. Range compares the
+ *  ISO date part, inclusive. */
+export function calendarRangeItems(
+  orgSlug: string,
+  events: Event[],
+  leads: Lead[],
+  leadTasks: Array<{ lead: Lead; tasks: Task[] }>,
+  fromYmd: string,
+  toYmd: string
+): CalendarItem[] {
+  const inRange = (date: string) => {
+    const d = date.slice(0, 10)
+    return d >= fromYmd && d <= toYmd
+  }
+  const items = buildCalendar(orgSlug, events, leads).filter((i) => inRange(i.date))
+  for (const { lead, tasks } of leadTasks) {
+    for (const t of tasks) {
+      if (t.done || !t.due_date || !inRange(t.due_date)) continue
+      items.push({ id: t.id, title: t.title, date: t.due_date, kind: 'task', href: `/${orgSlug}/leads/${lead.id}` })
     }
   }
   return items.sort((a, b) => a.date.localeCompare(b.date))
