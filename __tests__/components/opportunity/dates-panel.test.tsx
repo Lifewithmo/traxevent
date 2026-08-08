@@ -71,4 +71,29 @@ describe('DatesPanel', () => {
     await user.click(screen.getByRole('button', { name: 'Later dates' }))   // window -> SEP 9-18 again
     await waitFor(() => expect(listCalendarRange).toHaveBeenCalledTimes(2))
   })
+  it('rolls back through a second consecutive failure without falsely marking a failed range covered', async () => {
+    listCalendarRange.mockClear()
+    listCalendarRange.mockRejectedValueOnce(new Error('network error 1'))
+    listCalendarRange.mockRejectedValueOnce(new Error('network error 2'))
+    const user = userEvent.setup()
+    renderPanel()
+
+    await user.click(screen.getByRole('button', { name: 'Later dates' }))   // fetch #1 rejects
+    await waitFor(() => expect(listCalendarRange).toHaveBeenCalledTimes(1))
+    await user.click(screen.getByRole('button', { name: 'Earlier dates' })) // back home — already covered, no fetch
+
+    await user.click(screen.getByRole('button', { name: 'Later dates' }))   // fetch #2 rejects too
+    await waitFor(() => expect(listCalendarRange).toHaveBeenCalledTimes(2))
+    await user.click(screen.getByRole('button', { name: 'Earlier dates' }))
+
+    await user.click(screen.getByRole('button', { name: 'Later dates' }))   // fetch #3 succeeds
+    await waitFor(() => expect(listCalendarRange).toHaveBeenCalledTimes(3))
+
+    // Once a fetch has actually succeeded for this range, it stays covered —
+    // no further refetch on repeated visits.
+    await user.click(screen.getByRole('button', { name: 'Earlier dates' }))
+    await user.click(screen.getByRole('button', { name: 'Later dates' }))
+    expect(screen.getByText('SEP 9 – 18')).toBeInTheDocument()
+    expect(listCalendarRange).toHaveBeenCalledTimes(3)
+  })
 })

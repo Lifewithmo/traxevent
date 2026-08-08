@@ -37,7 +37,11 @@ export function DatesPanel({ orgId, orgSlug, lead, today, initialItems }: DatesP
   const [monthStart, setMonthStart] = useState(monthStartOf(homeCenter))
   const [items, setItems] = useState<CalendarItem[]>(initialItems)
   // One contiguous covered range; grow it as the user pages/hovers beyond it.
+  // `covered` is the optimistic/in-flight dedupe marker (set before the
+  // fetch resolves). `confirmed` is the last range whose fetch actually
+  // succeeded — it starts as the home window, which was server-loaded.
   const covered = useRef({ from: windowDays(homeCenter)[0], to: windowDays(homeCenter)[9] })
+  const confirmed = useRef({ from: windowDays(homeCenter)[0], to: windowDays(homeCenter)[9] })
 
   const displayCenter = pinned ? center : hovered ?? center
   const days = windowDays(displayCenter)
@@ -50,8 +54,9 @@ export function DatesPanel({ orgId, orgSlug, lead, today, initialItems }: DatesP
     const newFrom = from < c.from ? from : c.from
     const newTo = to > c.to ? to : c.to
     const attempted = { from: newFrom, to: newTo }
-    // Mark covered up front (not just on success) so a second call for the
-    // same bounds while this one is still in flight doesn't double-fetch.
+    // Mark covered up front (not just on success) so a second call for
+    // overlapping bounds while this one is still in flight doesn't
+    // double-fetch.
     covered.current = attempted
     try {
       const fetched = await listCalendarRange(orgId, orgSlug, newFrom, newTo)
@@ -59,13 +64,26 @@ export function DatesPanel({ orgId, orgSlug, lead, today, initialItems }: DatesP
         const seen = new Set(fetched.map((i) => `${i.kind}:${i.id}`))
         return [...fetched, ...prev.filter((i) => !seen.has(`${i.kind}:${i.id}`))]
       })
+      // This range genuinely fetched — record it as the new floor a failure
+      // can roll back to, and re-union covered in case a concurrent
+      // failure shrank it while we were in flight (never shrink covered on
+      // success).
+      confirmed.current = attempted
+      const cur = covered.current
+      covered.current = {
+        from: attempted.from < cur.from ? attempted.from : cur.from,
+        to: attempted.to > cur.to ? attempted.to : cur.to,
+      }
     } catch {
-      // Fetch failed — roll back to the pre-attempt range so a later window
-      // change retries it, rather than leaving a permanent silent gap. No
-      // error UI: this is a silent retry-on-next-change. Only roll back if
-      // nothing else has since advanced the covered range further (i.e. we
-      // still hold the value we set above).
-      if (covered.current === attempted) covered.current = c
+      // Fetch failed — fall back to the last range that actually succeeded,
+      // not just the pre-attempt range: with two overlapping in-flight
+      // calls, a one-hop rollback can land on a range that ALSO failed,
+      // marking it covered again (a returning silent gap). Falling back to
+      // `confirmed` is unconditional and chains correctly through any
+      // number of overlapping failures. This can cause one duplicate fetch
+      // for a still-in-flight overlapping call, which is an acceptable
+      // cost. No error UI: this is a silent retry-on-next-change.
+      covered.current = confirmed.current
     }
   }
 
