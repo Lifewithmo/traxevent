@@ -31,12 +31,12 @@ EventTrax pivot (neutralization, multi-brand, ops core). Detailed designs live i
 
 ## In flight
 
-- **Opportunity workspace, increment 1** (branch `claude/opportunity-workspace`) —
-  light sidebar, working-column density, attachment pill row, DatesPanel.
+- **Opportunity workspace, increment 1** — PR #64 open
+  (light shell, pill row, dates panel).
   Plan: `docs/superpowers/plans/2026-08-08-opportunity-workspace.md`.
-- **Customer page completion** (branch `claude/customer-page`) — new-opportunity-
-  from-customer dialog + pipeline customer typeahead (one `customer_id` seam),
-  real last-contact via denormalized stamps, tag editor with autocomplete.
+- **Customer page completion** — PR #65 open (new-opportunity-from-customer +
+  pipeline customer typeahead on one `customer_id` seam, real last-contact via
+  touch stamps, tag editor with autocomplete). Manual browser walk not yet run.
   Spec: `docs/superpowers/specs/2026-08-08-customer-page-completion-design.md`.
 
 ## Next (approved queue)
