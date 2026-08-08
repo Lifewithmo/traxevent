@@ -1,10 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { setLeadStage } from '@/actions/leads'
 import { LEAD_STAGE_LABELS, OPEN_STAGES } from '@/lib/leads'
+import { useDismissable } from '@/hooks/useDismissable'
 import type { Lead, LeadStage } from '@/lib/types'
 
 interface StageMenuProps {
@@ -21,6 +22,8 @@ export function StageMenu({ orgId, lead, onWon }: StageMenuProps) {
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+  useDismissable(open, setOpen, containerRef)
 
   async function move(stage: LeadStage) {
     setBusy(true); setError(null)
@@ -37,7 +40,7 @@ export function StageMenu({ orgId, lead, onWon }: StageMenuProps) {
   }
 
   return (
-    <div className="relative">
+    <div ref={containerRef} className="relative">
       <Button variant="outline" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
         Move stage
       </Button>

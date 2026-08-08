@@ -7,6 +7,7 @@ import { MoreHorizontal } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { deleteLead } from '@/actions/leads'
+import { useDismissable } from '@/hooks/useDismissable'
 import { LEAD_STAGE_LABELS, opportunityTitle } from '@/lib/leads'
 import { ContactCard } from '@/components/admin/opportunity/ContactCard'
 import { NextActionBanner } from '@/components/admin/opportunity/NextActionBanner'
@@ -40,6 +41,8 @@ export function OpportunityDetailClient({ orgId, orgSlug, lead, customer, tasks,
   const [convertOpen, setConvertOpen] = useState(searchParams.get('convert') === '1')
   const [moreOpen, setMoreOpen] = useState(false)
   const taskInputRef = useRef<HTMLInputElement>(null)
+  const moreMenuRef = useRef<HTMLDivElement>(null)
+  useDismissable(moreOpen, setMoreOpen, moreMenuRef)
 
   useEffect(() => {
     if (searchParams.get('focus') === 'task') taskInputRef.current?.focus()
@@ -71,8 +74,8 @@ export function OpportunityDetailClient({ orgId, orgSlug, lead, customer, tasks,
         <div className="flex shrink-0 items-center gap-2">
           <MarkLostDialog orgId={orgId} leadId={lead.id} onDone={() => router.refresh()} />
           <StageMenu orgId={orgId} lead={lead} onWon={() => setConvertOpen(true)} />
-          <div className="relative">
-            <Button variant="ghost" size="icon" aria-label="More actions" onClick={() => setMoreOpen((v) => !v)}>
+          <div ref={moreMenuRef} className="relative">
+            <Button variant="ghost" size="icon" aria-label="More actions" aria-expanded={moreOpen} onClick={() => setMoreOpen((v) => !v)}>
               <MoreHorizontal className="h-4 w-4" />
             </Button>
             {moreOpen && (

@@ -51,7 +51,10 @@ export function buildPipelineRows(
     if (health === 'needs_attention') {
       const unopened = unopenedSentProposal(proposals)
       if (unopened) {
-        const n = daysSince(unopened.created_at, today)
+        // The sentence needs the actual send time, not draft-creation time; fall back
+        // to created_at for legacy proposals with no recorded 'sent' event.
+        const sentAt = unopened.events?.find((e) => e.kind === 'sent')?.at ?? unopened.created_at
+        const n = daysSince(sentAt, today)
         groups.needs_attention.push({
           lead, health, quickAction: 'nudge',
           statusLine: `proposal sent ${n} day${n === 1 ? '' : 's'} ago, unopened`,
