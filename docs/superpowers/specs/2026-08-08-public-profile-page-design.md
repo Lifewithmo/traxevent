@@ -13,7 +13,7 @@ tokenized artifacts (proposals, invoices, contracts, portal) plus per-event
 registration under `/[orgSlug]/[eventSlug]`.
 
 For a booked-job business this page is the marketing front door; once the
-public intake form ships (approved spec, not yet built), its link becomes the
+public intake form (shipped) link is pasted as a button, it becomes the
 "Book me" button here. The two stay separate features — the profile page is a
 read-only shelf of links; intake is one item on the shelf.
 
@@ -37,7 +37,7 @@ read-only shelf of links; intake is one item on the shelf.
 
 ## Data model
 
-New optional `public_page` map on the org doc (`orgs/{orgId}`), sibling of
+New optional `public_profile` map on the org doc (`orgs/{orgId}`), sibling of
 `branding`:
 
 - `enabled: boolean` — page 404s unless true.
@@ -55,7 +55,7 @@ New optional `public_page` map on the org doc (`orgs/{orgId}`), sibling of
   entries. `title` ≤120, `description` ≤300, urls https-only ≤500. `id` is a
   client-minted uuid for stable list editing.
 
-`parsePublicPage(input)` in new `lib/public-page.ts` follows the
+`parsePublicProfile(input)` in new `lib/public-profile.ts` follows the
 `parseOrgBranding` conventions exactly: throw on malformed, drop empty fields
 (absent-not-empty; Firestore rejects `undefined`), conditional-spread output.
 Handle validation + reserved list live here too (`parseHandle`).
@@ -63,17 +63,17 @@ Handle validation + reserved list live here too (`parseHandle`).
 Like `OrgBranding`, the whole map is public-safe by construction — it ships
 verbatim to the public page.
 
-## Actions — `actions/public-page.ts` (authed)
+## Actions — `actions/public-profile.ts` (authed)
 
 Both guarded by `assertOrgAdmin`:
 
-- `savePublicPage(orgId, input)` — parse, then write in a transaction that
+- `savePublicProfile(orgId, input)` — parse, then write in a transaction that
   first runs the handle-uniqueness query
-  (`orgs.where('public_page.handle','==',handle).limit(1)`) and rejects if a
+  (`orgs.where('public_profile.handle','==',handle).limit(1)`) and rejects if a
   *different* org holds it ("That URL is taken."). Admin-SDK transactions
   support queries; this closes the check-then-set race between two orgs
   claiming the same handle.
-- `getPublicPage(orgId)` — current map (or `null`) for the editor.
+- `getPublicProfile(orgId)` — current map (or `null`) for the editor.
 
 Asset uploads reuse `uploadOrgAsset` with the kind union extended:
 `'logo' | 'cover' | 'profile_photo' | 'link_image'`. Same caps and
@@ -99,9 +99,9 @@ Server component. `params` is a Promise (Next 16) — `await` it.
 - Read-only surface — no rate limiting needed; reads go through the admin SDK
   server-side and the default-deny rules are untouched.
 
-## Editor — `app/(admin)/[orgSlug]/public-page/page.tsx`
+## Editor — `app/(admin)/[orgSlug]/public-profile/page.tsx`
 
-Client component `components/admin/PublicPageClient.tsx` following the
+Client component `components/admin/PublicProfileClient.tsx` following the
 `BrandingClient` pattern (one `useState` per field, upload via
 `uploadOrgAsset`, save-all button):
 
@@ -110,7 +110,7 @@ Client component `components/admin/PublicPageClient.tsx` following the
 - Profile section: photo upload, display name, bio, socials.
 - Links section: list with add/remove and up/down reorder (no drag library),
   per-link thumbnail upload.
-- Sidebar entry in `AdminSidebar` alongside Branding.
+- Sidebar entry labeled **Public profile** in `AdminSidebar` alongside Branding.
 
 ## Error handling
 
@@ -121,9 +121,9 @@ Client component `components/admin/PublicPageClient.tsx` following the
 
 ## Testing
 
-- `__tests__/lib/public-page.test.ts` — parse: field caps, https enforcement,
+- `__tests__/lib/public-profile.test.ts` — parse: field caps, https enforcement,
   empty-field dropping, handle regex accept/reject table, reserved list.
-- `__tests__/actions/public-page.test.ts` — admin guard on both actions,
+- `__tests__/actions/public-profile.test.ts` — admin guard on both actions,
   save round-trip, handle conflict with another org rejects, same-org
   re-save of own handle passes, links cap enforced.
 - Public resolution: unknown handle and `enabled: false` both 404.
