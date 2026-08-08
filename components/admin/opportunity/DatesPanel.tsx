@@ -49,12 +49,24 @@ export function DatesPanel({ orgId, orgSlug, lead, today, initialItems }: DatesP
     if (from >= c.from && to <= c.to) return
     const newFrom = from < c.from ? from : c.from
     const newTo = to > c.to ? to : c.to
-    covered.current = { from: newFrom, to: newTo }
-    const fetched = await listCalendarRange(orgId, orgSlug, newFrom, newTo)
-    setItems((prev) => {
-      const seen = new Set(fetched.map((i) => `${i.kind}:${i.id}`))
-      return [...fetched, ...prev.filter((i) => !seen.has(`${i.kind}:${i.id}`))]
-    })
+    const attempted = { from: newFrom, to: newTo }
+    // Mark covered up front (not just on success) so a second call for the
+    // same bounds while this one is still in flight doesn't double-fetch.
+    covered.current = attempted
+    try {
+      const fetched = await listCalendarRange(orgId, orgSlug, newFrom, newTo)
+      setItems((prev) => {
+        const seen = new Set(fetched.map((i) => `${i.kind}:${i.id}`))
+        return [...fetched, ...prev.filter((i) => !seen.has(`${i.kind}:${i.id}`))]
+      })
+    } catch {
+      // Fetch failed — roll back to the pre-attempt range so a later window
+      // change retries it, rather than leaving a permanent silent gap. No
+      // error UI: this is a silent retry-on-next-change. Only roll back if
+      // nothing else has since advanced the covered range further (i.e. we
+      // still hold the value we set above).
+      if (covered.current === attempted) covered.current = c
+    }
   }
 
   useEffect(() => { void ensureRange(days[0], days[9]) }, [days[0], days[9]])  // eslint-disable-line react-hooks/exhaustive-deps

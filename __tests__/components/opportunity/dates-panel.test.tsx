@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { DatesPanel } from '@/components/admin/opportunity/DatesPanel'
 import type { CalendarItem } from '@/lib/calendar'
@@ -59,5 +59,16 @@ describe('DatesPanel', () => {
     await user.click(screen.getByRole('button', { name: 'Later dates' }))
     expect(screen.getByText('SEP 9 – 18')).toBeInTheDocument()
     expect(listCalendarRange).toHaveBeenCalledWith('o1', 'demo', expect.any(String), expect.any(String))
+  })
+  it('retries a range after a failed fetch instead of leaving it marked covered', async () => {
+    listCalendarRange.mockClear()
+    listCalendarRange.mockRejectedValueOnce(new Error('network error'))
+    const user = userEvent.setup()
+    renderPanel()
+    await user.click(screen.getByRole('button', { name: 'Later dates' }))   // window -> SEP 9-18, fetch rejects
+    await waitFor(() => expect(listCalendarRange).toHaveBeenCalledTimes(1))
+    await user.click(screen.getByRole('button', { name: 'Earlier dates' })) // window -> AUG 30-SEP 8 (home, already covered)
+    await user.click(screen.getByRole('button', { name: 'Later dates' }))   // window -> SEP 9-18 again
+    await waitFor(() => expect(listCalendarRange).toHaveBeenCalledTimes(2))
   })
 })
