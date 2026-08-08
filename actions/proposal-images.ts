@@ -1,17 +1,17 @@
 'use server'
 
+import { randomUUID } from 'crypto'
 import { assertOrgAdmin } from '@/lib/auth/assert'
 import { adminBucket } from '@/lib/firebase-admin'
-
-const MAX_BYTES = 8 * 1024 * 1024
+import { assertImageUpload, safeUploadName, tokenizedDownloadUrl } from '@/lib/uploads'
 
 /**
- * Upload a proposal document image and return a stable public URL.
+ * Upload a proposal document image and return a stable download URL.
  *
- * Unlike ops evidence photos (where public-by-obscure-URL is a documented
- * tradeoff), proposal images are intended to be visible to anyone holding the
- * proposal link, so makePublic() is the correct behavior rather than a
- * compromise.
+ * Proposal images are intended to be visible to anyone holding the proposal
+ * link, so a Firebase download token in the URL is the correct access model —
+ * same unguessable-link trust as the proposal token. (Per-object ACLs are
+ * forbidden by org policy on the prod bucket; see tokenizedDownloadUrl.)
  */
 export async function uploadProposalImage(
   orgId: string,
@@ -20,18 +20,14 @@ export async function uploadProposalImage(
 ): Promise<{ url: string }> {
   await assertOrgAdmin(orgId)
 
-  const file = formData.get('file')
-  if (!(file instanceof File)) throw new Error('No file provided')
-  if (!file.type.startsWith('image/')) throw new Error('Only image uploads are allowed')
-  if (file.size > MAX_BYTES) throw new Error('Image must be under 8MB')
-
-  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
-  const path = `proposal-images/${orgId}/${proposalId}/${Date.now()}-${safeName}`
+  const file = assertImageUpload(formData.get('file'))
+  const path = `proposal-images/${orgId}/${proposalId}/${Date.now()}-${safeUploadName(file.name)}`
+  const token = randomUUID()
   const blob = adminBucket.file(path)
   await blob.save(Buffer.from(await file.arrayBuffer()), {
     contentType: file.type,
     resumable: false,
+    metadata: { metadata: { firebaseStorageDownloadTokens: token } },
   })
-  await blob.makePublic()
-  return { url: blob.publicUrl() }
+  return { url: tokenizedDownloadUrl(adminBucket.name, path, token) }
 }

@@ -97,3 +97,76 @@ describe('ProposalResponseClient — selection still drives the total', () => {
     expect(screen.queryByText(/Bar service/)).not.toBeInTheDocument()
   })
 })
+
+describe('ProposalResponseClient — themed presentation (behavior-preserving restyle)', () => {
+  const branding = {
+    display_name: 'BrewTrax Events',
+    logo_url: 'https://cdn/logo.png',
+    cover_image_url: 'https://cdn/cover.jpg',
+    accent_color: '#336699',
+  }
+
+  it('renders a branded hero with cover and logo when branding is present', () => {
+    render(<ProposalResponseClient token="tok" proposal={proposal()} branding={branding} />)
+    const hero = screen.getByTestId('proposal-hero')
+    expect(hero).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: /brewtrax events logo/i })).toHaveAttribute(
+      'src', 'https://cdn/logo.png',
+    )
+    expect(screen.getByRole('heading', { name: 'Backyard Bar Service' })).toBeInTheDocument()
+  })
+
+  it('renders the plain heading with no hero when branding is absent', () => {
+    render(<ProposalResponseClient token="tok" proposal={proposal()} />)
+    expect(screen.queryByTestId('proposal-hero')).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Backyard Bar Service' })).toBeInTheDocument()
+  })
+
+  it('never renders placeholder blocks to the customer', () => {
+    render(<ProposalResponseClient token="tok" proposal={proposal({
+      blocks: [
+        { id: 'b1', type: 'paragraph', text: 'Real paragraph' },
+        { id: 'ph', type: 'paragraph', text: 'Replace this intro', placeholder: true } as never,
+      ],
+    })} />)
+    expect(screen.getByText('Real paragraph')).toBeInTheDocument()
+    expect(screen.queryByText('Replace this intro')).not.toBeInTheDocument()
+  })
+
+  it('renders composed package bullets from the member items', () => {
+    render(<ProposalResponseClient token="tok" proposal={proposal({
+      line_items: [
+        { id: 'i1', description: 'Setup crew', quantity: 1, unit_price: 200 },
+        { id: 'i2', description: 'Espresso bar', quantity: 1, unit_price: 500 },
+      ],
+      packages: [
+        { id: 'pa', name: 'Basic', includes: [], price: 200, item_ids: ['i1'] } as never,
+        { id: 'pb', name: 'Better', includes: [], price: 700, item_ids: ['i1', 'i2'] } as never,
+      ],
+    })} />)
+    // Better ⊇ Basic → collapsed to "Everything in Basic" + its own extras.
+    expect(screen.getByText('Everything in Basic')).toBeInTheDocument()
+    const better = screen.getByRole('button', { name: /Better/ })
+    expect(better).toHaveTextContent('Espresso bar')
+    expect(better).not.toHaveTextContent('Setup crew')
+  })
+
+  it("excludes package member items from the What's included base-scope list", () => {
+    // Browser-walk regression: member items rendered as always-included base
+    // scope, double-displaying them regardless of which tier is chosen.
+    render(<ProposalResponseClient token="tok" proposal={proposal({
+      line_items: [
+        { id: 'i1', description: 'Espresso bar', quantity: 1, unit_price: 500 },
+        { id: 'i2', description: 'Venue liaison', quantity: 1, unit_price: 100 },
+      ],
+      packages: [
+        { id: 'pa', name: 'Basic', includes: [], price: 500, item_ids: ['i1'] } as never,
+      ],
+    })} />)
+    // Non-member item is base scope; the member renders ONCE (tier card only).
+    // The bug rendered members twice: in the tier card and again as base scope.
+    expect(screen.getByText("What's included")).toBeInTheDocument()
+    expect(screen.getAllByText(/Venue liaison/)).toHaveLength(1)
+    expect(screen.getAllByText(/Espresso bar/)).toHaveLength(1)
+  })
+})

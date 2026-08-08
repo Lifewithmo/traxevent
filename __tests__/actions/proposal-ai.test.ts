@@ -55,7 +55,15 @@ import { generateProposalDraft } from '@/actions/proposal-ai'
 
 const DRAFT_JSON = JSON.stringify({
   blocks: [{ id: 'b1', type: 'paragraph', text: 'Hello' }],
-  suggested_package_ids: ['wp-a', 'wp-ghost'],
+  suggested_packages: [{
+    name: 'Standard bar',
+    recommended: true,
+    items: [
+      { description: 'Setup', quantity: 1, unit_price: 250 },
+      { description: 'Bartender', quantity: 5, unit_price: 60 },
+      { description: 'Glassware', quantity: 1, unit_price: 120, optional: true },
+    ],
+  }],
   rationale: 'why',
 })
 
@@ -104,16 +112,27 @@ describe('generateProposalDraft', () => {
     expect(JSON.stringify(req.messages)).toContain('call notes here')
   })
 
-  it('returns the parsed draft with catalog-filtered package ids', async () => {
+  it('returns the parsed draft with server-minted composed packages and pool items', async () => {
     const r = await generateProposalDraft('o1', 'p1', 'notes')
     expect(r.blocks).toHaveLength(1)
-    expect(r.suggested_package_ids).toEqual(['wp-a'])
-    expect(r.adjustments.some((a) => a.includes('wp-ghost'))).toBe(true)
-  })
+    expect(r.adjustments).toEqual([])
+    expect(r.suggested_line_items).toHaveLength(3)
+    expect(r.suggested_packages).toHaveLength(1)
 
-  it('enriches suggested package ids with catalog name and price, dropping unknown ids', async () => {
-    const r = await generateProposalDraft('o1', 'p1', 'notes')
-    expect(r.suggested_packages).toEqual([{ id: 'wp-a', name: 'A', price: 100 }])
+    const pkg = r.suggested_packages[0]
+    expect(pkg).toMatchObject({ name: 'Standard bar', recommended: true, includes: [] })
+    expect(pkg.price).toBe(250 + 300) // member sum only; no override from AI
+    expect(pkg.price_override).toBeUndefined()
+
+    // every id is server-minted (ai- prefix), unique, and members resolve
+    const ids = r.suggested_line_items.map((i) => i.id as string)
+    expect(new Set(ids).size).toBe(3)
+    for (const id of [...ids, pkg.id]) expect(id).toMatch(/^ai-[0-9a-f]{8}$/)
+    expect(pkg.item_ids).toHaveLength(2)
+    for (const ref of pkg.item_ids!) expect(ids).toContain(ref)
+    const optional = r.suggested_line_items.find((i) => i.description === 'Glassware')
+    expect(optional?.optional).toBe(true)
+    expect(pkg.item_ids).not.toContain(optional!.id)
   })
 
   it('logs usage with the proposal_draft feature tag', async () => {

@@ -1,0 +1,34 @@
+'use server'
+
+import { randomUUID } from 'crypto'
+import { assertOrgAdmin } from '@/lib/auth/assert'
+import { adminBucket } from '@/lib/firebase-admin'
+import { assertImageUpload, safeUploadName, tokenizedDownloadUrl } from '@/lib/uploads'
+
+const ASSET_KINDS = ['logo', 'cover']
+
+/**
+ * Upload an org brand asset (logo / cover) and return a stable download URL.
+ * Same caps and access model as uploadProposalImage (token-in-URL) — brand
+ * assets render on public proposal pages — but org-scoped, not
+ * proposal-scoped (spec §2).
+ */
+export async function uploadOrgAsset(
+  orgId: string,
+  kind: 'logo' | 'cover',
+  formData: FormData,
+): Promise<{ url: string }> {
+  await assertOrgAdmin(orgId)
+  if (!ASSET_KINDS.includes(kind)) throw new Error('Unknown asset kind')
+
+  const file = assertImageUpload(formData.get('file'))
+  const path = `org-assets/${orgId}/${kind}/${Date.now()}-${safeUploadName(file.name)}`
+  const token = randomUUID()
+  const blob = adminBucket.file(path)
+  await blob.save(Buffer.from(await file.arrayBuffer()), {
+    contentType: file.type,
+    resumable: false,
+    metadata: { metadata: { firebaseStorageDownloadTokens: token } },
+  })
+  return { url: tokenizedDownloadUrl(adminBucket.name, path, token) }
+}

@@ -9,8 +9,11 @@ import {
   ProposalIncludedItems,
   ProposalOptionalItems,
   ProposalTotals,
+  packageOptionDisplay,
 } from '@/components/proposals/ProposalPricing'
 import { proposalDisplayRange } from '@/lib/proposals'
+import { ProposalTheme } from '@/components/proposals/ProposalTheme'
+import type { OrgBranding } from '@/lib/types'
 
 export default async function ProposalPrintPage({
   params,
@@ -57,13 +60,35 @@ export default async function ProposalPrintPage({
   const selectedOptionalIds = proposal.selection?.optional_item_ids ?? []
 
   const packages = proposal.packages ?? []
-  const requiredItems = proposal.line_items.filter((i) => i.optional !== true)
+  // Same base-scope rule as ProposalResponseClient: package member items live
+  // in their tier card, not in the always-included list.
+  const memberIds = new Set((proposal.packages ?? []).flatMap((p) => p.item_ids ?? []))
+  const requiredItems = proposal.line_items.filter(
+    (i) => i.optional !== true && !memberIds.has(i.id ?? ''),
+  )
   const optionalItems = proposal.line_items.filter((i) => i.optional === true && i.id)
 
+  const branding = (proposal as { branding?: OrgBranding }).branding
+
   return (
+    <ProposalTheme branding={branding}>
+    {/* Print restyle (spec §6): restrained ink — no background fills; the
+        accent lands on headings only (ProposalBlockView) and page-break
+        rules keep blocks and package cards whole. */}
     <main className="mx-auto max-w-3xl px-8 py-10 text-gray-900">
       <div className="mb-6 flex items-start justify-between">
-        <h1 className="text-2xl font-bold">{proposal.title || 'Proposal'}</h1>
+        <div>
+          {branding?.logo_url && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={branding.logo_url} alt={`${branding.display_name ?? 'Company'} logo`} className="mb-3 h-10 w-auto" />
+          )}
+          <h1 className="text-2xl font-bold" style={{ color: 'var(--proposal-accent, #111827)' }}>
+            {proposal.title || 'Proposal'}
+          </h1>
+          {branding?.display_name && (
+            <p className="mt-1 text-sm text-gray-500">{branding.display_name}</p>
+          )}
+        </div>
         <PrintButton />
       </div>
 
@@ -90,12 +115,13 @@ export default async function ProposalPrintPage({
       {packages.length > 0 && (
         <section className="mt-8">
           <h2 className="mb-3 text-lg font-bold">Options</h2>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 break-inside-avoid sm:grid-cols-3">
             {packages.map((pkg) => (
               <ProposalPackageOption
                 key={pkg.id}
                 pkg={pkg}
                 selected={pkg.id === selectedPackageId}
+                {...packageOptionDisplay(pkg, packages, proposal.line_items)}
               />
             ))}
           </div>
@@ -144,5 +170,6 @@ export default async function ProposalPrintPage({
         </section>
       )}
     </main>
+    </ProposalTheme>
   )
 }

@@ -1,6 +1,7 @@
 import type {
   Proposal,
   ProposalLineItem,
+  ProposalPackage,
   ProposalStatus,
   ProposalDiscount,
   ProposalDeposit,
@@ -50,6 +51,67 @@ export function depositAmount(total: number, deposit?: ProposalDeposit): number 
   if (!deposit || !(deposit.value > 0)) return 0
   const raw = deposit.type === 'percent' ? (total * deposit.value) / 100 : deposit.value
   return round2(Math.min(raw, total))
+}
+
+// Presence of `item_ids` marks a v2 composed package — even an empty array
+// (a composed tier whose members were all removed is still composed, not
+// suddenly a legacy flat-price tier).
+export function isComposedPackage(pkg: ProposalPackage): boolean {
+  return Array.isArray(pkg.item_ids)
+}
+
+// Member items resolved in `item_ids` order. Unresolvable refs are skipped:
+// by the time a document is read the write path has already validated refs,
+// so a dangling id here is stale data to render around, not an error to throw.
+export function packageMemberItems(pkg: ProposalPackage, items: ProposalLineItem[]): ProposalLineItem[] {
+  if (!Array.isArray(pkg.item_ids)) return []
+  const byId = new Map(items.filter((i) => i.id !== undefined).map((i) => [i.id as string, i]))
+  return pkg.item_ids.flatMap((id) => {
+    const item = byId.get(id)
+    return item ? [item] : []
+  })
+}
+
+// The customer price of a tier. Legacy: the stored flat price is authoritative.
+// Composed: Σ member subtotals, unless price_override is set. The write path
+// stores this result denormalized into `price` so existing readers of
+// `pkg.price` (totals, signing, invoicing) keep working unmodified.
+export function packagePrice(pkg: ProposalPackage, items: ProposalLineItem[]): number {
+  if (!isComposedPackage(pkg)) return pkg.price
+  if (typeof pkg.price_override === 'number') return pkg.price_override
+  return round2(packageMemberItems(pkg, items).reduce((s, i) => s + lineItemSubtotal(i), 0))
+}
+
+// Tier bullets ARE the member items' descriptions for composed packages;
+// `includes` is ignored when `item_ids` is present (legacy-only field).
+export function packageBullets(pkg: ProposalPackage, items: ProposalLineItem[]): string[] {
+  if (!isComposedPackage(pkg)) return pkg.includes ?? []
+  return packageMemberItems(pkg, items).map((i) => i.description)
+}
+
+// Superset display collapse (display-only, pure): when this tier's members
+// are a strict superset of another composed tier's, the shared portion
+// collapses to "Everything in {base}". The base is the largest strict subset
+// (ties broken by array order); remaining bullets keep item_ids order.
+export function packageDisplayBullets(
+  pkg: ProposalPackage,
+  packages: ProposalPackage[],
+  items: ProposalLineItem[],
+): { everything_in?: string; bullets: string[] } {
+  if (!isComposedPackage(pkg)) return { bullets: pkg.includes ?? [] }
+  const memberIds = new Set(pkg.item_ids ?? [])
+  let base: ProposalPackage | undefined
+  for (const other of packages) {
+    if (other.id === pkg.id || !isComposedPackage(other)) continue
+    const otherIds = other.item_ids ?? []
+    if (otherIds.length >= memberIds.size) continue
+    if (!otherIds.every((id) => memberIds.has(id))) continue
+    if (!base || otherIds.length > (base.item_ids?.length ?? 0)) base = other
+  }
+  if (!base) return { bullets: packageBullets(pkg, items) }
+  const baseIds = new Set(base.item_ids ?? [])
+  const rest = { ...pkg, item_ids: (pkg.item_ids ?? []).filter((id) => !baseIds.has(id)) }
+  return { everything_in: base.name, bullets: packageBullets(rest, items) }
 }
 
 type Priceable = Pick<Proposal, 'packages' | 'line_items' | 'discount' | 'tax_rate'>

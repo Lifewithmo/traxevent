@@ -60,3 +60,44 @@ describe('documentHash / signedDocumentHash', () => {
     expect(documentHash('x')).toMatch(/^[0-9a-f]{64}$/)
   })
 })
+
+// Pricing model v2: canonicalize() serializes whatever fields are PRESENT, so
+// unit / item_ids / price_override participate in the hash exactly when
+// present — they are agreed content — while their absence keeps legacy
+// documents serializing byte-identically (pinned by the goldens file).
+describe('v2 composed-package field sensitivity', () => {
+  const composed = (over: Partial<Proposal> = {}): Proposal =>
+    base({
+      line_items: [
+        { id: 'i1', description: 'Setup', quantity: 1, unit_price: 500, unit: 'each' },
+        { id: 'i2', description: 'Service', quantity: 8, unit_price: 120, unit: 'hr' },
+      ],
+      packages: [{ id: 'p1', name: 'Standard', includes: [], price: 1460, item_ids: ['i1', 'i2'] }],
+      ...over,
+    })
+  const csel: ProposalSelection = { package_id: 'p1', optional_item_ids: [], selected_total: 1460, selected_at: '' }
+
+  it('changes when price_override is set', () => {
+    const withOverride = composed({
+      packages: [{ id: 'p1', name: 'Standard', includes: [], price: 1400, item_ids: ['i1', 'i2'], price_override: 1400 }],
+    })
+    expect(signedDocumentHash(withOverride, csel)).not.toBe(signedDocumentHash(composed(), csel))
+  })
+
+  it('changes when item_ids order changes (bullets ARE the member order)', () => {
+    const reordered = composed({
+      packages: [{ id: 'p1', name: 'Standard', includes: [], price: 1460, item_ids: ['i2', 'i1'] }],
+    })
+    expect(signedDocumentHash(reordered, csel)).not.toBe(signedDocumentHash(composed(), csel))
+  })
+
+  it('changes when a member item unit changes', () => {
+    const differentUnit = composed({
+      line_items: [
+        { id: 'i1', description: 'Setup', quantity: 1, unit_price: 500, unit: 'day' },
+        { id: 'i2', description: 'Service', quantity: 8, unit_price: 120, unit: 'hr' },
+      ],
+    })
+    expect(signedDocumentHash(differentUnit, csel)).not.toBe(signedDocumentHash(composed(), csel))
+  })
+})

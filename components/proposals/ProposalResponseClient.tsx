@@ -17,8 +17,11 @@ import {
   ProposalIncludedItems,
   ProposalOptionalItems,
   ProposalTotals,
+  packageOptionDisplay,
 } from '@/components/proposals/ProposalPricing'
 import { ProposalDepositPayment } from './ProposalDepositPayment'
+import { ProposalTheme } from '@/components/proposals/ProposalTheme'
+import type { OrgBranding } from '@/lib/types'
 
 // Local, immediate confirmation shown right after a successful `signProposal`
 // call in THIS session — the server doesn't echo signed_at back, so it's
@@ -33,9 +36,11 @@ type BeforeAcceptStep = 'idle' | 'payment' | 'finalizing'
 export function ProposalResponseClient({
   token,
   proposal,
+  branding,
 }: {
   token: string
   proposal: PublicProposal
+  branding?: OrgBranding
 }) {
   const packaged = (proposal.packages?.length ?? 0) > 0
   const [packageId, setPackageId] = useState<string | undefined>(
@@ -94,7 +99,13 @@ export function ProposalResponseClient({
     }
   }, [beforeAcceptStep, token])
 
-  const requiredItems = proposal.line_items.filter((i) => i.optional !== true)
+  // Required base scope = items in NO package and not optional (spec §1).
+  // Package member items render inside their tier card; listing them here too
+  // would double-display them as always-included regardless of tier choice.
+  const memberIds = new Set((proposal.packages ?? []).flatMap((p) => p.item_ids ?? []))
+  const requiredItems = proposal.line_items.filter(
+    (i) => i.optional !== true && !memberIds.has(i.id ?? ''),
+  )
   const optionalItems = proposal.line_items.filter((i) => i.optional === true && i.id)
 
   function toggleOptional(id: string) {
@@ -196,10 +207,45 @@ export function ProposalResponseClient({
     if (updated) setLiveProposal(updated)
   }
 
+  // Presentation only: the hero renders when the org has any branding to
+  // show; absent branding keeps the original plain heading (neutral theme).
+  const hasHero = Boolean(branding?.cover_image_url || branding?.logo_url)
+
   return (
+    <ProposalTheme branding={branding}>
     <main className="flex min-h-screen flex-col bg-gray-50">
+      {hasHero && (
+        <div
+          data-testid="proposal-hero"
+          className="relative w-full bg-cover bg-center"
+          style={
+            branding?.cover_image_url
+              ? { backgroundImage: `url(${branding.cover_image_url})` }
+              : { backgroundColor: 'var(--proposal-accent, #111827)' }
+          }
+        >
+          <div className="bg-black/40">
+            <div className="mx-auto w-full max-w-3xl px-6 py-16">
+              {branding?.logo_url && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={branding.logo_url}
+                  alt={`${branding.display_name ?? 'Company'} logo`}
+                  className="mb-4 h-12 w-auto"
+                />
+              )}
+              <h1 className="text-3xl font-bold text-white">{proposal.title || 'Proposal'}</h1>
+              {branding?.display_name && (
+                <p className="mt-1 text-sm text-white/80">{branding.display_name}</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
       <div className="mx-auto w-full max-w-3xl flex-1 px-6 py-10">
-        <h1 className="mb-6 text-2xl font-bold text-gray-900">{proposal.title || 'Proposal'}</h1>
+        {!hasHero && (
+          <h1 className="mb-6 text-2xl font-bold text-gray-900">{proposal.title || 'Proposal'}</h1>
+        )}
 
         <a href={`/proposals/${token}/print`} target="_blank" rel="noreferrer"
            className="mb-6 inline-block text-sm text-gray-600 underline print:hidden">
@@ -222,6 +268,7 @@ export function ProposalResponseClient({
                     selected={packageId === pkg.id}
                     selectable={editable}
                     onSelect={() => setPackageId(pkg.id)}
+                    {...packageOptionDisplay(pkg, proposal.packages!, proposal.line_items)}
                   />
                 ))}
               </div>
@@ -428,5 +475,6 @@ export function ProposalResponseClient({
         </div>
       </div>
     </main>
+    </ProposalTheme>
   )
 }

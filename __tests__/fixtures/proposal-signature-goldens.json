@@ -1,0 +1,199 @@
+[
+  {
+    "name": "minimal itemized — no packages, one required item",
+    "proposal": {
+      "title": "Backyard reception",
+      "line_items": [
+        {
+          "id": "i1",
+          "description": "Bar service",
+          "quantity": 4,
+          "unit_price": 150
+        }
+      ]
+    },
+    "selection": {
+      "optional_item_ids": [],
+      "selected_total": 600,
+      "selected_at": "2026-08-01T00:00:00Z"
+    },
+    "canonical": "{\"deposit\":null,\"deposit_terms\":null,\"discount\":null,\"line_items\":[{\"description\":\"Bar service\",\"id\":\"i1\",\"quantity\":4,\"unit_price\":150}],\"notes\":null,\"packages\":[],\"selection\":{\"optional_item_ids\":[],\"package_id\":null,\"selected_total\":600},\"tax_rate\":null,\"title\":\"Backyard reception\"}",
+    "hash": "edb2eefd0f06ad2a182be513911f68238946aaecd7d24689f723b76212af4a90"
+  },
+  {
+    "name": "legacy packages with includes bullets",
+    "proposal": {
+      "title": "Landscape",
+      "notes": "Net 30",
+      "line_items": [
+        {
+          "id": "o1",
+          "description": "Lighting",
+          "quantity": 1,
+          "unit_price": 1500,
+          "optional": true
+        }
+      ],
+      "packages": [
+        {
+          "id": "good",
+          "name": "Good",
+          "includes": [
+            "Install",
+            "Cleanup"
+          ],
+          "price": 12500
+        },
+        {
+          "id": "best",
+          "name": "Best",
+          "description": "Everything",
+          "includes": [
+            "Install",
+            "Cleanup",
+            "Lighting"
+          ],
+          "price": 15000,
+          "recommended": true
+        }
+      ],
+      "deposit": {
+        "type": "percent",
+        "value": 50
+      },
+      "deposit_terms": "Non-refundable within 14 days of the event.",
+      "tax_rate": 8.25
+    },
+    "selection": {
+      "package_id": "good",
+      "optional_item_ids": [
+        "o1"
+      ],
+      "selected_total": 15161.25,
+      "selected_at": "2026-08-01T00:00:00Z"
+    },
+    "canonical": "{\"deposit\":{\"type\":\"percent\",\"value\":50},\"deposit_terms\":\"Non-refundable within 14 days of the event.\",\"discount\":null,\"line_items\":[{\"description\":\"Lighting\",\"id\":\"o1\",\"optional\":true,\"quantity\":1,\"unit_price\":1500}],\"notes\":\"Net 30\",\"packages\":[{\"id\":\"good\",\"includes\":[\"Install\",\"Cleanup\"],\"name\":\"Good\",\"price\":12500},{\"description\":\"Everything\",\"id\":\"best\",\"includes\":[\"Install\",\"Cleanup\",\"Lighting\"],\"name\":\"Best\",\"price\":15000,\"recommended\":true}],\"selection\":{\"optional_item_ids\":[\"o1\"],\"package_id\":\"good\",\"selected_total\":15161.25},\"tax_rate\":8.25,\"title\":\"Landscape\"}",
+    "hash": "5522ee20cb5a4e27695046fce8816e25debdf9e8caae1e0baf4d8fdf89016b39"
+  },
+  {
+    "name": "unsorted optional ids + discount + decimal prices",
+    "proposal": {
+      "title": "Café pop-up — münchen 🎉",
+      "line_items": [
+        {
+          "id": "a",
+          "description": "Espresso cart",
+          "quantity": 3.5,
+          "unit_price": 99.99,
+          "taxable": false
+        },
+        {
+          "id": "b",
+          "description": "Barista",
+          "quantity": 6,
+          "unit_price": 42.5,
+          "optional": true
+        },
+        {
+          "id": "c",
+          "description": "Cups & lids",
+          "quantity": 200,
+          "unit_price": 0.35,
+          "optional": true,
+          "taxable": true
+        }
+      ],
+      "discount": {
+        "type": "fixed",
+        "value": 75.25
+      },
+      "tax_rate": 7.5,
+      "deposit": {
+        "type": "fixed",
+        "value": 100
+      }
+    },
+    "selection": {
+      "optional_item_ids": [
+        "c",
+        "b"
+      ],
+      "selected_total": 745.1,
+      "selected_at": "2026-08-02T12:34:56Z"
+    },
+    "canonical": "{\"deposit\":{\"type\":\"fixed\",\"value\":100},\"deposit_terms\":null,\"discount\":{\"type\":\"fixed\",\"value\":75.25},\"line_items\":[{\"description\":\"Espresso cart\",\"id\":\"a\",\"quantity\":3.5,\"taxable\":false,\"unit_price\":99.99},{\"description\":\"Barista\",\"id\":\"b\",\"optional\":true,\"quantity\":6,\"unit_price\":42.5},{\"description\":\"Cups & lids\",\"id\":\"c\",\"optional\":true,\"quantity\":200,\"taxable\":true,\"unit_price\":0.35}],\"notes\":null,\"packages\":[],\"selection\":{\"optional_item_ids\":[\"b\",\"c\"],\"package_id\":null,\"selected_total\":745.1},\"tax_rate\":7.5,\"title\":\"Café pop-up — münchen 🎉\"}",
+    "hash": "c276eb8b2d319f20b090cbd64bb203f3fe06c575039c34c568492f4b05f72842"
+  },
+  {
+    "name": "absent title/notes/discount/tax/deposit — null path",
+    "proposal": {
+      "line_items": [
+        {
+          "description": "Flat fee",
+          "quantity": 1,
+          "unit_price": 500
+        }
+      ]
+    },
+    "selection": {
+      "optional_item_ids": [],
+      "selected_total": 500,
+      "selected_at": "2026-08-03T00:00:00Z"
+    },
+    "canonical": "{\"deposit\":null,\"deposit_terms\":null,\"discount\":null,\"line_items\":[{\"description\":\"Flat fee\",\"quantity\":1,\"unit_price\":500}],\"notes\":null,\"packages\":[],\"selection\":{\"optional_item_ids\":[],\"package_id\":null,\"selected_total\":500},\"tax_rate\":null,\"title\":null}",
+    "hash": "b5a468ae9612e52a9b47a5f9379ccd8179c858a491365b9817778b10a490e4b2"
+  },
+  {
+    "name": "composed package — item_ids + price_override + unit (v2 shape, pre-change passthrough)",
+    "proposal": {
+      "title": "Composed tiers",
+      "line_items": [
+        {
+          "id": "i1",
+          "description": "Setup",
+          "quantity": 1,
+          "unit_price": 500,
+          "unit": "each"
+        },
+        {
+          "id": "i2",
+          "description": "Service",
+          "quantity": 8,
+          "unit_price": 120,
+          "unit": "hr"
+        }
+      ],
+      "packages": [
+        {
+          "id": "p1",
+          "name": "Standard",
+          "includes": [],
+          "price": 1400,
+          "item_ids": [
+            "i1",
+            "i2"
+          ],
+          "price_override": 1400
+        },
+        {
+          "id": "p2",
+          "name": "Computed",
+          "includes": [],
+          "price": 1460,
+          "item_ids": [
+            "i1",
+            "i2"
+          ]
+        }
+      ]
+    },
+    "selection": {
+      "package_id": "p1",
+      "optional_item_ids": [],
+      "selected_total": 1400,
+      "selected_at": "2026-08-04T00:00:00Z"
+    },
+    "canonical": "{\"deposit\":null,\"deposit_terms\":null,\"discount\":null,\"line_items\":[{\"description\":\"Setup\",\"id\":\"i1\",\"quantity\":1,\"unit\":\"each\",\"unit_price\":500},{\"description\":\"Service\",\"id\":\"i2\",\"quantity\":8,\"unit\":\"hr\",\"unit_price\":120}],\"notes\":null,\"packages\":[{\"id\":\"p1\",\"includes\":[],\"item_ids\":[\"i1\",\"i2\"],\"name\":\"Standard\",\"price\":1400,\"price_override\":1400},{\"id\":\"p2\",\"includes\":[],\"item_ids\":[\"i1\",\"i2\"],\"name\":\"Computed\",\"price\":1460}],\"selection\":{\"optional_item_ids\":[],\"package_id\":\"p1\",\"selected_total\":1400},\"tax_rate\":null,\"title\":\"Composed tiers\"}",
+    "hash": "8b794c18cdaddd5e9e6c67a6019450f0e8063e74681a21e6ef13333308bccc42"
+  }
+]

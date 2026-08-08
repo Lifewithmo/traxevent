@@ -1,13 +1,12 @@
 'use server'
 
 import { adminDb } from '@/lib/firebase-admin'
-import { FieldValue } from 'firebase-admin/firestore'
 import { randomBytes } from 'crypto'
 import { generateAccessToken } from '@/lib/tokens'
 import { assertOrgMember, assertOrgAdmin } from '@/lib/auth/assert'
-import { PROPOSAL_STATUSES } from '@/lib/proposals'
-import { updateProposalBlocksCore } from '@/lib/proposals/blocks-core'
-import type { Proposal, ProposalLineItem, ProposalStatus, ProposalPackage, ProposalDiscount, ProposalDeposit, ProposalBlock } from '@/lib/types'
+import { updateProposalDraftCore } from '@/lib/proposals/draft-core'
+import type { ProposalDraftInput } from '@/lib/proposals/draft'
+import type { Proposal, ProposalLineItem, ProposalPackage, ProposalDiscount, ProposalDeposit } from '@/lib/types'
 
 function proposalsRef(orgId: string) {
   return adminDb.collection('orgs').doc(orgId).collection('proposals')
@@ -69,48 +68,6 @@ export async function createProposal(orgId: string, leadId: string, input: Creat
   return proposal
 }
 
-export interface ProposalUpdate {
-  title?: string
-  notes?: string
-  line_items?: ProposalLineItem[]
-  status?: ProposalStatus
-  packages?: ProposalPackage[]
-  discount?: ProposalDiscount
-  tax_rate?: number
-  deposit?: ProposalDeposit
-  expires_at?: string
-  deposit_gate?: 'before_accept' | 'after_accept'
-  deposit_terms?: string
-}
-
-export async function updateProposal(orgId: string, proposalId: string, updates: ProposalUpdate): Promise<void> {
-  await assertOrgAdmin(orgId)
-  if (updates.status && !PROPOSAL_STATUSES.includes(updates.status)) throw new Error('Invalid status')
-  if (updates.status === 'voided') throw new Error('Use voidProposal to void a proposal')
-
-  const ref = proposalsRef(orgId).doc(proposalId)
-  const snap = await ref.get()
-  if (snap?.exists) {
-    const data = snap.data() as Proposal
-    if (data.signature || data.pending_signature) {
-      throw new Error('This proposal is signed and can no longer be edited')
-    }
-  }
-
-  // Firestore rejects `undefined` (ignoreUndefinedProperties is off). Unlike the partial-update
-  // callers in events.ts/leads.ts (where an omitted/undefined key means "leave unchanged"), the
-  // proposal editor always sends its full pricing-terms state, so an `undefined` value here means
-  // "the user cleared this field" — map it to FieldValue.delete() rather than dropping the key
-  // (which would leave a stale discount/deposit/expiration in Firestore) or passing it raw
-  // (which throws).
-  const cleaned: Record<string, unknown> = {}
-  for (const [k, v] of Object.entries(updates)) {
-    cleaned[k] = v === undefined ? FieldValue.delete() : v
-  }
-
-  await ref.update({ ...cleaned, updated_at: new Date().toISOString() })
-}
-
 export async function sendProposal(orgId: string, proposalId: string): Promise<void> {
   await assertOrgAdmin(orgId)
   const ref = proposalsRef(orgId).doc(proposalId)
@@ -155,11 +112,15 @@ export async function deleteProposal(orgId: string, proposalId: string): Promise
   await ref.delete()
 }
 
-export async function updateProposalBlocks(
+// The consolidated autosave action (spec §5): one debounced write covering
+// title, notes, blocks, line items, packages, and discount/tax/deposit/gate/
+// terms/expiry. Validation, normalization, and composed-price recompute live
+// in the guard-free core; this wrapper only adds authorization.
+export async function updateProposalDraft(
   orgId: string,
   proposalId: string,
-  blocks: unknown,
-): Promise<{ blocks: ProposalBlock[]; adjustments: string[] }> {
+  input: ProposalDraftInput,
+): Promise<{ proposal: Proposal; adjustments: string[] }> {
   await assertOrgAdmin(orgId)
-  return updateProposalBlocksCore(orgId, proposalId, blocks)
+  return updateProposalDraftCore(orgId, proposalId, input)
 }

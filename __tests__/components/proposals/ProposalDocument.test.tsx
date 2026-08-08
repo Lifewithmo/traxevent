@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import { ProposalDocument } from '@/components/proposals/ProposalDocument'
+import { ProposalDocument, ProposalBlockView } from '@/components/proposals/ProposalDocument'
+import { ProposalTheme } from '@/components/proposals/ProposalTheme'
+import type { ProposalBlock as PlaceholderBlock } from '@/lib/types'
 import type { ProposalBlock } from '@/lib/types'
 
 describe('ProposalDocument', () => {
@@ -44,5 +46,61 @@ describe('ProposalDocument', () => {
     ]} />)
     expect(screen.getByText('<script>alert(1)</script>')).toBeInTheDocument()
     expect(document.querySelector('script')).toBeNull()
+  })
+
+  it('silently skips placeholder blocks by default (customer surfaces)', () => {
+    const blocks: PlaceholderBlock[] = [
+      { id: '1', type: 'paragraph', text: 'Real content' },
+      { id: '2', type: 'paragraph', text: 'Replace this intro', placeholder: true },
+    ]
+    render(<ProposalDocument blocks={blocks} />)
+    expect(screen.getByText('Real content')).toBeInTheDocument()
+    expect(screen.queryByText('Replace this intro')).not.toBeInTheDocument()
+  })
+
+  it('renders nothing when every block is a placeholder', () => {
+    const blocks: PlaceholderBlock[] = [
+      { id: '1', type: 'paragraph', text: 'Replace me', placeholder: true },
+    ]
+    const { container } = render(<ProposalDocument blocks={blocks} />)
+    expect(container).toBeEmptyDOMElement()
+  })
+
+  it('renders placeholder blocks when showPlaceholders is set (builder canvas)', () => {
+    const blocks: PlaceholderBlock[] = [
+      { id: '1', type: 'paragraph', text: 'Replace this intro', placeholder: true },
+    ]
+    render(<ProposalDocument blocks={blocks} showPlaceholders />)
+    expect(screen.getByText('Replace this intro')).toBeInTheDocument()
+  })
+})
+
+describe('ProposalBlockView', () => {
+  it('renders a single block standalone (reused by the builder canvas)', () => {
+    render(<ProposalBlockView block={{ id: '1', type: 'heading', text: 'Solo', level: 3 }} />)
+    expect(screen.getByRole('heading', { name: 'Solo', level: 3 })).toBeInTheDocument()
+  })
+})
+
+describe('ProposalTheme', () => {
+  it('sets accent variables from branding on the wrapper', () => {
+    const { container } = render(
+      <ProposalTheme branding={{ accent_color: '#123456' }}>
+        <p>inside</p>
+      </ProposalTheme>,
+    )
+    const wrapper = container.firstElementChild as HTMLElement
+    expect(wrapper.style.getPropertyValue('--proposal-accent')).toBe('#123456')
+  })
+
+  it('renders children with neutral defaults when branding is absent', () => {
+    const { container } = render(
+      <ProposalTheme>
+        <p>inside</p>
+      </ProposalTheme>,
+    )
+    expect(screen.getByText('inside')).toBeInTheDocument()
+    const wrapper = container.firstElementChild as HTMLElement
+    expect(wrapper.style.getPropertyValue('--proposal-accent')).not.toBe('')
   })
 })

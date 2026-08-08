@@ -1,6 +1,11 @@
 import type { InvoiceLifecycle, InvoiceLineItem, InvoiceDiscount, InvoiceCredit, Proposal } from '@/lib/types'
 import { invoiceAmountDue } from '@/lib/invoices'
-import { computeSelectedTotal } from '@/lib/proposals'
+import {
+  computeSelectedTotal,
+  isComposedPackage,
+  lineItemSubtotal,
+  packageMemberItems,
+} from '@/lib/proposals'
 
 export class InvoiceScopeError extends Error {
   constructor(message: string) { super(message); this.name = 'InvoiceScopeError' }
@@ -53,7 +58,31 @@ export function proposalInvoiceLines(
   const pkgs = proposal.packages ?? []
   if (pkgs.length > 0 && sel?.package_id) {
     const pkg = pkgs.find((p) => p.id === sel.package_id)
-    if (pkg) lines.push({ description: pkg.name, quantity: 1, unit_price: pkg.price, source: src })
+    if (pkg && isComposedPackage(pkg)) {
+      // v2 composed tier: the accepted selection itemizes into its member
+      // items — "every accepted selection becomes structured business data".
+      const members = packageMemberItems(pkg, items)
+      for (const m of members) {
+        lines.push({ description: m.description, quantity: m.quantity, unit_price: m.unit_price, source: src })
+      }
+      // A price_override that differs from the computed sum is real agreed
+      // money the member lines don't carry — emit the delta as its own
+      // package-level adjustment line (negative for a round-down override).
+      if (pkg.price_override !== undefined) {
+        const sum = round2(members.reduce((s, m) => s + lineItemSubtotal(m), 0))
+        const delta = round2(pkg.price_override - sum)
+        if (delta !== 0) {
+          lines.push({
+            description: `Package price adjustment — ${pkg.name}`,
+            quantity: 1,
+            unit_price: delta,
+            source: src,
+          })
+        }
+      }
+    } else if (pkg) {
+      lines.push({ description: pkg.name, quantity: 1, unit_price: pkg.price, source: src })
+    }
   } else {
     for (const i of items.filter((i) => i.optional !== true)) {
       lines.push({ description: i.description, quantity: i.quantity, unit_price: i.unit_price, source: src })

@@ -40,7 +40,7 @@ You are given the org's real catalog of work packages and resources, plus the op
 
 Rules you may not break:
 - NEVER invent prices, discounts, legal terms, or scope not present in the notes or catalog. Prices live in the catalog and the proposal's pricing section — not in your document text.
-- When notes align with catalog packages, list their ids in suggested_package_ids. Suggest only ids that appear in the catalog. Never write package prices into blocks.
+- When notes align with the catalog, propose up to 3 suggested_packages, each composed of line items (description, quantity, unit_price; optional: true for customer-toggleable add-ons). Every unit_price must come from the catalog or the operator's notes — when neither states a price, use 0 and let the operator fill it in. Never write package prices into blocks.
 - Write in clear, warm, professional prose. No placeholder text, no "[insert X]".
 - rationale is one paragraph addressed to the OPERATOR (not the customer) explaining your drafting choices.`
 

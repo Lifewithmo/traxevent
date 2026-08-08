@@ -14,8 +14,28 @@
 // selection behaviour while the server-rendered print view simply omits them
 // and gets a read-only rendering of the same rows.
 
-import { lineItemSubtotal, depositAmount, proposalExpiryInstant } from '@/lib/proposals'
+import type { CSSProperties } from 'react'
+import {
+  lineItemSubtotal,
+  depositAmount,
+  packageDisplayBullets,
+  proposalExpiryInstant,
+} from '@/lib/proposals'
 import type { ProposalLineItem, ProposalPackage, ProposalDeposit } from '@/lib/types'
+
+/**
+ * Bridges lib/proposals.packageDisplayBullets to ProposalPackageOption's
+ * display props: `everything_in` becomes the `supersetLabel` line. Legacy
+ * packages come back as their `includes` bullets unchanged.
+ */
+export function packageOptionDisplay(
+  pkg: ProposalPackage,
+  packages: ProposalPackage[],
+  items: ProposalLineItem[],
+): { bullets: string[]; supersetLabel?: string } {
+  const { everything_in, bullets } = packageDisplayBullets(pkg, packages, items)
+  return { bullets, ...(everything_in ? { supersetLabel: `Everything in ${everything_in}` } : {}) }
+}
 
 export function money(n: number): string {
   return `$${n.toFixed(2)}`
@@ -29,28 +49,53 @@ function moneySpan(range: { min: number; max: number }): string {
   return range.min === range.max ? money(range.min) : `${money(range.min)} – ${money(range.max)}`
 }
 
-/** One package tier. `onSelect` present = the interactive public page. */
+/**
+ * One package tier. `onSelect` present = the interactive public page.
+ *
+ * Composed (pricing model v2) packages pass `bullets` — the member items'
+ * descriptions in item_ids order (spec §1: bullets ARE the items) — and
+ * optionally `supersetLabel` ("Everything in {smaller tier}") rendered as the
+ * first line. When absent, the legacy `includes` render exactly as before.
+ * Accent styling comes from the --proposal-* theme variables.
+ */
 export function ProposalPackageOption({
-  pkg, selected, selectable = false, onSelect,
+  pkg, selected, selectable = false, onSelect, bullets, supersetLabel,
 }: {
   pkg: ProposalPackage
   selected: boolean
   selectable?: boolean
   onSelect?: () => void
+  bullets?: string[]
+  supersetLabel?: string
 }) {
+  const lines = bullets ?? pkg.includes ?? []
   const body = (
     <>
       {pkg.recommended && (
-        <span className="absolute right-3 top-3 rounded-full bg-gray-900 px-2 py-0.5 text-xs font-medium text-white">
+        <span
+          className="absolute right-3 top-3 rounded-full px-2 py-0.5 text-xs font-medium"
+          style={{
+            backgroundColor: 'var(--proposal-accent, #111827)',
+            color: 'var(--proposal-accent-text, #ffffff)',
+          }}
+        >
           Recommended
         </span>
       )}
       <p className="font-semibold text-gray-900">{pkg.name}</p>
       {pkg.description && <p className="mt-1 text-sm text-gray-500">{pkg.description}</p>}
-      <p className="mt-2 text-lg font-bold text-gray-900">{money(pkg.price)}</p>
-      {pkg.includes && pkg.includes.length > 0 && (
+      <p className="mt-2 text-lg font-bold" style={{ color: 'var(--proposal-accent, #111827)' }}>
+        {money(pkg.price)}
+      </p>
+      {(supersetLabel || lines.length > 0) && (
         <ul className="mt-3 space-y-1 text-sm text-gray-700">
-          {pkg.includes.map((line, i) => (
+          {supersetLabel && (
+            <li className="flex gap-2 font-medium">
+              <span aria-hidden="true">✓</span>
+              <span>{supersetLabel}</span>
+            </li>
+          )}
+          {lines.map((line, i) => (
             <li key={i} className="flex gap-2">
               <span aria-hidden="true">✓</span>
               <span>{line}</span>
@@ -62,14 +107,20 @@ export function ProposalPackageOption({
   )
 
   const frame = `relative rounded-lg border p-4 text-left transition ${
-    selected ? 'border-gray-900 ring-2 ring-gray-900' : 'border-gray-200'
+    selected ? 'border-transparent ring-2' : 'border-gray-200'
   }`
+
+  // Selected ring takes the brand accent; Tailwind's ring utility reads its
+  // color from --tw-ring-color, so the theme variable feeds it directly.
+  const frameStyle = selected
+    ? ({ '--tw-ring-color': 'var(--proposal-accent, #111827)' } as CSSProperties)
+    : undefined
 
   // No handler (print, or a locked page) => not a button at all, so a static
   // rendering never advertises an affordance it does not have.
   if (!onSelect) {
     return (
-      <div className={frame}>
+      <div className={frame} style={frameStyle}>
         {body}
         {selected && <p className="mt-3 text-xs font-medium text-gray-900">Selected</p>}
       </div>
@@ -82,6 +133,7 @@ export function ProposalPackageOption({
       disabled={!selectable}
       onClick={() => selectable && onSelect()}
       aria-pressed={selected}
+      style={frameStyle}
       className={`${frame} ${selectable ? 'cursor-pointer hover:border-gray-400' : 'cursor-default'}`}
     >
       {body}
