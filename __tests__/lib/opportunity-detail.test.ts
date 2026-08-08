@@ -64,6 +64,10 @@ describe('bannerContent', () => {
     expect(b.tone).toBe('closed')
     expect(b.detail).toContain('Closed Won')
   })
+  it('appends last-touch to the needs-attention detail', () => {
+    const c = bannerContent('needs_attention', { todayYmd: '2026-08-07', stageLabel: 'Consultation', lastTouchDays: 11 })
+    expect(c.detail).toBe('This opportunity has nothing scheduled — add a next step so it never rots. Last touch 11 days ago.')
+  })
 })
 
 // An unpaid invoice under the lifecycle+balance model: a live invoice with a

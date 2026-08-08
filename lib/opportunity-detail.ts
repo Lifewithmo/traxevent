@@ -73,6 +73,7 @@ export interface BannerInput {
   waitingReason?: string
   waitingFollowUp?: string
   stageLabel: string
+  lastTouchDays?: number
 }
 
 function dueLabel(dueYmd: string, today: string): string {
@@ -98,12 +99,16 @@ export function bannerContent(health: OppHealth, o: BannerInput): BannerContent 
           .filter(Boolean)
           .join(' · ') || 'Waiting on a reply',
       }
-    case 'needs_attention':
+    case 'needs_attention': {
+      const touch = o.lastTouchDays != null
+        ? ` Last touch ${o.lastTouchDays} day${o.lastTouchDays === 1 ? '' : 's'} ago.`
+        : ''
       return {
         tone: 'attention',
         heading: 'No next action',
-        detail: 'This opportunity has nothing scheduled — add a next step so it never rots.',
+        detail: `This opportunity has nothing scheduled — add a next step so it never rots.${touch}`,
       }
+    }
     case 'closed':
     default:
       return { tone: 'closed', heading: 'Closed', detail: o.stageLabel }

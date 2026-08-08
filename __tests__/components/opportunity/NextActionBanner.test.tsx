@@ -6,6 +6,9 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh }) }))
 const completeTask = vi.fn().mockResolvedValue(undefined)
 const snoozeTask = vi.fn().mockResolvedValue(undefined)
 vi.mock('@/actions/tasks', () => ({ completeTask: (...a: unknown[]) => completeTask(...a), snoozeTask: (...a: unknown[]) => snoozeTask(...a) }))
+const setLeadWaiting = vi.fn().mockResolvedValue(undefined)
+const clearLeadWaiting = vi.fn().mockResolvedValue(undefined)
+vi.mock('@/actions/leads', () => ({ setLeadWaiting: (...a: unknown[]) => setLeadWaiting(...a), clearLeadWaiting: (...a: unknown[]) => clearLeadWaiting(...a) }))
 
 import { NextActionBanner } from '@/components/admin/opportunity/NextActionBanner'
 import type { Lead, Task } from '@/lib/types'
