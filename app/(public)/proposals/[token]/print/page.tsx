@@ -60,7 +60,12 @@ export default async function ProposalPrintPage({
   const selectedOptionalIds = proposal.selection?.optional_item_ids ?? []
 
   const packages = proposal.packages ?? []
-  const requiredItems = proposal.line_items.filter((i) => i.optional !== true)
+  // Same base-scope rule as ProposalResponseClient: package member items live
+  // in their tier card, not in the always-included list.
+  const memberIds = new Set((proposal.packages ?? []).flatMap((p) => p.item_ids ?? []))
+  const requiredItems = proposal.line_items.filter(
+    (i) => i.optional !== true && !memberIds.has(i.id ?? ''),
+  )
   const optionalItems = proposal.line_items.filter((i) => i.optional === true && i.id)
 
   const branding = (proposal as { branding?: OrgBranding }).branding

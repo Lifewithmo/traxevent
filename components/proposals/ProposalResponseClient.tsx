@@ -99,7 +99,13 @@ export function ProposalResponseClient({
     }
   }, [beforeAcceptStep, token])
 
-  const requiredItems = proposal.line_items.filter((i) => i.optional !== true)
+  // Required base scope = items in NO package and not optional (spec §1).
+  // Package member items render inside their tier card; listing them here too
+  // would double-display them as always-included regardless of tier choice.
+  const memberIds = new Set((proposal.packages ?? []).flatMap((p) => p.item_ids ?? []))
+  const requiredItems = proposal.line_items.filter(
+    (i) => i.optional !== true && !memberIds.has(i.id ?? ''),
+  )
   const optionalItems = proposal.line_items.filter((i) => i.optional === true && i.id)
 
   function toggleOptional(id: string) {

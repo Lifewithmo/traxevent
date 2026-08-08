@@ -150,4 +150,23 @@ describe('ProposalResponseClient — themed presentation (behavior-preserving re
     expect(better).toHaveTextContent('Espresso bar')
     expect(better).not.toHaveTextContent('Setup crew')
   })
+
+  it("excludes package member items from the What's included base-scope list", () => {
+    // Browser-walk regression: member items rendered as always-included base
+    // scope, double-displaying them regardless of which tier is chosen.
+    render(<ProposalResponseClient token="tok" proposal={proposal({
+      line_items: [
+        { id: 'i1', description: 'Espresso bar', quantity: 1, unit_price: 500 },
+        { id: 'i2', description: 'Venue liaison', quantity: 1, unit_price: 100 },
+      ],
+      packages: [
+        { id: 'pa', name: 'Basic', includes: [], price: 500, item_ids: ['i1'] } as never,
+      ],
+    })} />)
+    // Non-member item is base scope; the member renders ONCE (tier card only).
+    // The bug rendered members twice: in the tier card and again as base scope.
+    expect(screen.getByText("What's included")).toBeInTheDocument()
+    expect(screen.getAllByText(/Venue liaison/)).toHaveLength(1)
+    expect(screen.getAllByText(/Espresso bar/)).toHaveLength(1)
+  })
 })
