@@ -43,7 +43,7 @@ export function FactsGrid({ orgId, orgSlug, lead, customer }: FactsGridProps) {
         </Button>
       </CardHeader>
       <CardContent>
-        <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-4">
           {facts.map((f) => (
             <div key={f.label}>
               <dt className="text-xs text-muted-foreground">{f.label}</dt>

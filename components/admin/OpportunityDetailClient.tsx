@@ -100,11 +100,10 @@ export function OpportunityDetailClient({ orgId, orgSlug, lead, customer, tasks,
         onAddNextStep={() => taskInputRef.current?.focus()}
       />
 
-      <ContactCard orgSlug={orgSlug} customer={customer} lead={lead} variant="strip" pastBookings={pastBookings} />
-
       <div className="grid gap-4 lg:grid-cols-5">
         {/* Left: the record */}
         <div className="space-y-4 lg:col-span-3">
+          <ContactCard orgSlug={orgSlug} customer={customer} lead={lead} variant="strip" pastBookings={pastBookings} />
           <FactsGrid orgId={orgId} orgSlug={orgSlug} lead={lead} customer={customer} />
           <ConvertToWorkCard
             orgId={orgId}
