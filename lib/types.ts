@@ -24,6 +24,7 @@ export interface Org {
   ics_token?: string                 // secret path segment of the read-only calendar feed
   branding?: OrgBranding
   public_profile?: PublicProfile
+  intake_token?: string              // public intake form access token; minted lazily (actions/intake.ts)
   created_at: string
 }
 
