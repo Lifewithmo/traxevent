@@ -58,7 +58,7 @@ export function OpportunityDetailClient({ orgId, orgSlug, lead, customer, tasks,
   }
 
   return (
-    <div className="mx-auto max-w-5xl space-y-4 p-6">
+    <div className="mx-auto max-w-6xl space-y-4 p-6">
       <Link href={`/${orgSlug}/leads`} className="text-sm text-muted-foreground hover:underline">
         ← Back to pipeline
       </Link>
@@ -102,24 +102,26 @@ export function OpportunityDetailClient({ orgId, orgSlug, lead, customer, tasks,
 
       <ContactCard orgSlug={orgSlug} customer={customer} lead={lead} variant="strip" pastBookings={pastBookings} />
 
-      <ConvertToWorkCard
-        orgId={orgId}
-        orgSlug={orgSlug}
-        lead={lead}
-        job={job}
-        eventTypes={eventTypes}
-        open={convertOpen}
-        blockReason={convertBlockReason}
-      />
-
-      <div className="grid gap-4 lg:grid-cols-2">
-        <div className="space-y-4">
+      <div className="grid gap-4 lg:grid-cols-5">
+        {/* Left: the record */}
+        <div className="space-y-4 lg:col-span-3">
           <FactsGrid orgId={orgId} orgSlug={orgSlug} lead={lead} customer={customer} />
+          <ConvertToWorkCard
+            orgId={orgId}
+            orgSlug={orgSlug}
+            lead={lead}
+            job={job}
+            eventTypes={eventTypes}
+            open={convertOpen}
+            blockReason={convertBlockReason}
+          />
         </div>
-        <div className="space-y-4">
+
+        {/* Right: the working column */}
+        <aside className="space-y-4 lg:col-span-2">
           <TasksPanel ref={taskInputRef} orgId={orgId} leadId={lead.id} tasks={tasks} />
           <ActivityTimeline orgId={orgId} leadId={lead.id} activity={activity} />
-        </div>
+        </aside>
       </div>
     </div>
   )
