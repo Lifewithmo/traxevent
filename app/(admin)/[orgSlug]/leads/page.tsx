@@ -9,6 +9,7 @@ import { buildPipelineRows, closedThisMonth } from '@/lib/pipeline-view'
 import { todayYmd } from '@/lib/opportunity-detail'
 import { OPEN_STAGES, CLOSED_STAGES } from '@/lib/leads'
 import { PipelineListClient } from '@/components/admin/pipeline/PipelineListClient'
+import { PipelineBoardView } from '@/components/admin/pipeline/PipelineBoardView'
 
 export default async function LeadsPage({
   params, searchParams,
@@ -16,7 +17,7 @@ export default async function LeadsPage({
   params: Promise<{ orgSlug: string }>
   searchParams: Promise<{ view?: string }>
 }) {
-  const [{ orgSlug }] = await Promise.all([params, searchParams])
+  const [{ orgSlug }, { view }] = await Promise.all([params, searchParams])
   const orgSnap = await adminDb.collection('orgs').where('slug', '==', orgSlug).limit(1).get()
   if (orgSnap.empty) notFound()
   const orgId = orgSnap.docs[0].id
@@ -41,5 +42,7 @@ export default async function LeadsPage({
     orgId, orgSlug, groups, closed,
     openCount: open.length, openValue, monthly,
   }
-  return <PipelineListClient {...shared} view="list" />
+  return view === 'board'
+    ? <PipelineBoardView {...shared} />
+    : <PipelineListClient {...shared} view="list" />
 }
