@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   initials, addDays, dueStatus, todayYmd, formatRelativeTime,
-  bannerContent, attachmentChips, daysSince, lastTouchIso,
+  bannerContent, attachmentChips, daysSince, lastTouchIso, convertBlockReason,
 } from '@/lib/opportunity-detail'
 import type { Proposal, Invoice, Contract } from '@/lib/types'
 
@@ -120,5 +120,29 @@ describe('lastTouchIso', () => {
     expect(lastTouchIso({ last_touch_at: 'a', updated_at: 'b', created_at: 'c' })).toBe('a')
     expect(lastTouchIso({ updated_at: 'b', created_at: 'c' })).toBe('b')
     expect(lastTouchIso({ created_at: 'c' })).toBe('c')
+  })
+})
+
+describe('convertBlockReason', () => {
+  it('is ready at closed_won regardless of attachments', () => {
+    expect(convertBlockReason({ stage: 'closed_won', proposals: [], contracts: [] }).ready).toBe(true)
+  })
+  it('names the missing accepted proposal first', () => {
+    const r = convertBlockReason({ stage: 'consultation', proposals: [{ status: 'sent' }], contracts: [] })
+    expect(r.ready).toBe(false)
+    expect(r.message).toBe('Blocked: no accepted proposal yet. Acceptance carries the package into Events.')
+  })
+  it('then the unsigned contract, mentioning guests when known', () => {
+    const r = convertBlockReason({
+      stage: 'consultation', proposals: [{ status: 'accepted' }], contracts: [{ status: 'sent' }], guestCount: 60,
+    })
+    expect(r.message).toBe('Blocked: the contract is unsigned. Signing carries the accepted package and 60 guests into Events.')
+  })
+  it('otherwise: ready once won', () => {
+    const r = convertBlockReason({
+      stage: 'consultation', proposals: [{ status: 'accepted' }], contracts: [{ status: 'signed' }],
+    })
+    expect(r.message).toBe('Ready — mark the deal won to convert.')
+    expect(r.ready).toBe(false)
   })
 })

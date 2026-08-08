@@ -12,7 +12,7 @@ import { ContactCard } from '@/components/admin/opportunity/ContactCard'
 import { NextActionBanner } from '@/components/admin/opportunity/NextActionBanner'
 import { TasksPanel } from '@/components/admin/opportunity/TasksPanel'
 import { ActivityTimeline } from '@/components/admin/opportunity/ActivityTimeline'
-import { OpportunityDetailsForm } from '@/components/admin/opportunity/OpportunityDetailsForm'
+import { FactsGrid } from '@/components/admin/opportunity/FactsGrid'
 import { ConvertToWorkCard } from '@/components/admin/opportunity/ConvertToWorkCard'
 import { MarkLostDialog } from '@/components/admin/opportunity/MarkLostDialog'
 import { StageMenu } from '@/components/admin/opportunity/StageMenu'
@@ -28,9 +28,11 @@ interface OpportunityDetailClientProps {
   activity: ActivityEvent[]
   job: Event | null
   eventTypes: EventType[]
+  pastBookings?: number
+  convertBlockReason?: string
 }
 
-export function OpportunityDetailClient({ orgId, orgSlug, lead, customer, tasks, activity, job, eventTypes }: OpportunityDetailClientProps) {
+export function OpportunityDetailClient({ orgId, orgSlug, lead, customer, tasks, activity, job, eventTypes, pastBookings = 0, convertBlockReason }: OpportunityDetailClientProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [deleting, setDeleting] = useState(false)
@@ -98,17 +100,25 @@ export function OpportunityDetailClient({ orgId, orgSlug, lead, customer, tasks,
         onAddNextStep={() => taskInputRef.current?.focus()}
       />
 
-      <ConvertToWorkCard orgId={orgId} orgSlug={orgSlug} lead={lead} job={job} eventTypes={eventTypes} open={convertOpen} />
+      <ContactCard orgSlug={orgSlug} customer={customer} lead={lead} variant="strip" pastBookings={pastBookings} />
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        {/* Contact card: first on mobile, right column on desktop */}
-        <aside className="order-first space-y-4 lg:order-last lg:col-span-1">
-          <ContactCard orgSlug={orgSlug} customer={customer} lead={lead} />
-        </aside>
-        <div className="space-y-4 lg:col-span-2">
+      <ConvertToWorkCard
+        orgId={orgId}
+        orgSlug={orgSlug}
+        lead={lead}
+        job={job}
+        eventTypes={eventTypes}
+        open={convertOpen}
+        blockReason={convertBlockReason}
+      />
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="space-y-4">
+          <FactsGrid orgId={orgId} orgSlug={orgSlug} lead={lead} customer={customer} />
+        </div>
+        <div className="space-y-4">
           <TasksPanel ref={taskInputRef} orgId={orgId} leadId={lead.id} tasks={tasks} />
           <ActivityTimeline orgId={orgId} leadId={lead.id} activity={activity} />
-          <OpportunityDetailsForm orgId={orgId} orgSlug={orgSlug} lead={lead} customer={customer} />
         </div>
       </div>
     </div>

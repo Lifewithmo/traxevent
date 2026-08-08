@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -19,17 +19,22 @@ interface ConvertToWorkCardProps {
   lead: Lead
   job: Event | null
   eventTypes: EventType[]
+  open?: boolean
+  blockReason?: string
 }
 
-export function ConvertToWorkCard({ orgId, orgSlug, lead, job, eventTypes }: ConvertToWorkCardProps) {
+export function ConvertToWorkCard({ orgId, orgSlug, lead, job, eventTypes, open: openProp = false, blockReason }: ConvertToWorkCardProps) {
   const router = useRouter()
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(openProp)
   const [name, setName] = useState(opportunityTitle(lead))
   const [date, setDate] = useState(lead.event_date ?? '')
   const [eventTypeId, setEventTypeId] = useState<string>(DEFAULT_EVENT_TYPE_ID)
-  const [headcount, setHeadcount] = useState('')
+  const [headcount, setHeadcount] = useState(lead.guest_count != null ? String(lead.guest_count) : '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Winning from the header (StageMenu) flips the prop after mount.
+  useEffect(() => { if (openProp) setOpen(true) }, [openProp])
 
   // A linked job stays visible no matter what the opportunity's stage does
   // later (e.g. moved back to `proposal` as a correction) — otherwise the
@@ -43,8 +48,15 @@ export function ConvertToWorkCard({ orgId, orgSlug, lead, job, eventTypes }: Con
     )
   }
 
-  // Conversion is the booking's consequence; nothing to offer before it.
-  if (lead.stage !== 'closed_won') return null
+  // Not won yet: keep the destination visible and say what unblocks it.
+  if (lead.stage !== 'closed_won') {
+    return (
+      <div className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2">
+        <p className="text-sm text-muted-foreground">{blockReason ?? 'Mark the deal won to convert.'}</p>
+        <Button size="sm" disabled>Convert to work</Button>
+      </div>
+    )
+  }
 
   async function handleConvert() {
     const type = eventTypes.find((t) => t.id === eventTypeId)

@@ -1,4 +1,4 @@
-import type { Proposal, Invoice, Contract, Vendor } from '@/lib/types'
+import type { Proposal, Invoice, Contract, Vendor, LeadStage } from '@/lib/types'
 import type { OppHealth } from '@/lib/opportunity-health'
 import { invoiceBalance } from '@/lib/invoices'
 
@@ -113,6 +113,24 @@ export function bannerContent(health: OppHealth, o: BannerInput): BannerContent 
     default:
       return { tone: 'closed', heading: 'Closed', detail: o.stageLabel }
   }
+}
+
+/** Why the convert card is blocked (or what would unblock it) short of closed_won. */
+export function convertBlockReason(i: {
+  stage: LeadStage
+  proposals: Pick<Proposal, 'status'>[]
+  contracts: Pick<Contract, 'status'>[]
+  guestCount?: number
+}): { ready: boolean; message: string } {
+  if (i.stage === 'closed_won') return { ready: true, message: '' }
+  if (!i.proposals.some((p) => p.status === 'accepted')) {
+    return { ready: false, message: 'Blocked: no accepted proposal yet. Acceptance carries the package into Events.' }
+  }
+  if (!i.contracts.some((c) => c.status === 'signed')) {
+    const guests = i.guestCount != null ? ` and ${i.guestCount} guests` : ''
+    return { ready: false, message: `Blocked: the contract is unsigned. Signing carries the accepted package${guests} into Events.` }
+  }
+  return { ready: false, message: 'Ready — mark the deal won to convert.' }
 }
 
 export interface AttachmentChip {
