@@ -46,6 +46,7 @@ ask follow-up questions) without ever becoming the author of record or a write p
 | Draft isn't right yet | Refinement input in the same panel | 2 |
 | Quiet lead needs a follow-up | **Draft follow-up** on the lead/communicate surface | 2 |
 | Building a work package | **Suggest quantities** in the package line editor | 2 |
+| Joining TraxEvent | **Voice interview** in onboarding → org voice profile used by every feature | 2 |
 | Sanity-checking an event | **Review notes** on the event ops screen | 2 |
 | Cross-cutting questions | Read-only assistant, slide-over on all `(admin)` screens | 3 |
 
@@ -106,6 +107,44 @@ generation: a full replacement draft, `suggested_package_ids`, rationale.
 - **8-turn client-side cap.** Past that, context degradation means regeneration beats
   refinement; the cap surfaces as "start a fresh draft."
 - No streaming UI in v1 — each turn is one request with a loading state.
+
+## Brand voice — interview at onboarding, augment everywhere
+
+Added 2026-08-08. Every AI feature routes through location-specific instructions
+(`lib/ai/grounding.ts` builders). This increment makes two of those instruction layers
+**data-driven** instead of hard-coded, layered in this order on every feature prompt:
+
+```
+base feature prompt → industry-pack guidance → org voice profile
+```
+
+**The voice interview (onboarding step, skippable; re-runnable from org settings):**
+
+1. Three quick picks: formality (casual ↔ formal), warmth (efficient ↔ effusive),
+   punctuation personality (emoji/exclamations: never ↔ freely).
+2. "Paste something you've written that sounds like you" — a past proposal, an email to a
+   client, a social caption. Optional but strongly encouraged; samples beat adjectives.
+3. One generation call (same editable-preview pattern as drafting) synthesizes a **voice
+   profile**: 3–4 tone descriptors, a short do/don't phrase list, and one sample sentence
+   rewritten in their voice so the operator can immediately judge it.
+4. The operator edits the profile as plain text and saves. It is theirs — visible,
+   editable, never a hidden model artifact. Skipping the step stores nothing and every
+   feature works unchanged (degrade-to-absence, as everywhere).
+
+**Storage:** a `voice_profile?: string` (bounded, ~1,500 chars max) on the org document
+alongside the existing branding fields. Not a new collection; no migration — absent means
+no augmentation.
+
+**Application:** a shared `promptAugments(org, feature)` helper in `lib/ai/grounding.ts`
+returns the industry-pack block (keyed off the org's pack, from `lib/industry-packs.ts`)
+plus the voice block. Every feature builder appends them after its base prompt and before
+the cached catalog block, so the augments participate in the cached prefix (they change
+rarely). The voice profile is prose the operator controls, so builders wrap it in a clearly
+delimited section ("The business owner describes their writing voice as follows — match
+it") rather than splicing it into instruction text.
+
+**Selling note:** this is the onboarding moment where the AI visibly learns the operator —
+the first draft after the interview should already sound like them.
 
 ## Draft follow-up (quiet lead)
 
