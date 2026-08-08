@@ -5,7 +5,7 @@ import { assertOrgAdmin } from '@/lib/auth/assert'
 import { adminBucket } from '@/lib/firebase-admin'
 import { assertImageUpload, safeUploadName, tokenizedDownloadUrl } from '@/lib/uploads'
 
-const ASSET_KINDS = ['logo', 'cover']
+const ASSET_KINDS = ['logo', 'cover', 'profile_photo', 'link_image']
 
 /**
  * Upload an org brand asset (logo / cover) and return a stable download URL.
@@ -15,7 +15,7 @@ const ASSET_KINDS = ['logo', 'cover']
  */
 export async function uploadOrgAsset(
   orgId: string,
-  kind: 'logo' | 'cover',
+  kind: 'logo' | 'cover' | 'profile_photo' | 'link_image',
   formData: FormData,
 ): Promise<{ url: string }> {
   await assertOrgAdmin(orgId)
