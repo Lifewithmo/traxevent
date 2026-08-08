@@ -47,6 +47,9 @@ describe('SkeletonPicker', () => {
     await waitFor(() => expect(push).toHaveBeenCalledWith('/acme/leads/l1/proposals/new-p'))
     expect(createProposal).toHaveBeenCalledWith('o1', 'l1', { title: 'BrewTrax — Miller wedding' })
     const [, , draft] = updateProposalDraft.mock.calls[0]
+    // Full-state action: the title must ride along with the blocks, or the
+    // save would clear the title createProposal just set.
+    expect(draft.title).toBe('BrewTrax — Miller wedding')
     expect(draft.blocks.length).toBeGreaterThan(0)
     expect(draft.blocks.every((b: { placeholder?: boolean }) => b.placeholder === true)).toBe(true)
     const intro = draft.blocks.find((b: { type: string }) => b.type === 'paragraph')

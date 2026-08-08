@@ -78,6 +78,16 @@ describe('BlockCanvas', () => {
     expect(edited.placeholder).toBeUndefined()
   })
 
+  it('opens a placeholder block EMPTY — the instruction becomes the hint, not prefilled text', () => {
+    canvas()
+    fireEvent.click(screen.getByText('Replace this intro'))
+    const box = screen.getByRole('textbox', { name: /paragraph/i }) as HTMLTextAreaElement
+    // Browser-walk regression: prefilling the instruction made the first
+    // keystroke APPEND to it instead of replacing it.
+    expect(box.value).toBe('')
+    expect(box.placeholder).toBe('Replace this intro')
+  })
+
   it('uploads into an empty image block and lands the url on that block', async () => {
     canvas({
       blocks: [

@@ -154,23 +154,31 @@ export function BlockCanvas({
   }
 
   function editor(block: PlaceholderBlock, index: number) {
+    // A placeholder block's content fields hold skeleton INSTRUCTIONS, not
+    // content. The editor must start empty — the instruction becomes the
+    // field hint — so the first keystroke replaces it rather than appending
+    // to it. (Caught in the pre-merge browser walk.)
+    const ph = block.placeholder === true
     switch (block.type) {
       case 'heading':
         return block.level === 3 ? (
           <h3 className="mt-6 mb-2 text-lg font-semibold" style={{ color: 'var(--proposal-accent, #111827)' }}>
-            <InlineText value={block.text} disabled={disabled} placeholder="Heading"
+            <InlineText value={ph ? '' : block.text} disabled={disabled}
+              placeholder={ph ? block.text : 'Heading'}
               ariaLabel={`Heading ${index + 1}`} onCommit={(text) => patch(block.id, { text })} />
           </h3>
         ) : (
           <h2 className="mt-8 mb-3 text-xl font-bold" style={{ color: 'var(--proposal-accent, #111827)' }}>
-            <InlineText value={block.text} disabled={disabled} placeholder="Heading"
+            <InlineText value={ph ? '' : block.text} disabled={disabled}
+              placeholder={ph ? block.text : 'Heading'}
               ariaLabel={`Heading ${index + 1}`} onCommit={(text) => patch(block.id, { text })} />
           </h2>
         )
       case 'paragraph':
         return (
           <p className="mb-4 leading-relaxed text-gray-700">
-            <InlineText value={block.text} disabled={disabled} multiline placeholder="Write something…"
+            <InlineText value={ph ? '' : block.text} disabled={disabled} multiline
+              placeholder={ph ? block.text : 'Write something…'}
               ariaLabel={`Paragraph ${index + 1}`} onCommit={(text) => patch(block.id, { text })} />
           </p>
         )
@@ -180,7 +188,8 @@ export function BlockCanvas({
           <Tag className={`mb-4 ${block.ordered ? 'list-decimal' : 'list-disc'} pl-6 text-gray-700`}>
             {block.items.map((item, i) => (
               <li key={i} className="mb-1">
-                <InlineText value={item} disabled={disabled} placeholder="List item"
+                <InlineText value={ph ? '' : item} disabled={disabled}
+                  placeholder={ph ? item : 'List item'}
                   ariaLabel={`List ${index + 1} item ${i + 1}`}
                   onCommit={(text) => {
                     // An emptied item is removed; the list itself stays.
@@ -245,7 +254,8 @@ export function BlockCanvas({
         return (
           <blockquote className="mb-6 border-l-4 pl-4 italic text-gray-700"
             style={{ borderColor: 'var(--proposal-secondary, #d1d5db)' }}>
-            <InlineText value={block.quote} disabled={disabled} multiline placeholder="Customer quote"
+            <InlineText value={ph ? '' : block.quote} disabled={disabled} multiline
+              placeholder={ph ? block.quote : 'Customer quote'}
               ariaLabel={`Testimonial ${index + 1}`} onCommit={(quote) => patch(block.id, { quote })} />
             <cite className="text-sm not-italic text-gray-500">
               <InlineText value={block.attribution ?? ''} disabled={disabled} placeholder="— Attribution"

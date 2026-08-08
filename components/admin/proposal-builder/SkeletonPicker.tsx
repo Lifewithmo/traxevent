@@ -60,7 +60,9 @@ export function SkeletonPicker({
       const created = await createProposal(orgId, leadId, { title })
       const blocks = PROPOSAL_SKELETONS.find((s) => s.key === key)!.makeBlocks({ contactName })
       if (blocks.length > 0) {
-        await updateProposalDraft(orgId, created.id, { blocks })
+        // updateProposalDraft is FULL-state (absent field = cleared): omitting
+        // `title` here would delete the title createProposal just set.
+        await updateProposalDraft(orgId, created.id, { title, blocks })
       }
       router.push(`/${orgSlug}/leads/${leadId}/proposals/${created.id}`)
     } catch (e) {
