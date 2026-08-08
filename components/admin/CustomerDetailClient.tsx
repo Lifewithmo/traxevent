@@ -14,6 +14,7 @@ import { updateCustomer } from '@/actions/customers'
 import { LEAD_STAGE_LABELS, opportunityTitle } from '@/lib/leads'
 import { formatRelativeTime } from '@/lib/opportunity-detail'
 import { NewOpportunityForm } from '@/components/admin/pipeline/NewOpportunityForm'
+import { TagEditor } from '@/components/admin/TagEditor'
 import type { CustomerRollup } from '@/lib/crm/customer-rollup'
 import type { Customer, Lead, Note } from '@/lib/types'
 
@@ -24,6 +25,7 @@ interface CustomerDetailClientProps {
   opportunities: Lead[]
   rollup: CustomerRollup
   notes: Note[]
+  orgTags: string[]
 }
 
 // Blank -> null (clears the field via CustomerUpdate's FieldValue.delete() mapping);
@@ -31,7 +33,7 @@ interface CustomerDetailClientProps {
 // part of the save payload, matching OpportunityDetailsForm's `opt` helper.
 const opt = (v: string): string | null => (v.trim() === '' ? null : v.trim())
 
-export function CustomerDetailClient({ orgId, orgSlug, customer, opportunities, rollup, notes }: CustomerDetailClientProps) {
+export function CustomerDetailClient({ orgId, orgSlug, customer, opportunities, rollup, notes, orgTags }: CustomerDetailClientProps) {
   const router = useRouter()
   const [body, setBody] = useState('')
   const [busy, setBusy] = useState(false)
@@ -85,11 +87,14 @@ export function CustomerDetailClient({ orgId, orgSlug, customer, opportunities, 
         <div>
           <h1 className="text-2xl font-bold">{customer.name}</h1>
           {customer.company && <p className="text-sm text-muted-foreground">{customer.company}</p>}
-          {tags.length > 0 && (
-            <div className="mt-2 flex flex-wrap gap-1">
-              {tags.map((t) => <Badge key={t} variant="secondary">{t}</Badge>)}
-            </div>
-          )}
+          <TagEditor
+            tags={tags}
+            suggestions={orgTags}
+            onSave={async (next) => {
+              await updateCustomer(orgId, customer.id, { tags: next })
+              router.refresh()
+            }}
+          />
         </div>
         <div className="flex gap-2">
           {customer.email && (

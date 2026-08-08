@@ -2,7 +2,7 @@
 
 import { FieldValue } from 'firebase-admin/firestore'
 import { assertOrgMember, assertOrgAdmin } from '@/lib/auth/assert'
-import { createCustomerCore, customersRef, getCustomerCore, normalizeEmail, type CreateCustomerInput } from '@/lib/crm/customers'
+import { createCustomerCore, customersRef, getCustomerCore, normalizeEmail, normalizeTags, type CreateCustomerInput } from '@/lib/crm/customers'
 import { listLeadsByCustomerCore } from '@/lib/crm/leads'
 import type { Customer, Lead } from '@/lib/types'
 
@@ -52,5 +52,6 @@ export async function updateCustomer(orgId: string, customerId: string, updates:
     const key = updates.email === null ? null : normalizeEmail(updates.email)
     cleaned.email_lower = key === null || key === undefined ? FieldValue.delete() : key
   }
+  if (Array.isArray(updates.tags)) cleaned.tags = normalizeTags(updates.tags)
   await customersRef(orgId).doc(customerId).update({ ...cleaned, updated_at: new Date().toISOString() })
 }

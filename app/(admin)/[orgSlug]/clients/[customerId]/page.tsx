@@ -2,9 +2,11 @@ export const dynamic = 'force-dynamic'
 
 import { notFound } from 'next/navigation'
 import { adminDb } from '@/lib/firebase-admin'
-import { getCustomer, listCustomerOpportunities } from '@/actions/customers'
+import { getCustomer, listCustomerOpportunities, listCustomers } from '@/actions/customers'
+import { listLeads } from '@/actions/leads'
 import { listNotes } from '@/actions/notes'
 import { rollupCustomer } from '@/lib/crm/customer-rollup'
+import { normalizeTags } from '@/lib/crm/customers'
 import { CustomerDetailClient } from '@/components/admin/CustomerDetailClient'
 
 export default async function CustomerDetailPage({
@@ -20,9 +22,15 @@ export default async function CustomerDetailPage({
   const customer = await getCustomer(orgId, customerId)
   if (!customer) notFound()
 
-  const [opportunities, notes] = await Promise.all([
+  const [opportunities, notes, allCustomers, allLeads] = await Promise.all([
     listCustomerOpportunities(orgId, customerId),
     listNotes(orgId, 'customer', customerId),
+    listCustomers(orgId),
+    listLeads(orgId),
+  ])
+  const orgTags = normalizeTags([
+    ...allCustomers.flatMap((c) => c.tags ?? []),
+    ...allLeads.flatMap((l) => l.tags ?? []),
   ])
 
   return (
@@ -33,6 +41,7 @@ export default async function CustomerDetailPage({
       opportunities={opportunities}
       rollup={rollupCustomer(customer, opportunities)}
       notes={notes}
+      orgTags={orgTags}
     />
   )
 }

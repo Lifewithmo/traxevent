@@ -28,7 +28,7 @@ const opportunities: Lead[] = [
 const rollup: CustomerRollup = { openCount: 1, wonCount: 1, lostCount: 0, totalWonValue: 1000, openValue: 250 }
 const notes: Note[] = []
 
-const props = { orgId: 'o1', orgSlug: 'acme', customer, opportunities, rollup, notes }
+const props = { orgId: 'o1', orgSlug: 'acme', customer, opportunities, rollup, notes, orgTags: [] }
 
 describe('CustomerDetailClient', () => {
   it('shows the customer identity and tags', () => {

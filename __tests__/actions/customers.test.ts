@@ -58,3 +58,18 @@ describe('listCustomerOpportunities', () => {
     expect(listLeadsByCustomerCore).toHaveBeenCalledWith('o1', 'c1')
   })
 })
+
+describe('updateCustomer tag normalization', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('normalizes tags before writing', async () => {
+    await updateCustomer('o1', 'c1', { tags: ['  VIP ', 'vip', '', 'repeat'] })
+    expect(custDoc.update).toHaveBeenCalledWith(expect.objectContaining({ tags: ['VIP', 'repeat'] }))
+  })
+
+  it('clears tags with a delete sentinel on null', async () => {
+    await updateCustomer('o1', 'c1', { tags: null })
+    const written = custDoc.update.mock.calls[0][0]
+    expect(written.tags).toBeInstanceOf(Object) // FieldValue.delete() sentinel
+  })
+})
