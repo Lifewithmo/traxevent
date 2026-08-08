@@ -12,7 +12,7 @@ const lead = (over: Partial<Lead>): Lead => ({
 } as Lead)
 
 const base = {
-  orgId: 'o1', orgSlug: 'demo', view: 'list' as const,
+  orgId: 'o1', orgSlug: 'demo',
   closed: [], openCount: 1, openValue: 1180,
   monthly: { wonCount: 3, wonValue: 4120, lostCount: 1, lostValue: 540 },
 }

@@ -20,7 +20,6 @@ interface PipelineListClientProps {
   openCount: number
   openValue: number
   monthly: ReturnType<typeof closedThisMonth>
-  view: 'list' | 'board'
 }
 
 type Tab = 'needs_move' | 'open' | 'closed'

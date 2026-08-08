@@ -39,10 +39,10 @@ export default async function LeadsPage({
   const openValue = open.reduce((s, l) => s + (l.estimated_value ?? 0), 0)
 
   const shared = {
-    orgId, orgSlug, groups, closed,
+    orgId, orgSlug, groups,
     openCount: open.length, openValue, monthly,
   }
   return view === 'board'
     ? <PipelineBoardView {...shared} />
-    : <PipelineListClient {...shared} view="list" />
+    : <PipelineListClient {...shared} closed={closed} />
 }

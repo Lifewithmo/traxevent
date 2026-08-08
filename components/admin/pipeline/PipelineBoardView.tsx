@@ -8,13 +8,12 @@ import { Badge } from '@/components/ui/badge'
 import { setLeadStage } from '@/actions/leads'
 import { OPEN_STAGES, LEAD_STAGE_LABELS, opportunityTitle } from '@/lib/leads'
 import type { PipelineGroups, PipelineRow, closedThisMonth } from '@/lib/pipeline-view'
-import type { Lead, LeadStage } from '@/lib/types'
+import type { LeadStage } from '@/lib/types'
 
 interface PipelineBoardViewProps {
   orgId: string
   orgSlug: string
   groups: PipelineGroups
-  closed: Lead[]
   openCount: number
   openValue: number
   monthly: ReturnType<typeof closedThisMonth>
@@ -52,6 +51,10 @@ export function PipelineBoardView({
       await setLeadStage(orgId, row.lead.id, newStage)
       if (newStage === 'closed_won') {
         router.push(`/${orgSlug}/leads/${row.lead.id}?convert=1`)
+      } else {
+        // Reconcile health accents/sentences, which the optimistic update above
+        // doesn't recompute (it only patches the stage).
+        router.refresh()
       }
     } catch (err: unknown) {
       setRows(prev)
@@ -112,7 +115,7 @@ export function PipelineBoardView({
                       data-health={row.health}
                       draggable
                       onDragStart={(e) => e.dataTransfer.setData('text/plain', lead.id)}
-                      className={row.health === 'needs_attention' ? 'border-l-2 border-destructive' : undefined}
+                      className={row.health === 'needs_attention' ? 'border-l-2 border-l-destructive' : undefined}
                     >
                       <CardContent className="py-3 space-y-2">
                         <Link href={`/${orgSlug}/leads/${lead.id}`} className="block space-y-1">
