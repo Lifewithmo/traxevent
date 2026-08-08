@@ -74,3 +74,18 @@ export async function findOrCreateCustomerCore(
     return { customer, created: true }
   })
 }
+
+/** Trim, drop empties, dedupe case-insensitively (first-seen casing wins). */
+export function normalizeTags(tags: string[]): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const raw of tags) {
+    const t = raw.trim()
+    if (!t) continue
+    const key = t.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(t)
+  }
+  return out
+}
