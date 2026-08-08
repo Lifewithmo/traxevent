@@ -5,8 +5,10 @@ import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Check, Clock, AlertCircle, CheckCircle2, PlusCircle } from 'lucide-react'
 import { computeHealth, nextAction } from '@/lib/opportunity-health'
-import { bannerContent, todayYmd, addDays } from '@/lib/opportunity-detail'
+import { bannerContent, todayYmd, addDays, daysSince, lastTouchIso } from '@/lib/opportunity-detail'
 import { completeTask, snoozeTask } from '@/actions/tasks'
+import { clearLeadWaiting } from '@/actions/leads'
+import { MarkWaitingForm } from '@/components/admin/opportunity/MarkWaitingForm'
 import { LEAD_STAGE_LABELS } from '@/lib/leads'
 import type { Lead, Task } from '@/lib/types'
 
@@ -39,6 +41,7 @@ export function NextActionBanner({ orgId, lead, tasks, onAddNextStep }: NextActi
     waitingReason: lead.waiting?.reason,
     waitingFollowUp: lead.waiting?.follow_up_date,
     stageLabel: LEAD_STAGE_LABELS[lead.stage],
+    lastTouchDays: daysSince(lastTouchIso(lead), today),
   })
 
   async function run(fn: () => Promise<void>) {
@@ -80,10 +83,18 @@ export function NextActionBanner({ orgId, lead, tasks, onAddNextStep }: NextActi
               </Button>
             </>
           )}
-          {health === 'needs_attention' && (
-            <Button size="sm" onClick={onAddNextStep}>
-              <PlusCircle className="mr-1 h-4 w-4" /> Add next step
+          {health === 'waiting' && (
+            <Button size="sm" variant="outline" disabled={busy} onClick={() => run(() => clearLeadWaiting(orgId, lead.id))}>
+              Resume
             </Button>
+          )}
+          {health === 'needs_attention' && (
+            <>
+              <Button size="sm" onClick={onAddNextStep}>
+                <PlusCircle className="mr-1 h-4 w-4" /> Add next step
+              </Button>
+              <MarkWaitingForm orgId={orgId} leadId={lead.id} />
+            </>
           )}
         </div>
       </div>
