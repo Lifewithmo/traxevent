@@ -1,13 +1,13 @@
 'use server'
 
 import { assertOrgMember, assertOrgAdmin } from '@/lib/auth/assert'
-import { LEAD_STAGES } from '@/lib/leads'
+import { LEAD_STAGES, closedAtPatch, LOST_REASON_LABELS } from '@/lib/leads'
 import { logActivity } from '@/lib/activity'
 import { leadsRef, listLeadsCore, updateLeadCore, type LeadUpdate } from '@/lib/crm/leads'
 import { findOrCreateCustomerCore } from '@/lib/crm/customers'
 import { convertOpportunityToWorkCore, type ConvertToWorkInput } from '@/lib/crm/convert'
 import { randomBytes } from 'crypto'
-import type { Lead, LeadStage, LeadWaiting, Event } from '@/lib/types'
+import type { Lead, LeadStage, LeadWaiting, LostReason, Event } from '@/lib/types'
 
 // NOTE: this is a 'use server' module — every export must be an async function.
 // LeadUpdate (a type) is therefore NOT re-exported here; import it from
@@ -22,6 +22,7 @@ export interface CreateLeadInput {
   event_type?: string
   event_date?: string
   estimated_value?: number
+  guest_count?: number
   stage?: LeadStage
   notes?: string
 }
@@ -62,6 +63,7 @@ export async function createLead(orgId: string, input: CreateLeadInput): Promise
     ...(input.event_type?.trim() ? { event_type: input.event_type.trim() } : {}),
     ...(input.event_date?.trim() ? { event_date: input.event_date.trim() } : {}),
     ...(input.estimated_value != null ? { estimated_value: input.estimated_value } : {}),
+    ...(input.guest_count != null ? { guest_count: input.guest_count } : {}),
     ...(input.notes?.trim() ? { notes: input.notes.trim() } : {}),
   }
   await leadsRef(orgId).doc(id).set(lead)
@@ -75,7 +77,10 @@ export async function updateLead(orgId: string, leadId: string, updates: LeadUpd
     const snap = await leadsRef(orgId).doc(leadId).get()
     prevStage = snap.exists ? (snap.data() as Lead).stage : undefined
   }
-  await updateLeadCore(orgId, leadId, updates)
+  await updateLeadCore(orgId, leadId, {
+    ...updates,
+    ...(updates.stage && prevStage ? closedAtPatch(prevStage, updates.stage, new Date().toISOString()) : {}),
+  })
   if (updates.stage && updates.stage !== prevStage) {
     await logActivity(orgId, { parent_type: 'opportunity', parent_id: leadId, kind: 'stage', summary: `Stage → ${updates.stage}` })
   }
@@ -84,8 +89,33 @@ export async function updateLead(orgId: string, leadId: string, updates: LeadUpd
 export async function setLeadStage(orgId: string, leadId: string, stage: LeadStage): Promise<void> {
   await assertOrgAdmin(orgId)
   if (!LEAD_STAGES.includes(stage)) throw new Error('Invalid stage')
-  await leadsRef(orgId).doc(leadId).update({ stage, updated_at: new Date().toISOString() })
+  const snap = await leadsRef(orgId).doc(leadId).get()
+  const prevStage = snap.exists ? (snap.data() as Lead).stage : undefined
+  await updateLeadCore(orgId, leadId, {
+    stage,
+    ...(prevStage ? closedAtPatch(prevStage, stage, new Date().toISOString()) : {}),
+  })
   await logActivity(orgId, { parent_type: 'opportunity', parent_id: leadId, kind: 'stage', summary: `Stage → ${stage}` })
+}
+
+export async function markLeadLost(
+  orgId: string,
+  leadId: string,
+  input: { reason: LostReason; note?: string }
+): Promise<void> {
+  await assertOrgAdmin(orgId)
+  const lead = await getLead(orgId, leadId)
+  if (!lead) throw new Error('Lead not found')
+  const note = input.note?.trim()
+  await updateLeadCore(orgId, leadId, {
+    stage: 'closed_lost',
+    lost: { reason: input.reason, ...(note ? { note } : {}) },
+    ...closedAtPatch(lead.stage, 'closed_lost', new Date().toISOString()),
+  })
+  await logActivity(orgId, {
+    parent_type: 'opportunity', parent_id: leadId, kind: 'lost',
+    summary: `Lost — ${LOST_REASON_LABELS[input.reason]}${note ? ` · ${note}` : ''}`,
+  })
 }
 
 export async function deleteLead(orgId: string, leadId: string): Promise<void> {
