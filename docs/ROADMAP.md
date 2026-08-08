@@ -67,6 +67,13 @@ EventTrax pivot (neutralization, multi-brand, ops core). Detailed designs live i
 - **Public intake form** — the pipeline's missing front door; every opportunity
   is hand-keyed today. Hard prerequisite: the repo has zero rate limiting / bot
   protection, which this increment must solve first.
+- **Public profile page (link-in-bio)** — customer request: replace their
+  Beacons page. v1 designed (spec:
+  `superpowers/specs/2026-08-08-public-profile-page-design.md`): `/p/[handle]`
+  page + settings editor. The rest of the Beacons buildout (analytics,
+  subscribe, store, themes…) is logged in
+  `strategy/2026-08-08-beacons-parity-feature-request.md` — not committed
+  roadmap.
 - **Operator-AI increments 2–3**
   (spec: `superpowers/specs/2026-08-07-operator-ai-design.md`) — per-artifact
   refinement + quantity/notes assists, then the read-only workspace assistant.
