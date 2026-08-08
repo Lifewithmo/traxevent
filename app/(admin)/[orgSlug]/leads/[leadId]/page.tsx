@@ -3,7 +3,8 @@ export const dynamic = 'force-dynamic'
 import { notFound } from 'next/navigation'
 import { adminDb } from '@/lib/firebase-admin'
 import { getLead } from '@/actions/leads'
-import { getCustomer } from '@/actions/customers'
+import { getCustomer, listCustomerOpportunities } from '@/actions/customers'
+import { convertBlockReason } from '@/lib/opportunity-detail'
 import { listTasks } from '@/actions/tasks'
 import { listActivity } from '@/actions/activity'
 import { listProposals } from '@/actions/proposals'
@@ -29,7 +30,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ org
   const lead = await getLead(orgId, leadId)
   if (!lead) notFound()
 
-  const [customer, tasks, activity, proposals, invoices, contracts, vendors, jobs, eventTypes] = await Promise.all([
+  const [customer, tasks, activity, proposals, invoices, contracts, vendors, jobs, eventTypes, customerLeads] = await Promise.all([
     lead.customer_id ? getCustomer(orgId, lead.customer_id) : Promise.resolve(null),
     listTasks(orgId, leadId),
     listActivity(orgId, 'opportunity', leadId),
@@ -39,11 +40,20 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ org
     listVendors(orgId, leadId),
     listEventsByLead(orgId, leadId),
     listOrgEventTypes(orgId),
+    lead.customer_id ? listCustomerOpportunities(orgId, lead.customer_id) : Promise.resolve([]),
   ])
 
   const acceptedProposals = proposals
     .filter((p) => p.status === 'accepted')
     .map((p) => ({ id: p.id, title: p.title }))
+
+  const pastBookings = customerLeads.filter((l) => l.stage === 'closed_won' && l.id !== lead.id).length
+  const blockReason = convertBlockReason({
+    stage: lead.stage,
+    proposals,
+    contracts,
+    guestCount: lead.guest_count,
+  }).message
 
   return (
     <>
@@ -56,6 +66,8 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ org
         activity={activity}
         job={jobs[0] ?? null}
         eventTypes={eventTypes}
+        pastBookings={pastBookings}
+        convertBlockReason={blockReason}
       />
 
       <div className="mx-auto max-w-5xl space-y-4 px-6 pb-2">

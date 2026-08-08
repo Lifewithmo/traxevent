@@ -9,8 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { updateLead } from '@/actions/leads'
 import type { LeadUpdate } from '@/lib/crm/leads'
-import { LEAD_STAGES, LEAD_STAGE_LABELS } from '@/lib/leads'
-import type { Customer, Lead, LeadStage } from '@/lib/types'
+import type { Customer, Lead } from '@/lib/types'
 
 interface OpportunityDetailsFormProps {
   orgId: string
@@ -29,7 +28,7 @@ export function OpportunityDetailsForm({ orgId, orgSlug, lead, customer }: Oppor
   const [eventType, setEventType] = useState(lead.event_type ?? '')
   const [eventDate, setEventDate] = useState(lead.event_date ?? '')
   const [estimatedValue, setEstimatedValue] = useState(lead.estimated_value != null ? String(lead.estimated_value) : '')
-  const [stage, setStage] = useState<LeadStage>(lead.stage)
+  const [guestCount, setGuestCount] = useState(lead.guest_count != null ? String(lead.guest_count) : '')
   const [notes, setNotes] = useState(lead.notes ?? '')
 
   const [saving, setSaving] = useState(false)
@@ -44,6 +43,8 @@ export function OpportunityDetailsForm({ orgId, orgSlug, lead, customer }: Oppor
     try {
       const parsed = estimatedValue.trim() === '' ? null : Number(estimatedValue)
       if (parsed != null && Number.isNaN(parsed)) { setError('Estimated value must be a number.'); return }
+      const guests = guestCount.trim() === '' ? null : Number(guestCount)
+      if (guests != null && Number.isNaN(guests)) { setError('Guest count must be a number.'); return }
       const updates: LeadUpdate = {
         title: title.trim() || null,
         name: name.trim(),
@@ -53,7 +54,7 @@ export function OpportunityDetailsForm({ orgId, orgSlug, lead, customer }: Oppor
         event_type: opt(eventType),
         event_date: opt(eventDate),
         estimated_value: parsed,
-        stage,
+        guest_count: guests,
         notes: opt(notes),
       }
       await updateLead(orgId, lead.id, updates)
@@ -116,15 +117,8 @@ export function OpportunityDetailsForm({ orgId, orgSlug, lead, customer }: Oppor
             <Input id="oppValue" type="number" value={estimatedValue} onChange={(e) => setEstimatedValue(e.target.value)} placeholder="0" />
           </div>
           <div className="space-y-1">
-            <Label htmlFor="oppStage">Stage</Label>
-            <select
-              id="oppStage"
-              value={stage}
-              onChange={(e) => setStage(e.target.value as LeadStage)}
-              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            >
-              {LEAD_STAGES.map((s) => <option key={s} value={s}>{LEAD_STAGE_LABELS[s]}</option>)}
-            </select>
+            <Label htmlFor="oppGuests">Guest count</Label>
+            <Input id="oppGuests" type="number" value={guestCount} onChange={(e) => setGuestCount(e.target.value)} placeholder="Estimate" />
           </div>
         </div>
         <div className="space-y-1">

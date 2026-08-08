@@ -1,4 +1,4 @@
-import type { Lead, LeadStage } from '@/lib/types'
+import type { Lead, LeadStage, LostReason } from '@/lib/types'
 
 export const LEAD_STAGES: LeadStage[] = ['inquiry', 'consultation', 'proposal', 'closed_won', 'closed_lost']
 
@@ -52,4 +52,23 @@ export function pipelineSummary(leads: Lead[]): PipelineSummary {
 /** The opportunity's display label — its own title, or the contact name for legacy leads. */
 export function opportunityTitle(lead: Pick<Lead, 'title' | 'name'>): string {
   return lead.title?.trim() || lead.name
+}
+
+export const LOST_REASON_LABELS: Record<LostReason, string> = {
+  over_budget: 'Over budget',
+  went_elsewhere: 'Went elsewhere',
+  date_fell_through: 'Date fell through',
+  no_response: 'No response',
+}
+
+export const LOST_REASONS = (Object.entries(LOST_REASON_LABELS) as [LostReason, string][])
+  .map(([value, label]) => ({ value, label }))
+
+/** closed_at delta for a stage transition; {} when closed-ness is unchanged. */
+export function closedAtPatch(prev: LeadStage, next: LeadStage, nowIso: string): { closed_at?: string | null } {
+  const wasClosed = CLOSED_STAGES.includes(prev)
+  const isClosed = CLOSED_STAGES.includes(next)
+  if (!wasClosed && isClosed) return { closed_at: nowIso }
+  if (wasClosed && !isClosed) return { closed_at: null }
+  return {}
 }

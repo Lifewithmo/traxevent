@@ -1,7 +1,7 @@
 import { adminDb } from '@/lib/firebase-admin'
 import { FieldValue } from 'firebase-admin/firestore'
 import { LEAD_STAGES } from '@/lib/leads'
-import type { Lead, LeadStage, LeadWaiting } from '@/lib/types'
+import type { Lead, LeadStage, LeadWaiting, LostReason } from '@/lib/types'
 
 export interface LeadUpdate {
   name?: string
@@ -16,6 +16,9 @@ export interface LeadUpdate {
   notes?: string | null
   customer_id?: string | null
   waiting?: LeadWaiting | null
+  guest_count?: number | null
+  closed_at?: string | null
+  lost?: { reason: LostReason; note?: string } | null
 }
 
 export function leadsRef(orgId: string) {

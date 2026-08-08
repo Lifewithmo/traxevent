@@ -1,4 +1,4 @@
-import type { Proposal, Invoice, Contract, Vendor } from '@/lib/types'
+import type { Proposal, Invoice, Contract, Vendor, LeadStage } from '@/lib/types'
 import type { OppHealth } from '@/lib/opportunity-health'
 import { invoiceBalance } from '@/lib/invoices'
 
@@ -23,6 +23,17 @@ export function todayYmd(now: Date = new Date()): string {
   const m = String(now.getMonth() + 1).padStart(2, '0')
   const d = String(now.getDate()).padStart(2, '0')
   return `${y}-${m}-${d}`
+}
+
+/** Whole calendar days between an ISO timestamp's date part and todayYmd. */
+export function daysSince(iso: string, todayYmd: string): number {
+  const a = new Date(`${iso.slice(0, 10)}T00:00:00.000Z`).getTime()
+  const b = new Date(`${todayYmd}T00:00:00.000Z`).getTime()
+  return Math.max(0, Math.round((b - a) / 86_400_000))
+}
+
+export function lastTouchIso(lead: { last_touch_at?: string; updated_at?: string; created_at: string }): string {
+  return lead.last_touch_at ?? lead.updated_at ?? lead.created_at
 }
 
 export type DueStatus = 'overdue' | 'today' | 'upcoming'
@@ -62,6 +73,7 @@ export interface BannerInput {
   waitingReason?: string
   waitingFollowUp?: string
   stageLabel: string
+  lastTouchDays?: number
 }
 
 function dueLabel(dueYmd: string, today: string): string {
@@ -87,16 +99,38 @@ export function bannerContent(health: OppHealth, o: BannerInput): BannerContent 
           .filter(Boolean)
           .join(' · ') || 'Waiting on a reply',
       }
-    case 'needs_attention':
+    case 'needs_attention': {
+      const touch = o.lastTouchDays != null
+        ? ` Last touch ${o.lastTouchDays} day${o.lastTouchDays === 1 ? '' : 's'} ago.`
+        : ''
       return {
         tone: 'attention',
         heading: 'No next action',
-        detail: 'This opportunity has nothing scheduled — add a next step so it never rots.',
+        detail: `This opportunity has nothing scheduled — add a next step so it never rots.${touch}`,
       }
+    }
     case 'closed':
     default:
       return { tone: 'closed', heading: 'Closed', detail: o.stageLabel }
   }
+}
+
+/** Why the convert card is blocked (or what would unblock it) short of closed_won. */
+export function convertBlockReason(i: {
+  stage: LeadStage
+  proposals: Pick<Proposal, 'status'>[]
+  contracts: Pick<Contract, 'status'>[]
+  guestCount?: number
+}): { ready: boolean; message: string } {
+  if (i.stage === 'closed_won') return { ready: true, message: '' }
+  if (!i.proposals.some((p) => p.status === 'accepted')) {
+    return { ready: false, message: 'Blocked: no accepted proposal yet. Acceptance carries the package into Events.' }
+  }
+  if (!i.contracts.some((c) => c.status === 'signed')) {
+    const guests = i.guestCount != null ? ` and ${i.guestCount} guests` : ''
+    return { ready: false, message: `Blocked: the contract is unsigned. Signing carries the accepted package${guests} into Events.` }
+  }
+  return { ready: false, message: 'Ready — mark the deal won to convert.' }
 }
 
 export interface AttachmentChip {

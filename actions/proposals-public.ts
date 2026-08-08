@@ -6,6 +6,7 @@ import { adminDb } from '@/lib/firebase-admin'
 import { computeSelectedTotal, depositAmount, proposalExpiryInstant } from '@/lib/proposals'
 import { signedDocumentHash } from '@/lib/proposal-signature'
 import { sendProposalSignedConfirmation } from '@/lib/email'
+import { openStampPatch } from '@/lib/proposal-opens'
 import { getVerifiedSendingDomain } from '@/actions/domains'
 import type {
   OrgBranding, Proposal, ProposalStatus, ProposalLineItem, ProposalPackage,
@@ -234,7 +235,11 @@ export async function recordProposalView(token: string): Promise<void> {
     if (proposal.status === 'draft') return
     const now = new Date().toISOString()
     const ctx = await requestContext()
-    await doc.ref.update({ events: FieldValue.arrayUnion({ kind: 'viewed', at: now, ...ctx }) })
+    const stamp = openStampPatch(proposal, now)
+    await doc.ref.update({
+      events: FieldValue.arrayUnion({ kind: 'viewed', at: now, ...ctx }),
+      ...stamp,
+    })
   } catch {
     // best-effort; never surface a view-logging failure to the public caller
   }

@@ -387,6 +387,8 @@ export interface Department {
 
 export type LeadStage = 'inquiry' | 'consultation' | 'proposal' | 'closed_won' | 'closed_lost'
 
+export type LostReason = 'over_budget' | 'went_elsewhere' | 'date_fell_through' | 'no_response'
+
 export interface LeadWaiting {
   reason: string
   follow_up_date?: string
@@ -408,6 +410,10 @@ export interface Lead {
   customer_id?: string    // linked Customer once one exists
   tags?: string[]
   waiting?: LeadWaiting    // set when the lead is blocked/waiting on something
+  guest_count?: number     // estimated guests; prefills convert headcount
+  last_touch_at?: string   // ISO; stamped by logActivity; fallback updated_at ?? created_at
+  closed_at?: string       // ISO; stamped entering closed_won/closed_lost, cleared on reopen
+  lost?: { reason: LostReason; note?: string }
   created_at: string
   updated_at?: string
 }
@@ -502,6 +508,8 @@ export interface Proposal {
   blocks?: ProposalBlock[]     // document content, rendered above the pricing section
   selection?: ProposalSelection
   client_response_at?: string  // set when the client accepts/rejects
+  first_opened_at?: string // first portal view of a sent proposal
+  last_opened_at?: string  // latest portal view; throttled to one write per hour
   void_reason?: string         // set when status transitions to 'voided'
   voided_at?: string           // ISO; set when status transitions to 'voided'
   created_at: string
@@ -662,7 +670,7 @@ export interface ActivityEvent {
   id: string
   parent_type: 'customer' | 'opportunity'
   parent_id: string
-  kind: 'stage' | 'task' | 'note' | 'email' | 'form' | 'created' | 'waiting' | 'converted'
+  kind: 'stage' | 'task' | 'note' | 'email' | 'form' | 'created' | 'waiting' | 'converted' | 'lost' | 'nudge'
   summary: string
   created_at: string
 }

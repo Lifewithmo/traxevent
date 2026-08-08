@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { LEAD_STAGES, LEAD_STAGE_LABELS, OPEN_STAGES, CLOSED_STAGES, groupLeadsByStage, pipelineSummary, opportunityTitle } from '@/lib/leads'
+import { LEAD_STAGES, LEAD_STAGE_LABELS, OPEN_STAGES, CLOSED_STAGES, groupLeadsByStage, pipelineSummary, opportunityTitle, closedAtPatch, LOST_REASON_LABELS } from '@/lib/leads'
 import type { Lead, LeadStage } from '@/lib/types'
 
 describe('lead stages (V1)', () => {
@@ -62,5 +62,29 @@ describe('opportunityTitle', () => {
   })
   it('treats a blank title as absent', () => {
     expect(opportunityTitle({ title: '   ', name: 'Dana Kim' })).toBe('Dana Kim')
+  })
+})
+
+describe('closedAtPatch', () => {
+  const now = '2026-08-07T20:00:00.000Z'
+  it('stamps closed_at when entering a closed stage from an open one', () => {
+    expect(closedAtPatch('proposal', 'closed_won', now)).toEqual({ closed_at: now })
+    expect(closedAtPatch('inquiry', 'closed_lost', now)).toEqual({ closed_at: now })
+  })
+  it('clears closed_at when reopening', () => {
+    expect(closedAtPatch('closed_won', 'proposal', now)).toEqual({ closed_at: null })
+  })
+  it('is a no-op when the closed-ness does not change', () => {
+    expect(closedAtPatch('inquiry', 'consultation', now)).toEqual({})
+    expect(closedAtPatch('closed_won', 'closed_lost', now)).toEqual({})
+  })
+})
+
+describe('LOST_REASON_LABELS', () => {
+  it('labels all four reasons', () => {
+    expect(LOST_REASON_LABELS.over_budget).toBe('Over budget')
+    expect(LOST_REASON_LABELS.went_elsewhere).toBe('Went elsewhere')
+    expect(LOST_REASON_LABELS.date_fell_through).toBe('Date fell through')
+    expect(LOST_REASON_LABELS.no_response).toBe('No response')
   })
 })

@@ -19,9 +19,25 @@ describe('ConvertToWorkCard', () => {
     convertOpportunityToWork.mockResolvedValue({ id: 'e1', slug: 'nguyen-wedding-2026' } as Event)
   })
 
-  it('renders nothing for an opportunity that is not won', () => {
-    const { container } = render(<ConvertToWorkCard {...props} lead={{ ...won, stage: 'proposal' } as Lead} />)
-    expect(container).toBeEmptyDOMElement()
+  it('shows the block reason with a disabled button for an opportunity that is not won', () => {
+    render(<ConvertToWorkCard
+      {...props}
+      lead={{ ...won, stage: 'proposal' } as Lead}
+      blockReason="Blocked: no accepted proposal yet. Acceptance carries the package into Events."
+    />)
+    expect(screen.getByText(/no accepted proposal yet/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /convert to work/i })).toBeDisabled()
+  })
+
+  it('opens the form immediately when the open prop is set', () => {
+    render(<ConvertToWorkCard {...props} open />)
+    expect(screen.getByLabelText('Job name')).toBeInTheDocument()
+  })
+
+  it('prefills headcount from the opportunity guest count', () => {
+    render(<ConvertToWorkCard {...props} lead={{ ...won, guest_count: 60 } as Lead} />)
+    fireEvent.click(screen.getByRole('button', { name: /convert to work/i }))
+    expect(screen.getByLabelText('Headcount')).toHaveValue(60)
   })
 
   it('links to the job instead of offering conversion when one exists', () => {
