@@ -1,5 +1,12 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { normalizeTags } from '@/lib/crm/customers'
+
+// Mocked here the same way ActivityTimeline.test.tsx and OpportunityDetailClient.test.tsx mock it
+vi.mock('@/lib/firebase-admin', () => ({
+  adminDb: {},
+  adminAuth: {},
+  adminBucket: {},
+}))
 
 describe('normalizeTags', () => {
   it('trims whitespace and drops empty entries', () => {
