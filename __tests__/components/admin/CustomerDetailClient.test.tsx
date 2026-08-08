@@ -139,6 +139,27 @@ describe('CustomerDetailClient — editing contact details', () => {
   })
 })
 
+describe('CustomerDetailClient — tag buffering', () => {
+  beforeEach(() => { refresh.mockClear(); vi.mocked(updateCustomer).mockClear() })
+
+  it('buffers tags locally so a second rapid add is not lost to a stale customer prop', async () => {
+    render(<CustomerDetailClient {...props} />)
+    const input = screen.getByLabelText('Add tag')
+
+    fireEvent.change(input, { target: { value: 'a' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    await waitFor(() =>
+      expect(updateCustomer).toHaveBeenCalledWith('o1', 'c1', { tags: ['vip', 'a'] })
+    )
+
+    fireEvent.change(input, { target: { value: 'b' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    await waitFor(() =>
+      expect(updateCustomer).toHaveBeenCalledWith('o1', 'c1', { tags: ['vip', 'a', 'b'] })
+    )
+  })
+})
+
 describe('CustomerDetailClient — new opportunity', () => {
   it('opens a linked new-opportunity form from the header button', () => {
     render(<CustomerDetailClient {...props} />)

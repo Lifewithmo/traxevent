@@ -74,6 +74,7 @@ export function TagEditor({ tags, suggestions, onSave }: TagEditorProps) {
                 <button
                   type="button"
                   className="w-full px-2 py-1 text-left text-sm hover:bg-muted"
+                  disabled={busy}
                   onClick={() => void add(s)}
                 >
                   {s}

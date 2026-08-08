@@ -75,7 +75,7 @@ export function CustomerDetailClient({ orgId, orgSlug, customer, opportunities, 
   }
 
   const sortedOpportunities = [...opportunities].sort((a, b) => b.created_at.localeCompare(a.created_at))
-  const tags = customer.tags ?? []
+  const [tags, setTags] = useState(customer.tags ?? [])
 
   return (
     <div className="mx-auto max-w-5xl space-y-4 p-6">
@@ -91,8 +91,15 @@ export function CustomerDetailClient({ orgId, orgSlug, customer, opportunities, 
             tags={tags}
             suggestions={orgTags}
             onSave={async (next) => {
-              await updateCustomer(orgId, customer.id, { tags: next })
-              router.refresh()
+              const previous = tags
+              setTags(next)
+              try {
+                await updateCustomer(orgId, customer.id, { tags: next })
+                router.refresh()
+              } catch (e) {
+                setTags(previous)
+                throw e
+              }
             }}
           />
         </div>
