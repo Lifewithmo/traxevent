@@ -25,6 +25,17 @@ export function todayYmd(now: Date = new Date()): string {
   return `${y}-${m}-${d}`
 }
 
+/** Whole calendar days between an ISO timestamp's date part and todayYmd. */
+export function daysSince(iso: string, todayYmd: string): number {
+  const a = new Date(`${iso.slice(0, 10)}T00:00:00.000Z`).getTime()
+  const b = new Date(`${todayYmd}T00:00:00.000Z`).getTime()
+  return Math.max(0, Math.round((b - a) / 86_400_000))
+}
+
+export function lastTouchIso(lead: { last_touch_at?: string; updated_at?: string; created_at: string }): string {
+  return lead.last_touch_at ?? lead.updated_at ?? lead.created_at
+}
+
 export type DueStatus = 'overdue' | 'today' | 'upcoming'
 
 export function dueStatus(dueYmd: string, today: string): DueStatus {

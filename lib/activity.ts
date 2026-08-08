@@ -23,6 +23,12 @@ export async function logActivity(
   const created_at = new Date().toISOString()
   try {
     await activityRef(orgId).doc(id).set({ id, created_at, ...e })
+    if (e.parent_type === 'opportunity') {
+      // Denormalized freshness signal for the pipeline; best-effort like the rest.
+      await adminDb.collection('orgs').doc(orgId).collection('leads')
+        .doc(e.parent_id).update({ last_touch_at: created_at })
+        .catch(() => {})
+    }
   } catch (err) {
     // Best-effort telemetry: the caller's real business write has already
     // committed by the time logActivity runs, so a failure here must never

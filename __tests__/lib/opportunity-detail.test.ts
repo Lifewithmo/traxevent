@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   initials, addDays, dueStatus, todayYmd, formatRelativeTime,
-  bannerContent, attachmentChips,
+  bannerContent, attachmentChips, daysSince, lastTouchIso,
 } from '@/lib/opportunity-detail'
 import type { Proposal, Invoice, Contract } from '@/lib/types'
 
@@ -101,5 +101,20 @@ describe('attachmentChips', () => {
     const invoice = chips.find((c) => c.kind === 'invoice')!
     expect(invoice.count).toBe(1)
     expect(invoice.hint).toBeUndefined()
+  })
+})
+
+describe('daysSince', () => {
+  it('counts whole calendar days from the ISO date part', () => {
+    expect(daysSince('2026-07-27T15:00:00.000Z', '2026-08-07')).toBe(11)
+    expect(daysSince('2026-08-07T01:00:00.000Z', '2026-08-07')).toBe(0)
+  })
+})
+
+describe('lastTouchIso', () => {
+  it('prefers last_touch_at, then updated_at, then created_at', () => {
+    expect(lastTouchIso({ last_touch_at: 'a', updated_at: 'b', created_at: 'c' })).toBe('a')
+    expect(lastTouchIso({ updated_at: 'b', created_at: 'c' })).toBe('b')
+    expect(lastTouchIso({ created_at: 'c' })).toBe('c')
   })
 })
