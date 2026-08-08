@@ -56,15 +56,15 @@ describe('ClientsTable', () => {
     expect(screen.queryByText('Last update')).not.toBeInTheDocument()
   })
 
-  it('renders a customer with zero opportunities and no last activity sensibly', () => {
+  it('renders a customer with zero opportunities and no last contact sensibly', () => {
     render(<ClientsTable orgSlug="acme" rows={[newCustomerRow]} />)
     expect(screen.getByText('$0')).toBeInTheDocument()
     expect(screen.getByText('0 won')).toBeInTheDocument()
 
     const tableRow = screen.getByRole('row', { name: /No Jobs Yet/i })
     const cells = within(tableRow).getAllByRole('cell')
-    const lastActivityCell = cells[cells.length - 1]
-    expect(lastActivityCell).toHaveTextContent('—')
-    expect(lastActivityCell.textContent).toBe('—')
+    const lastContactCell = cells[cells.length - 1]
+    expect(lastContactCell).toHaveTextContent('—')
+    expect(lastContactCell.textContent).toBe('—')
   })
 })

@@ -56,13 +56,13 @@ describe('CustomerDetailClient', () => {
     expect(screen.getByText(/no opportunities yet/i)).toBeInTheDocument()
   })
 
-  it('shows a relative last-update time when the roll-up has one', () => {
+  it('shows a relative last-contact time when the roll-up has one', () => {
     render(<CustomerDetailClient {...props} rollup={{ ...rollup, lastContactAt: '2020-01-01T00:00:00.000Z' }} />)
     const tile = screen.getByText('Last contact').closest('div') as HTMLElement
     expect(within(tile).getByText(/ago$/)).toBeInTheDocument()
   })
 
-  it('shows an em dash for last update when the roll-up has none', () => {
+  it('shows an em dash for last contact when the roll-up has none', () => {
     render(<CustomerDetailClient {...props} />)
     const tile = screen.getByText('Last contact').closest('div') as HTMLElement
     expect(within(tile).getByText('—')).toBeInTheDocument()
@@ -157,6 +157,21 @@ describe('CustomerDetailClient — tag buffering', () => {
     await waitFor(() =>
       expect(updateCustomer).toHaveBeenCalledWith('o1', 'c1', { tags: ['vip', 'a', 'b'] })
     )
+  })
+
+  it('rolls back the optimistic tag badge and surfaces the error when the save fails', async () => {
+    vi.mocked(updateCustomer).mockRejectedValueOnce(new Error('boom'))
+    render(<CustomerDetailClient {...props} />)
+    const input = screen.getByLabelText('Add tag')
+
+    fireEvent.change(input, { target: { value: 'new-tag' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    await waitFor(() =>
+      expect(updateCustomer).toHaveBeenCalledWith('o1', 'c1', { tags: ['vip', 'new-tag'] })
+    )
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('boom'))
+    expect(screen.queryByText('new-tag')).not.toBeInTheDocument()
   })
 })
 

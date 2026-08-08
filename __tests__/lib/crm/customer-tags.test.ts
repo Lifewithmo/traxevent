@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { normalizeTags } from '@/lib/crm/customers'
 
-// Mocked here the same way ActivityTimeline.test.tsx and OpportunityDetailClient.test.tsx mock it
+// Mocked per the suite convention (see __tests__/actions/auth.test.ts, members.test.ts)
 vi.mock('@/lib/firebase-admin', () => ({
   adminDb: {},
   adminAuth: {},

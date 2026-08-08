@@ -33,6 +33,24 @@ interface CustomerDetailClientProps {
 // part of the save payload, matching OpportunityDetailsForm's `opt` helper.
 const opt = (v: string): string | null => (v.trim() === '' ? null : v.trim())
 
+// Mirrors lib/crm/customers.normalizeTags (trim, drop empties, case-insensitive
+// dedupe keeping first casing). Reimplemented locally rather than imported: that
+// module pulls in `adminDb` from '@/lib/firebase-admin' at module scope, which is
+// server-only and unsafe to drag into this client component.
+function normalizeTags(tags: string[]): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const raw of tags) {
+    const t = raw.trim()
+    if (!t) continue
+    const key = t.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(t)
+  }
+  return out
+}
+
 export function CustomerDetailClient({ orgId, orgSlug, customer, opportunities, rollup, notes, orgTags }: CustomerDetailClientProps) {
   const router = useRouter()
   const [body, setBody] = useState('')
@@ -92,7 +110,7 @@ export function CustomerDetailClient({ orgId, orgSlug, customer, opportunities, 
             suggestions={orgTags}
             onSave={async (next) => {
               const previous = tags
-              setTags(next)
+              setTags(normalizeTags(next))
               try {
                 await updateCustomer(orgId, customer.id, { tags: next })
                 router.refresh()
