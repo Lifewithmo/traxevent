@@ -1,11 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const save = vi.hoisted(() => vi.fn())
-const makePublic = vi.hoisted(() => vi.fn())
-const publicUrl = vi.hoisted(() => vi.fn().mockReturnValue('https://storage/logo.png'))
-const file = vi.hoisted(() => vi.fn().mockReturnValue({ save, makePublic, publicUrl }))
+const file = vi.hoisted(() => vi.fn().mockReturnValue({ save }))
 
-vi.mock('@/lib/firebase-admin', () => ({ adminBucket: { file } }))
+vi.mock('@/lib/firebase-admin', () => ({ adminBucket: { file, name: 'test-bucket' } }))
 vi.mock('@/lib/auth/assert', () => ({ assertOrgAdmin: vi.fn() }))
 
 import { uploadOrgAsset } from '@/actions/org-assets'
@@ -20,13 +18,19 @@ function fd(f: unknown): FormData {
 beforeEach(() => vi.clearAllMocks())
 
 describe('uploadOrgAsset', () => {
-  it('uploads an org logo to an org-scoped path and returns its public url', async () => {
+  it('uploads an org logo to an org-scoped path and returns a tokenized download url', async () => {
     const png = new File([new Uint8Array([1, 2, 3])], 'my logo.png', { type: 'image/png' })
     const res = await uploadOrgAsset('o1', 'logo', fd(png))
     expect(assertOrgAdmin).toHaveBeenCalledWith('o1')
-    expect(file.mock.calls[0][0]).toMatch(/^org-assets\/o1\/logo\/\d+-my_logo\.png$/)
-    expect(makePublic).toHaveBeenCalled()
-    expect(res).toEqual({ url: 'https://storage/logo.png' })
+    const path = file.mock.calls[0][0] as string
+    expect(path).toMatch(/^org-assets\/o1\/logo\/\d+-my_logo\.png$/)
+    // Token rides in object metadata (Firebase download-token access model —
+    // org policy forbids per-object ACLs and allUsers IAM on the prod bucket).
+    const token = save.mock.calls[0][1].metadata.metadata.firebaseStorageDownloadTokens
+    expect(token).toMatch(/^[0-9a-f-]{36}$/)
+    expect(res.url).toBe(
+      `https://firebasestorage.googleapis.com/v0/b/test-bucket/o/${encodeURIComponent(path)}?alt=media&token=${token}`,
+    )
   })
 
   it('scopes cover uploads under the cover kind', async () => {
