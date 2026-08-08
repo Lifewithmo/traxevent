@@ -437,6 +437,7 @@ export interface Customer {
   phone?: string
   tags?: string[]
   notes?: string
+  last_touch_at?: string   // ISO; stamped by logActivity, mirrors Lead.last_touch_at
   created_at: string
   updated_at?: string
 }

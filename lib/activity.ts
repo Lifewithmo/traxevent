@@ -29,6 +29,12 @@ export async function logActivity(
         .doc(e.parent_id).update({ last_touch_at: created_at })
         .catch(() => {})
     }
+    if (e.parent_type === 'customer') {
+      // Same denormalized freshness signal for the client list; best-effort.
+      await adminDb.collection('orgs').doc(orgId).collection('customers')
+        .doc(e.parent_id).update({ last_touch_at: created_at })
+        .catch(() => {})
+    }
   } catch (err) {
     // Best-effort telemetry: the caller's real business write has already
     // committed by the time logActivity runs, so a failure here must never

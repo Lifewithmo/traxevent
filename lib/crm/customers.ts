@@ -44,6 +44,12 @@ export async function createCustomerCore(orgId: string, input: CreateCustomerInp
   return customer
 }
 
+/** Guard-free customer read. Authorization is the caller's responsibility. */
+export async function getCustomerCore(orgId: string, customerId: string): Promise<Customer | null> {
+  const snap = await customersRef(orgId).doc(customerId).get()
+  return snap.exists ? (snap.data() as Customer) : null
+}
+
 /**
  * Find a customer by normalized email, or create one, atomically. Returns
  * `created: false` when an existing record was reused, `created: true` only when

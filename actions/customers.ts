@@ -2,7 +2,7 @@
 
 import { FieldValue } from 'firebase-admin/firestore'
 import { assertOrgMember, assertOrgAdmin } from '@/lib/auth/assert'
-import { createCustomerCore, customersRef, normalizeEmail, type CreateCustomerInput } from '@/lib/crm/customers'
+import { createCustomerCore, customersRef, getCustomerCore, normalizeEmail, type CreateCustomerInput } from '@/lib/crm/customers'
 import { listLeadsByCustomerCore } from '@/lib/crm/leads'
 import type { Customer, Lead } from '@/lib/types'
 
@@ -19,8 +19,7 @@ export async function listCustomers(orgId: string): Promise<Customer[]> {
 
 export async function getCustomer(orgId: string, customerId: string): Promise<Customer | null> {
   await assertOrgMember(orgId)
-  const snap = await customersRef(orgId).doc(customerId).get()
-  return snap.exists ? (snap.data() as Customer) : null
+  return getCustomerCore(orgId, customerId)
 }
 
 export async function listCustomerOpportunities(orgId: string, customerId: string): Promise<Lead[]> {
