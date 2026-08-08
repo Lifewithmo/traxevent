@@ -14,6 +14,8 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh }) }))
 vi.mock('@/actions/notes', () => ({ createNote: vi.fn().mockResolvedValue({}) }))
 // Same reasoning: updateCustomer is a 'use server' export backed by firebase-admin.
 vi.mock('@/actions/customers', () => ({ updateCustomer: vi.fn().mockResolvedValue(undefined) }))
+// Same reasoning: createLead is a 'use server' export backed by firebase-admin.
+vi.mock('@/actions/leads', () => ({ createLead: vi.fn().mockResolvedValue({ id: 'l9' }) }))
 
 const customer: Customer = {
   id: 'c1', name: 'Dana Kim', company: 'Riverside', email: 'dana@riv.co',
@@ -134,5 +136,14 @@ describe('CustomerDetailClient — editing contact details', () => {
     fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
     expect(await screen.findByText(/name is required/i)).toBeInTheDocument()
     expect(screen.queryByText('Saved.')).not.toBeInTheDocument()
+  })
+})
+
+describe('CustomerDetailClient — new opportunity', () => {
+  it('opens a linked new-opportunity form from the header button', () => {
+    render(<CustomerDetailClient {...props} />)
+    expect(screen.queryByText(/for dana kim/i)).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'New opportunity' }))
+    expect(screen.getByText(/for dana kim/i)).toBeInTheDocument()
   })
 })

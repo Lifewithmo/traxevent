@@ -13,6 +13,7 @@ import { createNote } from '@/actions/notes'
 import { updateCustomer } from '@/actions/customers'
 import { LEAD_STAGE_LABELS, opportunityTitle } from '@/lib/leads'
 import { formatRelativeTime } from '@/lib/opportunity-detail'
+import { NewOpportunityForm } from '@/components/admin/pipeline/NewOpportunityForm'
 import type { CustomerRollup } from '@/lib/crm/customer-rollup'
 import type { Customer, Lead, Note } from '@/lib/types'
 
@@ -43,6 +44,7 @@ export function CustomerDetailClient({ orgId, orgSlug, customer, opportunities, 
   const [contactBusy, setContactBusy] = useState(false)
   const [contactError, setContactError] = useState<string | null>(null)
   const [contactNotice, setContactNotice] = useState<string | null>(null)
+  const [creating, setCreating] = useState(false)
 
   async function handleAddNote() {
     if (!body.trim()) return
@@ -106,8 +108,11 @@ export function CustomerDetailClient({ orgId, orgSlug, customer, opportunities, 
               <Phone className="h-4 w-4" /> Call
             </a>
           )}
+          <Button size="sm" onClick={() => setCreating(true)}>New opportunity</Button>
         </div>
       </div>
+
+      <NewOpportunityForm orgId={orgId} open={creating} onClose={() => setCreating(false)} customer={customer} />
 
       <Card>
         <CardHeader><CardTitle className="text-base">Contact details</CardTitle></CardHeader>
