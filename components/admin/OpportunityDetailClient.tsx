@@ -11,13 +11,14 @@ import { useDismissable } from '@/hooks/useDismissable'
 import { LEAD_STAGE_LABELS, opportunityTitle } from '@/lib/leads'
 import { ContactCard } from '@/components/admin/opportunity/ContactCard'
 import { NextActionBanner } from '@/components/admin/opportunity/NextActionBanner'
-import { TasksPanel, type TasksPanelHandle } from '@/components/admin/opportunity/TasksPanel'
+import { type TasksPanelHandle } from '@/components/admin/opportunity/TasksPanel'
 import { ActivityTimeline } from '@/components/admin/opportunity/ActivityTimeline'
 import { FactsGrid } from '@/components/admin/opportunity/FactsGrid'
+import { TasksAndDocuments } from '@/components/admin/opportunity/TasksAndDocuments'
 import { ConvertToWorkCard } from '@/components/admin/opportunity/ConvertToWorkCard'
 import { MarkLostDialog } from '@/components/admin/opportunity/MarkLostDialog'
 import { StageMenu } from '@/components/admin/opportunity/StageMenu'
-import type { ActivityEvent, Customer, Event, Lead, Task } from '@/lib/types'
+import type { ActivityEvent, Contract, Customer, Event, Lead, NormalizedInvoice, Proposal, Task, Vendor } from '@/lib/types'
 import type { EventType } from '@/lib/event-types'
 
 interface OpportunityDetailClientProps {
@@ -29,11 +30,16 @@ interface OpportunityDetailClientProps {
   activity: ActivityEvent[]
   job: Event | null
   eventTypes: EventType[]
+  proposals: Proposal[]
+  invoices: NormalizedInvoice[]
+  contracts: Contract[]
+  vendors: Vendor[]
+  acceptedProposals: { id: string; title: string }[]
   pastBookings?: number
   convertBlockReason?: string
 }
 
-export function OpportunityDetailClient({ orgId, orgSlug, lead, customer, tasks, activity, job, eventTypes, pastBookings = 0, convertBlockReason }: OpportunityDetailClientProps) {
+export function OpportunityDetailClient({ orgId, orgSlug, lead, customer, tasks, activity, job, eventTypes, proposals, invoices, contracts, vendors, acceptedProposals, pastBookings = 0, convertBlockReason }: OpportunityDetailClientProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [deleting, setDeleting] = useState(false)
@@ -108,6 +114,18 @@ export function OpportunityDetailClient({ orgId, orgSlug, lead, customer, tasks,
         <div className="space-y-4 lg:col-span-3">
           <ContactCard orgSlug={orgSlug} customer={customer} lead={lead} variant="strip" pastBookings={pastBookings} />
           <FactsGrid orgId={orgId} orgSlug={orgSlug} lead={lead} customer={customer} />
+          <TasksAndDocuments
+            orgId={orgId}
+            orgSlug={orgSlug}
+            leadId={lead.id}
+            tasks={tasks}
+            proposals={proposals}
+            invoices={invoices}
+            contracts={contracts}
+            vendors={vendors}
+            acceptedProposals={acceptedProposals}
+            tasksPanelRef={taskInputRef}
+          />
           <ConvertToWorkCard
             orgId={orgId}
             orgSlug={orgSlug}
@@ -121,7 +139,6 @@ export function OpportunityDetailClient({ orgId, orgSlug, lead, customer, tasks,
 
         {/* Right: the working column */}
         <aside className="space-y-4 lg:col-span-2">
-          <TasksPanel ref={taskInputRef} orgId={orgId} leadId={lead.id} tasks={tasks} />
           <ActivityTimeline orgId={orgId} leadId={lead.id} activity={activity} />
         </aside>
       </div>

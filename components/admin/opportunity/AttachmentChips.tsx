@@ -1,30 +1,38 @@
-import { attachmentChips } from '@/lib/opportunity-detail'
-import type { Proposal, Invoice, Contract, Vendor, Task } from '@/lib/types'
+'use client'
+
+import type { AttachmentChip } from '@/lib/opportunity-detail'
 
 interface AttachmentChipsProps {
-  tasks: Task[]
-  proposals: Proposal[]
-  invoices: Invoice[]
-  contracts: Contract[]
-  vendors: Vendor[]
-  today: string
+  chips: AttachmentChip[]
+  selected: AttachmentChip['kind']
+  onSelect: (kind: AttachmentChip['kind']) => void
 }
 
-export function AttachmentChips(props: AttachmentChipsProps) {
-  const chips = attachmentChips(props)
+export function AttachmentChips({ chips, selected, onSelect }: AttachmentChipsProps) {
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="flex flex-wrap gap-2" role="group" aria-label="Tasks & documents">
       {chips.map((c) => (
-        <span
+        <button
           key={c.kind}
-          className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs ${
-            c.count === 0 ? 'border-border text-muted-foreground' : 'border-border bg-muted/50'
+          type="button"
+          aria-pressed={selected === c.kind}
+          onClick={() => onSelect(c.kind)}
+          className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs transition-colors ${
+            selected === c.kind
+              ? 'border-foreground bg-foreground text-background'
+              : c.count === 0
+                ? 'border-border text-muted-foreground hover:bg-muted/50'
+                : 'border-border bg-muted/50 hover:bg-muted'
           }`}
         >
           <span className="font-medium">{c.label}</span>
           <span>{c.count}</span>
-          {c.hint && <span className="text-muted-foreground">· {c.hint}</span>}
-        </span>
+          {c.hint && (
+            <span className={c.danger && selected !== c.kind ? 'text-destructive' : selected === c.kind ? '' : 'text-muted-foreground'}>
+              · {c.hint}
+            </span>
+          )}
+        </button>
       ))}
     </div>
   )

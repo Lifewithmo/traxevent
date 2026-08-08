@@ -50,7 +50,7 @@ export function LeadContractsClient({ orgId, orgSlug, leadId, contracts }: LeadC
   }
 
   return (
-    <div className="p-6 pt-0 max-w-2xl space-y-6">
+    <div className="space-y-6">
       <Card>
         <CardHeader className="flex-row items-center justify-between space-y-0">
           <CardTitle className="text-base">Contracts</CardTitle>
