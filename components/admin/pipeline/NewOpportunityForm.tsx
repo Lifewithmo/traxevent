@@ -82,9 +82,9 @@ export function NewOpportunityForm({ orgId, open, onClose, customer, customers }
         <div aria-live="polite" aria-atomic="true">
           {error && <p className="text-sm text-destructive">{error}</p>}
         </div>
-        {linked && (
+        {customer && (
           <p className="text-sm text-muted-foreground">
-            For {linked.name}{linked.company ? ` · ${linked.company}` : ''}
+            For {customer.name}{customer.company ? ` · ${customer.company}` : ''}
           </p>
         )}
         {!customer && customers && customers.length > 0 && (

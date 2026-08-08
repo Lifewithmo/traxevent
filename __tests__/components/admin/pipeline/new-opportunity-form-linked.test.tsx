@@ -41,4 +41,14 @@ describe('NewOpportunityForm linked mode', () => {
     render(<NewOpportunityForm orgId="o1" open onClose={() => {}} />)
     expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
   })
+
+  it('shows a single identity display when picking a customer via the typeahead', () => {
+    render(<NewOpportunityForm orgId="o1" open onClose={() => {}} customers={[customer]} />)
+    fireEvent.change(screen.getByLabelText(/link to existing customer/i), { target: { value: 'dana' } })
+    fireEvent.click(screen.getByRole('button', { name: /dana kim/i }))
+    expect(screen.getByText(/linked to/i)).toBeInTheDocument()
+    expect(screen.getByText('Dana Kim')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Clear' })).toBeInTheDocument()
+    expect(screen.queryByText(/^for /i)).not.toBeInTheDocument()
+  })
 })
