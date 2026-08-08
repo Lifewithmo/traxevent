@@ -13,6 +13,7 @@ import { ContactCard } from '@/components/admin/opportunity/ContactCard'
 import { NextActionBanner } from '@/components/admin/opportunity/NextActionBanner'
 import { type TasksPanelHandle } from '@/components/admin/opportunity/TasksPanel'
 import { ActivityTimeline } from '@/components/admin/opportunity/ActivityTimeline'
+import { DatesPanel } from '@/components/admin/opportunity/DatesPanel'
 import { FactsGrid } from '@/components/admin/opportunity/FactsGrid'
 import { TasksAndDocuments } from '@/components/admin/opportunity/TasksAndDocuments'
 import { ConvertToWorkCard } from '@/components/admin/opportunity/ConvertToWorkCard'
@@ -20,6 +21,7 @@ import { MarkLostDialog } from '@/components/admin/opportunity/MarkLostDialog'
 import { StageMenu } from '@/components/admin/opportunity/StageMenu'
 import type { ActivityEvent, Contract, Customer, Event, Lead, NormalizedInvoice, Proposal, Task, Vendor } from '@/lib/types'
 import type { EventType } from '@/lib/event-types'
+import type { CalendarItem } from '@/lib/calendar'
 
 interface OpportunityDetailClientProps {
   orgId: string
@@ -37,9 +39,11 @@ interface OpportunityDetailClientProps {
   acceptedProposals: { id: string; title: string }[]
   pastBookings?: number
   convertBlockReason?: string
+  today: string
+  calendarItems: CalendarItem[]
 }
 
-export function OpportunityDetailClient({ orgId, orgSlug, lead, customer, tasks, activity, job, eventTypes, proposals, invoices, contracts, vendors, acceptedProposals, pastBookings = 0, convertBlockReason }: OpportunityDetailClientProps) {
+export function OpportunityDetailClient({ orgId, orgSlug, lead, customer, tasks, activity, job, eventTypes, proposals, invoices, contracts, vendors, acceptedProposals, pastBookings = 0, convertBlockReason, today, calendarItems }: OpportunityDetailClientProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [deleting, setDeleting] = useState(false)
@@ -139,6 +143,7 @@ export function OpportunityDetailClient({ orgId, orgSlug, lead, customer, tasks,
 
         {/* Right: the working column */}
         <aside className="space-y-4 lg:col-span-2">
+          <DatesPanel orgId={orgId} orgSlug={orgSlug} lead={lead} today={today} initialItems={calendarItems} />
           <ActivityTimeline orgId={orgId} leadId={lead.id} activity={activity} />
         </aside>
       </div>

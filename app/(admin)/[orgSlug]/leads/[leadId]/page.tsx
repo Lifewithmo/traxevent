@@ -4,7 +4,8 @@ import { notFound } from 'next/navigation'
 import { adminDb } from '@/lib/firebase-admin'
 import { getLead } from '@/actions/leads'
 import { getCustomer, listCustomerOpportunities } from '@/actions/customers'
-import { convertBlockReason } from '@/lib/opportunity-detail'
+import { convertBlockReason, todayYmd } from '@/lib/opportunity-detail'
+import { windowDays } from '@/lib/date-window'
 import { listTasks } from '@/actions/tasks'
 import { listActivity } from '@/actions/activity'
 import { listProposals } from '@/actions/proposals'
@@ -13,6 +14,7 @@ import { listContracts } from '@/actions/contracts'
 import { listVendors } from '@/actions/vendors'
 import { listEventsByLead } from '@/actions/events'
 import { listOrgEventTypes } from '@/actions/event-types'
+import { listCalendarRange } from '@/actions/calendar'
 import { OpportunityDetailClient } from '@/components/admin/OpportunityDetailClient'
 import { ClientPortalLinkClient } from '@/components/admin/ClientPortalLinkClient'
 
@@ -25,7 +27,11 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ org
   const lead = await getLead(orgId, leadId)
   if (!lead) notFound()
 
-  const [customer, tasks, activity, proposals, invoices, contracts, vendors, jobs, eventTypes, customerLeads] = await Promise.all([
+  const today = todayYmd()
+  const center = lead.event_date ?? today
+  const win = windowDays(center)
+
+  const [customer, tasks, activity, proposals, invoices, contracts, vendors, jobs, eventTypes, customerLeads, calendarItems] = await Promise.all([
     lead.customer_id ? getCustomer(orgId, lead.customer_id) : Promise.resolve(null),
     listTasks(orgId, leadId),
     listActivity(orgId, 'opportunity', leadId),
@@ -36,6 +42,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ org
     listEventsByLead(orgId, leadId),
     listOrgEventTypes(orgId),
     lead.customer_id ? listCustomerOpportunities(orgId, lead.customer_id) : Promise.resolve([]),
+    listCalendarRange(orgId, orgSlug, win[0], win[9]),
   ])
 
   const acceptedProposals = proposals
@@ -68,6 +75,8 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ org
         acceptedProposals={acceptedProposals}
         pastBookings={pastBookings}
         convertBlockReason={blockReason}
+        today={today}
+        calendarItems={calendarItems}
       />
 
       <ClientPortalLinkClient orgId={orgId} leadId={leadId} />

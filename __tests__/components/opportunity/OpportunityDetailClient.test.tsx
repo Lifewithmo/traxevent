@@ -23,6 +23,7 @@ vi.mock('@/actions/proposals', () => ({}))
 vi.mock('@/actions/invoices', () => ({ createInvoice: vi.fn(), generateFromProposal: vi.fn() }))
 vi.mock('@/actions/contracts', () => ({ createContract: vi.fn() }))
 vi.mock('@/actions/vendors', () => ({ createVendor: vi.fn(), updateVendor: vi.fn(), deleteVendor: vi.fn() }))
+vi.mock('@/actions/calendar', () => ({ listCalendarRange: vi.fn().mockResolvedValue([]) }))
 
 import { OpportunityDetailClient } from '@/components/admin/OpportunityDetailClient'
 import type { Lead } from '@/lib/types'
@@ -36,6 +37,8 @@ const docsProps = {
   contracts: [],
   vendors: [],
   acceptedProposals: [],
+  today: '2026-08-07',
+  calendarItems: [],
 }
 
 describe('OpportunityDetailClient', () => {
