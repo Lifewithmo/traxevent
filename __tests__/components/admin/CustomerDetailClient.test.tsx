@@ -55,21 +55,21 @@ describe('CustomerDetailClient', () => {
   })
 
   it('shows a relative last-update time when the roll-up has one', () => {
-    render(<CustomerDetailClient {...props} rollup={{ ...rollup, lastActivityAt: '2020-01-01T00:00:00.000Z' }} />)
-    const tile = screen.getByText('Last update').closest('div') as HTMLElement
+    render(<CustomerDetailClient {...props} rollup={{ ...rollup, lastContactAt: '2020-01-01T00:00:00.000Z' }} />)
+    const tile = screen.getByText('Last contact').closest('div') as HTMLElement
     expect(within(tile).getByText(/ago$/)).toBeInTheDocument()
   })
 
   it('shows an em dash for last update when the roll-up has none', () => {
     render(<CustomerDetailClient {...props} />)
-    const tile = screen.getByText('Last update').closest('div') as HTMLElement
+    const tile = screen.getByText('Last contact').closest('div') as HTMLElement
     expect(within(tile).getByText('—')).toBeInTheDocument()
   })
 
-  it('labels the roll-up tile "Last update"', () => {
+  it('labels the roll-up tile "Last contact"', () => {
     render(<CustomerDetailClient {...props} />)
-    expect(screen.getByText('Last update')).toBeInTheDocument()
-    expect(screen.queryByText('Last contact')).not.toBeInTheDocument()
+    expect(screen.getByText('Last contact')).toBeInTheDocument()
+    expect(screen.queryByText('Last update')).not.toBeInTheDocument()
   })
 })
 

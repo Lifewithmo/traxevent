@@ -31,7 +31,7 @@ export default async function CustomerDetailPage({
       orgSlug={orgSlug}
       customer={customer}
       opportunities={opportunities}
-      rollup={rollupCustomer(opportunities)}
+      rollup={rollupCustomer(customer, opportunities)}
       notes={notes}
     />
   )

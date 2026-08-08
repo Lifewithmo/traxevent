@@ -23,7 +23,7 @@ export default async function ClientsPage({ params }: { params: Promise<{ orgSlu
 
   const rows = customers.map((customer) => ({
     customer,
-    rollup: rollupCustomer(byCustomer.get(customer.id) ?? []),
+    rollup: rollupCustomer(customer, byCustomer.get(customer.id) ?? []),
   }))
 
   return <ClientsTable orgSlug={orgSlug} rows={rows} />

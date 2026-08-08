@@ -154,9 +154,9 @@ export function CustomerDetailClient({ orgId, orgSlug, customer, opportunities, 
           <p className="text-xl font-semibold">{rollup.wonCount} / {rollup.lostCount}</p>
         </div>
         <div className="rounded-lg border bg-card p-4">
-          <p className="text-xs font-medium text-muted-foreground">Last update</p>
+          <p className="text-xs font-medium text-muted-foreground">Last contact</p>
           <p className="text-xl font-semibold">
-            {rollup.lastActivityAt ? formatRelativeTime(rollup.lastActivityAt) : '—'}
+            {rollup.lastContactAt ? formatRelativeTime(rollup.lastContactAt) : '—'}
           </p>
         </div>
       </div>

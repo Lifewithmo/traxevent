@@ -25,7 +25,7 @@ export function ClientsTable({ orgSlug, rows }: ClientsTableProps) {
               <th className="px-3 py-2 text-right font-medium text-muted-foreground">Open</th>
               <th className="px-3 py-2 text-right font-medium text-muted-foreground">Won</th>
               <th className="px-3 py-2 text-right font-medium text-muted-foreground">Lifetime value</th>
-              <th className="px-3 py-2 text-left font-medium text-muted-foreground">Last update</th>
+              <th className="px-3 py-2 text-left font-medium text-muted-foreground">Last contact</th>
             </tr>
           </thead>
           <tbody>
@@ -41,7 +41,7 @@ export function ClientsTable({ orgSlug, rows }: ClientsTableProps) {
                   <td className="px-3 py-2 text-right">{rollup.openCount}</td>
                   <td className="px-3 py-2 text-right">{rollup.wonCount} won</td>
                   <td className="px-3 py-2 text-right">${rollup.totalWonValue.toLocaleString()}</td>
-                  <td className="px-3 py-2">{rollup.lastActivityAt ? formatRelativeTime(rollup.lastActivityAt) : '—'}</td>
+                  <td className="px-3 py-2">{rollup.lastContactAt ? formatRelativeTime(rollup.lastContactAt) : '—'}</td>
                 </tr>
               ))
             )}

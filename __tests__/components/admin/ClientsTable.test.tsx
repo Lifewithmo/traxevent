@@ -19,7 +19,7 @@ const row: { customer: Customer; rollup: CustomerRollup } = {
     lostCount: 0,
     totalWonValue: 1500,
     openValue: 250,
-    lastActivityAt: '2026-03-05T00:00:00.000Z',
+    lastContactAt: '2026-03-05T00:00:00.000Z',
   },
 }
 
@@ -30,7 +30,7 @@ const newCustomerRow: { customer: Customer; rollup: CustomerRollup } = {
     company: 'Fresh Co',
     created_at: '2026-01-01T00:00:00.000Z',
   },
-  rollup: rollupCustomer([]),
+  rollup: rollupCustomer({}, []),
 }
 
 describe('ClientsTable', () => {
@@ -50,10 +50,10 @@ describe('ClientsTable', () => {
     expect(screen.getByText(/no clients yet/i)).toBeInTheDocument()
   })
 
-  it('labels the last-update column honestly', () => {
+  it('labels the last-contact column honestly', () => {
     render(<ClientsTable orgSlug="acme" rows={[row]} />)
-    expect(screen.getByText('Last update')).toBeInTheDocument()
-    expect(screen.queryByText('Last activity')).not.toBeInTheDocument()
+    expect(screen.getByText('Last contact')).toBeInTheDocument()
+    expect(screen.queryByText('Last update')).not.toBeInTheDocument()
   })
 
   it('renders a customer with zero opportunities and no last activity sensibly', () => {
