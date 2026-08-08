@@ -34,6 +34,10 @@ EventTrax pivot (neutralization, multi-brand, ops core). Detailed designs live i
 - **Opportunity workspace, increment 1** (branch `claude/opportunity-workspace`) —
   light sidebar, working-column density, attachment pill row, DatesPanel.
   Plan: `docs/superpowers/plans/2026-08-08-opportunity-workspace.md`.
+- **Customer page completion** (branch `claude/customer-page`) — new-opportunity-
+  from-customer dialog + pipeline customer typeahead (one `customer_id` seam),
+  real last-contact via denormalized stamps, tag editor with autocomplete.
+  Spec: `docs/superpowers/specs/2026-08-08-customer-page-completion-design.md`.
 
 ## Next (approved queue)
 
@@ -51,6 +55,15 @@ EventTrax pivot (neutralization, multi-brand, ops core). Detailed designs live i
 
 ## Backlog (no plan written yet)
 
+- **Actionable client list** (follows customer page completion — decided
+  2026-08-08). The client list should say *who needs touching and why*, not just
+  be searchable. Model: **derived touchpoints + stored facts** — rules derive
+  outreach suggestions live (post-event follow-up, ~60-days-before-event-
+  anniversary rebook window, went-quiet) from `event_date` + last contact;
+  stored data is only human knowledge (life-event key dates, per-customer
+  dismiss/snooze of a suggestion). Views group customers by reason. Not 1:1 by
+  design — rules are defaults, never hardwired per customer. AI note-mining
+  (suggest key dates from notes) is a later suggester layer on the same model.
 - **Public intake form** — the pipeline's missing front door; every opportunity
   is hand-keyed today. Hard prerequisite: the repo has zero rate limiting / bot
   protection, which this increment must solve first.
