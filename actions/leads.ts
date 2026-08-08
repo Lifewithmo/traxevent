@@ -4,17 +4,18 @@ import { assertOrgMember, assertOrgAdmin } from '@/lib/auth/assert'
 import { LEAD_STAGES, closedAtPatch, LOST_REASON_LABELS } from '@/lib/leads'
 import { logActivity } from '@/lib/activity'
 import { leadsRef, listLeadsCore, updateLeadCore, type LeadUpdate } from '@/lib/crm/leads'
-import { findOrCreateCustomerCore } from '@/lib/crm/customers'
+import { findOrCreateCustomerCore, getCustomerCore } from '@/lib/crm/customers'
 import { convertOpportunityToWorkCore, type ConvertToWorkInput } from '@/lib/crm/convert'
 import { randomBytes } from 'crypto'
-import type { Lead, LeadStage, LeadWaiting, LostReason, Event } from '@/lib/types'
+import type { Lead, LeadStage, LeadWaiting, LostReason, Event, Customer } from '@/lib/types'
 
 // NOTE: this is a 'use server' module — every export must be an async function.
 // LeadUpdate (a type) is therefore NOT re-exported here; import it from
 // '@/lib/crm/leads' directly. Re-exporting it broke `next build` (RSC compiler).
 
 export interface CreateLeadInput {
-  name: string
+  name?: string          // required unless customer_id is present
+  customer_id?: string   // link to an existing customer; contact snapshot is copied from it
   title?: string
   email?: string
   phone?: string
@@ -40,26 +41,47 @@ export async function getLead(orgId: string, leadId: string): Promise<Lead | nul
 
 export async function createLead(orgId: string, input: CreateLeadInput): Promise<Lead> {
   await assertOrgAdmin(orgId)
-  if (!input.name?.trim()) throw new Error('Name is required')
   const stage = input.stage ?? 'inquiry'
   if (!LEAD_STAGES.includes(stage)) throw new Error('Invalid stage')
-  const { customer } = await findOrCreateCustomerCore(orgId, {
-    name: input.name.trim(),
-    ...(input.organization?.trim() ? { company: input.organization.trim() } : {}),
-    ...(input.email?.trim() ? { email: input.email.trim() } : {}),
-    ...(input.phone?.trim() ? { phone: input.phone.trim() } : {}),
-  })
+
+  let customer: Customer
+  if (input.customer_id) {
+    const found = await getCustomerCore(orgId, input.customer_id)
+    if (!found) throw new Error('Customer not found')
+    customer = found
+  } else {
+    if (!input.name?.trim()) throw new Error('Name is required')
+    customer = (await findOrCreateCustomerCore(orgId, {
+      name: input.name.trim(),
+      ...(input.organization?.trim() ? { company: input.organization.trim() } : {}),
+      ...(input.email?.trim() ? { email: input.email.trim() } : {}),
+      ...(input.phone?.trim() ? { phone: input.phone.trim() } : {}),
+    })).customer
+  }
+
+  // Linked mode snapshots contact fields from the customer record; unlinked keeps the typed values.
+  const contact = input.customer_id
+    ? {
+        name: customer.name,
+        ...(customer.email ? { email: customer.email } : {}),
+        ...(customer.phone ? { phone: customer.phone } : {}),
+        ...(customer.company ? { organization: customer.company } : {}),
+      }
+    : {
+        name: input.name!.trim(),
+        ...(input.email?.trim() ? { email: input.email.trim() } : {}),
+        ...(input.phone?.trim() ? { phone: input.phone.trim() } : {}),
+        ...(input.organization?.trim() ? { organization: input.organization.trim() } : {}),
+      }
+
   const id = randomBytes(8).toString('hex')
   const lead: Lead = {
     id,
-    name: input.name.trim(),
+    ...contact,
     stage,
     created_at: new Date().toISOString(),
     customer_id: customer.id,
     ...(input.title?.trim() ? { title: input.title.trim() } : {}),
-    ...(input.email?.trim() ? { email: input.email.trim() } : {}),
-    ...(input.phone?.trim() ? { phone: input.phone.trim() } : {}),
-    ...(input.organization?.trim() ? { organization: input.organization.trim() } : {}),
     ...(input.event_type?.trim() ? { event_type: input.event_type.trim() } : {}),
     ...(input.event_date?.trim() ? { event_date: input.event_date.trim() } : {}),
     ...(input.estimated_value != null ? { estimated_value: input.estimated_value } : {}),
