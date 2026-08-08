@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { createLead } from '@/actions/leads'
+import { CustomerPicker } from './CustomerPicker'
 import type { Customer } from '@/lib/types'
 
 interface NewOpportunityFormProps {
@@ -14,13 +15,15 @@ interface NewOpportunityFormProps {
   open: boolean
   onClose: () => void
   customer?: Customer
+  customers?: Customer[]
 }
 
-export function NewOpportunityForm({ orgId, open, onClose, customer }: NewOpportunityFormProps) {
+export function NewOpportunityForm({ orgId, open, onClose, customer, customers }: NewOpportunityFormProps) {
   const router = useRouter()
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const linked = customer ?? null
+  const [picked, setPicked] = useState<Customer | null>(null)
+  const linked = customer ?? picked
 
   const [title, setTitle] = useState('')
   const [name, setName] = useState('')
@@ -36,6 +39,7 @@ export function NewOpportunityForm({ orgId, open, onClose, customer }: NewOpport
   function resetForm() {
     setTitle(''); setName(''); setOrganization(''); setEmail(''); setPhone('')
     setEventType(''); setEventDate(''); setGuestCount(''); setEstimatedValue(''); setNotes('')
+    setPicked(null)
     setError(null)
   }
 
@@ -82,6 +86,9 @@ export function NewOpportunityForm({ orgId, open, onClose, customer }: NewOpport
           <p className="text-sm text-muted-foreground">
             For {linked.name}{linked.company ? ` · ${linked.company}` : ''}
           </p>
+        )}
+        {!customer && customers && customers.length > 0 && (
+          <CustomerPicker customers={customers} value={picked} onChange={setPicked} />
         )}
         <div className="space-y-1">
           <Label htmlFor="leadTitle">Title</Label>

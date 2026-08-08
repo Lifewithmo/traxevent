@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic'
 import { notFound } from 'next/navigation'
 import { adminDb } from '@/lib/firebase-admin'
 import { listLeads } from '@/actions/leads'
+import { listCustomers } from '@/actions/customers'
 import { listTasks } from '@/actions/tasks'
 import { listProposals } from '@/actions/proposals'
 import { buildPipelineRows, closedThisMonth } from '@/lib/pipeline-view'
@@ -22,7 +23,7 @@ export default async function LeadsPage({
   if (orgSnap.empty) notFound()
   const orgId = orgSnap.docs[0].id
 
-  const leads = await listLeads(orgId)
+  const [leads, customers] = await Promise.all([listLeads(orgId), listCustomers(orgId)])
   const open = leads.filter((l) => OPEN_STAGES.includes(l.stage))
   const closed = leads.filter((l) => CLOSED_STAGES.includes(l.stage))
   const inputs = await Promise.all(open.map(async (lead) => {
@@ -44,5 +45,5 @@ export default async function LeadsPage({
   }
   return view === 'board'
     ? <PipelineBoardView {...shared} />
-    : <PipelineListClient {...shared} closed={closed} />
+    : <PipelineListClient {...shared} closed={closed} customers={customers} />
 }

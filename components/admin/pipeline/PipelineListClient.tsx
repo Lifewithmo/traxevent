@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { nudgeProposal } from '@/actions/nudge'
 import { LEAD_STAGE_LABELS, LOST_REASON_LABELS, opportunityTitle } from '@/lib/leads'
 import type { PipelineGroups, PipelineRow, closedThisMonth } from '@/lib/pipeline-view'
-import type { Lead } from '@/lib/types'
+import type { Customer, Lead } from '@/lib/types'
 import { NewOpportunityForm } from './NewOpportunityForm'
 
 interface PipelineListClientProps {
@@ -20,6 +20,7 @@ interface PipelineListClientProps {
   openCount: number
   openValue: number
   monthly: ReturnType<typeof closedThisMonth>
+  customers?: Customer[]
 }
 
 type Tab = 'needs_move' | 'open' | 'closed'
@@ -27,7 +28,7 @@ type Tab = 'needs_move' | 'open' | 'closed'
 const money = (n: number) => `$${n.toLocaleString()}`
 
 export function PipelineListClient({
-  orgId, orgSlug, groups, closed, openCount, openValue, monthly,
+  orgId, orgSlug, groups, closed, openCount, openValue, monthly, customers,
 }: PipelineListClientProps) {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState<Tab>('open')
@@ -136,7 +137,7 @@ export function PipelineListClient({
         {error && <p className="text-sm text-destructive">{error}</p>}
       </div>
 
-      <NewOpportunityForm orgId={orgId} open={creating} onClose={() => setCreating(false)} />
+      <NewOpportunityForm orgId={orgId} open={creating} onClose={() => setCreating(false)} customers={customers} />
 
       <div className="flex gap-2">
         <Button
