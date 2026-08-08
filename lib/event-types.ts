@@ -100,3 +100,22 @@ export function getAllEventTypes(): EventType[] {
 export function resolveTerminology(eventTypeId: string, snapshot?: Terminology): Terminology {
   return snapshot ?? getEventType(eventTypeId).terminology
 }
+
+export interface EventCreateFields {
+  event_type_id: string
+  registration_type: RegistrationUnit
+  event_type_terminology?: Terminology
+}
+
+/**
+ * The event fields a selected EventType determines. Custom (org-defined) types
+ * snapshot their terminology onto the event because the type can be renamed
+ * later; built-ins resolve by id and carry no copy.
+ */
+export function eventCreateFieldsFromType(type: EventType): EventCreateFields {
+  return {
+    event_type_id: type.id,
+    registration_type: type.registrationUnit,
+    ...(type.is_custom ? { event_type_terminology: type.terminology } : {}),
+  }
+}

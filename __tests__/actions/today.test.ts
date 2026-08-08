@@ -9,6 +9,8 @@ vi.mock('@/lib/crm/leads', async (orig) => ({
   listLeadsCore,
 }))
 vi.mock('@/lib/crm/tasks', () => ({ listTasksCore, tasksRef: vi.fn() }))
+const listEventsCore = vi.hoisted(() => vi.fn())
+vi.mock('@/lib/events', () => ({ listEventsCore, eventsRef: vi.fn(), createEventCore: vi.fn(), listEventsByLeadCore: vi.fn() }))
 
 import { getTodayData } from '@/actions/today'
 
@@ -21,6 +23,7 @@ describe('getTodayData', () => {
       { id: 'closed1', name: 'B', stage: 'closed_won', created_at: '2026-01-01T00:00:00.000Z', estimated_value: 999 },
     ])
     listTasksCore.mockResolvedValue([]) // open1 has no tasks -> needs attention
+    listEventsCore.mockResolvedValue([])
     const data = await getTodayData('o1')
     // listTasksCore called once, for the open lead only
     expect(listTasksCore).toHaveBeenCalledTimes(1)
@@ -37,8 +40,21 @@ describe('getTodayData', () => {
       { id: 'l3', name: 'C', stage: 'consultation', created_at: '2026-08-01T00:00:00.000Z' },
     ])
     listTasksCore.mockResolvedValue([])
+    listEventsCore.mockResolvedValue([])
     await getTodayData('o1')
     expect(assertOrgMember).toHaveBeenCalledTimes(1)
     expect(listTasksCore).toHaveBeenCalledTimes(3)
+  })
+
+  it('treats a won lead with a linked event as scheduled, reading events once', async () => {
+    listLeadsCore.mockResolvedValue([
+      { id: 'w1', name: 'A', stage: 'closed_won', created_at: '2026-08-01T00:00:00.000Z' },
+      { id: 'w2', name: 'B', stage: 'closed_won', created_at: '2026-08-01T00:00:00.000Z' },
+    ])
+    listTasksCore.mockResolvedValue([])
+    listEventsCore.mockResolvedValue([{ id: 'e1', lead_id: 'w1' }, { id: 'e2' }])
+    const data = await getTodayData('o1')
+    expect(listEventsCore).toHaveBeenCalledTimes(1)
+    expect(data.wonUnscheduled.map((w) => w.leadId)).toEqual(['w2'])
   })
 })

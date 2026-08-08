@@ -10,6 +10,8 @@ import { listProposals } from '@/actions/proposals'
 import { listInvoices } from '@/actions/invoices'
 import { listContracts } from '@/actions/contracts'
 import { listVendors } from '@/actions/vendors'
+import { listEventsByLead } from '@/actions/events'
+import { listOrgEventTypes } from '@/actions/event-types'
 import { OpportunityDetailClient } from '@/components/admin/OpportunityDetailClient'
 import { AttachmentChips } from '@/components/admin/opportunity/AttachmentChips'
 import { LeadProposalsClient } from '@/components/admin/LeadProposalsClient'
@@ -27,7 +29,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ org
   const lead = await getLead(orgId, leadId)
   if (!lead) notFound()
 
-  const [customer, tasks, activity, proposals, invoices, contracts, vendors] = await Promise.all([
+  const [customer, tasks, activity, proposals, invoices, contracts, vendors, jobs, eventTypes] = await Promise.all([
     lead.customer_id ? getCustomer(orgId, lead.customer_id) : Promise.resolve(null),
     listTasks(orgId, leadId),
     listActivity(orgId, 'opportunity', leadId),
@@ -35,6 +37,8 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ org
     listInvoices(orgId, leadId),
     listContracts(orgId, leadId),
     listVendors(orgId, leadId),
+    listEventsByLead(orgId, leadId),
+    listOrgEventTypes(orgId),
   ])
 
   const acceptedProposals = proposals
@@ -50,6 +54,8 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ org
         customer={customer}
         tasks={tasks}
         activity={activity}
+        job={jobs[0] ?? null}
+        eventTypes={eventTypes}
       />
 
       <div className="mx-auto max-w-5xl space-y-4 px-6 pb-2">

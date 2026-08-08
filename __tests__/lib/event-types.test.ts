@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { getEventType, getAllEventTypes, DEFAULT_EVENT_TYPE_ID } from '@/lib/event-types'
+import { getEventType, getAllEventTypes, DEFAULT_EVENT_TYPE_ID, eventCreateFieldsFromType } from '@/lib/event-types'
+import type { EventType } from '@/lib/event-types'
 
 describe('DEFAULT_EVENT_TYPE_ID', () => {
   it('is event', () => {
@@ -75,5 +76,25 @@ describe('getAllEventTypes', () => {
       expect(et.terminology.assignmentPlural).toBeTruthy()
       expect(et.terminology.eventLabel).toBeTruthy()
     }
+  })
+})
+
+describe('eventCreateFieldsFromType', () => {
+  it('carries id and registration unit from a built-in type', () => {
+    expect(eventCreateFieldsFromType(getEventType('coffee-service'))).toEqual({
+      event_type_id: 'coffee-service',
+      registration_type: 'individual',
+    })
+  })
+
+  it('omits terminology for a built-in type', () => {
+    expect('event_type_terminology' in eventCreateFieldsFromType(getEventType('catering'))).toBe(false)
+  })
+
+  it('snapshots terminology for a custom type', () => {
+    const custom = { ...getEventType('event'), id: 'org-custom', is_custom: true } as EventType
+    const fields = eventCreateFieldsFromType(custom)
+    expect(fields.event_type_id).toBe('org-custom')
+    expect(fields.event_type_terminology).toEqual(custom.terminology)
   })
 })

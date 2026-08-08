@@ -19,7 +19,7 @@ describe('OpportunityDetailClient', () => {
   beforeEach(() => { push.mockClear(); deleteLead.mockClear() })
 
   it('renders header, banner, tasks and activity', () => {
-    render(<OpportunityDetailClient orgId="o1" orgSlug="acme" lead={lead} customer={null} tasks={[]} activity={[]} />)
+    render(<OpportunityDetailClient orgId="o1" orgSlug="acme" lead={lead} customer={null} tasks={[]} activity={[]} job={null} eventTypes={[]} />)
     expect(screen.getByRole('heading', { name: 'Ada Wedding' })).toBeInTheDocument()
     expect(screen.getByText('Tasks')).toBeInTheDocument()
     expect(screen.getByText('Activity')).toBeInTheDocument()
@@ -29,7 +29,7 @@ describe('OpportunityDetailClient', () => {
 
   it('deletes after confirm', async () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true)
-    render(<OpportunityDetailClient orgId="o1" orgSlug="acme" lead={lead} customer={null} tasks={[]} activity={[]} />)
+    render(<OpportunityDetailClient orgId="o1" orgSlug="acme" lead={lead} customer={null} tasks={[]} activity={[]} job={null} eventTypes={[]} />)
     fireEvent.click(screen.getByRole('button', { name: /delete/i }))
     await waitFor(() => expect(deleteLead).toHaveBeenCalledWith('o1', 'l1'))
     await waitFor(() => expect(push).toHaveBeenCalledWith('/acme/leads'))
@@ -37,7 +37,7 @@ describe('OpportunityDetailClient', () => {
 
   it('confirms deletion using the opportunity title, not the contact name', () => {
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
-    render(<OpportunityDetailClient orgId="o1" orgSlug="acme" lead={titledLead} customer={null} tasks={[]} activity={[]} />)
+    render(<OpportunityDetailClient orgId="o1" orgSlug="acme" lead={titledLead} customer={null} tasks={[]} activity={[]} job={null} eventTypes={[]} />)
     fireEvent.click(screen.getByRole('button', { name: /delete/i }))
     expect(confirmSpy).toHaveBeenCalledWith('Delete "Riverside gala"? This cannot be undone.')
   })

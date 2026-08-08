@@ -14,8 +14,8 @@
 
 - **This is NOT the Next.js you know.** Read the relevant guide in `node_modules/next/dist/docs/` before any routing/server-action work; heed deprecation notices. (AGENTS.md)
 - **`'use server'` modules export async functions ONLY.** Never re-export a type from `actions/*` — it passes `tsc` and breaks `next build` (RSC compiler). See the NOTE comments in `actions/leads.ts`, `actions/today.ts`, `actions/customers.ts`.
-- **Cores (`lib/crm/*.ts`, `lib/ops/*.ts`, and the new `lib/events.ts`) carry no `'use server'`, no `import 'server-only'`, and call no `assert*`.**
-- **Cores do data; actions log activity.** `lib/activity.ts` carries `import 'server-only'`, so a core must never import `logActivity`. This mirrors `setLeadWaiting`/`clearLeadWaiting` in `actions/leads.ts`: core mutates, action logs. **This is a deliberate refinement of the spec**, which described activity logging inside the convert core.
+- **Cores (`lib/crm/*.ts`, `lib/ops/*.ts`, and the new `lib/events.ts`) carry no `'use server'` directive, no `import 'server-only'` directive of their own, and call no `assert*`.** (They do reach `server-only` transitively through `@/lib/firebase-admin`; the rule is about the core's own directives, matching every existing core.)
+- **Cores do data; actions log activity.** A core must never import `logActivity`. This mirrors `setLeadWaiting`/`clearLeadWaiting` in `actions/leads.ts`: the core mutates, the action logs — so activity logging stays where authorization already happened, and a core stays a pure data operation any caller can compose. **This is a deliberate refinement of the spec**, which described activity logging inside the convert core.
 - **Cores validate their own inputs.** Precedent: `updateLeadCore` validates stage; `instantiateOpsPlanCore` validates guests.
 - **`opportunityTitle(lead)` from `lib/leads.ts` is the single canonical way to label an opportunity.** Never inline the `title ?? name` fallback.
 - **Health stays derived** — never store an `active`/`waiting`/`needs_attention` flag.
@@ -24,7 +24,7 @@
 - Reads require `assertOrgMember`; writes require `assertOrgAdmin`.
 - **Green gate every task:** `npx tsc --noEmit` clean, `npm test` passing, `npm run lint` 0 errors (20 pre-existing warnings expected). Baseline is **153 test files / 1044 tests / 0 failures**; the count only goes up.
 - **Run `npm run build` before declaring Tasks 3, 4 and 7 green** — `tsc` alone does not catch the `'use server'` type re-export failure.
-- **Worktree:** all work happens in `/Users/rm/vw/traxevent/.worktrees/convert-to-work` on branch `claude/convert-to-work`. Confirm `git rev-parse --abbrev-ref HEAD` before every commit. **Never commit to `main`.**
+- **Worktree:** all work happens in `/Users/rm/vw/traxevent/.claude/worktrees/convert-to-work` on branch `claude/convert-to-work`. Confirm `git rev-parse --abbrev-ref HEAD` before every commit. **Never commit to `main`.**
 - **Never run vitest from the primary checkout.** It scans sibling worktrees and produces thousands of false failures. From the worktree, run `npm test`. If you must run from the primary checkout, add `--exclude '**/.claude/**' --exclude '**/.worktrees/**'`.
 
 ---
@@ -431,6 +431,7 @@ vi.mock('@/lib/crm/leads', async (orig) => ({
 }))
 
 import { convertOpportunityToWorkCore } from '@/lib/crm/convert'
+import { getEventType } from '@/lib/event-types'
 
 const input = {
   name: 'Nguyen Wedding',
@@ -470,7 +471,7 @@ describe('convertOpportunityToWorkCore', () => {
   })
 
   it('passes custom terminology through when present', async () => {
-    const terminology = { registrantSingular: 'Client' } as never
+    const terminology = getEventType('event').terminology
     await convertOpportunityToWorkCore('o1', 'l1', { ...input, event_type_terminology: terminology })
     expect(createEventCore.mock.calls[0][1].event_type_terminology).toBe(terminology)
   })
@@ -1413,3 +1414,17 @@ Do **not** pick these up here — see the spec's "Out of scope":
 - Backfilling `lead_id` onto existing events (pre-launch; nothing to backfill).
 - Automatic conversion on proposal acceptance.
 - Any item from the CRM V1 follow-up backlog in `docs/superpowers/plans/2026-08-06-crm-v1-finish-out.md`.
+
+---
+
+## Known residuals at merge
+
+Surfaced by the final whole-branch review and its fix wave, adjudicated as non-blocking. Recorded here because the execution workspace is scratch and does not survive.
+
+- **`resolveUniqueEventSlug`'s JSDoc says "guaranteed unique"** but the function is itself a read-then-write: two concurrent creations of the same name+year can both find the base slug free. Strictly better than the deterministic collision it replaced, but the docstring overclaims. Same class as the accepted conversion race.
+- **`generateCloseoutInvoice`'s JSDoc calls `event.lead_id` "the primary path"** while the code is `leadId ?? event.lead_id` — the explicit parameter wins, and `CloseoutClient` always passes it (prefilled from the link). Substantively true, technically inverted.
+- **Today's row lost its explicit "Convert to work" button** when the row collapsed to a single link (required, to stop two tab stops pointing at one href). The row still navigates to the opportunity, where the real affordance lives — but the Today screen no longer names the action.
+- **`__tests__/actions/events.test.ts:74` uses `mockReset()`** where `mockClear()` would preserve the mock's `{ empty: true }` default. Harmless today; a future `createEvent` test added after that block would get `undefined` from `.get()`.
+- **`components/admin/today/WonUnscheduledList.tsx`'s comment** describes the removed two-link state in the present tense.
+
+Also unchanged from the plan: scenarios 6, 7, 18 and 19 in "Manual walkthrough before merge" have **not** been walked by hand.

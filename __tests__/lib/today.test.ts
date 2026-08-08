@@ -10,7 +10,7 @@ describe('buildToday', () => {
 
   it('needs-attention = open lead, not waiting, no dated task', () => {
     const l = lead({ id: 'a', name: 'Ann', organization: 'Acme' })
-    const d = buildToday({ leads: [l], tasksByLeadId: { a: [] }, today })
+    const d = buildToday({ leads: [l], tasksByLeadId: { a: [] }, today, scheduledLeadIds: [] })
     expect(d.needsAttention.map((n) => n.leadId)).toEqual(['a'])
     expect(d.needsAttention[0].company).toBe('Acme')
     expect(d.tiles.needsAttention).toBe(1)
@@ -18,7 +18,7 @@ describe('buildToday', () => {
 
   it('a dated open task moves a lead out of needs-attention and into due when due<=today', () => {
     const l = lead({ id: 'b' })
-    const d = buildToday({ leads: [l], tasksByLeadId: { b: [task({ id: 't1', lead_id: 'b', due_date: '2026-08-05' })] }, today })
+    const d = buildToday({ leads: [l], tasksByLeadId: { b: [task({ id: 't1', lead_id: 'b', due_date: '2026-08-05' })] }, today, scheduledLeadIds: [] })
     expect(d.needsAttention).toHaveLength(0)
     expect(d.dueTasks.map((x) => x.task.id)).toEqual(['t1'])
     expect(d.dueTasks[0].status).toBe('today')
@@ -32,7 +32,7 @@ describe('buildToday', () => {
       task({ id: 'fut', lead_id: 'c', due_date: '2026-08-09' }),
       task({ id: 'donetoday', lead_id: 'c', due_date: '2026-08-05', done: true }),
     ]
-    const d = buildToday({ leads: [l], tasksByLeadId: { c: tasks }, today })
+    const d = buildToday({ leads: [l], tasksByLeadId: { c: tasks }, today, scheduledLeadIds: [] })
     expect(d.dueTasks.map((x) => x.task.id)).toEqual(['over'])
     expect(d.dueTasks[0].status).toBe('overdue')
   })
@@ -40,7 +40,7 @@ describe('buildToday', () => {
   it('waiting list carries reason, follow-up-due and quiet days; sorts due-first', () => {
     const notDue = lead({ id: 'w1', name: 'W1', updated_at: '2026-08-04T00:00:00.000Z', waiting: { reason: 'quote', follow_up_date: '2026-08-10' } })
     const due = lead({ id: 'w2', name: 'W2', updated_at: '2026-08-01T00:00:00.000Z', waiting: { reason: 'sign', follow_up_date: '2026-08-03' } })
-    const d = buildToday({ leads: [notDue, due], tasksByLeadId: { w1: [], w2: [] }, today })
+    const d = buildToday({ leads: [notDue, due], tasksByLeadId: { w1: [], w2: [] }, today, scheduledLeadIds: [] })
     expect(d.waiting.map((w) => w.leadId)).toEqual(['w2', 'w1']) // due first
     expect(d.waiting[0].followUpDue).toBe(true)
     expect(d.waiting[0].quietDays).toBe(4)
@@ -53,13 +53,13 @@ describe('buildToday', () => {
       lead({ id: 'o2', stage: 'inquiry', estimated_value: 500 }),
       lead({ id: 'won', stage: 'closed_won', estimated_value: 9999 }),
     ]
-    const d = buildToday({ leads, tasksByLeadId: { o1: [], o2: [] }, today })
+    const d = buildToday({ leads, tasksByLeadId: { o1: [], o2: [] }, today, scheduledLeadIds: [] })
     expect(d.tiles.openPipelineValue).toBe(1500)
   })
 
   it('excludes closed leads from every list', () => {
     const leads = [lead({ id: 'lost', stage: 'closed_lost' }), lead({ id: 'won', stage: 'closed_won' })]
-    const d = buildToday({ leads, tasksByLeadId: {}, today })
+    const d = buildToday({ leads, tasksByLeadId: {}, today, scheduledLeadIds: [] })
     expect(d.needsAttention).toHaveLength(0)
     expect(d.dueTasks).toHaveLength(0)
     expect(d.waiting).toHaveLength(0)
@@ -68,7 +68,7 @@ describe('buildToday', () => {
   it('needs-attention sorts stalest (oldest updated_at) first', () => {
     const fresh = lead({ id: 'fresh', updated_at: '2026-08-04T00:00:00.000Z' })
     const stale = lead({ id: 'stale', updated_at: '2026-08-01T00:00:00.000Z' })
-    const d = buildToday({ leads: [fresh, stale], tasksByLeadId: { fresh: [], stale: [] }, today })
+    const d = buildToday({ leads: [fresh, stale], tasksByLeadId: { fresh: [], stale: [] }, today, scheduledLeadIds: [] })
     expect(d.needsAttention.map((n) => n.leadId)).toEqual(['stale', 'fresh'])
   })
 
@@ -79,14 +79,14 @@ describe('buildToday', () => {
       task({ id: 'taskB', lead_id: 'multi', due_date: '2026-08-02', created_at: '2026-08-02T00:00:00.000Z' }),
       task({ id: 'taskC', lead_id: 'multi', due_date: '2026-08-02', created_at: '2026-08-01T00:00:00.000Z' }),
     ]
-    const d = buildToday({ leads: [l], tasksByLeadId: { multi: tasks }, today })
+    const d = buildToday({ leads: [l], tasksByLeadId: { multi: tasks }, today, scheduledLeadIds: [] })
     expect(d.dueTasks.map((x) => x.task.id)).toEqual(['taskC', 'taskB', 'taskA'])
   })
 
   it('waiting sorts by quietDays descending when followUpDue is same', () => {
     const longerQuiet = lead({ id: 'lq', name: 'LQ', updated_at: '2026-08-01T00:00:00.000Z', waiting: { reason: 'quote', follow_up_date: '2026-08-10' } })
     const shorterQuiet = lead({ id: 'sq', name: 'SQ', updated_at: '2026-08-04T00:00:00.000Z', waiting: { reason: 'quote', follow_up_date: '2026-08-10' } })
-    const d = buildToday({ leads: [shorterQuiet, longerQuiet], tasksByLeadId: { lq: [], sq: [] }, today })
+    const d = buildToday({ leads: [shorterQuiet, longerQuiet], tasksByLeadId: { lq: [], sq: [] }, today, scheduledLeadIds: [] })
     expect(d.waiting.map((w) => w.leadId)).toEqual(['lq', 'sq'])
     expect(d.waiting[0].quietDays).toBe(4)
     expect(d.waiting[1].quietDays).toBe(1)
@@ -97,7 +97,7 @@ describe('buildToday', () => {
       { id: 'l1', name: 'Dana Kim', title: 'Riverside gala', stage: 'inquiry', created_at: '2026-08-01T00:00:00.000Z' },
       { id: 'l2', name: 'Sam Lee', stage: 'proposal', created_at: '2026-08-01T00:00:00.000Z', waiting: { reason: 'deposit' } },
     ] as Lead[]
-    const out = buildToday({ leads, tasksByLeadId: {}, today: '2026-08-06' })
+    const out = buildToday({ leads, tasksByLeadId: {}, today: '2026-08-06', scheduledLeadIds: [] })
     expect(out.needsAttention[0].title).toBe('Riverside gala')
     expect(out.waiting[0].title).toBe('Sam Lee')
   })
@@ -107,7 +107,36 @@ describe('buildToday', () => {
     const tasksByLeadId = {
       l1: [{ id: 't1', lead_id: 'l1', title: 'Call venue', due_date: '2026-08-06', done: false, created_at: 'x' }],
     } as Record<string, Task[]>
-    const out = buildToday({ leads, tasksByLeadId, today: '2026-08-06' })
+    const out = buildToday({ leads, tasksByLeadId, today: '2026-08-06', scheduledLeadIds: [] })
     expect(out.dueTasks[0].leadTitle).toBe('Riverside gala')
+  })
+
+  it('lists won opportunities that have no job, soonest date first', () => {
+    const leads = [
+      { id: 'w1', name: 'Dana Kim', title: 'Autumn gala', stage: 'closed_won', event_date: '2026-11-01', estimated_value: 900, created_at: '2026-08-01T00:00:00.000Z' },
+      { id: 'w2', name: 'Sam Lee', stage: 'closed_won', event_date: '2026-09-12', created_at: '2026-08-01T00:00:00.000Z' },
+      { id: 'w3', name: 'Ari Vance', stage: 'closed_won', created_at: '2026-08-01T00:00:00.000Z' },
+    ] as Lead[]
+    const out = buildToday({ leads, tasksByLeadId: {}, today: '2026-08-06', scheduledLeadIds: [] })
+    expect(out.wonUnscheduled.map((w) => w.leadId)).toEqual(['w2', 'w1', 'w3'])
+    expect(out.wonUnscheduled[1]).toEqual({ leadId: 'w1', title: 'Autumn gala', company: undefined, eventDate: '2026-11-01', value: 900 })
+  })
+
+  it('excludes a won opportunity that already has a job', () => {
+    const leads = [
+      { id: 'w1', name: 'Dana Kim', stage: 'closed_won', created_at: '2026-08-01T00:00:00.000Z' },
+      { id: 'w2', name: 'Sam Lee', stage: 'closed_won', created_at: '2026-08-01T00:00:00.000Z' },
+    ] as Lead[]
+    const out = buildToday({ leads, tasksByLeadId: {}, today: '2026-08-06', scheduledLeadIds: ['w1'] })
+    expect(out.wonUnscheduled.map((w) => w.leadId)).toEqual(['w2'])
+  })
+
+  it('never lists a lost or open opportunity as won-unscheduled', () => {
+    const leads = [
+      { id: 'l1', name: 'Lost', stage: 'closed_lost', created_at: '2026-08-01T00:00:00.000Z' },
+      { id: 'o1', name: 'Open', stage: 'proposal', created_at: '2026-08-01T00:00:00.000Z' },
+    ] as Lead[]
+    const out = buildToday({ leads, tasksByLeadId: {}, today: '2026-08-06', scheduledLeadIds: [] })
+    expect(out.wonUnscheduled).toEqual([])
   })
 })

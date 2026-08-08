@@ -22,6 +22,8 @@ export interface CloseoutClientProps {
   summary: CloseoutSummary | null
   summaryError: string | null
   leads: Lead[]
+  linkedLead: { id: string; title: string } | null
+  linkBroken?: boolean
 }
 
 export function CloseoutClient(props: CloseoutClientProps) {
@@ -42,7 +44,7 @@ export function CloseoutClient(props: CloseoutClientProps) {
   )
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [leadId, setLeadId] = useState('')
+  const [leadId, setLeadId] = useState(props.linkedLead?.id ?? '')
   const router = useRouter()
 
   async function handleSaveActuals() {
@@ -180,14 +182,25 @@ export function CloseoutClient(props: CloseoutClientProps) {
             <p className="text-sm text-gray-500">One line per package at catalog price, as a draft in the invoicing module. Margin numbers stay internal.</p>
           </CardHeader>
           <CardContent className="flex items-end gap-2">
-            <div>
-              <Label htmlFor="co-lead">Bill to</Label>
-              <select id="co-lead" value={leadId} onChange={(e) => setLeadId(e.target.value)}
-                className="block h-9 rounded-md border border-gray-300 px-2 text-sm min-w-48">
-                <option value="">Pick a client…</option>
-                {props.leads.map((l) => <option key={l.id} value={l.id}>{l.name}{l.organization ? ` — ${l.organization}` : ''}</option>)}
-              </select>
-            </div>
+            {props.linkedLead ? (
+              <p className="text-sm">
+                Bill to <span className="font-medium">{props.linkedLead.title}</span>
+              </p>
+            ) : (
+              <div>
+                {props.linkBroken && (
+                  <p role="status" className="mb-1 text-sm text-amber-700">
+                    The opportunity this job came from no longer exists — pick who to bill.
+                  </p>
+                )}
+                <Label htmlFor="co-lead">Bill to</Label>
+                <select id="co-lead" value={leadId} onChange={(e) => setLeadId(e.target.value)}
+                  className="block h-9 rounded-md border border-gray-300 px-2 text-sm min-w-48">
+                  <option value="">Pick a client…</option>
+                  {props.leads.map((l) => <option key={l.id} value={l.id}>{l.name}{l.organization ? ` — ${l.organization}` : ''}</option>)}
+                </select>
+              </div>
+            )}
             <Button onClick={handleGenerateInvoice} disabled={saving || !leadId}>Generate final invoice</Button>
           </CardContent>
         </Card>

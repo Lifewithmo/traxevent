@@ -28,12 +28,13 @@ vi.mock('@/actions/leads', () => ({
   getLead: vi.fn().mockResolvedValue({ id: 'l1', name: 'Dana', customer_id: 'cust1' }),
 }))
 vi.mock('@/actions/proposals', () => ({ getProposal: vi.fn() }))
+const eventData = vi.hoisted(() => ({ current: { name: 'Nguyen Wedding' } as Record<string, unknown> }))
 vi.mock('@/lib/firebase-admin', () => ({
   adminDb: {
     collection: () => ({
       doc: () => ({
         collection: () => ({
-          doc: () => ({ get: vi.fn().mockResolvedValue({ exists: true, data: () => ({ name: 'Nguyen Wedding' }) }) }),
+          doc: () => ({ get: vi.fn().mockResolvedValue({ exists: true, data: () => eventData.current }) }),
         }),
       }),
     }),
@@ -47,7 +48,10 @@ import { createInvoiceCore } from '@/lib/crm/invoices'
 import { getLead } from '@/actions/leads'
 import { generateCloseoutInvoice } from '@/actions/invoices'
 
-beforeEach(() => vi.clearAllMocks())
+beforeEach(() => {
+  vi.clearAllMocks()
+  eventData.current = { name: 'Nguyen Wedding' }
+})
 
 describe('generateCloseoutInvoice', () => {
   it('creates a final invoice with one line per package', async () => {
@@ -82,5 +86,23 @@ describe('generateCloseoutInvoice', () => {
     ])
     await expect(generateCloseoutInvoice('o1', 'e1', 'l1')).rejects.toThrow(/Package no longer exists: p2/)
     expect(createInvoiceCore).not.toHaveBeenCalled()
+  })
+
+  it('derives the opportunity from the event when no leadId is passed', async () => {
+    eventData.current = { name: 'Nguyen Wedding', lead_id: 'l-linked' }
+    await generateCloseoutInvoice('o1', 'e1')
+    expect(getLead).toHaveBeenCalledWith('o1', 'l-linked')
+    expect(createInvoiceCore).toHaveBeenCalledWith('o1', 'l-linked', expect.objectContaining({ type: 'final' }))
+  })
+
+  it('prefers an explicitly passed leadId over the linked one', async () => {
+    eventData.current = { name: 'Nguyen Wedding', lead_id: 'l-linked' }
+    await generateCloseoutInvoice('o1', 'e1', 'l-chosen')
+    expect(createInvoiceCore).toHaveBeenCalledWith('o1', 'l-chosen', expect.objectContaining({ type: 'final' }))
+  })
+
+  it('refuses when the event has no link and no leadId is passed', async () => {
+    eventData.current = { name: 'Nguyen Wedding' }
+    await expect(generateCloseoutInvoice('o1', 'e1')).rejects.toThrow('No opportunity linked to this event')
   })
 })

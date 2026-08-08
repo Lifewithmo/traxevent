@@ -5,7 +5,7 @@ import { useRouter, useParams } from 'next/navigation'
 import { createEvent } from '@/actions/events'
 import { getOrgBySlug } from '@/actions/orgs'
 import { listOrgEventTypes } from '@/actions/event-types'
-import { DEFAULT_EVENT_TYPE_ID } from '@/lib/event-types'
+import { DEFAULT_EVENT_TYPE_ID, eventCreateFieldsFromType } from '@/lib/event-types'
 import type { EventType } from '@/lib/event-types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -53,9 +53,7 @@ export default function NewEventPage() {
       const event = await createEvent(orgId, {
         name,
         year,
-        registration_type: selectedType.registrationUnit,
-        event_type_id: eventTypeId,
-        ...(selectedType.is_custom ? { event_type_terminology: selectedType.terminology } : {}),
+        ...eventCreateFieldsFromType(selectedType),
         event_start: eventStart,
         event_end: eventEnd,
       })
