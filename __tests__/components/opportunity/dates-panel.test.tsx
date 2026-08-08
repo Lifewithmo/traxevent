@@ -41,17 +41,21 @@ describe('DatesPanel', () => {
     renderPanel()
     await user.click(screen.getByRole('button', { name: 'Toggle month' }))
     const day14 = screen.getByRole('button', { name: 'Sep 14' })
+    expect(day14).toHaveAttribute('aria-pressed', 'false')
     fireEvent.mouseEnter(day14)
     expect(screen.getByText('previewing Sep 14')).toBeInTheDocument()
     expect(screen.getByText('SEP 9 – 18')).toBeInTheDocument()
+    expect(day14).toHaveAttribute('aria-pressed', 'false')       // hover alone isn't "pressed"
     fireEvent.mouseLeave(day14)
     expect(screen.getByText('AUG 30 – SEP 8')).toBeInTheDocument()
     fireEvent.mouseEnter(day14)
     fireEvent.click(day14)                       // pin
+    expect(day14).toHaveAttribute('aria-pressed', 'true')
     fireEvent.mouseLeave(day14)
     expect(screen.getByText('SEP 9 – 18')).toBeInTheDocument()   // pinned survives leave
     await user.keyboard('{Escape}')
     expect(screen.getByText('AUG 30 – SEP 8')).toBeInTheDocument()
+    expect(day14).toHaveAttribute('aria-pressed', 'false')
   })
   it('slides the strip and fetches the uncovered range', async () => {
     const user = userEvent.setup()
@@ -67,9 +71,16 @@ describe('DatesPanel', () => {
     renderPanel()
     await user.click(screen.getByRole('button', { name: 'Later dates' }))   // window -> SEP 9-18, fetch rejects
     await waitFor(() => expect(listCalendarRange).toHaveBeenCalledTimes(1))
+    // A failed fetch for an uncovered window must not read as "genuinely free."
+    await waitFor(() => expect(screen.getByText("Couldn't load this window — try again.")).toBeInTheDocument())
+    expect(screen.queryByText('Nothing on the calendar in this window.')).not.toBeInTheDocument()
+
     await user.click(screen.getByRole('button', { name: 'Earlier dates' })) // window -> AUG 30-SEP 8 (home, already covered)
-    await user.click(screen.getByRole('button', { name: 'Later dates' }))   // window -> SEP 9-18 again
+    await user.click(screen.getByRole('button', { name: 'Later dates' }))   // window -> SEP 9-18 again, fetch succeeds
     await waitFor(() => expect(listCalendarRange).toHaveBeenCalledTimes(2))
+    // Clears once a subsequent fetch for the window succeeds.
+    await waitFor(() => expect(screen.queryByText("Couldn't load this window — try again.")).not.toBeInTheDocument())
+    expect(screen.getByText('Nothing on the calendar in this window.')).toBeInTheDocument()
   })
   it('rolls back through a second consecutive failure without falsely marking a failed range covered', async () => {
     listCalendarRange.mockClear()

@@ -42,6 +42,9 @@ export function DatesPanel({ orgId, orgSlug, lead, today, initialItems }: DatesP
   // succeeded — it starts as the home window, which was server-loaded.
   const covered = useRef({ from: windowDays(homeCenter)[0], to: windowDays(homeCenter)[9] })
   const confirmed = useRef({ from: windowDays(homeCenter)[0], to: windowDays(homeCenter)[9] })
+  // True while the most recent fetch attempt for an uncovered range failed — distinguishes
+  // "genuinely nothing here" from "we don't actually know yet" in the empty-state line.
+  const [loadFailed, setLoadFailed] = useState(false)
 
   const displayCenter = pinned ? center : hovered ?? center
   const days = windowDays(displayCenter)
@@ -58,6 +61,7 @@ export function DatesPanel({ orgId, orgSlug, lead, today, initialItems }: DatesP
     // overlapping bounds while this one is still in flight doesn't
     // double-fetch.
     covered.current = attempted
+    setLoadFailed(false)
     try {
       const fetched = await listCalendarRange(orgId, orgSlug, newFrom, newTo)
       setItems((prev) => {
@@ -82,8 +86,11 @@ export function DatesPanel({ orgId, orgSlug, lead, today, initialItems }: DatesP
       // `confirmed` is unconditional and chains correctly through any
       // number of overlapping failures. This can cause one duplicate fetch
       // for a still-in-flight overlapping call, which is an acceptable
-      // cost. No error UI: this is a silent retry-on-next-change.
+      // cost. Silent retry-on-next-change (no toast/banner); the empty-state
+      // line below is swapped for a "couldn't load" line while the window
+      // sits outside `confirmed`, so a fetch failure never reads as "free."
       covered.current = confirmed.current
+      setLoadFailed(true)
     }
   }
 
@@ -111,6 +118,8 @@ export function DatesPanel({ orgId, orgSlug, lead, today, initialItems }: DatesP
   const listableItems = windowItems.filter((i) => i.kind !== 'task')
   const taskCount = windowItems.filter((i) => i.kind === 'task').length
   const distance = daysOutLabel(lead.event_date, today)
+  // The displayed window isn't fully backed by a range we've actually loaded successfully.
+  const windowUnconfirmed = days[0] < confirmed.current.from || days[9] > confirmed.current.to
 
   return (
     <Card>
@@ -234,6 +243,7 @@ export function DatesPanel({ orgId, orgSlug, lead, today, initialItems }: DatesP
                     key={cell.ymd}
                     type="button"
                     aria-label={shortMonthDay(cell.ymd)}
+                    aria-pressed={pinned && cell.ymd === center}
                     onMouseEnter={() => !pinned && setHovered(cell.ymd)}
                     onMouseLeave={() => !pinned && setHovered(null)}
                     onClick={() => pinDay(cell.ymd)}
@@ -254,7 +264,11 @@ export function DatesPanel({ orgId, orgSlug, lead, today, initialItems }: DatesP
         {/* List */}
         <div className="space-y-1 pt-1 text-sm">
           {listableItems.length === 0 && taskCount === 0 ? (
-            <p className="text-muted-foreground">Nothing on the calendar in this window.</p>
+            windowUnconfirmed && loadFailed ? (
+              <p className="text-muted-foreground">Couldn&apos;t load this window — try again.</p>
+            ) : (
+              <p className="text-muted-foreground">Nothing on the calendar in this window.</p>
+            )
           ) : (
             <>
               {listableItems.map((item) => (

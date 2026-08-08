@@ -66,4 +66,22 @@ describe('TasksPanel composer', () => {
     act(() => { ref.current!.openComposer() })
     expect(screen.getByPlaceholderText('Add a task…')).toBeInTheDocument()
   })
+  it('does not co-render "No tasks yet." with the open composer', () => {
+    const ref = createRef<TasksPanelHandle>()
+    render(<TasksPanel ref={ref} orgId="o1" leadId="l1" tasks={[]} />)
+    act(() => { ref.current!.openComposer() })
+    expect(screen.getByPlaceholderText('Add a task…')).toBeInTheDocument()
+    expect(screen.queryByText('No tasks yet.')).not.toBeInTheDocument()
+  })
+  it('re-focuses the input when openComposer is called while already open', () => {
+    const ref = createRef<TasksPanelHandle>()
+    render(<TasksPanel ref={ref} orgId="o1" leadId="l1" tasks={[task({})]} />)
+    act(() => { ref.current!.openComposer() })
+    const input = screen.getByPlaceholderText('Add a task…')
+    fireEvent.change(input, { target: { value: 'Call caterer' } }) // non-empty title: blur won't collapse the composer
+    act(() => { input.blur() })
+    expect(input).not.toHaveFocus()
+    act(() => { ref.current!.openComposer() })   // already open — should still (re-)focus
+    expect(input).toHaveFocus()
+  })
 })

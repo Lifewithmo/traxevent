@@ -43,7 +43,12 @@ export const TasksPanel = forwardRef<TasksPanelHandle, TasksPanelProps>(function
   const doneTasks = tasks.filter((t) => t.done)
 
   useImperativeHandle(ref, () => ({
-    openComposer: () => setComposerOpen(true),
+    openComposer: () => {
+      // Composer already open: setComposerOpen(true) would be a no-op state update, which
+      // skips the focus effect below — focus the input directly in that case.
+      if (composerOpen) inputRef.current?.focus()
+      else setComposerOpen(true)
+    },
   }))
 
   useEffect(() => {
@@ -102,7 +107,7 @@ export const TasksPanel = forwardRef<TasksPanelHandle, TasksPanelProps>(function
 
         {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
 
-        {openTasks.length === 0 && doneTasks.length === 0 && (
+        {openTasks.length === 0 && doneTasks.length === 0 && !composerOpen && (
           <p className="text-sm text-muted-foreground">No tasks yet.</p>
         )}
 

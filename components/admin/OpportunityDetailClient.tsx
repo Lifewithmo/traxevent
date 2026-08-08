@@ -11,11 +11,10 @@ import { useDismissable } from '@/hooks/useDismissable'
 import { LEAD_STAGE_LABELS, opportunityTitle } from '@/lib/leads'
 import { ContactCard } from '@/components/admin/opportunity/ContactCard'
 import { NextActionBanner } from '@/components/admin/opportunity/NextActionBanner'
-import { type TasksPanelHandle } from '@/components/admin/opportunity/TasksPanel'
 import { ActivityTimeline } from '@/components/admin/opportunity/ActivityTimeline'
 import { DatesPanel } from '@/components/admin/opportunity/DatesPanel'
 import { FactsGrid } from '@/components/admin/opportunity/FactsGrid'
-import { TasksAndDocuments } from '@/components/admin/opportunity/TasksAndDocuments'
+import { TasksAndDocuments, type TasksAndDocumentsHandle } from '@/components/admin/opportunity/TasksAndDocuments'
 import { ConvertToWorkCard } from '@/components/admin/opportunity/ConvertToWorkCard'
 import { MarkLostDialog } from '@/components/admin/opportunity/MarkLostDialog'
 import { StageMenu } from '@/components/admin/opportunity/StageMenu'
@@ -50,12 +49,12 @@ export function OpportunityDetailClient({ orgId, orgSlug, lead, customer, tasks,
   const [error, setError] = useState<string | null>(null)
   const [convertOpen, setConvertOpen] = useState(searchParams.get('convert') === '1')
   const [moreOpen, setMoreOpen] = useState(false)
-  const taskInputRef = useRef<TasksPanelHandle>(null)
+  const taskInputRef = useRef<TasksAndDocumentsHandle>(null)
   const moreMenuRef = useRef<HTMLDivElement>(null)
   useDismissable(moreOpen, setMoreOpen, moreMenuRef)
 
   useEffect(() => {
-    if (searchParams.get('focus') === 'task') taskInputRef.current?.openComposer()
+    if (searchParams.get('focus') === 'task') taskInputRef.current?.openTaskComposer()
   }, [searchParams])
 
   async function handleDelete() {
@@ -110,7 +109,7 @@ export function OpportunityDetailClient({ orgId, orgSlug, lead, customer, tasks,
         orgId={orgId}
         lead={lead}
         tasks={tasks}
-        onAddNextStep={() => taskInputRef.current?.openComposer()}
+        onAddNextStep={() => taskInputRef.current?.openTaskComposer()}
       />
 
       <div className="grid gap-4 lg:grid-cols-5">
@@ -119,6 +118,7 @@ export function OpportunityDetailClient({ orgId, orgSlug, lead, customer, tasks,
           <ContactCard orgSlug={orgSlug} customer={customer} lead={lead} variant="strip" pastBookings={pastBookings} />
           <FactsGrid orgId={orgId} orgSlug={orgSlug} lead={lead} customer={customer} />
           <TasksAndDocuments
+            ref={taskInputRef}
             orgId={orgId}
             orgSlug={orgSlug}
             leadId={lead.id}
@@ -128,7 +128,7 @@ export function OpportunityDetailClient({ orgId, orgSlug, lead, customer, tasks,
             contracts={contracts}
             vendors={vendors}
             acceptedProposals={acceptedProposals}
-            tasksPanelRef={taskInputRef}
+            today={today}
           />
           <ConvertToWorkCard
             orgId={orgId}

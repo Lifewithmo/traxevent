@@ -117,7 +117,7 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
       'block px-3 py-2 rounded-md text-sm font-medium transition-colors',
       active
         ? 'bg-gray-100 text-gray-900 border-l-2 border-gray-900'
-        : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900',
+        : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 border-l-2 border-transparent',
     ].join(' ')
   }
 
@@ -127,7 +127,7 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
       'block px-3 py-2 rounded-md text-sm font-medium transition-colors',
       active
         ? 'bg-gray-100 text-gray-900 border-l-2 border-gray-900'
-        : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900',
+        : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 border-l-2 border-transparent',
     ].join(' ')
   }
 
