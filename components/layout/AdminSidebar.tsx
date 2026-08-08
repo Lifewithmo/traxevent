@@ -222,6 +222,7 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
                 <Link href={`/${orgSlug}/permissions`} className={navClass(`/${orgSlug}/permissions`)}>Permissions</Link>
                 <Link href={`/${orgSlug}/billing`} className={navClass(`/${orgSlug}/billing`)}>Billing</Link>
                 <Link href={`/${orgSlug}/branding`} className={navClass(`/${orgSlug}/branding`)}>Branding</Link>
+                <Link href={`/${orgSlug}/public-profile`} className={navClass(`/${orgSlug}/public-profile`)}>Public profile</Link>
                 <Link href={`/${orgSlug}/email-domain`} className={navClass(`/${orgSlug}/email-domain`)}>Email domain</Link>
                 <Link href={`/${orgSlug}/event-types`} className={navClass(`/${orgSlug}/event-types`)}>Event types</Link>
                 <Link href={`/${orgSlug}/departments`} className={navClass(`/${orgSlug}/departments`)}>Departments</Link>
