@@ -1,11 +1,13 @@
 import { attachmentChips } from '@/lib/opportunity-detail'
-import type { Proposal, Invoice, Contract, Vendor } from '@/lib/types'
+import type { Proposal, Invoice, Contract, Vendor, Task } from '@/lib/types'
 
 interface AttachmentChipsProps {
+  tasks: Task[]
   proposals: Proposal[]
   invoices: Invoice[]
   contracts: Contract[]
   vendors: Vendor[]
+  today: string
 }
 
 export function AttachmentChips(props: AttachmentChipsProps) {

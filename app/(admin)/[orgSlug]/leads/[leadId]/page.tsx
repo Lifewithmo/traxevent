@@ -4,7 +4,7 @@ import { notFound } from 'next/navigation'
 import { adminDb } from '@/lib/firebase-admin'
 import { getLead } from '@/actions/leads'
 import { getCustomer, listCustomerOpportunities } from '@/actions/customers'
-import { convertBlockReason } from '@/lib/opportunity-detail'
+import { convertBlockReason, todayYmd } from '@/lib/opportunity-detail'
 import { listTasks } from '@/actions/tasks'
 import { listActivity } from '@/actions/activity'
 import { listProposals } from '@/actions/proposals'
@@ -72,7 +72,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ org
 
       <div className="mx-auto max-w-5xl space-y-4 px-6 pb-2">
         <h2 className="text-sm font-semibold text-muted-foreground">Attachments</h2>
-        <AttachmentChips proposals={proposals} invoices={invoices} contracts={contracts} vendors={vendors} />
+        <AttachmentChips tasks={tasks} proposals={proposals} invoices={invoices} contracts={contracts} vendors={vendors} today={todayYmd()} />
       </div>
 
       <LeadProposalsClient orgId={orgId} orgSlug={orgSlug} leadId={leadId} proposals={proposals} />

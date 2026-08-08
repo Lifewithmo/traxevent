@@ -6,6 +6,8 @@ import type { Proposal } from '@/lib/types'
 describe('AttachmentChips', () => {
   it('renders a chip per attachment kind with counts', () => {
     render(<AttachmentChips
+      tasks={[]}
+      today="2026-08-07"
       proposals={[{ status: 'accepted' } as Partial<Proposal> as Proposal]}
       invoices={[]}
       contracts={[]}
