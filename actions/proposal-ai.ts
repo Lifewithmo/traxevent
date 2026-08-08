@@ -5,7 +5,7 @@ import { adminDb } from '@/lib/firebase-admin'
 import { assertOrgAdmin } from '@/lib/auth/assert'
 import { listWorkPackagesCore } from '@/lib/ops/work-packages'
 import { listResourcesCore } from '@/lib/ops/resources'
-import { getAnthropicClient, AI_MODEL, AI_MAX_TOKENS, AI_EFFORT, AI_BETAS } from '@/lib/ai/client'
+import { getAnthropicClient, AI_MODEL, AI_MAX_TOKENS, AI_EFFORT, AI_BETAS, AI_FALLBACKS } from '@/lib/ai/client'
 import { serializeCatalog, buildDraftSystemBlocks } from '@/lib/ai/grounding'
 import { PROPOSAL_DRAFT_SCHEMA, parseDraftResponse, mintSuggestedPackages, type ProposalDraft } from '@/lib/ai/proposal-draft'
 import { logAiUsage } from '@/lib/ai/usage'
@@ -43,8 +43,9 @@ export async function generateProposalDraft(
   const stream = client.beta.messages.stream({
     model: AI_MODEL,
     max_tokens: AI_MAX_TOKENS,
-    betas: AI_BETAS,
-    fallbacks: 'default',
+    // Server-side refusal fallback is Opus-tier only — Sonnet 5 400s on the
+    // parameter, so both fields are conditional on the configured model.
+    ...(AI_FALLBACKS ? { betas: AI_BETAS, fallbacks: AI_FALLBACKS } : {}),
     output_config: {
       effort: AI_EFFORT,
       format: { type: 'json_schema', schema: PROPOSAL_DRAFT_SCHEMA },
