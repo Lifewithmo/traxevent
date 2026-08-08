@@ -65,15 +65,15 @@ verbatim to the public page.
 
 ## Actions — `actions/public-profile.ts` (authed)
 
-Both guarded by `assertOrgAdmin`:
-
-- `savePublicProfile(orgId, input)` — parse, then write in a transaction that
-  first runs the handle-uniqueness query
+- `savePublicProfile(orgId, input)` — guarded by `assertOrgAdmin`. Parse, then
+  write in a transaction that first runs the handle-uniqueness query
   (`orgs.where('public_profile.handle','==',handle).limit(1)`) and rejects if a
   *different* org holds it ("That URL is taken."). Admin-SDK transactions
   support queries; this closes the check-then-set race between two orgs
   claiming the same handle.
-- `getPublicProfile(orgId)` — current map (or `null`) for the editor.
+- The editor page reads `org.public_profile` directly server-side (same
+  pattern as the branding page) rather than through an action — there's no
+  `getPublicProfile` action; `savePublicProfile` is the only one.
 
 Asset uploads reuse `uploadOrgAsset` with the kind union extended:
 `'logo' | 'cover' | 'profile_photo' | 'link_image'`. Same caps and
@@ -123,7 +123,7 @@ Client component `components/admin/PublicProfileClient.tsx` following the
 
 - `__tests__/lib/public-profile.test.ts` — parse: field caps, https enforcement,
   empty-field dropping, handle regex accept/reject table, reserved list.
-- `__tests__/actions/public-profile.test.ts` — admin guard on both actions,
+- `__tests__/actions/public-profile.test.ts` — admin guard on the action,
   save round-trip, handle conflict with another org rejects, same-org
   re-save of own handle passes, links cap enforced.
 - Public resolution: unknown handle and `enabled: false` both 404.

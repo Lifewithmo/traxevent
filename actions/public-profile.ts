@@ -5,13 +5,6 @@ import { adminDb } from '@/lib/firebase-admin'
 import { parsePublicProfile } from '@/lib/public-profile'
 import type { PublicProfile } from '@/lib/types'
 
-export async function getPublicProfile(orgId: string): Promise<PublicProfile | null> {
-  await assertOrgAdmin(orgId)
-  const snap = await adminDb.collection('orgs').doc(orgId).get()
-  if (!snap.exists) throw new Error('Org not found')
-  return (snap.data() as { public_profile?: PublicProfile }).public_profile ?? null
-}
-
 /**
  * Full-overwrite save (delete path included), like updateOrgBranding — but in
  * a transaction whose first read is the handle-uniqueness query, closing the

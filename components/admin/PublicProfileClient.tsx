@@ -150,8 +150,12 @@ export function PublicProfileClient({ orgId, orgName, initialProfile }: PublicPr
 
   async function copyLiveUrl() {
     if (!livePath) return
-    await navigator.clipboard.writeText(`${window.location.origin}${livePath}`)
-    setNotice('Link copied')
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}${livePath}`)
+      setNotice('Link copied')
+    } catch {
+      setError('Copy failed — select and copy the URL manually')
+    }
   }
 
   return (

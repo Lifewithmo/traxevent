@@ -31,7 +31,7 @@ vi.mock('@/lib/firebase-admin', () => ({
   },
 }))
 
-import { getPublicProfile, savePublicProfile } from '@/actions/public-profile'
+import { savePublicProfile } from '@/actions/public-profile'
 
 const VALID = {
   enabled: true,
@@ -42,24 +42,6 @@ const VALID = {
 beforeEach(() => {
   vi.clearAllMocks()
   txGetSpy.mockResolvedValue({ empty: true, docs: [] })
-})
-
-describe('getPublicProfile', () => {
-  it('requires org admin and returns the stored map', async () => {
-    orgGetSpy.mockResolvedValue({ exists: true, data: () => ({ public_profile: VALID }) })
-    expect(await getPublicProfile('o1')).toEqual(VALID)
-    expect(assertOrgAdminSpy).toHaveBeenCalledWith('o1')
-  })
-
-  it('returns null when no profile exists yet', async () => {
-    orgGetSpy.mockResolvedValue({ exists: true, data: () => ({ name: 'Org' }) })
-    expect(await getPublicProfile('o1')).toBeNull()
-  })
-
-  it('throws when the org does not exist', async () => {
-    orgGetSpy.mockResolvedValue({ exists: false })
-    await expect(getPublicProfile('o1')).rejects.toThrow('Org not found')
-  })
 })
 
 describe('savePublicProfile', () => {

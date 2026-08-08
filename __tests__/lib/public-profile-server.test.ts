@@ -46,4 +46,9 @@ describe('getOrgByHandle', () => {
     // The where() mock ignores args; behavior is covered by resolving without throwing.
     expect(querySpy).toHaveBeenCalled()
   })
+
+  it('rejects a malformed handle without querying Firestore', async () => {
+    expect(await getOrgByHandle('no way!')).toBeNull()
+    expect(querySpy).not.toHaveBeenCalled()
+  })
 })

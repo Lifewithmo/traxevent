@@ -3,6 +3,10 @@ import type { PublicProfile, PublicProfileLink, PublicProfileSocials } from '@/l
 // Handle: 3–40 chars, lowercase a-z0-9-, starts/ends alphanumeric (spec).
 const HANDLE_RE = /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/
 
+export function isValidHandle(value: string): boolean {
+  return HANDLE_RE.test(value)
+}
+
 export const RESERVED_HANDLES = new Set([
   'admin', 'api', 'app', 'www', 'p', 'bio', 'inquire', 'proposals',
   'invoices', 'contracts', 'client', 'brand', 'traxevent', 'brewtrax',
@@ -12,7 +16,7 @@ export function parseHandle(value: unknown): string {
   if (typeof value !== 'string') throw new Error('Handle is required')
   const v = value.trim().toLowerCase()
   if (RESERVED_HANDLES.has(v)) throw new Error('That handle is reserved')
-  if (!HANDLE_RE.test(v)) {
+  if (!isValidHandle(v)) {
     throw new Error(
       'Handle must be 3–40 characters — lowercase letters, digits, and hyphens, starting and ending with a letter or digit',
     )
@@ -81,17 +85,17 @@ export function parsePublicProfile(input: unknown): PublicProfile {
 
   const rawLinks = Array.isArray(raw.links) ? raw.links : []
   if (rawLinks.length > MAX_LINKS) throw new Error(`At most ${MAX_LINKS} links`)
-  for (const rawLink of rawLinks) {
+  for (const [i, rawLink] of rawLinks.entries()) {
     if (typeof rawLink !== 'object' || rawLink === null) throw new Error('Invalid link')
     const l = rawLink as Record<string, unknown>
     const id = typeof l.id === 'string' && l.id.trim() && l.id.trim().length <= 64 ? l.id.trim() : undefined
-    const title = parseText(l.title, 'Link title', 120)
-    const url = parseHttpsUrl(l.url, 'Link URL', 500)
-    if (!id || !title || !url) throw new Error('Each link needs a title and an https URL')
+    const title = parseText(l.title, `Link ${i + 1} title`, 120)
+    const url = parseHttpsUrl(l.url, `Link ${i + 1} URL`, 500)
+    if (!id || !title || !url) throw new Error(`Link ${i + 1} needs a title and an https URL`)
     const link: PublicProfileLink = { id, title, url }
-    const description = parseText(l.description, 'Link description', 300)
+    const description = parseText(l.description, `Link ${i + 1} description`, 300)
     if (description) link.description = description
-    const image = parseHttpsUrl(l.image_url, 'Link image', 500)
+    const image = parseHttpsUrl(l.image_url, `Link ${i + 1} image`, 500)
     if (image) link.image_url = image
     out.links.push(link)
   }
