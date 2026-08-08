@@ -96,6 +96,41 @@ export async function sendFormSignedConfirmation(
   })
 }
 
+export interface ProposalNudgeParams {
+  to: string
+  contactName: string
+  proposalTitle?: string
+  token: string
+  fromDisplayName?: string
+  fromDomain?: string
+  replyTo?: string
+}
+
+export async function sendProposalNudge(params: ProposalNudgeParams): Promise<void> {
+  const from = buildFromAddress({ displayName: params.fromDisplayName, domain: params.fromDomain })
+  const proposalUrl = `${PROPOSAL_BASE_URL}/proposals/${params.token}`
+  await getResend().emails.send({
+    from,
+    to: params.to,
+    ...(params.replyTo ? { replyTo: params.replyTo } : {}),
+    subject: 'A reminder about your proposal',
+    html: `
+      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
+        <p style="font-size:16px">Hi ${params.contactName},</p>
+        <p style="font-size:16px">
+          Just a friendly reminder that your proposal${params.proposalTitle ? ` “${params.proposalTitle}”` : ''}
+          is ready for you to review.
+        </p>
+        <a href="${proposalUrl}"
+           style="display:inline-block;background:#1a1a1a;color:#fff;padding:12px 24px;
+                  border-radius:6px;text-decoration:none;font-weight:600">
+          View your proposal
+        </a>
+      </div>
+    `,
+  })
+}
+
 interface ProposalSignedConfirmationParams {
   to: string
   signerName: string

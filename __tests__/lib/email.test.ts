@@ -13,7 +13,7 @@ vi.mock('@/lib/resend', () => ({
   },
 }))
 
-import { sendRegistrationConfirmation } from '@/lib/email'
+import { sendRegistrationConfirmation, sendProposalNudge } from '@/lib/email'
 
 const baseParams = {
   to: 'jane@example.com',
@@ -58,5 +58,36 @@ describe('sendRegistrationConfirmation', () => {
     await sendRegistrationConfirmation(baseParams)
     const call = emailsSendSpy.mock.calls[0][0]
     expect(call.to).toBe('jane@example.com')
+  })
+})
+
+describe('sendProposalNudge', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('sends a reminder linking to the proposal portal', async () => {
+    await sendProposalNudge({
+      to: 'dana@example.com',
+      contactName: 'Dana',
+      proposalTitle: 'Fall retreat catering',
+      token: 'tok_nudge',
+    })
+    const call = emailsSendSpy.mock.calls[0][0]
+    expect(call.to).toBe('dana@example.com')
+    expect(call.subject).toBe('A reminder about your proposal')
+    expect(call.html).toContain('/proposals/tok_nudge')
+  })
+
+  it('uses branding params for from and replyTo', async () => {
+    await sendProposalNudge({
+      to: 'dana@example.com',
+      contactName: 'Dana',
+      token: 'tok_nudge',
+      fromDisplayName: 'BrewTrax Events',
+      fromDomain: 'brewtrax.com',
+      replyTo: 'owner@brewtrax.com',
+    })
+    const call = emailsSendSpy.mock.calls[0][0]
+    expect(call.from).toBe('"BrewTrax Events" <noreply@brewtrax.com>')
+    expect(call.replyTo).toBe('owner@brewtrax.com')
   })
 })
