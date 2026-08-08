@@ -32,7 +32,7 @@ describe('OpportunityDetailClient', () => {
   it('renders header, banner, tasks and activity', () => {
     render(<OpportunityDetailClient orgId="o1" orgSlug="acme" lead={lead} customer={null} tasks={[]} activity={[]} job={null} eventTypes={[]} />)
     expect(screen.getByRole('heading', { name: 'Ada Wedding' })).toBeInTheDocument()
-    expect(screen.getByText('Tasks')).toBeInTheDocument()
+    expect(screen.getByText(/No tasks/)).toBeInTheDocument()
     expect(screen.getByText('Activity')).toBeInTheDocument()
     // needs_attention banner CTA present (no tasks, open stage)
     expect(screen.getByRole('button', { name: /add next step/i })).toBeInTheDocument()

@@ -11,7 +11,7 @@ import { useDismissable } from '@/hooks/useDismissable'
 import { LEAD_STAGE_LABELS, opportunityTitle } from '@/lib/leads'
 import { ContactCard } from '@/components/admin/opportunity/ContactCard'
 import { NextActionBanner } from '@/components/admin/opportunity/NextActionBanner'
-import { TasksPanel } from '@/components/admin/opportunity/TasksPanel'
+import { TasksPanel, type TasksPanelHandle } from '@/components/admin/opportunity/TasksPanel'
 import { ActivityTimeline } from '@/components/admin/opportunity/ActivityTimeline'
 import { FactsGrid } from '@/components/admin/opportunity/FactsGrid'
 import { ConvertToWorkCard } from '@/components/admin/opportunity/ConvertToWorkCard'
@@ -40,12 +40,12 @@ export function OpportunityDetailClient({ orgId, orgSlug, lead, customer, tasks,
   const [error, setError] = useState<string | null>(null)
   const [convertOpen, setConvertOpen] = useState(searchParams.get('convert') === '1')
   const [moreOpen, setMoreOpen] = useState(false)
-  const taskInputRef = useRef<HTMLInputElement>(null)
+  const taskInputRef = useRef<TasksPanelHandle>(null)
   const moreMenuRef = useRef<HTMLDivElement>(null)
   useDismissable(moreOpen, setMoreOpen, moreMenuRef)
 
   useEffect(() => {
-    if (searchParams.get('focus') === 'task') taskInputRef.current?.focus()
+    if (searchParams.get('focus') === 'task') taskInputRef.current?.openComposer()
   }, [searchParams])
 
   async function handleDelete() {
@@ -100,7 +100,7 @@ export function OpportunityDetailClient({ orgId, orgSlug, lead, customer, tasks,
         orgId={orgId}
         lead={lead}
         tasks={tasks}
-        onAddNextStep={() => taskInputRef.current?.focus()}
+        onAddNextStep={() => taskInputRef.current?.openComposer()}
       />
 
       <div className="grid gap-4 lg:grid-cols-5">
