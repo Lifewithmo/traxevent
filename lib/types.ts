@@ -22,6 +22,7 @@ export interface Org {
   sending_domain_records?: DomainDnsRecord[]
   tips_enabled?: boolean
   branding?: OrgBranding
+  public_profile?: PublicProfile
   created_at: string
 }
 
@@ -33,6 +34,34 @@ export interface OrgBranding {
   cover_image_url?: string     // hero behind the proposal title
   accent_color?: string        // #rrggbb
   secondary_color?: string     // #rrggbb
+}
+
+// Public profile / link-in-bio (public profile page spec). Like OrgBranding,
+// the whole map is public-safe by construction — it ships verbatim to /p/[handle].
+export interface PublicProfileLink {
+  id: string                   // client-minted uuid; stable identity for list editing
+  title: string
+  url: string
+  description?: string
+  image_url?: string
+}
+
+export interface PublicProfileSocials {
+  instagram?: string
+  tiktok?: string
+  youtube?: string
+  facebook?: string
+  website?: string
+}
+
+export interface PublicProfile {
+  enabled: boolean             // page 404s unless true
+  handle: string               // unique across orgs; /p/[handle]
+  display_name?: string        // falls back to branding.display_name → org name
+  bio?: string
+  photo_url?: string
+  socials?: PublicProfileSocials
+  links: PublicProfileLink[]
 }
 
 export const EVENT_PAGES = [
