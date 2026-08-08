@@ -105,3 +105,12 @@ describe('AdminSidebar Today nav', () => {
     expect(screen.queryByText('Today')).not.toBeInTheDocument()
   })
 })
+
+describe('AdminSidebar light shell', () => {
+  it('renders the light shell', () => {
+    render(<AdminSidebar orgSlug="acme" />)
+    const sidebar = screen.getByRole('complementary')
+    expect(sidebar).toHaveClass('bg-gray-50')
+    expect(sidebar).not.toHaveClass('bg-gray-900')
+  })
+})

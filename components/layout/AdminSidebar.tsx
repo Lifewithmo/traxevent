@@ -116,8 +116,8 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
     return [
       'block px-3 py-2 rounded-md text-sm font-medium transition-colors',
       active
-        ? 'bg-gray-700 text-white'
-        : 'text-gray-300 hover:bg-gray-700 hover:text-white',
+        ? 'bg-gray-100 text-gray-900 border-l-2 border-gray-900'
+        : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900',
     ].join(' ')
   }
 
@@ -126,15 +126,15 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
     return [
       'block px-3 py-2 rounded-md text-sm font-medium transition-colors',
       active
-        ? 'bg-gray-700 text-white'
-        : 'text-gray-300 hover:bg-gray-700 hover:text-white',
+        ? 'bg-gray-100 text-gray-900 border-l-2 border-gray-900'
+        : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900',
     ].join(' ')
   }
 
   return (
-    <aside className="w-56 bg-gray-900 text-gray-100 min-h-screen flex flex-col flex-shrink-0 print:hidden">
-      <div className="px-4 py-5 border-b border-gray-700">
-        <Link href={`/${orgSlug}`} className="font-bold text-white text-lg tracking-tight">
+    <aside className="w-56 bg-gray-50 text-gray-900 border-r border-gray-200 min-h-screen flex flex-col flex-shrink-0 print:hidden">
+      <div className="px-4 py-5 border-b border-gray-200">
+        <Link href={`/${orgSlug}`} className="font-bold text-gray-900 text-lg tracking-tight">
           TraxEvent
         </Link>
       </div>
@@ -143,7 +143,7 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
         <nav className="flex-1 px-2 py-4 space-y-0.5" aria-label="Event navigation">
           <Link
             href={`/${orgSlug}`}
-            className="block px-3 py-2 rounded-md text-sm font-medium text-gray-400 hover:bg-gray-700 hover:text-white transition-colors"
+            className="block px-3 py-2 rounded-md text-sm font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-900 transition-colors"
           >
             &larr; Events
           </Link>
@@ -210,7 +210,7 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
           <div className="px-2 py-3">
             <button
               onClick={() => setSettingsOpen((v) => !v)}
-              className="w-full flex items-center justify-between px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500 hover:text-gray-300"
+              className="w-full flex items-center justify-between px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500 hover:text-gray-700"
               aria-expanded={settingsOpen}
             >
               <span>Settings</span>
@@ -231,10 +231,10 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
         </nav>
       )}
 
-      <div className="mt-auto px-2 py-4 border-t border-gray-700">
+      <div className="mt-auto px-2 py-4 border-t border-gray-200">
         <button
           onClick={handleSignOut}
-          className="block w-full text-left px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:bg-gray-700 hover:text-white"
+          className="block w-full text-left px-3 py-2 rounded-md text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900"
         >
           Sign out
         </button>
