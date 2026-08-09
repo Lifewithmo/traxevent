@@ -19,7 +19,7 @@ import { TasksAndDocuments, type TasksAndDocumentsHandle } from '@/components/ad
 import { ConvertToWorkCard } from '@/components/admin/opportunity/ConvertToWorkCard'
 import { MarkLostDialog } from '@/components/admin/opportunity/MarkLostDialog'
 import { StageMenu } from '@/components/admin/opportunity/StageMenu'
-import type { ActivityEvent, Contract, Customer, Event, Lead, NormalizedInvoice, Proposal, Task, Vendor } from '@/lib/types'
+import type { ActivityEvent, Customer, Event, Lead, NormalizedInvoice, Proposal, Task, Vendor } from '@/lib/types'
 import type { EventType } from '@/lib/event-types'
 import type { CalendarItem } from '@/lib/calendar'
 
@@ -34,7 +34,6 @@ interface OpportunityDetailClientProps {
   eventTypes: EventType[]
   proposals: Proposal[]
   invoices: NormalizedInvoice[]
-  contracts: Contract[]
   vendors: Vendor[]
   acceptedProposals: { id: string; title: string }[]
   pastBookings?: number
@@ -43,7 +42,7 @@ interface OpportunityDetailClientProps {
   calendarItems: CalendarItem[]
 }
 
-export function OpportunityDetailClient({ orgId, orgSlug, lead, customer, tasks, activity, job, eventTypes, proposals, invoices, contracts, vendors, acceptedProposals, pastBookings = 0, convertBlockReason, today, calendarItems }: OpportunityDetailClientProps) {
+export function OpportunityDetailClient({ orgId, orgSlug, lead, customer, tasks, activity, job, eventTypes, proposals, invoices, vendors, acceptedProposals, pastBookings = 0, convertBlockReason, today, calendarItems }: OpportunityDetailClientProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [deleting, setDeleting] = useState(false)
@@ -133,7 +132,6 @@ export function OpportunityDetailClient({ orgId, orgSlug, lead, customer, tasks,
             tasks={tasks}
             proposals={proposals}
             invoices={invoices}
-            contracts={contracts}
             vendors={vendors}
             acceptedProposals={acceptedProposals}
             today={today}

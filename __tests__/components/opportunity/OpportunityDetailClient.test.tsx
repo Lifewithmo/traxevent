@@ -21,7 +21,6 @@ vi.mock('@/actions/tasks', () => ({ createTask: vi.fn(), completeTask: vi.fn(), 
 vi.mock('@/actions/notes', () => ({ createNote: vi.fn() }))
 vi.mock('@/actions/proposals', () => ({}))
 vi.mock('@/actions/invoices', () => ({ createInvoice: vi.fn(), generateFromProposal: vi.fn() }))
-vi.mock('@/actions/contracts', () => ({ createContract: vi.fn() }))
 vi.mock('@/actions/vendors', () => ({ createVendor: vi.fn(), updateVendor: vi.fn(), deleteVendor: vi.fn() }))
 vi.mock('@/actions/calendar', () => ({ listCalendarRange: vi.fn().mockResolvedValue([]) }))
 vi.mock('@/actions/client-portal', () => ({ ensureClientPortalToken: vi.fn() }))
@@ -35,7 +34,6 @@ const titledLead: Lead = { id: 'l2', name: 'Dana Kim', title: 'Riverside gala', 
 const docsProps = {
   proposals: [],
   invoices: [],
-  contracts: [],
   vendors: [],
   acceptedProposals: [],
   today: '2026-08-07',
