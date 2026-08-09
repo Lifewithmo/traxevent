@@ -14,9 +14,10 @@ interface ContactCardProps {
   lead: Lead
   variant?: 'strip'
   pastBookings?: number
+  portalAction?: React.ReactNode
 }
 
-export function ContactCard({ orgSlug, customer, lead, variant, pastBookings = 0 }: ContactCardProps) {
+export function ContactCard({ orgSlug, customer, lead, variant, pastBookings = 0, portalAction }: ContactCardProps) {
   const [expanded, setExpanded] = useState(false)
 
   const name = customer?.name ?? lead.name
@@ -66,6 +67,7 @@ export function ContactCard({ orgSlug, customer, lead, variant, pastBookings = 0
                   <Phone className="h-4 w-4" /> Call
                 </a>
               )}
+              {portalAction}
               <button
                 type="button"
                 aria-label={expanded ? 'Collapse contact' : 'Expand contact'}
