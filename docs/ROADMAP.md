@@ -39,6 +39,12 @@ EventTrax pivot (neutralization, multi-brand, ops core). Detailed designs live i
   ranked move queue with a booked-work agenda rail; Clients grouped by dormant
   repeat business, detail as story + timeline; sidebar quick links with
   proposals/contracts/invoices nested under Pipeline.
+- **Calendar week view + ICS + pipeline sub-nav** (PR #70, merged 2026-08-09,
+  wireframes 15a/15b/16a) — org calendar as two bands per day (time / owed)
+  across six kinds incl. compliance blockers and invoice dues; tokened
+  read-only ICS feed at `/ics/[orgSlug]/[token]` with per-kind `?include=`
+  filters; Pipeline becomes a section (Opportunities / Calendar / Tasks);
+  one-date .ics download on the opportunity dates panel.
 
 ## In flight
 
@@ -52,9 +58,8 @@ EventTrax pivot (neutralization, multi-brand, ops core). Detailed designs live i
 
 ## Next (approved queue)
 
-1. **Pipeline sub-nav (#16a)** — Opportunities / Calendar / Tasks sections.
-2. **Org calendar week view (#15a) + ICS sync (#15b)** — builds on increment 1's
-   `listCalendarRange` groundwork.
+*(empty — pipeline sub-nav #16a and calendar week view + ICS #15a/15b shipped
+in PR #70; queue the next increment here.)*
 
 ## BrewTrax beta blockers (need Ryan, not code)
 
