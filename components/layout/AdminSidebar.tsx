@@ -49,6 +49,9 @@ const ROSTER_KEYS = new Set(['families', 'assignments', 'checkin'])
 
 const SETTINGS_SLUGS = ['members', 'permissions', 'billing', 'email-domain', 'event-types', 'departments']
 
+// Documents that only exist because an opportunity does — nested under Pipeline.
+const PIPELINE_CHILD_SLUGS = ['proposals', 'contracts', 'invoices']
+
 function Section({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="px-2 py-3">
@@ -68,6 +71,12 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
   )
   const [settingsOpen, setSettingsOpen] = useState(settingsActive)
 
+  const pipelineActive =
+    pathname === `/${orgSlug}/leads` ||
+    pathname.startsWith(`/${orgSlug}/leads/`) ||
+    PIPELINE_CHILD_SLUGS.some((s) => pathname === `/${orgSlug}/${s}` || pathname.startsWith(`/${orgSlug}/${s}/`))
+  const [pipelineOpen, setPipelineOpen] = useState(pipelineActive)
+
   // Rendered by BOTH the org layout (no eventSlug) and the event layout (with eventSlug).
   // On an event route the event layout renders the contextual event sidebar, so the
   // org-layout instance hides itself to avoid a doubled sidebar.
@@ -80,10 +89,12 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
 
   const has = (m: ModuleId) => !enabledModules || enabledModules.includes(m)
 
-  const salesLinks = [
+  const quickLinks = [
     { module: 'leads' as ModuleId, label: 'Today', slug: 'today' },
-    { module: 'leads' as ModuleId, label: 'Pipeline', slug: 'leads' },
     { module: 'clients' as ModuleId, label: 'Clients', slug: 'clients' },
+  ].filter((l) => has(l.module))
+
+  const pipelineChildren = [
     { module: 'proposals' as ModuleId, label: 'Proposals', slug: 'proposals' },
     { module: 'contracts' as ModuleId, label: 'Contracts', slug: 'contracts' },
     { module: 'invoices' as ModuleId, label: 'Invoices', slug: 'invoices' },
@@ -111,10 +122,11 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
     router.push('/login')
   }
 
-  function navClass(href: string) {
+  function navClass(href: string, indent = false) {
     const active = pathname === href || pathname.startsWith(href + '/')
     return [
-      'block px-3 py-2 rounded-md text-sm font-medium transition-colors',
+      'block py-2 rounded-md text-sm font-medium transition-colors',
+      indent ? 'pl-[30px] pr-3' : 'px-3',
       active
         ? 'bg-gray-100 text-gray-900 border-l-2 border-gray-900'
         : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 border-l-2 border-transparent',
@@ -158,13 +170,39 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
         </nav>
       ) : (
         <nav className="flex-1" aria-label="Workspace navigation">
-          {salesLinks.length > 0 && (
-            <Section label="Sales">
-              {salesLinks.map((l) => (
+          {quickLinks.length > 0 && (
+            <Section label="Quick Links">
+              {quickLinks.map((l) => (
                 <Link key={l.slug} href={`/${orgSlug}/${l.slug}`} className={navClass(`/${orgSlug}/${l.slug}`)}>
                   {l.label}
                 </Link>
               ))}
+            </Section>
+          )}
+
+          {has('leads') && (
+            <Section label="Sales">
+              <div className="flex items-center">
+                <Link href={`/${orgSlug}/leads`} className={`${navClass(`/${orgSlug}/leads`)} flex-1`}>
+                  Pipeline
+                </Link>
+                {pipelineChildren.length > 0 && (
+                  <button
+                    onClick={() => setPipelineOpen((v) => !v)}
+                    aria-expanded={pipelineOpen}
+                    aria-label={pipelineOpen ? 'Collapse pipeline items' : 'Expand pipeline items'}
+                    className="px-2 py-2 text-[10px] text-gray-500 hover:text-gray-900"
+                  >
+                    {pipelineOpen ? '▾' : '▸'}
+                  </button>
+                )}
+              </div>
+              {pipelineOpen &&
+                pipelineChildren.map((l) => (
+                  <Link key={l.slug} href={`/${orgSlug}/${l.slug}`} className={navClass(`/${orgSlug}/${l.slug}`, true)}>
+                    {l.label}
+                  </Link>
+                ))}
             </Section>
           )}
 
