@@ -547,6 +547,7 @@ export interface Proposal {
   updated_at?: string
   deposit_gate?: 'before_accept' | 'after_accept'
   deposit_terms?: string
+  terms?: string               // legal terms; snapshot from Org.default_proposal_terms at creation, editable per proposal; participates in the signed document hash when present
   payment_status?: PaymentStatus
   signature?: ProposalSignature
   deposit_payment?: ProposalDepositPayment
