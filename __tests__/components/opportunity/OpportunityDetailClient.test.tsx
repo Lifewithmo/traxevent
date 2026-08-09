@@ -24,6 +24,7 @@ vi.mock('@/actions/invoices', () => ({ createInvoice: vi.fn(), generateFromPropo
 vi.mock('@/actions/contracts', () => ({ createContract: vi.fn() }))
 vi.mock('@/actions/vendors', () => ({ createVendor: vi.fn(), updateVendor: vi.fn(), deleteVendor: vi.fn() }))
 vi.mock('@/actions/calendar', () => ({ listCalendarRange: vi.fn().mockResolvedValue([]) }))
+vi.mock('@/actions/client-portal', () => ({ ensureClientPortalToken: vi.fn() }))
 
 import { OpportunityDetailClient } from '@/components/admin/OpportunityDetailClient'
 import type { Lead } from '@/lib/types'

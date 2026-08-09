@@ -20,7 +20,10 @@ describe('AdminSidebar workspace nav gating', () => {
   it('hides links whose module is not enabled', () => {
     render(<AdminSidebar orgSlug="acme" enabledModules={['leads', 'invoices', 'calendar']} />)
     expect(screen.getByText('Pipeline')).toBeInTheDocument()   // leads
+    // Pipeline children start collapsed off pipeline routes; expand to see them.
+    fireEvent.click(screen.getByRole('button', { name: 'Expand pipeline items' }))
     expect(screen.getByText('Invoices')).toBeInTheDocument()   // invoices
+    expect(screen.queryByText('Proposals')).not.toBeInTheDocument() // module off
     expect(screen.queryByText('Registrants')).not.toBeInTheDocument()
     expect(screen.queryByText('Vendors')).not.toBeInTheDocument()
   })
