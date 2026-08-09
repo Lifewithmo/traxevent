@@ -13,6 +13,8 @@ vi.mock('@/lib/auth/assert', () => ({ assertOrgMember: assertOrgMemberSpy }))
 vi.mock('@/lib/events', () => ({ listEventsCore: listEventsCoreSpy }))
 vi.mock('@/lib/crm/leads', () => ({ listLeadsCore: listLeadsCoreSpy }))
 vi.mock('@/lib/crm/tasks', () => ({ listTasksCore: listTasksCoreSpy }))
+// getCalendarFeed's assembly module reaches firebase-admin at import time.
+vi.mock('@/lib/calendar-feed', () => ({ assembleCalendarFeed: vi.fn() }))
 
 import { getOrgCalendar, listCalendarRange } from '@/actions/calendar'
 

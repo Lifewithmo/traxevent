@@ -21,6 +21,7 @@ export interface Org {
   sending_domain_status?: SendingDomainStatus
   sending_domain_records?: DomainDnsRecord[]
   tips_enabled?: boolean
+  ics_token?: string                 // secret path segment of the read-only calendar feed
   branding?: OrgBranding
   public_profile?: PublicProfile
   created_at: string

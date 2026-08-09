@@ -1,13 +1,41 @@
-import type { Event, Lead, Task } from '@/lib/types'
-import { opportunityTitle } from '@/lib/leads'
+import type { ComplianceDoc, Event, Lead, NormalizedInvoice, Task } from '@/lib/types'
+import { invoiceBalance } from '@/lib/invoices'
+import { OPEN_STAGES, opportunityTitle } from '@/lib/leads'
+import { addDays } from '@/lib/opportunity-detail'
+
+export type CalendarKind = 'event' | 'lead' | 'task' | 'follow_up' | 'compliance' | 'invoice_due'
 
 export interface CalendarItem {
   id: string
   title: string
   date: string          // ISO date (YYYY-MM-DD or full ISO)
-  kind: 'event' | 'lead' | 'task'
+  kind: CalendarKind
   href: string
+  /** Second line under the title — who it's for, what it blocks. */
+  detail?: string
+  /** invoice_due only: the outstanding balance. */
+  amount?: number
+  /** compliance only: an upcoming booked event depends on this document. */
+  blocker?: boolean
+  /** lead dates are holds, not bookings. */
+  tentative?: boolean
+  /** event only: expected guests, for the header count. */
+  headcount?: number
 }
+
+export const CALENDAR_KIND_LABELS: Record<CalendarKind, string> = {
+  event: 'Booked event',
+  lead: 'Opportunity date',
+  task: 'Task',
+  follow_up: 'Follow-up',
+  compliance: 'Compliance',
+  invoice_due: 'Invoice due',
+}
+
+export const CALENDAR_KINDS = Object.keys(CALENDAR_KIND_LABELS) as CalendarKind[]
+
+/** The three kinds that are pipeline work — what the Pipeline calendar shows. */
+export const PIPELINE_KINDS: CalendarKind[] = ['lead', 'task', 'follow_up']
 
 // Merge events (by event_start) and leads (by event_date) into one date-sorted agenda.
 // Items without a date are omitted. `orgSlug` builds the links.
@@ -55,4 +83,116 @@ export function calendarRangeItems(
     }
   }
   return items.sort((a, b) => a.date.localeCompare(b.date))
+}
+
+/** Monday-start week containing `ymd`: [monday, sunday]. */
+export function weekRange(ymd: string): { from: string; to: string } {
+  const d = new Date(`${ymd.slice(0, 10)}T00:00:00.000Z`)
+  const dow = d.getUTCDay() // 0 Sun … 6 Sat
+  const monday = addDays(ymd.slice(0, 10), dow === 0 ? -6 : 1 - dow)
+  return { from: monday, to: addDays(monday, 6) }
+}
+
+export function weekDays(from: string): string[] {
+  return Array.from({ length: 7 }, (_, i) => addDays(from, i))
+}
+
+export interface CalendarFeedSources {
+  events: Event[]
+  leads: Lead[]
+  tasksByLeadId: Record<string, Task[]>
+  complianceDocs: ComplianceDoc[]
+  invoices: NormalizedInvoice[]
+}
+
+/**
+ * Everything the org calendar (and the ICS feed) knows about, all six kinds.
+ * The top band of the week view is time (event, lead); the OWED band is the
+ * rest. buildCalendar()'s converted-lead rule carries over: a converted
+ * opportunity shows as its event only.
+ */
+export function buildCalendarFeed(orgSlug: string, s: CalendarFeedSources): CalendarItem[] {
+  const items: CalendarItem[] = []
+  const isOpen = (l: Lead) => (OPEN_STAGES as Lead['stage'][]).includes(l.stage)
+  const leadById = new Map(s.leads.map((l) => [l.id, l]))
+  const scheduledLeadIds = new Set(s.events.map((e) => e.lead_id).filter((id): id is string => !!id))
+  const liveEvents = s.events.filter((e) => e.status !== 'archived' && e.event_start)
+
+  for (const e of liveEvents) {
+    items.push({
+      id: e.id, title: e.name, date: e.event_start.slice(0, 10), kind: 'event',
+      href: `/${orgSlug}/${e.slug}/dashboard`,
+      detail: e.headcount ? `${e.headcount} guests` : undefined,
+      headcount: e.headcount,
+    })
+  }
+
+  // Tentative holds: dated opportunities that are not lost and not yet converted.
+  for (const l of s.leads) {
+    if (!l.event_date || l.stage === 'closed_lost' || scheduledLeadIds.has(l.id)) continue
+    items.push({
+      id: l.id, title: opportunityTitle(l), date: l.event_date.slice(0, 10), kind: 'lead',
+      href: `/${orgSlug}/leads/${l.id}`, tentative: true,
+      detail: l.stage === 'closed_won' ? 'won · not scheduled' : 'not booked',
+    })
+  }
+
+  for (const [leadId, tasks] of Object.entries(s.tasksByLeadId)) {
+    const lead = leadById.get(leadId)
+    if (!lead || !isOpen(lead)) continue
+    for (const t of tasks) {
+      if (t.done || !t.due_date) continue
+      items.push({
+        id: t.id, title: t.title, date: t.due_date, kind: 'task',
+        href: `/${orgSlug}/leads/${leadId}`, detail: opportunityTitle(lead),
+      })
+    }
+  }
+
+  for (const l of s.leads) {
+    if (!isOpen(l) || !l.waiting?.follow_up_date) continue
+    items.push({
+      id: l.id, title: `Follow up: ${opportunityTitle(l)}`, date: l.waiting.follow_up_date, kind: 'follow_up',
+      href: `/${orgSlug}/leads/${l.id}`, detail: `waiting on ${l.waiting.reason}`,
+    })
+  }
+
+  // A lapsed document blocks the next booked event after its expiry.
+  for (const doc of s.complianceDocs) {
+    if (!doc.expires_on) continue
+    const blocked = liveEvents
+      .filter((e) => e.event_start.slice(0, 10) >= doc.expires_on!)
+      .sort((a, b) => a.event_start.localeCompare(b.event_start))[0]
+    items.push({
+      id: doc.id, title: `${doc.name} expires`, date: doc.expires_on, kind: 'compliance',
+      href: `/${orgSlug}/compliance`, blocker: !!blocked,
+      detail: blocked ? `blocks ${blocked.name}` : undefined,
+    })
+  }
+
+  for (const inv of s.invoices) {
+    if (inv.lifecycle !== 'issued' || !inv.due_date) continue
+    const balance = invoiceBalance(inv)
+    if (balance <= 0) continue
+    const lead = leadById.get(inv.lead_id)
+    items.push({
+      id: inv.id, title: inv.title?.trim() || `Invoice ${inv.number ?? ''}`.trim(), date: inv.due_date,
+      kind: 'invoice_due', href: `/${orgSlug}/leads/${inv.lead_id}`,
+      amount: balance, detail: lead ? opportunityTitle(lead) : undefined,
+    })
+  }
+
+  return items.sort((a, b) => a.date.localeCompare(b.date))
+}
+
+export function filterFeed(items: CalendarItem[], kinds: CalendarKind[]): CalendarItem[] {
+  const keep = new Set(kinds)
+  return items.filter((i) => keep.has(i.kind))
+}
+
+export function feedInRange(items: CalendarItem[], fromYmd: string, toYmd: string): CalendarItem[] {
+  return items.filter((i) => {
+    const d = i.date.slice(0, 10)
+    return d >= fromYmd && d <= toYmd
+  })
 }
