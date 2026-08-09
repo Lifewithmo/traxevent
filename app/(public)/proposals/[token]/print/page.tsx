@@ -163,6 +163,13 @@ export default async function ProposalPrintPage({
         </section>
       )}
 
+      {proposal.terms && (
+        <section className="mt-8">
+          <h2 className="mb-2 text-lg font-bold">Terms</h2>
+          <p className="whitespace-pre-wrap text-sm text-gray-700">{proposal.terms}</p>
+        </section>
+      )}
+
       {proposal.notes && (
         <section className="mt-8">
           <h2 className="mb-2 text-lg font-bold">Notes</h2>
