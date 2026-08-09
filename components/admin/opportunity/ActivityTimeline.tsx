@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -33,6 +33,12 @@ export function ActivityTimeline({ orgId, leadId, activity }: ActivityTimelinePr
   const [body, setBody] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [composerOpen, setComposerOpen] = useState(false)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  useEffect(() => {
+    if (composerOpen) textareaRef.current?.focus()
+  }, [composerOpen])
 
   async function handleAddNote() {
     if (!body.trim()) return
@@ -49,15 +55,27 @@ export function ActivityTimeline({ orgId, leadId, activity }: ActivityTimelinePr
       <CardHeader><CardTitle className="text-base">Activity</CardTitle></CardHeader>
       <CardContent className="space-y-4">
         <div className="space-y-2">
-          <textarea
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-            placeholder="Add a note…"
-            className="flex min-h-16 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-          />
-          <div className="flex justify-end">
-            <Button size="sm" onClick={handleAddNote} disabled={busy || !body.trim()}>Add note</Button>
-          </div>
+          {composerOpen ? (
+            <div
+              className="space-y-2"
+              onBlur={(e) => {
+                if (!e.currentTarget.contains(e.relatedTarget as Node) && !body.trim()) setComposerOpen(false)
+              }}
+            >
+              <textarea
+                ref={textareaRef}
+                value={body}
+                onChange={(e) => setBody(e.target.value)}
+                placeholder="Add a note…"
+                className="flex min-h-16 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              />
+              <div className="flex justify-end">
+                <Button size="sm" onClick={handleAddNote} disabled={busy || !body.trim()}>Add note</Button>
+              </div>
+            </div>
+          ) : (
+            <Button variant="ghost" size="sm" onClick={() => setComposerOpen(true)}>Add a note</Button>
+          )}
           {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
         </div>
 

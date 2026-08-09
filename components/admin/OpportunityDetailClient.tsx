@@ -11,14 +11,16 @@ import { useDismissable } from '@/hooks/useDismissable'
 import { LEAD_STAGE_LABELS, opportunityTitle } from '@/lib/leads'
 import { ContactCard } from '@/components/admin/opportunity/ContactCard'
 import { NextActionBanner } from '@/components/admin/opportunity/NextActionBanner'
-import { TasksPanel } from '@/components/admin/opportunity/TasksPanel'
 import { ActivityTimeline } from '@/components/admin/opportunity/ActivityTimeline'
+import { DatesPanel } from '@/components/admin/opportunity/DatesPanel'
 import { FactsGrid } from '@/components/admin/opportunity/FactsGrid'
+import { TasksAndDocuments, type TasksAndDocumentsHandle } from '@/components/admin/opportunity/TasksAndDocuments'
 import { ConvertToWorkCard } from '@/components/admin/opportunity/ConvertToWorkCard'
 import { MarkLostDialog } from '@/components/admin/opportunity/MarkLostDialog'
 import { StageMenu } from '@/components/admin/opportunity/StageMenu'
-import type { ActivityEvent, Customer, Event, Lead, Task } from '@/lib/types'
+import type { ActivityEvent, Contract, Customer, Event, Lead, NormalizedInvoice, Proposal, Task, Vendor } from '@/lib/types'
 import type { EventType } from '@/lib/event-types'
+import type { CalendarItem } from '@/lib/calendar'
 
 interface OpportunityDetailClientProps {
   orgId: string
@@ -29,23 +31,30 @@ interface OpportunityDetailClientProps {
   activity: ActivityEvent[]
   job: Event | null
   eventTypes: EventType[]
+  proposals: Proposal[]
+  invoices: NormalizedInvoice[]
+  contracts: Contract[]
+  vendors: Vendor[]
+  acceptedProposals: { id: string; title: string }[]
   pastBookings?: number
   convertBlockReason?: string
+  today: string
+  calendarItems: CalendarItem[]
 }
 
-export function OpportunityDetailClient({ orgId, orgSlug, lead, customer, tasks, activity, job, eventTypes, pastBookings = 0, convertBlockReason }: OpportunityDetailClientProps) {
+export function OpportunityDetailClient({ orgId, orgSlug, lead, customer, tasks, activity, job, eventTypes, proposals, invoices, contracts, vendors, acceptedProposals, pastBookings = 0, convertBlockReason, today, calendarItems }: OpportunityDetailClientProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [convertOpen, setConvertOpen] = useState(searchParams.get('convert') === '1')
   const [moreOpen, setMoreOpen] = useState(false)
-  const taskInputRef = useRef<HTMLInputElement>(null)
+  const taskInputRef = useRef<TasksAndDocumentsHandle>(null)
   const moreMenuRef = useRef<HTMLDivElement>(null)
   useDismissable(moreOpen, setMoreOpen, moreMenuRef)
 
   useEffect(() => {
-    if (searchParams.get('focus') === 'task') taskInputRef.current?.focus()
+    if (searchParams.get('focus') === 'task') taskInputRef.current?.openTaskComposer()
   }, [searchParams])
 
   async function handleDelete() {
@@ -100,7 +109,7 @@ export function OpportunityDetailClient({ orgId, orgSlug, lead, customer, tasks,
         orgId={orgId}
         lead={lead}
         tasks={tasks}
-        onAddNextStep={() => taskInputRef.current?.focus()}
+        onAddNextStep={() => taskInputRef.current?.openTaskComposer()}
       />
 
       <div className="grid gap-4 lg:grid-cols-5">
@@ -108,6 +117,19 @@ export function OpportunityDetailClient({ orgId, orgSlug, lead, customer, tasks,
         <div className="space-y-4 lg:col-span-3">
           <ContactCard orgSlug={orgSlug} customer={customer} lead={lead} variant="strip" pastBookings={pastBookings} />
           <FactsGrid orgId={orgId} orgSlug={orgSlug} lead={lead} customer={customer} />
+          <TasksAndDocuments
+            ref={taskInputRef}
+            orgId={orgId}
+            orgSlug={orgSlug}
+            leadId={lead.id}
+            tasks={tasks}
+            proposals={proposals}
+            invoices={invoices}
+            contracts={contracts}
+            vendors={vendors}
+            acceptedProposals={acceptedProposals}
+            today={today}
+          />
           <ConvertToWorkCard
             orgId={orgId}
             orgSlug={orgSlug}
@@ -121,7 +143,7 @@ export function OpportunityDetailClient({ orgId, orgSlug, lead, customer, tasks,
 
         {/* Right: the working column */}
         <aside className="space-y-4 lg:col-span-2">
-          <TasksPanel ref={taskInputRef} orgId={orgId} leadId={lead.id} tasks={tasks} />
+          <DatesPanel orgId={orgId} orgSlug={orgSlug} lead={lead} today={today} initialItems={calendarItems} />
           <ActivityTimeline orgId={orgId} leadId={lead.id} activity={activity} />
         </aside>
       </div>

@@ -28,9 +28,21 @@ describe('ActivityTimeline', () => {
 
   it('adds a note', async () => {
     render(<ActivityTimeline orgId="o1" leadId="l1" activity={[]} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Add a note' }))
     fireEvent.change(screen.getByPlaceholderText(/add a note/i), { target: { value: 'Talked to client' } })
     fireEvent.click(screen.getByRole('button', { name: /add note/i }))
     await waitFor(() => expect(createNote).toHaveBeenCalledWith('o1', { parent_type: 'opportunity', parent_id: 'l1', body: 'Talked to client' }))
     await waitFor(() => expect(refresh).toHaveBeenCalled())
+  })
+
+  it('keeps the composer hidden until the affordance is used', () => {
+    render(<ActivityTimeline orgId="o1" leadId="l1" activity={[]} />)
+    expect(screen.queryByPlaceholderText('Add a note…')).not.toBeInTheDocument()
+  })
+
+  it('focuses the note textarea when opened', async () => {
+    render(<ActivityTimeline orgId="o1" leadId="l1" activity={[]} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Add a note' }))
+    expect(screen.getByPlaceholderText('Add a note…')).toHaveFocus()
   })
 })
