@@ -10,6 +10,8 @@ import {
   monthLabel, monthGrid, bucketByDay, shortDayLabel, listDateLabel,
 } from '@/lib/date-window'
 import { addDays } from '@/lib/opportunity-detail'
+import { opportunityTitle } from '@/lib/leads'
+import { AddToCalendarButton } from '@/components/admin/opportunity/AddToCalendarButton'
 import type { CalendarItem } from '@/lib/calendar'
 import type { Lead } from '@/lib/types'
 
@@ -127,11 +129,16 @@ export function DatesPanel({ orgId, orgSlug, lead, today, initialItems }: DatesP
         {/* Header row */}
         <div className="flex items-center justify-between">
           <span className="text-sm font-semibold">Dates</span>
-          {previewing ? (
-            <span className="text-xs font-medium text-destructive">previewing {shortMonthDay(displayCenter)}</span>
-          ) : (
-            distance && <span className="text-xs text-muted-foreground">{distance}</span>
-          )}
+          <span className="flex items-center gap-2">
+            {lead.event_date && !previewing && (
+              <AddToCalendarButton title={opportunityTitle(lead)} date={lead.event_date} />
+            )}
+            {previewing ? (
+              <span className="text-xs font-medium text-destructive">previewing {shortMonthDay(displayCenter)}</span>
+            ) : (
+              distance && <span className="text-xs text-muted-foreground">{distance}</span>
+            )}
+          </span>
         </div>
 
         {/* Strip controls row */}

@@ -6,9 +6,15 @@ import { listLeads } from '@/actions/leads'
 import { listEventsCore } from '@/lib/events'
 import { listLeadsCore } from '@/lib/crm/leads'
 import { listTasksCore } from '@/lib/crm/tasks'
+import { assembleCalendarFeed } from '@/lib/calendar-feed'
 import { OPEN_STAGES } from '@/lib/leads'
 import { buildCalendar, calendarRangeItems, type CalendarItem } from '@/lib/calendar'
 import type { Lead, Task } from '@/lib/types'
+
+export async function getCalendarFeed(orgId: string, orgSlug: string): Promise<CalendarItem[]> {
+  await assertOrgMember(orgId)
+  return assembleCalendarFeed(orgId, orgSlug)
+}
 
 export async function getOrgCalendar(orgId: string, orgSlug: string): Promise<CalendarItem[]> {
   await assertOrgMember(orgId)
