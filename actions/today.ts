@@ -7,11 +7,13 @@ import { listEventsCore } from '@/lib/events'
 import { OPEN_STAGES } from '@/lib/leads'
 import { todayYmd } from '@/lib/opportunity-detail'
 import { buildToday, type TodayData } from '@/lib/today'
+import { buildAgenda, type Agenda } from '@/lib/today-moves'
 import type { LeadStage, Task } from '@/lib/types'
 
 // NOTE: this is a 'use server' module — every export must be an async function.
-// TodayData (a type) is therefore NOT re-exported here; import it from
-// '@/lib/today' directly. Re-exporting it broke `next build` (RSC compiler).
+// TodayData / Agenda (types) are therefore NOT re-exported here; import them
+// from '@/lib/today' and '@/lib/today-moves' directly. Re-exporting broke
+// `next build` (RSC compiler).
 
 export async function getTodayData(orgId: string): Promise<TodayData> {
   await assertOrgMember(orgId)
@@ -22,4 +24,11 @@ export async function getTodayData(orgId: string): Promise<TodayData> {
   const tasksByLeadId: Record<string, Task[]> = {}
   openLeads.forEach((l, i) => { tasksByLeadId[l.id] = taskLists[i] })
   return buildToday({ leads, tasksByLeadId, today: todayYmd(), scheduledLeadIds })
+}
+
+/** Booked work for today + the next seven days. Reuses listEventsCore — no new query shape. */
+export async function getTodayAgenda(orgId: string): Promise<Agenda> {
+  await assertOrgMember(orgId)
+  const events = await listEventsCore(orgId)
+  return buildAgenda(events, todayYmd())
 }
