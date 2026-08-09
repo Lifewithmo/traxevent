@@ -6,7 +6,7 @@ import { generateAccessToken } from '@/lib/tokens'
 import { assertOrgMember, assertOrgAdmin } from '@/lib/auth/assert'
 import { updateProposalDraftCore } from '@/lib/proposals/draft-core'
 import type { ProposalDraftInput } from '@/lib/proposals/draft'
-import type { Proposal, ProposalLineItem, ProposalPackage, ProposalDiscount, ProposalDeposit } from '@/lib/types'
+import type { Org, Proposal, ProposalLineItem, ProposalPackage, ProposalDiscount, ProposalDeposit } from '@/lib/types'
 
 function proposalsRef(orgId: string) {
   return adminDb.collection('orgs').doc(orgId).collection('proposals')
@@ -45,6 +45,8 @@ export async function getProposal(orgId: string, proposalId: string): Promise<Pr
 
 export async function createProposal(orgId: string, leadId: string, input: CreateProposalInput): Promise<Proposal> {
   await assertOrgAdmin(orgId)
+  const orgSnap = await adminDb.collection('orgs').doc(orgId).get()
+  const defaultTerms = (((orgSnap.data() as Org | undefined)?.default_proposal_terms) ?? '').trim()
   const id = randomBytes(8).toString('hex')
   const proposal: Proposal = {
     id,
@@ -63,6 +65,7 @@ export async function createProposal(orgId: string, leadId: string, input: Creat
     ...(input.expires_at ? { expires_at: input.expires_at } : {}),
     ...(input.deposit_gate ? { deposit_gate: input.deposit_gate } : {}),
     ...(input.deposit_terms?.trim() ? { deposit_terms: input.deposit_terms.trim() } : {}),
+    ...(defaultTerms ? { terms: defaultTerms } : {}),
   }
   await proposalsRef(orgId).doc(id).set(proposal)
   return proposal

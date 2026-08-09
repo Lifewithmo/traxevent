@@ -1,6 +1,7 @@
 'use server'
 
 import { adminDb } from '@/lib/firebase-admin'
+import { FieldValue } from 'firebase-admin/firestore'
 import { setOrgClaims } from '@/actions/auth'
 import type { Org, OrgBranding, OrgRole } from '@/lib/types'
 import { parseOrgBranding } from '@/lib/branding'
@@ -8,6 +9,7 @@ import { slugify } from '@/lib/slug'
 import { assertOrgAdmin } from '@/lib/auth/assert'
 import { getAllIndustryPacks } from '@/lib/industry-packs'
 import { getBrand, validBrandParam } from '@/lib/brands'
+import { MAX_TERMS_CHARS } from '@/lib/proposals/draft'
 
 export async function createOrg(
   uid: string,
@@ -92,4 +94,18 @@ export async function setOrgIndustry(orgId: string, industryPackId: string): Pro
   const known = getAllIndustryPacks().some((p) => p.id === industryPackId)
   if (!known) throw new Error('Unknown industry pack')
   await adminDb.collection('orgs').doc(orgId).update({ industry_pack_id: industryPackId })
+}
+
+/**
+ * The org's standard proposal terms — copied into each NEW proposal's `terms`
+ * at creation (a snapshot: editing this never mutates existing proposals).
+ * Blank input clears the field.
+ */
+export async function updateOrgDefaultProposalTerms(orgId: string, terms: string): Promise<string> {
+  await assertOrgAdmin(orgId)
+  const trimmed = (typeof terms === 'string' ? terms : '').trim().slice(0, MAX_TERMS_CHARS)
+  await adminDb.collection('orgs').doc(orgId).update({
+    default_proposal_terms: trimmed || FieldValue.delete(),
+  })
+  return trimmed
 }
