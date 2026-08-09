@@ -1,6 +1,6 @@
 # TraxEvent — Product Roadmap
 
-Rollup of where the build stands and what's next. Last updated: 2026-08-08.
+Rollup of where the build stands and what's next. Last updated: 2026-08-09.
 
 The original vision/architecture spec is
 [2026-06-02-product-roadmap-design.md](superpowers/specs/2026-06-02-product-roadmap-design.md)
@@ -35,6 +35,10 @@ EventTrax pivot (neutralization, multi-brand, ops core). Detailed designs live i
   ⚠️ Authenticated editor walk (save → upload → live page → 404 → handle
   conflict) not yet run — gate before customer handoff. Rest of the Beacons
   buildout logged in `strategy/2026-08-08-beacons-parity-feature-request.md`.
+- **Today / Clients / nav redesign** (PR #69, merged 2026-08-09) — Today as one
+  ranked move queue with a booked-work agenda rail; Clients grouped by dormant
+  repeat business, detail as story + timeline; sidebar quick links with
+  proposals/contracts/invoices nested under Pipeline.
 
 ## In flight
 
