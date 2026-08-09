@@ -9,7 +9,7 @@ import {
 } from '@/lib/industry-packs'
 
 const ALL_MODULES = [
-  'leads', 'clients', 'proposals', 'contracts', 'invoices',
+  'leads', 'clients', 'proposals', 'invoices',
   'events', 'registrants', 'vendors', 'calendar', 'reports',
 ] as const
 

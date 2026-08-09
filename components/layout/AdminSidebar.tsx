@@ -21,7 +21,7 @@ interface AdminSidebarProps {
 const ORG_PAGE_SLUGS = new Set([
   'members', 'forms', 'permissions', 'billing', 'email-domain', 'event-types',
   'departments', 'reports', 'registrants', 'today', 'leads', 'clients', 'proposals',
-  'contracts', 'invoices', 'vendors', 'calendar', 'new-event', 'packages', 'compliance',
+  'invoices', 'vendors', 'calendar', 'new-event', 'packages', 'compliance',
 ])
 
 function getEventNav(terminology: Terminology) {
@@ -50,7 +50,7 @@ const ROSTER_KEYS = new Set(['families', 'assignments', 'checkin'])
 const SETTINGS_SLUGS = ['members', 'permissions', 'billing', 'email-domain', 'event-types', 'departments']
 
 // Documents that only exist because an opportunity does — nested under Pipeline.
-const PIPELINE_CHILD_SLUGS = ['proposals', 'contracts', 'invoices']
+const PIPELINE_CHILD_SLUGS = ['proposals', 'invoices']
 
 function Section({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -96,7 +96,6 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
 
   const pipelineChildren = [
     { module: 'proposals' as ModuleId, label: 'Proposals', slug: 'proposals' },
-    { module: 'contracts' as ModuleId, label: 'Contracts', slug: 'contracts' },
     { module: 'invoices' as ModuleId, label: 'Invoices', slug: 'invoices' },
   ].filter((l) => has(l.module))
 

@@ -19,8 +19,8 @@ import { getClientPortal } from '@/actions/client-portal-public'
 
 // Builds the collectionGroup('leads') snapshot. The single lead doc carries a
 // `ref` whose parent.parent is the orgRef — the org is resolved SOLELY from
-// this path. That orgRef's proposals/invoices/contracts subcollection queries
-// resolve to proposalsSpy / invoicesSpy / contractsSpy.
+// this path. That orgRef's proposals/invoices subcollection queries
+// resolve to proposalsSpy / invoicesSpy.
 function mockLead(data: Record<string, unknown> | null) {
   if (data === null) {
     getSpy.mockResolvedValue({ empty: true, docs: [] })

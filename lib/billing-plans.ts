@@ -18,7 +18,7 @@ export const BILLING_PLANS: Record<BillingPlan, BillingPlanInfo> = {
     id: 'business',
     name: 'Business',
     priceLabel: '$79/month',
-    blurb: 'For wedding, floral, and corporate event businesses — leads, proposals, invoices, contracts.',
+    blurb: 'For wedding, floral, and corporate event businesses — leads, proposals, invoices.',
   },
 }
 
