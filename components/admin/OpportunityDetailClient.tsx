@@ -10,6 +10,7 @@ import { deleteLead } from '@/actions/leads'
 import { useDismissable } from '@/hooks/useDismissable'
 import { LEAD_STAGE_LABELS, opportunityTitle } from '@/lib/leads'
 import { ContactCard } from '@/components/admin/opportunity/ContactCard'
+import { CopyPortalLinkButton } from '@/components/admin/opportunity/CopyPortalLinkButton'
 import { NextActionBanner } from '@/components/admin/opportunity/NextActionBanner'
 import { ActivityTimeline } from '@/components/admin/opportunity/ActivityTimeline'
 import { DatesPanel } from '@/components/admin/opportunity/DatesPanel'
@@ -115,7 +116,14 @@ export function OpportunityDetailClient({ orgId, orgSlug, lead, customer, tasks,
       <div className="grid gap-4 lg:grid-cols-5">
         {/* Left: the record */}
         <div className="space-y-4 lg:col-span-3">
-          <ContactCard orgSlug={orgSlug} customer={customer} lead={lead} variant="strip" pastBookings={pastBookings} />
+          <ContactCard
+            orgSlug={orgSlug}
+            customer={customer}
+            lead={lead}
+            variant="strip"
+            pastBookings={pastBookings}
+            portalAction={<CopyPortalLinkButton orgId={orgId} leadId={lead.id} />}
+          />
           <FactsGrid orgId={orgId} orgSlug={orgSlug} lead={lead} customer={customer} />
           <TasksAndDocuments
             ref={taskInputRef}

@@ -39,4 +39,11 @@ describe('ContactCard', () => {
     render(<ContactCard orgSlug="acme" customer={null} lead={lead} />)
     expect(screen.queryByRole('link', { name: /view customer/i })).not.toBeInTheDocument()
   })
+
+  it('renders the portal action in the strip action row', () => {
+    render(
+      <ContactCard orgSlug="acme" customer={null} lead={lead} variant="strip" portalAction={<button>Portal link</button>} />
+    )
+    expect(screen.getByRole('button', { name: 'Portal link' })).toBeInTheDocument()
+  })
 })

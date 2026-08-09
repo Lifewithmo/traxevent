@@ -16,7 +16,6 @@ import { listEventsByLead } from '@/actions/events'
 import { listOrgEventTypes } from '@/actions/event-types'
 import { listCalendarRange } from '@/actions/calendar'
 import { OpportunityDetailClient } from '@/components/admin/OpportunityDetailClient'
-import { ClientPortalLinkClient } from '@/components/admin/ClientPortalLinkClient'
 
 export default async function LeadDetailPage({ params }: { params: Promise<{ orgSlug: string; leadId: string }> }) {
   const { orgSlug, leadId } = await params
@@ -58,28 +57,24 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ org
   }).message
 
   return (
-    <>
-      <OpportunityDetailClient
-        orgId={orgId}
-        orgSlug={orgSlug}
-        lead={lead}
-        customer={customer}
-        tasks={tasks}
-        activity={activity}
-        job={jobs[0] ?? null}
-        eventTypes={eventTypes}
-        proposals={proposals}
-        invoices={invoices}
-        contracts={contracts}
-        vendors={vendors}
-        acceptedProposals={acceptedProposals}
-        pastBookings={pastBookings}
-        convertBlockReason={blockReason}
-        today={today}
-        calendarItems={calendarItems}
-      />
-
-      <ClientPortalLinkClient orgId={orgId} leadId={leadId} />
-    </>
+    <OpportunityDetailClient
+      orgId={orgId}
+      orgSlug={orgSlug}
+      lead={lead}
+      customer={customer}
+      tasks={tasks}
+      activity={activity}
+      job={jobs[0] ?? null}
+      eventTypes={eventTypes}
+      proposals={proposals}
+      invoices={invoices}
+      contracts={contracts}
+      vendors={vendors}
+      acceptedProposals={acceptedProposals}
+      pastBookings={pastBookings}
+      convertBlockReason={blockReason}
+      today={today}
+      calendarItems={calendarItems}
+    />
   )
 }
