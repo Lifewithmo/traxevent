@@ -48,6 +48,12 @@ export interface RecordPaymentCoreInput {
   tip_amount?: number
 }
 
+/** Guard-free org-wide invoice list. Performs no auth. */
+export async function listAllInvoicesCore(orgId: string): Promise<NormalizedInvoice[]> {
+  const snap = await invoicesRef(orgId).get()
+  return snap.docs.map((d) => normalizeInvoice(d.data()))
+}
+
 /** Guard-free invoice list. Performs no auth. */
 export async function listInvoicesCore(orgId: string, leadId: string): Promise<NormalizedInvoice[]> {
   const snap = await invoicesRef(orgId).where('lead_id', '==', leadId).orderBy('created_at', 'desc').get()

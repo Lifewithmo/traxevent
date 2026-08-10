@@ -87,7 +87,7 @@ export function LeadVendorsClient({ orgId, leadId, vendors: initial }: LeadVendo
   }
 
   return (
-    <div className="p-6 pt-0 max-w-2xl space-y-6">
+    <div className="space-y-6">
       <Card>
         <CardHeader className="flex-row items-center justify-between space-y-0">
           <div className="space-y-1">

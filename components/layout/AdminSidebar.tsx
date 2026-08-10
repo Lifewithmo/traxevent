@@ -21,7 +21,7 @@ interface AdminSidebarProps {
 const ORG_PAGE_SLUGS = new Set([
   'members', 'forms', 'permissions', 'billing', 'email-domain', 'event-types',
   'departments', 'reports', 'registrants', 'today', 'leads', 'clients', 'proposals',
-  'contracts', 'invoices', 'vendors', 'calendar', 'new-event', 'packages', 'compliance',
+  'invoices', 'vendors', 'calendar', 'new-event', 'packages', 'compliance',
 ])
 
 function getEventNav(terminology: Terminology) {
@@ -49,6 +49,9 @@ const ROSTER_KEYS = new Set(['families', 'assignments', 'checkin'])
 
 const SETTINGS_SLUGS = ['members', 'permissions', 'billing', 'email-domain', 'event-types', 'departments']
 
+// Documents that only exist because an opportunity does — nested under Pipeline.
+const PIPELINE_CHILD_SLUGS = ['proposals', 'invoices']
+
 function Section({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="px-2 py-3">
@@ -68,6 +71,12 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
   )
   const [settingsOpen, setSettingsOpen] = useState(settingsActive)
 
+  const pipelineActive =
+    pathname === `/${orgSlug}/leads` ||
+    pathname.startsWith(`/${orgSlug}/leads/`) ||
+    PIPELINE_CHILD_SLUGS.some((s) => pathname === `/${orgSlug}/${s}` || pathname.startsWith(`/${orgSlug}/${s}/`))
+  const [pipelineOpen, setPipelineOpen] = useState(pipelineActive)
+
   // Rendered by BOTH the org layout (no eventSlug) and the event layout (with eventSlug).
   // On an event route the event layout renders the contextual event sidebar, so the
   // org-layout instance hides itself to avoid a doubled sidebar.
@@ -80,12 +89,13 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
 
   const has = (m: ModuleId) => !enabledModules || enabledModules.includes(m)
 
-  const salesLinks = [
+  const quickLinks = [
     { module: 'leads' as ModuleId, label: 'Today', slug: 'today' },
-    { module: 'leads' as ModuleId, label: 'Pipeline', slug: 'leads' },
     { module: 'clients' as ModuleId, label: 'Clients', slug: 'clients' },
+  ].filter((l) => has(l.module))
+
+  const pipelineChildren = [
     { module: 'proposals' as ModuleId, label: 'Proposals', slug: 'proposals' },
-    { module: 'contracts' as ModuleId, label: 'Contracts', slug: 'contracts' },
     { module: 'invoices' as ModuleId, label: 'Invoices', slug: 'invoices' },
   ].filter((l) => has(l.module))
 
@@ -111,13 +121,14 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
     router.push('/login')
   }
 
-  function navClass(href: string) {
+  function navClass(href: string, indent = false) {
     const active = pathname === href || pathname.startsWith(href + '/')
     return [
-      'block px-3 py-2 rounded-md text-sm font-medium transition-colors',
+      'block py-2 rounded-md text-sm font-medium transition-colors',
+      indent ? 'pl-[30px] pr-3' : 'px-3',
       active
-        ? 'bg-gray-700 text-white'
-        : 'text-gray-300 hover:bg-gray-700 hover:text-white',
+        ? 'bg-gray-100 text-gray-900 border-l-2 border-gray-900'
+        : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 border-l-2 border-transparent',
     ].join(' ')
   }
 
@@ -126,15 +137,15 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
     return [
       'block px-3 py-2 rounded-md text-sm font-medium transition-colors',
       active
-        ? 'bg-gray-700 text-white'
-        : 'text-gray-300 hover:bg-gray-700 hover:text-white',
+        ? 'bg-gray-100 text-gray-900 border-l-2 border-gray-900'
+        : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 border-l-2 border-transparent',
     ].join(' ')
   }
 
   return (
-    <aside className="w-56 bg-gray-900 text-gray-100 min-h-screen flex flex-col flex-shrink-0 print:hidden">
-      <div className="px-4 py-5 border-b border-gray-700">
-        <Link href={`/${orgSlug}`} className="font-bold text-white text-lg tracking-tight">
+    <aside className="w-56 bg-gray-50 text-gray-900 border-r border-gray-200 min-h-screen flex flex-col flex-shrink-0 print:hidden">
+      <div className="px-4 py-5 border-b border-gray-200">
+        <Link href={`/${orgSlug}`} className="font-bold text-gray-900 text-lg tracking-tight">
           TraxEvent
         </Link>
       </div>
@@ -143,7 +154,7 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
         <nav className="flex-1 px-2 py-4 space-y-0.5" aria-label="Event navigation">
           <Link
             href={`/${orgSlug}`}
-            className="block px-3 py-2 rounded-md text-sm font-medium text-gray-400 hover:bg-gray-700 hover:text-white transition-colors"
+            className="block px-3 py-2 rounded-md text-sm font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-900 transition-colors"
           >
             &larr; Events
           </Link>
@@ -158,13 +169,39 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
         </nav>
       ) : (
         <nav className="flex-1" aria-label="Workspace navigation">
-          {salesLinks.length > 0 && (
-            <Section label="Sales">
-              {salesLinks.map((l) => (
+          {quickLinks.length > 0 && (
+            <Section label="Quick Links">
+              {quickLinks.map((l) => (
                 <Link key={l.slug} href={`/${orgSlug}/${l.slug}`} className={navClass(`/${orgSlug}/${l.slug}`)}>
                   {l.label}
                 </Link>
               ))}
+            </Section>
+          )}
+
+          {has('leads') && (
+            <Section label="Sales">
+              <div className="flex items-center">
+                <Link href={`/${orgSlug}/leads`} className={`${navClass(`/${orgSlug}/leads`)} flex-1`}>
+                  Pipeline
+                </Link>
+                {pipelineChildren.length > 0 && (
+                  <button
+                    onClick={() => setPipelineOpen((v) => !v)}
+                    aria-expanded={pipelineOpen}
+                    aria-label={pipelineOpen ? 'Collapse pipeline items' : 'Expand pipeline items'}
+                    className="px-2 py-2 text-[10px] text-gray-500 hover:text-gray-900"
+                  >
+                    {pipelineOpen ? '▾' : '▸'}
+                  </button>
+                )}
+              </div>
+              {pipelineOpen &&
+                pipelineChildren.map((l) => (
+                  <Link key={l.slug} href={`/${orgSlug}/${l.slug}`} className={navClass(`/${orgSlug}/${l.slug}`, true)}>
+                    {l.label}
+                  </Link>
+                ))}
             </Section>
           )}
 
@@ -210,7 +247,7 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
           <div className="px-2 py-3">
             <button
               onClick={() => setSettingsOpen((v) => !v)}
-              className="w-full flex items-center justify-between px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500 hover:text-gray-300"
+              className="w-full flex items-center justify-between px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500 hover:text-gray-700"
               aria-expanded={settingsOpen}
             >
               <span>Settings</span>
@@ -222,6 +259,7 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
                 <Link href={`/${orgSlug}/permissions`} className={navClass(`/${orgSlug}/permissions`)}>Permissions</Link>
                 <Link href={`/${orgSlug}/billing`} className={navClass(`/${orgSlug}/billing`)}>Billing</Link>
                 <Link href={`/${orgSlug}/branding`} className={navClass(`/${orgSlug}/branding`)}>Branding</Link>
+                <Link href={`/${orgSlug}/public-profile`} className={navClass(`/${orgSlug}/public-profile`)}>Public profile</Link>
                 <Link href={`/${orgSlug}/email-domain`} className={navClass(`/${orgSlug}/email-domain`)}>Email domain</Link>
                 <Link href={`/${orgSlug}/event-types`} className={navClass(`/${orgSlug}/event-types`)}>Event types</Link>
                 <Link href={`/${orgSlug}/departments`} className={navClass(`/${orgSlug}/departments`)}>Departments</Link>
@@ -231,10 +269,10 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
         </nav>
       )}
 
-      <div className="mt-auto px-2 py-4 border-t border-gray-700">
+      <div className="mt-auto px-2 py-4 border-t border-gray-200">
         <button
           onClick={handleSignOut}
-          className="block w-full text-left px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:bg-gray-700 hover:text-white"
+          className="block w-full text-left px-3 py-2 rounded-md text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900"
         >
           Sign out
         </button>

@@ -5,7 +5,6 @@ import { adminDb } from '@/lib/firebase-admin'
 import { getCustomer, listCustomerOpportunities, listCustomers } from '@/actions/customers'
 import { listLeads } from '@/actions/leads'
 import { listNotes } from '@/actions/notes'
-import { rollupCustomer } from '@/lib/crm/customer-rollup'
 import { normalizeTags } from '@/lib/crm/customers'
 import { CustomerDetailClient } from '@/components/admin/CustomerDetailClient'
 
@@ -33,13 +32,13 @@ export default async function CustomerDetailPage({
     ...allLeads.flatMap((l) => l.tags ?? []),
   ])
 
+  // The rollup/story is derived in the client from opportunities — no prop for it.
   return (
     <CustomerDetailClient
       orgId={orgId}
       orgSlug={orgSlug}
       customer={customer}
       opportunities={opportunities}
-      rollup={rollupCustomer(customer, opportunities)}
       notes={notes}
       orgTags={orgTags}
     />

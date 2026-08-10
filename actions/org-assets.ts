@@ -5,17 +5,18 @@ import { assertOrgAdmin } from '@/lib/auth/assert'
 import { adminBucket } from '@/lib/firebase-admin'
 import { assertImageUpload, safeUploadName, tokenizedDownloadUrl } from '@/lib/uploads'
 
-const ASSET_KINDS = ['logo', 'cover']
+const ASSET_KINDS = ['logo', 'cover', 'profile_photo', 'link_image']
 
 /**
- * Upload an org brand asset (logo / cover) and return a stable download URL.
- * Same caps and access model as uploadProposalImage (token-in-URL) — brand
- * assets render on public proposal pages — but org-scoped, not
- * proposal-scoped (spec §2).
+ * Upload an org asset — brand asset (logo / cover) or public-profile asset
+ * (profile photo / link thumbnail) — and return a stable download URL.
+ * Same caps and access model as uploadProposalImage (token-in-URL) — these
+ * render on public pages (proposals, or the public-profile page) — but
+ * org-scoped, not proposal-scoped (spec §2).
  */
 export async function uploadOrgAsset(
   orgId: string,
-  kind: 'logo' | 'cover',
+  kind: 'logo' | 'cover' | 'profile_photo' | 'link_image',
   formData: FormData,
 ): Promise<{ url: string }> {
   await assertOrgAdmin(orgId)

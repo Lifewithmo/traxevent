@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import { normalizeProposalDraft, ProposalDraftError } from '@/lib/proposals/draft'
+import { normalizeProposalDraft, ProposalDraftError, MAX_TERMS_CHARS, draftFromProposal } from '@/lib/proposals/draft'
 import { upgradeLegacyProposal } from '@/lib/proposals/upgrade'
 import { computeSelectedTotal, packageBullets } from '@/lib/proposals'
 import type { ProposalDraftInput } from '@/lib/proposals/draft'
+import type { Proposal } from '@/lib/types'
 
 const pool = [
   { id: 'i1', description: 'Setup', quantity: 1, unit_price: 500, unit: 'each' },
@@ -205,5 +206,30 @@ describe('normalizeProposalDraft — blocks and upgrade equivalence', () => {
       expect(computeSelectedTotal(draft, sel)).toBe(computeSelectedTotal(legacy, sel))
     }
     expect(packageBullets(draft.packages![0], draft.line_items)).toEqual(['Install', 'Cleanup'])
+  })
+})
+
+describe('terms', () => {
+  it('trims and stores terms', () => {
+    const { draft, adjustments } = normalizeProposalDraft({ terms: '  No refunds within 30 days.  ' })
+    expect(draft.terms).toBe('No refunds within 30 days.')
+    expect(adjustments).toEqual([])
+  })
+
+  it('omits empty terms', () => {
+    const { draft } = normalizeProposalDraft({ terms: '   ' })
+    expect(draft.terms).toBeUndefined()
+    expect(Object.keys(draft)).not.toContain('terms')
+  })
+
+  it('caps terms at MAX_TERMS_CHARS with an adjustment', () => {
+    const { draft, adjustments } = normalizeProposalDraft({ terms: 'x'.repeat(MAX_TERMS_CHARS + 5) })
+    expect(draft.terms).toHaveLength(MAX_TERMS_CHARS)
+    expect(adjustments).toContain(`Shortened the terms to ${MAX_TERMS_CHARS} characters.`)
+  })
+
+  it('round-trips through draftFromProposal', () => {
+    const p = { terms: 'Balance due 7 days before the event.' } as Proposal
+    expect(draftFromProposal(p).terms).toBe('Balance due 7 days before the event.')
   })
 })

@@ -101,3 +101,32 @@ describe('v2 composed-package field sensitivity', () => {
     expect(signedDocumentHash(differentUnit, csel)).not.toBe(signedDocumentHash(composed(), csel))
   })
 })
+
+describe('terms in the signed document', () => {
+  const selection = { package_id: undefined, optional_item_ids: [], selected_total: 100 }
+  const base = {
+    title: 'Coffee cart',
+    notes: undefined,
+    packages: [],
+    line_items: [],
+    discount: undefined,
+    tax_rate: undefined,
+    deposit: undefined,
+    deposit_terms: undefined,
+  }
+
+  it('is absent from the canonical document when the proposal has no terms', () => {
+    const canonical = canonicalProposalDocument(base, selection)
+    expect(canonical).not.toContain('"terms"')
+  })
+
+  it('changes the document hash when present', () => {
+    const without = canonicalProposalDocument(base, selection)
+    const withTerms = canonicalProposalDocument(
+      { ...base, terms: 'Deposit is non-refundable within 30 days of the event.' },
+      selection,
+    )
+    expect(withTerms).toContain('"terms":"Deposit is non-refundable within 30 days of the event."')
+    expect(documentHash(withTerms)).not.toBe(documentHash(without))
+  })
+})

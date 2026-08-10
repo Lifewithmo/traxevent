@@ -4,22 +4,17 @@ import { notFound } from 'next/navigation'
 import { adminDb } from '@/lib/firebase-admin'
 import { getLead } from '@/actions/leads'
 import { getCustomer, listCustomerOpportunities } from '@/actions/customers'
-import { convertBlockReason } from '@/lib/opportunity-detail'
+import { convertBlockReason, todayYmd } from '@/lib/opportunity-detail'
+import { windowDays } from '@/lib/date-window'
 import { listTasks } from '@/actions/tasks'
 import { listActivity } from '@/actions/activity'
 import { listProposals } from '@/actions/proposals'
 import { listInvoices } from '@/actions/invoices'
-import { listContracts } from '@/actions/contracts'
 import { listVendors } from '@/actions/vendors'
 import { listEventsByLead } from '@/actions/events'
 import { listOrgEventTypes } from '@/actions/event-types'
+import { listCalendarRange } from '@/actions/calendar'
 import { OpportunityDetailClient } from '@/components/admin/OpportunityDetailClient'
-import { AttachmentChips } from '@/components/admin/opportunity/AttachmentChips'
-import { LeadProposalsClient } from '@/components/admin/LeadProposalsClient'
-import { LeadInvoicesClient } from '@/components/admin/LeadInvoicesClient'
-import { LeadContractsClient } from '@/components/admin/LeadContractsClient'
-import { LeadVendorsClient } from '@/components/admin/LeadVendorsClient'
-import { ClientPortalLinkClient } from '@/components/admin/ClientPortalLinkClient'
 
 export default async function LeadDetailPage({ params }: { params: Promise<{ orgSlug: string; leadId: string }> }) {
   const { orgSlug, leadId } = await params
@@ -30,56 +25,52 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ org
   const lead = await getLead(orgId, leadId)
   if (!lead) notFound()
 
-  const [customer, tasks, activity, proposals, invoices, contracts, vendors, jobs, eventTypes, customerLeads] = await Promise.all([
+  const today = todayYmd()
+  const center = lead.event_date ?? today
+  const win = windowDays(center)
+
+  const [customer, tasks, activity, proposals, invoices, vendors, jobs, eventTypes, customerLeads, calendarItems] = await Promise.all([
     lead.customer_id ? getCustomer(orgId, lead.customer_id) : Promise.resolve(null),
     listTasks(orgId, leadId),
     listActivity(orgId, 'opportunity', leadId),
     listProposals(orgId, leadId),
     listInvoices(orgId, leadId),
-    listContracts(orgId, leadId),
     listVendors(orgId, leadId),
     listEventsByLead(orgId, leadId),
     listOrgEventTypes(orgId),
     lead.customer_id ? listCustomerOpportunities(orgId, lead.customer_id) : Promise.resolve([]),
+    listCalendarRange(orgId, orgSlug, win[0], win[9]),
   ])
 
   const acceptedProposals = proposals
     .filter((p) => p.status === 'accepted')
-    .map((p) => ({ id: p.id, title: p.title }))
+    .map((p) => ({ id: p.id, title: p.title ?? '' }))
 
   const pastBookings = customerLeads.filter((l) => l.stage === 'closed_won' && l.id !== lead.id).length
   const blockReason = convertBlockReason({
     stage: lead.stage,
     proposals,
-    contracts,
     guestCount: lead.guest_count,
   }).message
 
   return (
-    <>
-      <OpportunityDetailClient
-        orgId={orgId}
-        orgSlug={orgSlug}
-        lead={lead}
-        customer={customer}
-        tasks={tasks}
-        activity={activity}
-        job={jobs[0] ?? null}
-        eventTypes={eventTypes}
-        pastBookings={pastBookings}
-        convertBlockReason={blockReason}
-      />
-
-      <div className="mx-auto max-w-5xl space-y-4 px-6 pb-2">
-        <h2 className="text-sm font-semibold text-muted-foreground">Attachments</h2>
-        <AttachmentChips proposals={proposals} invoices={invoices} contracts={contracts} vendors={vendors} />
-      </div>
-
-      <LeadProposalsClient orgId={orgId} orgSlug={orgSlug} leadId={leadId} proposals={proposals} />
-      <LeadInvoicesClient orgId={orgId} orgSlug={orgSlug} leadId={leadId} invoices={invoices} acceptedProposals={acceptedProposals} />
-      <LeadContractsClient orgId={orgId} orgSlug={orgSlug} leadId={leadId} contracts={contracts} />
-      <LeadVendorsClient orgId={orgId} leadId={leadId} vendors={vendors} />
-      <ClientPortalLinkClient orgId={orgId} leadId={leadId} />
-    </>
+    <OpportunityDetailClient
+      orgId={orgId}
+      orgSlug={orgSlug}
+      lead={lead}
+      customer={customer}
+      tasks={tasks}
+      activity={activity}
+      job={jobs[0] ?? null}
+      eventTypes={eventTypes}
+      proposals={proposals}
+      invoices={invoices}
+      vendors={vendors}
+      acceptedProposals={acceptedProposals}
+      pastBookings={pastBookings}
+      convertBlockReason={blockReason}
+      today={today}
+      calendarItems={calendarItems}
+    />
   )
 }

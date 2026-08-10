@@ -3,11 +3,10 @@ import {
   initials, addDays, dueStatus, todayYmd, formatRelativeTime,
   bannerContent, attachmentChips, daysSince, lastTouchIso, convertBlockReason,
 } from '@/lib/opportunity-detail'
-import type { Proposal, Invoice, Contract } from '@/lib/types'
+import type { Proposal, Invoice, Task } from '@/lib/types'
 
 const asProposal = (p: Partial<Proposal>) => p as Proposal
 const asInvoice = (v: Partial<Invoice>) => v as Invoice
-const asContract = (c: Partial<Contract>) => c as Contract
 
 describe('initials', () => {
   it('takes first+last initial', () => expect(initials('Ada Lovelace')).toBe('AL'))
@@ -77,9 +76,10 @@ const unpaidInvoice = { line_items: [{ description: 'x', quantity: 1, unit_price
 describe('attachmentChips', () => {
   it('summarizes counts and hints', () => {
     const chips = attachmentChips({
+      tasks: [],
+      today: '2026-08-07',
       proposals: [asProposal({ status: 'accepted' }), asProposal({ status: 'draft' })],
       invoices: [asInvoice(unpaidInvoice)],
-      contracts: [asContract({ status: 'signed' })],
       vendors: [],
     })
     const byKind = Object.fromEntries(chips.map((c) => [c.kind, c]))
@@ -87,13 +87,12 @@ describe('attachmentChips', () => {
     expect(byKind.proposal.hint).toBe('1 accepted')
     expect(byKind.invoice.count).toBe(1)
     expect(byKind.invoice.hint).toBe('1 unpaid')
-    expect(byKind.contract.hint).toBe('signed')
     expect(byKind.vendor.count).toBe(0)
   })
 
   it('treats a fully-paid live invoice as paid', () => {
     const paid = { line_items: [{ description: 'x', quantity: 1, unit_price: 100 }], payments: [{ amount: 100, recorded_at: '' }] }
-    const chips = attachmentChips({ proposals: [], invoices: [asInvoice(paid)], contracts: [], vendors: [] })
+    const chips = attachmentChips({ tasks: [], today: '2026-08-07', proposals: [], invoices: [asInvoice(paid)], vendors: [] })
     const invoice = chips.find((c) => c.kind === 'invoice')!
     expect(invoice.count).toBe(1)
     expect(invoice.hint).toBe('paid')
@@ -101,10 +100,31 @@ describe('attachmentChips', () => {
 
   it('does not count a voided invoice as unpaid, and shows no hint when all are void', () => {
     const voided: Partial<Invoice> = { lifecycle: 'voided', line_items: [{ description: 'x', quantity: 1, unit_price: 100 }], payments: [] }
-    const chips = attachmentChips({ proposals: [], invoices: [asInvoice(voided)], contracts: [], vendors: [] })
+    const chips = attachmentChips({ tasks: [], today: '2026-08-07', proposals: [], invoices: [asInvoice(voided)], vendors: [] })
     const invoice = chips.find((c) => c.kind === 'invoice')!
     expect(invoice.count).toBe(1)
     expect(invoice.hint).toBeUndefined()
+  })
+})
+
+describe('attachmentChips tasks entry', () => {
+  const task = (over: Partial<Task>): Task => ({
+    id: 't1', lead_id: 'l1', title: 'Call', done: false, created_at: '2026-08-01T00:00:00.000Z', ...over,
+  } as Task)
+  const base = { proposals: [], invoices: [], vendors: [], today: '2026-08-07' }
+
+  it('leads with a Tasks chip counting open tasks', () => {
+    const chips = attachmentChips({ ...base, tasks: [task({}), task({ id: 't2', done: true })] })
+    expect(chips[0]).toMatchObject({ kind: 'task', label: 'Tasks', count: 1 })
+  })
+  it('flags overdue tasks as danger', () => {
+    const chips = attachmentChips({ ...base, tasks: [task({ due_date: '2026-08-05' })] })
+    expect(chips[0]).toMatchObject({ hint: '1 overdue', danger: true })
+  })
+  it('hints the next due date when nothing is overdue', () => {
+    const chips = attachmentChips({ ...base, tasks: [task({ due_date: '2026-08-09' }), task({ id: 't2', due_date: '2026-08-12' })] })
+    expect(chips[0]).toMatchObject({ hint: 'next due Aug 9' })
+    expect(chips[0].danger).toBeUndefined()
   })
 })
 
@@ -125,24 +145,15 @@ describe('lastTouchIso', () => {
 
 describe('convertBlockReason', () => {
   it('is ready at closed_won regardless of attachments', () => {
-    expect(convertBlockReason({ stage: 'closed_won', proposals: [], contracts: [] }).ready).toBe(true)
+    expect(convertBlockReason({ stage: 'closed_won', proposals: [] }).ready).toBe(true)
   })
-  it('names the missing accepted proposal first', () => {
-    const r = convertBlockReason({ stage: 'consultation', proposals: [{ status: 'sent' }], contracts: [] })
+  it('blocks until a proposal is signed', () => {
+    const r = convertBlockReason({ stage: 'proposal', proposals: [{ status: 'sent' }], guestCount: 40 })
     expect(r.ready).toBe(false)
-    expect(r.message).toBe('Blocked: no accepted proposal yet. Acceptance carries the package into Events.')
+    expect(r.message).toBe('Blocked: no signed proposal yet. Signed acceptance carries the accepted package and 40 guests into Events.')
   })
-  it('then the unsigned contract, mentioning guests when known', () => {
-    const r = convertBlockReason({
-      stage: 'consultation', proposals: [{ status: 'accepted' }], contracts: [{ status: 'sent' }], guestCount: 60,
-    })
-    expect(r.message).toBe('Blocked: the contract is unsigned. Signing carries the accepted package and 60 guests into Events.')
-  })
-  it('otherwise: ready once won', () => {
-    const r = convertBlockReason({
-      stage: 'consultation', proposals: [{ status: 'accepted' }], contracts: [{ status: 'signed' }],
-    })
-    expect(r.message).toBe('Ready — mark the deal won to convert.')
-    expect(r.ready).toBe(false)
+  it('is ready to mark won once a proposal is accepted', () => {
+    const r = convertBlockReason({ stage: 'proposal', proposals: [{ status: 'accepted' }] })
+    expect(r).toEqual({ ready: false, message: 'Ready — mark the deal won to convert.' })
   })
 })

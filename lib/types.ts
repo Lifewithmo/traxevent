@@ -21,7 +21,11 @@ export interface Org {
   sending_domain_status?: SendingDomainStatus
   sending_domain_records?: DomainDnsRecord[]
   tips_enabled?: boolean
+  ics_token?: string                 // secret path segment of the read-only calendar feed
   branding?: OrgBranding
+  public_profile?: PublicProfile
+  intake_token?: string              // public intake form access token; minted lazily (actions/intake.ts)
+  default_proposal_terms?: string    // seeded into new proposals' `terms` (snapshot, not a live reference)
   created_at: string
 }
 
@@ -33,6 +37,34 @@ export interface OrgBranding {
   cover_image_url?: string     // hero behind the proposal title
   accent_color?: string        // #rrggbb
   secondary_color?: string     // #rrggbb
+}
+
+// Public profile / link-in-bio (public profile page spec). Like OrgBranding,
+// the whole map is public-safe by construction — it ships verbatim to /p/[handle].
+export interface PublicProfileLink {
+  id: string                   // client-minted uuid; stable identity for list editing
+  title: string
+  url: string
+  description?: string
+  image_url?: string
+}
+
+export interface PublicProfileSocials {
+  instagram?: string
+  tiktok?: string
+  youtube?: string
+  facebook?: string
+  website?: string
+}
+
+export interface PublicProfile {
+  enabled: boolean             // page 404s unless true
+  handle: string               // unique across orgs; /p/[handle]
+  display_name?: string        // falls back to branding.display_name → org name
+  bio?: string
+  photo_url?: string
+  socials?: PublicProfileSocials
+  links: PublicProfileLink[]
 }
 
 export const EVENT_PAGES = [
@@ -517,6 +549,7 @@ export interface Proposal {
   updated_at?: string
   deposit_gate?: 'before_accept' | 'after_accept'
   deposit_terms?: string
+  terms?: string               // legal terms; snapshot from Org.default_proposal_terms at creation, editable per proposal; participates in the signed document hash when present
   payment_status?: PaymentStatus
   signature?: ProposalSignature
   deposit_payment?: ProposalDepositPayment
@@ -640,23 +673,6 @@ export type NormalizedInvoice = Invoice & {
   delivery: InvoiceDeliveryStatus
   accounting: InvoiceAccountingStatus
   dispute: InvoiceDisputeStatus
-}
-
-export type ContractStatus = 'draft' | 'sent' | 'signed'
-
-export interface Contract {
-  id: string
-  org_id: string       // denormalized for collectionGroup token lookups
-  lead_id: string
-  token: string        // unguessable public link token
-  title?: string
-  body?: string        // contract terms (plain text)
-  document_url?: string // optional link to an externally-hosted document (PDF/Doc)
-  status: ContractStatus
-  signed_by?: string   // typed signer name (e-signature)
-  signed_at?: string   // ISO, set when signed
-  created_at: string
-  updated_at?: string
 }
 
 export interface Note {

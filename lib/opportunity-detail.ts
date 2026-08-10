@@ -1,4 +1,4 @@
-import type { Proposal, Invoice, Contract, Vendor, LeadStage } from '@/lib/types'
+import type { Proposal, Invoice, Vendor, LeadStage, Task } from '@/lib/types'
 import type { OppHealth } from '@/lib/opportunity-health'
 import { invoiceBalance } from '@/lib/invoices'
 
@@ -119,45 +119,58 @@ export function bannerContent(health: OppHealth, o: BannerInput): BannerContent 
 export function convertBlockReason(i: {
   stage: LeadStage
   proposals: Pick<Proposal, 'status'>[]
-  contracts: Pick<Contract, 'status'>[]
   guestCount?: number
 }): { ready: boolean; message: string } {
   if (i.stage === 'closed_won') return { ready: true, message: '' }
+  // Signing IS accepting (signProposal writes status + signature together),
+  // so an accepted proposal is a signed document — no separate contract gate.
   if (!i.proposals.some((p) => p.status === 'accepted')) {
-    return { ready: false, message: 'Blocked: no accepted proposal yet. Acceptance carries the package into Events.' }
-  }
-  if (!i.contracts.some((c) => c.status === 'signed')) {
     const guests = i.guestCount != null ? ` and ${i.guestCount} guests` : ''
-    return { ready: false, message: `Blocked: the contract is unsigned. Signing carries the accepted package${guests} into Events.` }
+    return { ready: false, message: `Blocked: no signed proposal yet. Signed acceptance carries the accepted package${guests} into Events.` }
   }
   return { ready: false, message: 'Ready — mark the deal won to convert.' }
 }
 
 export interface AttachmentChip {
-  kind: 'proposal' | 'invoice' | 'contract' | 'vendor'
+  kind: 'task' | 'proposal' | 'invoice' | 'vendor'
   label: string
   count: number
   hint?: string
+  danger?: boolean
 }
 
 export function attachmentChips(i: {
+  tasks: Task[]
   proposals: Proposal[]
   invoices: Invoice[]
-  contracts: Contract[]
   vendors: Vendor[]
+  today: string
 }): AttachmentChip[] {
+  const openTasks = i.tasks.filter((t) => !t.done)
+  const overdue = openTasks.filter((t) => t.due_date && t.due_date < i.today).length
+  const dated = openTasks.filter((t) => t.due_date).sort((a, b) => a.due_date!.localeCompare(b.due_date!))
+  const shortDue = (ymd: string) => {
+    const [, m, d] = ymd.split('-').map(Number)
+    return `${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][m - 1]} ${d}`
+  }
+  const tasksChip: AttachmentChip = {
+    kind: 'task', label: 'Tasks', count: openTasks.length,
+    ...(overdue
+      ? { hint: `${overdue} overdue`, danger: true }
+      : dated.length ? { hint: `next due ${shortDue(dated[0].due_date!)}` } : {}),
+  }
+
   const accepted = i.proposals.filter((p) => p.status === 'accepted').length
   // Invoices moved to a lifecycle + balance model (Invoice.status was removed).
   // "Outstanding" = not voided/replaced and still carrying a positive balance.
   const isDead = (v: Invoice) => v.lifecycle === 'voided' || v.lifecycle === 'replaced'
   const outstanding = i.invoices.filter((v) => !isDead(v) && invoiceBalance(v) > 0).length
   const anyLiveInvoice = i.invoices.some((v) => !isDead(v))
-  const signed = i.contracts.filter((c) => c.status === 'signed').length
   const confirmed = i.vendors.filter((v) => v.status === 'confirmed').length
   return [
+    tasksChip,
     { kind: 'proposal', label: 'Proposals', count: i.proposals.length, hint: accepted ? `${accepted} accepted` : undefined },
-    { kind: 'invoice', label: 'Invoices', count: i.invoices.length, hint: outstanding ? `${outstanding} unpaid` : (anyLiveInvoice ? 'paid' : undefined) },
-    { kind: 'contract', label: 'Contracts', count: i.contracts.length, hint: signed ? 'signed' : (i.contracts.length ? 'unsigned' : undefined) },
+    { kind: 'invoice', label: 'Invoices', count: i.invoices.length, hint: outstanding ? `${outstanding} unpaid` : (anyLiveInvoice ? 'paid' : undefined), danger: outstanding > 0 ? true : undefined },
     { kind: 'vendor', label: 'Vendors', count: i.vendors.length, hint: confirmed ? `${confirmed} confirmed` : undefined },
   ]
 }

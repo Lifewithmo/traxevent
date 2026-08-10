@@ -11,6 +11,7 @@ import { todayYmd } from '@/lib/opportunity-detail'
 import { OPEN_STAGES, CLOSED_STAGES } from '@/lib/leads'
 import { PipelineListClient } from '@/components/admin/pipeline/PipelineListClient'
 import { PipelineBoardView } from '@/components/admin/pipeline/PipelineBoardView'
+import { PipelineSubNav } from '@/components/admin/pipeline/PipelineSubNav'
 
 export default async function LeadsPage({
   params, searchParams,
@@ -39,11 +40,21 @@ export default async function LeadsPage({
   const monthly = closedThisMonth(leads, today)
   const openValue = open.reduce((s, l) => s + (l.estimated_value ?? 0), 0)
 
+  const dueToday = inputs.reduce(
+    (n, { tasks }) => n + tasks.filter((t) => !t.done && t.due_date && t.due_date <= today).length,
+    0
+  )
+
   const shared = {
     orgId, orgSlug, groups,
     openCount: open.length, openValue, monthly,
   }
-  return view === 'board'
-    ? <PipelineBoardView {...shared} />
-    : <PipelineListClient {...shared} closed={closed} customers={customers} />
+  return (
+    <div>
+      <PipelineSubNav orgSlug={orgSlug} active="opportunities" openCount={open.length} dueTodayCount={dueToday} />
+      {view === 'board'
+        ? <PipelineBoardView {...shared} />
+        : <PipelineListClient {...shared} closed={closed} customers={customers} />}
+    </div>
+  )
 }

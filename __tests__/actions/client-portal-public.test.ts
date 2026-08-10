@@ -1,10 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-const { getSpy, proposalsSpy, invoicesSpy, contractsSpy } = vi.hoisted(() => ({
+const { getSpy, proposalsSpy, invoicesSpy } = vi.hoisted(() => ({
   getSpy: vi.fn(),
   proposalsSpy: vi.fn(),
   invoicesSpy: vi.fn(),
-  contractsSpy: vi.fn(),
 }))
 
 vi.mock('@/lib/firebase-admin', () => ({
@@ -20,8 +19,8 @@ import { getClientPortal } from '@/actions/client-portal-public'
 
 // Builds the collectionGroup('leads') snapshot. The single lead doc carries a
 // `ref` whose parent.parent is the orgRef — the org is resolved SOLELY from
-// this path. That orgRef's proposals/invoices/contracts subcollection queries
-// resolve to proposalsSpy / invoicesSpy / contractsSpy.
+// this path. That orgRef's proposals/invoices subcollection queries
+// resolve to proposalsSpy / invoicesSpy.
 function mockLead(data: Record<string, unknown> | null) {
   if (data === null) {
     getSpy.mockResolvedValue({ empty: true, docs: [] })
@@ -30,8 +29,7 @@ function mockLead(data: Record<string, unknown> | null) {
   const orgRef = {
     id: 'org-1',
     collection: vi.fn().mockImplementation((sub: string) => {
-      const get =
-        sub === 'proposals' ? proposalsSpy : sub === 'invoices' ? invoicesSpy : contractsSpy
+      const get = sub === 'proposals' ? proposalsSpy : invoicesSpy
       const q = { where: vi.fn().mockReturnThis(), get }
       return q
     }),
@@ -47,7 +45,6 @@ beforeEach(() => {
   vi.clearAllMocks()
   proposalsSpy.mockResolvedValue({ docs: [] })
   invoicesSpy.mockResolvedValue({ docs: [] })
-  contractsSpy.mockResolvedValue({ docs: [] })
 })
 
 // A full lead doc at rest, including internal fields that must NEVER be exposed.
@@ -197,64 +194,6 @@ describe('getClientPortal', () => {
       title: 'Deposit',
       number: 'INV-001',
     })
-  })
-
-  it('includes only non-draft contracts with { status, token, title? }', async () => {
-    mockLead(fullLead())
-    contractsSpy.mockResolvedValue({
-      docs: [
-        {
-          data: () => ({
-            id: 'c1',
-            org_id: 'org-1',
-            lead_id: 'lead-1',
-            token: 'ctok',
-            title: 'Service Agreement',
-            body: 'secret terms',
-            status: 'sent',
-            created_at: 'x',
-          }),
-        },
-        {
-          data: () => ({
-            id: 'c2',
-            org_id: 'org-1',
-            lead_id: 'lead-1',
-            token: 'draftctok',
-            status: 'draft',
-            created_at: 'x',
-          }),
-        },
-      ],
-    })
-    const result = await getClientPortal('tok_client')
-    expect(result?.contracts).toHaveLength(1)
-    expect(result?.contracts[0]).toEqual({
-      status: 'sent',
-      token: 'ctok',
-      title: 'Service Agreement',
-    })
-  })
-
-  it('omits contract title when absent on the doc', async () => {
-    mockLead(fullLead())
-    contractsSpy.mockResolvedValue({
-      docs: [
-        {
-          data: () => ({
-            id: 'c3',
-            org_id: 'org-1',
-            lead_id: 'lead-1',
-            token: 'notitletok',
-            status: 'signed',
-            created_at: 'x',
-          }),
-        },
-      ],
-    })
-    const result = await getClientPortal('tok_client')
-    expect(result?.contracts).toHaveLength(1)
-    expect(result?.contracts[0]).toEqual({ status: 'signed', token: 'notitletok' })
   })
 
   it('never leaks internal lead fields in the DTO', async () => {

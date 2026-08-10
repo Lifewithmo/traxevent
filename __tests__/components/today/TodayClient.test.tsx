@@ -1,12 +1,13 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 
-vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }))
+vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }) }))
 vi.mock('@/actions/tasks', () => ({ createTask: vi.fn(), completeTask: vi.fn(), snoozeTask: vi.fn() }))
 vi.mock('@/actions/leads', () => ({ setLeadWaiting: vi.fn(), clearLeadWaiting: vi.fn() }))
 
 import { TodayClient } from '@/components/admin/today/TodayClient'
 import type { TodayData } from '@/lib/today'
+import type { Agenda } from '@/lib/today-moves'
 
 const data: TodayData = {
   tiles: { tasksDue: 1, needsAttention: 1, openPipelineValue: 500 },
@@ -16,19 +17,24 @@ const data: TodayData = {
   wonUnscheduled: [],
 }
 
+const agenda: Agenda = {
+  today: [{ eventId: 'e1', slug: 'gala', name: 'Gala', date: '2026-08-05', multiDay: false }],
+  upcoming: [],
+  windowDays: ['2026-08-06', '2026-08-07', '2026-08-08', '2026-08-09', '2026-08-10', '2026-08-11', '2026-08-12'],
+}
+
 describe('TodayClient', () => {
-  it('renders the three sections and tiles', () => {
-    render(<TodayClient orgId="o1" orgSlug="acme" data={data} />)
-    expect(screen.getByRole('heading', { name: 'Today' })).toBeInTheDocument()
-    expect(screen.getByText('$500')).toBeInTheDocument()
-    expect(screen.getAllByText('Needs attention')).toHaveLength(2)
-    expect(screen.getByText('Due today / overdue')).toBeInTheDocument()
-    expect(screen.getByText('Waiting on')).toBeInTheDocument()
-    expect(screen.getByText('Call')).toBeInTheDocument()
+  it('counts moves and today’s events in the header', () => {
+    render(<TodayClient orgId="o1" orgSlug="acme" data={data} agenda={agenda} />)
+    expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument()
+    expect(screen.getByText(/2 moves/)).toBeInTheDocument()
+    expect(screen.getByText(/1 event today/)).toBeInTheDocument()
   })
 
-  it('mounts the won-unscheduled list', () => {
-    render(<TodayClient orgId="o1" orgSlug="acme" data={data} />)
-    expect(screen.getByText('Won, not scheduled')).toBeInTheDocument()
+  it('mounts the queue and the agenda rail', () => {
+    render(<TodayClient orgId="o1" orgSlug="acme" data={data} agenda={agenda} />)
+    expect(screen.getByText('Due today · 1')).toBeInTheDocument()
+    expect(screen.getByText('On the cart today')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Gala' })).toBeInTheDocument()
   })
 })

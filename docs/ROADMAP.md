@@ -1,6 +1,6 @@
 # TraxEvent — Product Roadmap
 
-Rollup of where the build stands and what's next. Last updated: 2026-08-08.
+Rollup of where the build stands and what's next. Last updated: 2026-08-09.
 
 The original vision/architecture spec is
 [2026-06-02-product-roadmap-design.md](superpowers/specs/2026-06-02-product-roadmap-design.md)
@@ -28,18 +28,47 @@ EventTrax pivot (neutralization, multi-brand, ops core). Detailed designs live i
   deposit (PR #43), deposit reconciliation (PR #44), presentation blocks (PR #56),
   AI drafting (PR #60), builder redesign: pricing v2 + brand kit + layout-first
   builder (PR #62).
+- **Public profile page (link-in-bio)** (PR #67, merged 2026-08-08) — customer
+  request to replace their Beacons page: public `/p/[handle]` page + "Public
+  profile" settings editor
+  (spec: `superpowers/specs/2026-08-08-public-profile-page-design.md`).
+  ⚠️ Authenticated editor walk (save → upload → live page → 404 → handle
+  conflict) not yet run — gate before customer handoff. Rest of the Beacons
+  buildout logged in `strategy/2026-08-08-beacons-parity-feature-request.md`.
+- **Today / Clients / nav redesign** (PR #69, merged 2026-08-09) — Today as one
+  ranked move queue with a booked-work agenda rail; Clients grouped by dormant
+  repeat business, detail as story + timeline; sidebar quick links with
+  proposals/invoices nested under Pipeline.
+- **Calendar week view + ICS + pipeline sub-nav** (PR #70, merged 2026-08-09,
+  wireframes 15a/15b/16a) — org calendar as two bands per day (time / owed)
+  across six kinds incl. compliance blockers and invoice dues; tokened
+  read-only ICS feed at `/ics/[orgSlug]/[token]` with per-kind `?include=`
+  filters; Pipeline becomes a section (Opportunities / Calendar / Tasks);
+  one-date .ics download on the opportunity dates panel.
+- **Public intake form** — tokenized `/inquire/[token]` front door: creates
+  customer + opportunity at `inquiry`, logs a `form` activity event, emails the
+  owner. First abuse-protection seam: honeypot + time gate + Firestore-backed
+  rate limiting (`lib/rate-limit.ts`) — registration should adopt it next.
+- **One signed document** — proposals carry legal `terms` (org default in
+  Branding → Proposal terms, per-proposal editable, hash-covered by the
+  e-signature); the standalone contracts feature (pages, nav, portal card,
+  convert gate) is removed
+  (spec: `superpowers/specs/2026-08-09-proposal-terms-contracts-retirement-design.md`).
 
 ## In flight
 
-- **Opportunity workspace, increment 1** (branch `claude/opportunity-workspace`) —
-  light sidebar, working-column density, attachment pill row, DatesPanel.
+- **Opportunity workspace, increment 1** — PR #64 open
+  (light shell, pill row, dates panel).
   Plan: `docs/superpowers/plans/2026-08-08-opportunity-workspace.md`.
+- **Customer page completion** — PR #65 open (new-opportunity-from-customer +
+  pipeline customer typeahead on one `customer_id` seam, real last-contact via
+  touch stamps, tag editor with autocomplete). Manual browser walk not yet run.
+  Spec: `docs/superpowers/specs/2026-08-08-customer-page-completion-design.md`.
 
 ## Next (approved queue)
 
-1. **Pipeline sub-nav (#16a)** — Opportunities / Calendar / Tasks sections.
-2. **Org calendar week view (#15a) + ICS sync (#15b)** — builds on increment 1's
-   `listCalendarRange` groundwork.
+*(empty — pipeline sub-nav #16a and calendar week view + ICS #15a/15b shipped
+in PR #70; queue the next increment here.)*
 
 ## BrewTrax beta blockers (need Ryan, not code)
 
@@ -51,9 +80,15 @@ EventTrax pivot (neutralization, multi-brand, ops core). Detailed designs live i
 
 ## Backlog (no plan written yet)
 
-- **Public intake form** — the pipeline's missing front door; every opportunity
-  is hand-keyed today. Hard prerequisite: the repo has zero rate limiting / bot
-  protection, which this increment must solve first.
+- **Actionable client list** (follows customer page completion — decided
+  2026-08-08). The client list should say *who needs touching and why*, not just
+  be searchable. Model: **derived touchpoints + stored facts** — rules derive
+  outreach suggestions live (post-event follow-up, ~60-days-before-event-
+  anniversary rebook window, went-quiet) from `event_date` + last contact;
+  stored data is only human knowledge (life-event key dates, per-customer
+  dismiss/snooze of a suggestion). Views group customers by reason. Not 1:1 by
+  design — rules are defaults, never hardwired per customer. AI note-mining
+  (suggest key dates from notes) is a later suggester layer on the same model.
 - **Operator-AI increments 2–3**
   (spec: `superpowers/specs/2026-08-07-operator-ai-design.md`) — per-artifact
   refinement + quantity/notes assists, then the read-only workspace assistant.

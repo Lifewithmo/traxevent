@@ -177,3 +177,74 @@ export async function sendProposalSignedConfirmation(
     `,
   })
 }
+
+// Minimal HTML entity escaping for user-supplied strings interpolated into
+// email bodies. The intake form is the first place attacker-controlled text
+// flows into these templates — escape everything that isn't server-built.
+export function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+export interface IntakeNotificationParams {
+  to: string
+  orgName: string
+  leadName: string
+  email: string
+  phone?: string
+  eventType?: string
+  eventDate?: string
+  guestCount?: number
+  message?: string
+  opportunityUrl: string
+}
+
+// Best-effort owner notification for a public intake submission. Callers wrap
+// this in try/catch — a send failure must never fail the committed lead write.
+export async function sendIntakeNotification(params: IntakeNotificationParams): Promise<void> {
+  const from = buildFromAddress({ displayName: params.orgName })
+  const rows: Array<[string, string]> = [
+    ['Name', params.leadName],
+    ['Email', params.email],
+    ...(params.phone ? ([['Phone', params.phone]] as Array<[string, string]>) : []),
+    ...(params.eventType ? ([['Event type', params.eventType]] as Array<[string, string]>) : []),
+    ...(params.eventDate ? ([['Event date', params.eventDate]] as Array<[string, string]>) : []),
+    ...(params.guestCount != null
+      ? ([['Guest count', String(params.guestCount)]] as Array<[string, string]>)
+      : []),
+    ...(params.message ? ([['Message', params.message]] as Array<[string, string]>) : []),
+  ]
+  const rowsHtml = rows
+    .map(
+      ([label, value]) => `
+        <tr>
+          <td style="padding:6px 12px 6px 0;color:#64748B;font-size:14px;vertical-align:top;white-space:nowrap">${escapeHtml(label)}</td>
+          <td style="padding:6px 0;color:#1a1a1a;font-size:14px">${escapeHtml(value)}</td>
+        </tr>`
+    )
+    .join('')
+
+  await getResend().emails.send({
+    from,
+    to: params.to,
+    subject: `New inquiry — ${params.leadName}`,
+    html: `
+      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
+        <h1 style="color:#7C3AED;margin-bottom:8px">New inquiry</h1>
+        <p style="color:#4C1D95;font-size:16px;margin-bottom:16px">
+          Someone just reached out through your intake form.
+        </p>
+        <table style="border-collapse:collapse;margin-bottom:24px">${rowsHtml}</table>
+        <a href="${params.opportunityUrl}"
+           style="display:inline-block;background:#7C3AED;color:#fff;padding:12px 24px;
+                  border-radius:6px;text-decoration:none;font-weight:600">
+          Open in pipeline
+        </a>
+      </div>
+    `,
+  })
+}

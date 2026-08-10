@@ -18,7 +18,7 @@ const baseProps = {
 
 describe('BrandingClient', () => {
   it('renders existing branding and the org-name fallback hint', () => {
-    render(<BrandingClient {...baseProps} />)
+    render(<BrandingClient {...baseProps} initialDefaultTerms="" />)
     expect(screen.getByLabelText(/display name/i)).toHaveValue('')
     expect(screen.getByPlaceholderText('Gem State Events')).toBeTruthy()
     expect(screen.getByLabelText(/accent color hex/i)).toHaveValue('#1d4ed8')
@@ -26,7 +26,7 @@ describe('BrandingClient', () => {
 
   it('saves edited branding through updateOrgBranding and reflects the response', async () => {
     updateOrgBranding.mockResolvedValue({ display_name: 'BrewTrax', accent_color: '#1d4ed8' })
-    render(<BrandingClient {...baseProps} />)
+    render(<BrandingClient {...baseProps} initialDefaultTerms="" />)
     fireEvent.change(screen.getByLabelText(/display name/i), { target: { value: 'BrewTrax' } })
     fireEvent.click(screen.getByRole('button', { name: /save branding/i }))
     await waitFor(() => expect(updateOrgBranding).toHaveBeenCalledWith('o1', {
@@ -41,7 +41,7 @@ describe('BrandingClient', () => {
 
   it('surfaces a validation error from the action', async () => {
     updateOrgBranding.mockRejectedValue(new Error('accent_color must be a #rrggbb hex color'))
-    render(<BrandingClient {...baseProps} />)
+    render(<BrandingClient {...baseProps} initialDefaultTerms="" />)
     fireEvent.change(screen.getByLabelText(/accent color hex/i), { target: { value: '#zz0000' } })
     fireEvent.click(screen.getByRole('button', { name: /save branding/i }))
     expect(await screen.findByText(/#rrggbb/i)).toBeTruthy()
@@ -49,7 +49,7 @@ describe('BrandingClient', () => {
 
   it('uploads a logo and shows the returned image', async () => {
     uploadOrgAsset.mockResolvedValue({ url: 'https://storage/logo.png' })
-    render(<BrandingClient {...baseProps} />)
+    render(<BrandingClient {...baseProps} initialDefaultTerms="" />)
     const input = screen.getByLabelText(/logo image/i)
     const png = new File([new Uint8Array([1])], 'logo.png', { type: 'image/png' })
     fireEvent.change(input, { target: { files: [png] } })
