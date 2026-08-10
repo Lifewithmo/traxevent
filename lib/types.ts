@@ -25,6 +25,7 @@ export interface Org {
   branding?: OrgBranding
   public_profile?: PublicProfile
   intake_token?: string              // public intake form access token; minted lazily (actions/intake.ts)
+  default_proposal_terms?: string    // seeded into new proposals' `terms` (snapshot, not a live reference)
   created_at: string
 }
 
@@ -547,6 +548,7 @@ export interface Proposal {
   updated_at?: string
   deposit_gate?: 'before_accept' | 'after_accept'
   deposit_terms?: string
+  terms?: string               // legal terms; snapshot from Org.default_proposal_terms at creation, editable per proposal; participates in the signed document hash when present
   payment_status?: PaymentStatus
   signature?: ProposalSignature
   deposit_payment?: ProposalDepositPayment
@@ -670,23 +672,6 @@ export type NormalizedInvoice = Invoice & {
   delivery: InvoiceDeliveryStatus
   accounting: InvoiceAccountingStatus
   dispute: InvoiceDisputeStatus
-}
-
-export type ContractStatus = 'draft' | 'sent' | 'signed'
-
-export interface Contract {
-  id: string
-  org_id: string       // denormalized for collectionGroup token lookups
-  lead_id: string
-  token: string        // unguessable public link token
-  title?: string
-  body?: string        // contract terms (plain text)
-  document_url?: string // optional link to an externally-hosted document (PDF/Doc)
-  status: ContractStatus
-  signed_by?: string   // typed signer name (e-signature)
-  signed_at?: string   // ISO, set when signed
-  created_at: string
-  updated_at?: string
 }
 
 export interface Note {

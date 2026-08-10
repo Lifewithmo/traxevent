@@ -28,6 +28,7 @@ export interface PublicProposal {
   deposit?: ProposalDeposit
   deposit_gate?: 'before_accept' | 'after_accept'
   deposit_terms?: string
+  terms?: string
   payment_status?: PaymentStatus
   expires_at?: string
   notes?: string
@@ -79,6 +80,7 @@ export async function getPublicProposal(token: string): Promise<PublicProposal |
   if (proposal.deposit !== undefined) publicProposal.deposit = proposal.deposit
   if (proposal.deposit_gate !== undefined) publicProposal.deposit_gate = proposal.deposit_gate
   if (proposal.deposit_terms !== undefined) publicProposal.deposit_terms = proposal.deposit_terms
+  if (proposal.terms !== undefined) publicProposal.terms = proposal.terms
   if (proposal.payment_status !== undefined) publicProposal.payment_status = proposal.payment_status
   if (proposal.expires_at !== undefined) publicProposal.expires_at = proposal.expires_at
   if (proposal.selection !== undefined) publicProposal.selection = proposal.selection

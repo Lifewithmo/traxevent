@@ -169,6 +169,13 @@ export default async function ProposalPrintPage({
           <p className="whitespace-pre-wrap text-sm text-gray-700">{proposal.notes}</p>
         </section>
       )}
+
+      {proposal.terms && (
+        <section className="mt-8">
+          <h2 className="mb-2 text-lg font-bold">Terms</h2>
+          <p className="whitespace-pre-wrap text-sm text-gray-700">{proposal.terms}</p>
+        </section>
+      )}
     </main>
     </ProposalTheme>
   )

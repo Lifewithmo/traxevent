@@ -240,6 +240,19 @@ export function RightRail({
           </div>
         )}
 
+        <div className="space-y-1">
+          <Label htmlFor="propTerms">Terms</Label>
+          <textarea
+            id="propTerms"
+            value={draft.terms ?? ''}
+            onChange={(e) => update({ terms: e.target.value || undefined })}
+            placeholder="Legal terms the client agrees to when signing. Seeded from Branding → Proposal terms."
+            disabled={locked}
+            className="flex min-h-24 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          />
+          <p className="text-xs text-muted-foreground">Shown above the signature box; covered by the client&apos;s e-signature.</p>
+        </div>
+
         <div className="w-40 space-y-1">
           <Label htmlFor="expiresAt">Expires</Label>
           <Input

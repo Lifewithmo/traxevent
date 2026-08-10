@@ -38,7 +38,7 @@ EventTrax pivot (neutralization, multi-brand, ops core). Detailed designs live i
 - **Today / Clients / nav redesign** (PR #69, merged 2026-08-09) — Today as one
   ranked move queue with a booked-work agenda rail; Clients grouped by dormant
   repeat business, detail as story + timeline; sidebar quick links with
-  proposals/contracts/invoices nested under Pipeline.
+  proposals/invoices nested under Pipeline.
 - **Calendar week view + ICS + pipeline sub-nav** (PR #70, merged 2026-08-09,
   wireframes 15a/15b/16a) — org calendar as two bands per day (time / owed)
   across six kinds incl. compliance blockers and invoice dues; tokened
@@ -49,6 +49,11 @@ EventTrax pivot (neutralization, multi-brand, ops core). Detailed designs live i
   customer + opportunity at `inquiry`, logs a `form` activity event, emails the
   owner. First abuse-protection seam: honeypot + time gate + Firestore-backed
   rate limiting (`lib/rate-limit.ts`) — registration should adopt it next.
+- **One signed document** — proposals carry legal `terms` (org default in
+  Branding → Proposal terms, per-proposal editable, hash-covered by the
+  e-signature); the standalone contracts feature (pages, nav, portal card,
+  convert gate) is removed
+  (spec: `superpowers/specs/2026-08-09-proposal-terms-contracts-retirement-design.md`).
 
 ## In flight
 

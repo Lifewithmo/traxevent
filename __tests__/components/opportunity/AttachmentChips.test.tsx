@@ -11,7 +11,6 @@ describe('AttachmentChips', () => {
       today: '2026-08-07',
       proposals: [{ status: 'accepted' } as Partial<Proposal> as Proposal],
       invoices: [],
-      contracts: [],
       vendors: [],
     })
     render(<AttachmentChips chips={chips} selected="task" onSelect={vi.fn()} />)

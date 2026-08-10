@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { updateOrgBranding } from '@/actions/orgs'
+import { updateOrgBranding, updateOrgDefaultProposalTerms } from '@/actions/orgs'
 import { uploadOrgAsset } from '@/actions/org-assets'
 import type { OrgBranding } from '@/lib/types'
 
@@ -13,6 +13,7 @@ interface BrandingClientProps {
   orgId: string
   orgName: string
   initialBranding: OrgBranding
+  initialDefaultTerms: string
 }
 
 const HEX = /^#[0-9a-fA-F]{6}$/
@@ -91,7 +92,7 @@ function UploadField({
   )
 }
 
-export function BrandingClient({ orgId, orgName, initialBranding }: BrandingClientProps) {
+export function BrandingClient({ orgId, orgName, initialBranding, initialDefaultTerms }: BrandingClientProps) {
   const [displayName, setDisplayName] = useState(initialBranding.display_name ?? '')
   const [logoUrl, setLogoUrl] = useState(initialBranding.logo_url ?? '')
   const [coverUrl, setCoverUrl] = useState(initialBranding.cover_image_url ?? '')
@@ -101,6 +102,10 @@ export function BrandingClient({ orgId, orgName, initialBranding }: BrandingClie
   const [uploading, setUploading] = useState<'logo' | 'cover' | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const [defaultTerms, setDefaultTerms] = useState(initialDefaultTerms)
+  const [termsBusy, setTermsBusy] = useState(false)
+  const [termsError, setTermsError] = useState<string | null>(null)
+  const [termsNotice, setTermsNotice] = useState<string | null>(null)
 
   async function handleSave() {
     setBusy(true)
@@ -142,6 +147,21 @@ export function BrandingClient({ orgId, orgName, initialBranding }: BrandingClie
       setError(err instanceof Error ? err.message : 'Upload failed')
     } finally {
       setUploading(null)
+    }
+  }
+
+  async function handleSaveTerms() {
+    setTermsBusy(true)
+    setTermsError(null)
+    setTermsNotice(null)
+    try {
+      const saved = await updateOrgDefaultProposalTerms(orgId, defaultTerms)
+      setDefaultTerms(saved)
+      setTermsNotice('Saved')
+    } catch (err: unknown) {
+      setTermsError(err instanceof Error ? err.message : 'Failed to save terms')
+    } finally {
+      setTermsBusy(false)
     }
   }
 
@@ -195,6 +215,32 @@ export function BrandingClient({ orgId, orgName, initialBranding }: BrandingClie
 
           <Button onClick={handleSave} disabled={busy || uploading !== null}>
             {busy ? 'Saving…' : 'Save branding'}
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Proposal terms</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="space-y-1">
+            <Label htmlFor="branding-default-terms">Proposal terms</Label>
+            <textarea
+              id="branding-default-terms"
+              value={defaultTerms}
+              onChange={(e) => setDefaultTerms(e.target.value)}
+              placeholder="e.g. A 50% deposit reserves your date. Balance is due 7 days before the event…"
+              className="flex min-h-32 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            />
+            <p className="text-xs text-gray-500">
+              Included on every new proposal. Editable per proposal; changing this never alters existing proposals.
+            </p>
+          </div>
+          {termsError && <p className="text-sm text-red-600">{termsError}</p>}
+          {termsNotice && <p className="text-sm text-green-700">{termsNotice}</p>}
+          <Button onClick={handleSaveTerms} disabled={termsBusy}>
+            {termsBusy ? 'Saving…' : 'Save terms'}
           </Button>
         </CardContent>
       </Card>
