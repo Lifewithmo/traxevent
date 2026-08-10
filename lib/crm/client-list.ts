@@ -77,7 +77,7 @@ export function cadenceLabel(row: ClientRow): string | undefined {
  */
 export function buildClientRow(customer: Customer, leads: Lead[], today: string): ClientRow {
   const isOpen = (s: LeadStage) => (OPEN_STAGES as LeadStage[]).includes(s)
-  const rollup = rollupCustomer(leads)
+  const rollup = rollupCustomer(customer, leads)
 
   const wonEventDates = leads
     .filter((l) => l.stage === 'closed_won' && l.event_date)
@@ -129,7 +129,7 @@ export function buildClientList(
   )
 
   // Within a group, whoever has gone quiet longest comes first.
-  const quietKey = (r: ClientRow) => r.lastEventDate ?? r.rollup.lastActivityAt ?? ''
+  const quietKey = (r: ClientRow) => r.lastEventDate ?? r.rollup.lastContactAt ?? ''
   rows.sort((a, b) => quietKey(a).localeCompare(quietKey(b)))
 
   const blocks = GROUP_ORDER.map((group) => ({
