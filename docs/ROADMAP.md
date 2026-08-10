@@ -45,6 +45,10 @@ EventTrax pivot (neutralization, multi-brand, ops core). Detailed designs live i
   read-only ICS feed at `/ics/[orgSlug]/[token]` with per-kind `?include=`
   filters; Pipeline becomes a section (Opportunities / Calendar / Tasks);
   one-date .ics download on the opportunity dates panel.
+- **Public intake form** — tokenized `/inquire/[token]` front door: creates
+  customer + opportunity at `inquiry`, logs a `form` activity event, emails the
+  owner. First abuse-protection seam: honeypot + time gate + Firestore-backed
+  rate limiting (`lib/rate-limit.ts`) — registration should adopt it next.
 
 ## In flight
 
@@ -80,9 +84,6 @@ in PR #70; queue the next increment here.)*
   dismiss/snooze of a suggestion). Views group customers by reason. Not 1:1 by
   design — rules are defaults, never hardwired per customer. AI note-mining
   (suggest key dates from notes) is a later suggester layer on the same model.
-- **Public intake form** — the pipeline's missing front door; every opportunity
-  is hand-keyed today. Hard prerequisite: the repo has zero rate limiting / bot
-  protection, which this increment must solve first.
 - **Operator-AI increments 2–3**
   (spec: `superpowers/specs/2026-08-07-operator-ai-design.md`) — per-artifact
   refinement + quantity/notes assists, then the read-only workspace assistant.

@@ -11,6 +11,7 @@ import { LEAD_STAGE_LABELS, LOST_REASON_LABELS, opportunityTitle } from '@/lib/l
 import type { PipelineGroups, PipelineRow, closedThisMonth } from '@/lib/pipeline-view'
 import type { Lead } from '@/lib/types'
 import { NewOpportunityForm } from './NewOpportunityForm'
+import { IntakeLinkCard } from './IntakeLinkCard'
 
 interface PipelineListClientProps {
   orgId: string
@@ -32,6 +33,7 @@ export function PipelineListClient({
   const router = useRouter()
   const [activeTab, setActiveTab] = useState<Tab>('open')
   const [creating, setCreating] = useState(false)
+  const [intakeOpen, setIntakeOpen] = useState(false)
   const [nudging, setNudging] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -126,6 +128,7 @@ export function PipelineListClient({
           <Link href={`/${orgSlug}/leads?view=board`} className="text-sm underline-offset-4 hover:underline">
             Board view
           </Link>
+          <Button variant="outline" onClick={() => setIntakeOpen((v) => !v)}>Intake link</Button>
           {!creating && (
             <Button onClick={() => { setCreating(true); setError(null) }}>New opportunity</Button>
           )}
@@ -137,6 +140,8 @@ export function PipelineListClient({
       </div>
 
       <NewOpportunityForm orgId={orgId} open={creating} onClose={() => setCreating(false)} />
+
+      <IntakeLinkCard orgId={orgId} open={intakeOpen} onClose={() => setIntakeOpen(false)} />
 
       <div className="flex gap-2">
         <Button

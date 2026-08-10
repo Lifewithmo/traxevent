@@ -13,7 +13,7 @@ vi.mock('@/lib/resend', () => ({
   },
 }))
 
-import { sendRegistrationConfirmation, sendProposalNudge } from '@/lib/email'
+import { sendRegistrationConfirmation, sendProposalNudge, sendIntakeNotification, escapeHtml } from '@/lib/email'
 
 const baseParams = {
   to: 'jane@example.com',
@@ -89,5 +89,57 @@ describe('sendProposalNudge', () => {
     const call = emailsSendSpy.mock.calls[0][0]
     expect(call.from).toBe('"BrewTrax Events" <noreply@brewtrax.com>')
     expect(call.replyTo).toBe('owner@brewtrax.com')
+  })
+})
+
+describe('escapeHtml', () => {
+  it('escapes the five HTML metacharacters', () => {
+    expect(escapeHtml(`<img src=x onerror="alert('&')">`)).toBe(
+      '&lt;img src=x onerror=&quot;alert(&#39;&amp;&#39;)&quot;&gt;'
+    )
+  })
+  it('passes plain text through', () => {
+    expect(escapeHtml('Ada Lovelace')).toBe('Ada Lovelace')
+  })
+})
+
+describe('sendIntakeNotification', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  const base = {
+    to: 'owner@example.com',
+    orgName: 'Brew Cart Co',
+    leadName: 'Ada Lovelace',
+    email: 'ada@example.com',
+    opportunityUrl: 'https://traxevent.com/brewcart/leads/abc123',
+  }
+
+  it('sends to the owner with org display name and the opportunity link', async () => {
+    await sendIntakeNotification(base)
+    const call = emailsSendSpy.mock.calls[0][0]
+    expect(call.to).toBe('owner@example.com')
+    expect(call.from).toBe('"Brew Cart Co" <noreply@traxevent.com>')
+    expect(call.subject).toBe('New inquiry — Ada Lovelace')
+    expect(call.html).toContain('https://traxevent.com/brewcart/leads/abc123')
+    expect(call.html).toContain('ada@example.com')
+  })
+
+  it('escapes attacker-supplied values in the HTML body', async () => {
+    await sendIntakeNotification({
+      ...base,
+      leadName: '<script>alert(1)</script>',
+      message: '<b>bold</b> & "quoted"',
+    })
+    const call = emailsSendSpy.mock.calls[0][0]
+    expect(call.html).not.toContain('<script>')
+    expect(call.html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;')
+    expect(call.html).toContain('&lt;b&gt;bold&lt;/b&gt; &amp; &quot;quoted&quot;')
+  })
+
+  it('omits rows for absent optional fields', async () => {
+    await sendIntakeNotification(base)
+    const call = emailsSendSpy.mock.calls[0][0]
+    expect(call.html).not.toContain('Phone')
+    expect(call.html).not.toContain('Message')
   })
 })

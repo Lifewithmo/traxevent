@@ -3,10 +3,9 @@
 import { assertOrgMember, assertOrgAdmin } from '@/lib/auth/assert'
 import { LEAD_STAGES, closedAtPatch, LOST_REASON_LABELS } from '@/lib/leads'
 import { logActivity } from '@/lib/activity'
-import { leadsRef, listLeadsCore, updateLeadCore, type LeadUpdate } from '@/lib/crm/leads'
+import { createLeadCore, leadsRef, listLeadsCore, updateLeadCore, type LeadUpdate } from '@/lib/crm/leads'
 import { findOrCreateCustomerCore } from '@/lib/crm/customers'
 import { convertOpportunityToWorkCore, type ConvertToWorkInput } from '@/lib/crm/convert'
-import { randomBytes } from 'crypto'
 import type { Lead, LeadStage, LeadWaiting, LostReason, Event } from '@/lib/types'
 
 // NOTE: this is a 'use server' module — every export must be an async function.
@@ -49,25 +48,20 @@ export async function createLead(orgId: string, input: CreateLeadInput): Promise
     ...(input.email?.trim() ? { email: input.email.trim() } : {}),
     ...(input.phone?.trim() ? { phone: input.phone.trim() } : {}),
   })
-  const id = randomBytes(8).toString('hex')
-  const lead: Lead = {
-    id,
-    name: input.name.trim(),
+  return createLeadCore(orgId, {
+    name: input.name,
     stage,
-    created_at: new Date().toISOString(),
     customer_id: customer.id,
-    ...(input.title?.trim() ? { title: input.title.trim() } : {}),
-    ...(input.email?.trim() ? { email: input.email.trim() } : {}),
-    ...(input.phone?.trim() ? { phone: input.phone.trim() } : {}),
-    ...(input.organization?.trim() ? { organization: input.organization.trim() } : {}),
-    ...(input.event_type?.trim() ? { event_type: input.event_type.trim() } : {}),
-    ...(input.event_date?.trim() ? { event_date: input.event_date.trim() } : {}),
+    ...(input.title !== undefined ? { title: input.title } : {}),
+    ...(input.email !== undefined ? { email: input.email } : {}),
+    ...(input.phone !== undefined ? { phone: input.phone } : {}),
+    ...(input.organization !== undefined ? { organization: input.organization } : {}),
+    ...(input.event_type !== undefined ? { event_type: input.event_type } : {}),
+    ...(input.event_date !== undefined ? { event_date: input.event_date } : {}),
     ...(input.estimated_value != null ? { estimated_value: input.estimated_value } : {}),
     ...(input.guest_count != null ? { guest_count: input.guest_count } : {}),
-    ...(input.notes?.trim() ? { notes: input.notes.trim() } : {}),
-  }
-  await leadsRef(orgId).doc(id).set(lead)
-  return lead
+    ...(input.notes !== undefined ? { notes: input.notes } : {}),
+  })
 }
 
 export async function updateLead(orgId: string, leadId: string, updates: LeadUpdate): Promise<void> {
