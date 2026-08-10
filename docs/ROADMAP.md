@@ -1,6 +1,6 @@
 # TraxEvent — Product Roadmap
 
-Rollup of where the build stands and what's next. Last updated: 2026-08-09.
+Rollup of where the build stands and what's next. Last updated: 2026-08-10.
 
 The original vision/architecture spec is
 [2026-06-02-product-roadmap-design.md](superpowers/specs/2026-06-02-product-roadmap-design.md)
@@ -55,15 +55,16 @@ EventTrax pivot (neutralization, multi-brand, ops core). Detailed designs live i
   convert gate) is removed
   (spec: `superpowers/specs/2026-08-09-proposal-terms-contracts-retirement-design.md`).
 
+- **Customer page completion** (PR #65, merged 2026-08-10) —
+  new-opportunity-from-customer + pipeline customer typeahead on one
+  `customer_id` seam, real last-contact via touch stamps, tag editor with
+  autocomplete — features ported onto the PR #69 redesigned Clients pages at
+  merge. Manual browser walk not yet run.
+  Spec: `docs/superpowers/specs/2026-08-08-customer-page-completion-design.md`.
+
 ## In flight
 
-- **Opportunity workspace, increment 1** — PR #64 open
-  (light shell, pill row, dates panel).
-  Plan: `docs/superpowers/plans/2026-08-08-opportunity-workspace.md`.
-- **Customer page completion** — PR #65 open (new-opportunity-from-customer +
-  pipeline customer typeahead on one `customer_id` seam, real last-contact via
-  touch stamps, tag editor with autocomplete). Manual browser walk not yet run.
-  Spec: `docs/superpowers/specs/2026-08-08-customer-page-completion-design.md`.
+*(empty — PRs #65, #66, and #71 all merged 2026-08-10.)*
 
 ## Next (approved queue)
 
