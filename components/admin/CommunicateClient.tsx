@@ -169,7 +169,7 @@ export function CommunicateClient({
           <div aria-live="polite" aria-atomic="true">
             {error && <p className="text-sm text-destructive">{error}</p>}
             {result && (
-              <p className="text-sm text-accent">
+              <p className="text-sm text-green-700">
                 Sent to {result.sent} recipient{result.sent !== 1 ? 's' : ''}.
               </p>
             )}
