@@ -82,6 +82,13 @@
   --color-purple-700: var(--copper-600);
   --color-purple-800: var(--copper-700);
 
+  --color-green-50: #eef2e8;
+  --color-green-100: #e4ebdb;
+  --color-green-200: #c6d4b6;
+  --color-green-600: #5d7a45;
+  --color-green-700: #4c6438;
+  --color-green-800: #3f5730;
+
   --color-emerald-200: #c6d4b6;
   --color-emerald-400: #5d7a45;
   --color-emerald-600: #4c6438;
@@ -141,6 +148,30 @@
   --copper-500: #a8632b;
   --copper-600: #8a4e20;
   --copper-700: #6b3b19;
+
+  /* Design-system semantic roles beyond the shadcn contract: status pills
+     (moss / honey / terracotta), booked-work money green, alert surfaces,
+     and copper links. */
+  --status-confirmed-bg: #e4ebdb;
+  --status-confirmed-fg: #3f5730;
+  --status-pending-bg: #fbeed2;
+  --status-pending-fg: #7d5a18;
+  --status-alert-bg: #f7e0da;
+  --status-alert-fg: #8c3524;
+  --status-neutral-bg: var(--warm-100);
+  --status-neutral-fg: var(--warm-500);
+  --money-green: #4c6438;
+  --money-green-strong: #5d7a45;
+  --money-green-border: #c6d4b6;
+  --warn-bg: #fdf4e3;
+  --warn-border: #e3c07a;
+  --warn-fg: #6b4b14;
+  --danger-bg: #fbeee9;
+  --danger-border: #dda694;
+  --danger-fg: #8c3524;
+  --danger-text: #a33b28;
+  --link: var(--copper-600);
+  --link-hover: var(--copper-700);
 
   --background: var(--warm-50);
   --foreground: var(--warm-950);
