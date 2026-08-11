@@ -330,7 +330,7 @@ export function AssignmentsClient({
             <div className="flex items-center gap-3">
               <div aria-live="polite" aria-atomic="true">
                 {autoAssignResult && (
-                  <span className="text-sm text-accent">{autoAssignResult}</span>
+                  <span className="text-sm text-green-700">{autoAssignResult}</span>
                 )}
               </div>
               <Button

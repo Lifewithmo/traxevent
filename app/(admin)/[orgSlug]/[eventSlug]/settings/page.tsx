@@ -296,7 +296,7 @@ export default function EventSettingsPage() {
 
             <div aria-live="polite" aria-atomic="true">
               {error && <p className="text-sm text-destructive">{error}</p>}
-              {saved && <p className="text-sm text-accent">Settings saved.</p>}
+              {saved && <p className="text-sm text-green-700">Settings saved.</p>}
             </div>
 
             <Button type="submit" disabled={saving}>
