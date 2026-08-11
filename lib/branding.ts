@@ -34,6 +34,11 @@ export function parseOrgBranding(input: unknown): OrgBranding {
   const out: OrgBranding = {}
   const name = typeof raw.display_name === 'string' ? raw.display_name.trim() : ''
   if (name) out.display_name = name
+  const address = typeof raw.address === 'string' ? raw.address.trim() : ''
+  if (address) {
+    if (address.length > 500) throw new Error('address must be 500 characters or fewer')
+    out.address = address
+  }
   const logo = parseHttpsUrl(raw.logo_url, 'logo_url')
   if (logo) out.logo_url = logo
   const cover = parseHttpsUrl(raw.cover_image_url, 'cover_image_url')
