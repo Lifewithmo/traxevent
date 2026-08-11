@@ -94,6 +94,7 @@ function UploadField({
 
 export function BrandingClient({ orgId, orgName, initialBranding, initialDefaultTerms }: BrandingClientProps) {
   const [displayName, setDisplayName] = useState(initialBranding.display_name ?? '')
+  const [address, setAddress] = useState(initialBranding.address ?? '')
   const [logoUrl, setLogoUrl] = useState(initialBranding.logo_url ?? '')
   const [coverUrl, setCoverUrl] = useState(initialBranding.cover_image_url ?? '')
   const [accent, setAccent] = useState(initialBranding.accent_color ?? '')
@@ -114,6 +115,7 @@ export function BrandingClient({ orgId, orgName, initialBranding, initialDefault
     try {
       const saved = await updateOrgBranding(orgId, {
         display_name: displayName,
+        address,
         logo_url: logoUrl,
         cover_image_url: coverUrl,
         accent_color: accent,
@@ -122,6 +124,7 @@ export function BrandingClient({ orgId, orgName, initialBranding, initialDefault
       // Re-seed from what actually persisted — the server's normalization
       // (trimming, hex lowercasing, empty-field drops) is the truth.
       setDisplayName(saved.display_name ?? '')
+      setAddress(saved.address ?? '')
       setLogoUrl(saved.logo_url ?? '')
       setCoverUrl(saved.cover_image_url ?? '')
       setAccent(saved.accent_color ?? '')
@@ -188,6 +191,18 @@ export function BrandingClient({ orgId, orgName, initialBranding, initialDefault
               onChange={(e) => setDisplayName(e.target.value)}
             />
             <p className="text-xs text-gray-500">Falls back to your org name, {orgName}.</p>
+          </div>
+
+          <div className="space-y-1">
+            <Label htmlFor="branding-address">Business address</Label>
+            <textarea
+              id="branding-address"
+              value={address}
+              placeholder={"123 Main St\nSpringfield, ID 83000"}
+              onChange={(e) => setAddress(e.target.value)}
+              className="flex min-h-16 w-full rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-sm transition-colors outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+            />
+            <p className="text-xs text-gray-500">Shown on your invoices under your business name.</p>
           </div>
 
           <div className="flex flex-wrap gap-6">

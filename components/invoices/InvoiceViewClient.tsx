@@ -30,6 +30,36 @@ export function InvoiceViewClient({ invoice }: { invoice: PublicInvoice }) {
           <Badge>{INVOICE_TYPE_LABELS[invoice.type]}</Badge>
         </div>
 
+        {(invoice.from || invoice.bill_to) && (
+          <div className="mb-6 grid gap-6 sm:grid-cols-2">
+            {invoice.from && (
+              <div>
+                <p className="font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-muted-foreground">
+                  From
+                </p>
+                <p className="mt-1.5 text-sm font-semibold text-gray-900">{invoice.from.name}</p>
+                {invoice.from.address && (
+                  <p className="mt-0.5 text-sm whitespace-pre-line text-gray-600">{invoice.from.address}</p>
+                )}
+              </div>
+            )}
+            {invoice.bill_to && (
+              <div>
+                <p className="font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-muted-foreground">
+                  Bill to
+                </p>
+                <p className="mt-1.5 text-sm font-semibold text-gray-900">{invoice.bill_to.name}</p>
+                {invoice.bill_to.company && (
+                  <p className="mt-0.5 text-sm text-gray-600">{invoice.bill_to.company}</p>
+                )}
+                {invoice.bill_to.email && (
+                  <p className="mt-0.5 text-sm text-gray-600">{invoice.bill_to.email}</p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         <Card>
           <CardHeader>
             <CardTitle>Line items</CardTitle>

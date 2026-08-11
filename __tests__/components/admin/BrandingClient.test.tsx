@@ -31,6 +31,7 @@ describe('BrandingClient', () => {
     fireEvent.click(screen.getByRole('button', { name: /save branding/i }))
     await waitFor(() => expect(updateOrgBranding).toHaveBeenCalledWith('o1', {
       display_name: 'BrewTrax',
+      address: '',
       logo_url: '',
       cover_image_url: '',
       accent_color: '#1d4ed8',

@@ -20,6 +20,17 @@ describe('parseOrgBranding', () => {
     })
   })
 
+  it('trims a multi-line address and keeps interior newlines', () => {
+    expect(parseOrgBranding({ address: '  123 Main St\nSpringfield, ID 83000  ' })).toEqual({
+      address: '123 Main St\nSpringfield, ID 83000',
+    })
+  })
+
+  it('drops a blank address and rejects one over 500 characters', () => {
+    expect(parseOrgBranding({ address: '   ' })).toEqual({})
+    expect(() => parseOrgBranding({ address: 'x'.repeat(501) })).toThrow(/500/)
+  })
+
   it('omits empty and missing fields (never stores undefined)', () => {
     const out = parseOrgBranding({ display_name: '  ', accent_color: '#112233' })
     expect(out).toEqual({ accent_color: '#112233' })

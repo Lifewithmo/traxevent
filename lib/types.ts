@@ -33,6 +33,7 @@ export interface Org {
 // by construction — this object is shipped verbatim to public proposal pages.
 export interface OrgBranding {
   display_name?: string        // customer-facing; falls back to org name
+  address?: string             // customer-facing business address (multi-line); shown on invoices
   logo_url?: string
   cover_image_url?: string     // hero behind the proposal title
   accent_color?: string        // #rrggbb
