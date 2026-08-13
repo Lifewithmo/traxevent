@@ -5,6 +5,7 @@ export interface PipelineHeaderStats {
   bookedThisMonth: { count: number; value: number }
   bookedLastYearSameMonth: { count: number; value: number }
   bookedNext90: { count: number; value: number }
+  openPipeline: { count: number; value: number }
   needsActionCount: number
   backlog: BacklogMonth[]
 }
@@ -21,12 +22,12 @@ function yoyLine(now: number, lastYear: number): string | null {
 }
 
 export function PipelineStatsHeader({ stats }: { stats: PipelineHeaderStats }) {
-  const { bookedThisMonth, bookedLastYearSameMonth, bookedNext90, needsActionCount, backlog } = stats
+  const { bookedThisMonth, bookedLastYearSameMonth, bookedNext90, openPipeline, needsActionCount, backlog } = stats
   const yoy = yoyLine(bookedThisMonth.value, bookedLastYearSameMonth.value)
   const max = Math.max(1, ...backlog.map((m) => m.booked + m.open))
   return (
     <div className="space-y-4">
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardContent className="p-4">
             <p className="text-xs text-muted-foreground">Booked this month</p>
@@ -47,6 +48,15 @@ export function PipelineStatsHeader({ stats }: { stats: PipelineHeaderStats }) {
         </Card>
         <Card>
           <CardContent className="p-4">
+            <p className="text-xs text-muted-foreground">Open pipeline</p>
+            <p className="text-2xl font-semibold">{money(openPipeline.value)}</p>
+            <p className="text-xs text-muted-foreground">
+              {`${openPipeline.count} opportunit${openPipeline.count === 1 ? 'y' : 'ies'}`}
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
             <p className="text-xs text-muted-foreground">Needs action</p>
             <p className={`text-2xl font-semibold${needsActionCount > 0 ? ' text-destructive' : ''}`}>
               {needsActionCount}
@@ -60,8 +70,8 @@ export function PipelineStatsHeader({ stats }: { stats: PipelineHeaderStats }) {
       <Card>
         <CardContent className="p-4">
           <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
-            <p className="text-sm font-medium">Booked revenue by month</p>
-            <p className="text-xs text-muted-foreground">solid = booked · light = open pipeline with dates</p>
+            <p className="text-sm font-medium">Revenue by month</p>
+            <p className="text-xs text-muted-foreground">rolling 12 months · solid booked · light open</p>
           </div>
           <div className="flex h-28 items-end gap-3">
             {backlog.map((m) => (

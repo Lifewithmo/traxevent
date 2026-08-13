@@ -52,8 +52,9 @@ export default async function LeadsPage({
     bookedThisMonth: wonValueInMonth(leads, ym),
     bookedLastYearSameMonth: wonValueInMonth(leads, addMonths(ym, -12)),
     bookedNext90: bookedAhead(leads, today),
+    openPipeline: { count: open.length, value: openValue },
     needsActionCount: groups.needs_attention.length,
-    backlog: backlogByMonth(leads, today),
+    backlog: backlogByMonth(leads, today, 12),
   }
 
   const shared = {
