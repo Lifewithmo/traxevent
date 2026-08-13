@@ -60,9 +60,23 @@ describe('PackagesTab', () => {
     await waitFor(() => expect(createWorkPackage).toHaveBeenCalledWith('o1', {
       name: 'Cold Brew Cart',
       price: 600,
-      lines: [{ kind: 'consumable', resource_id: 'r1', qty_per_guest: 0.5 }],
+      lines: [{ kind: 'consumable', resource_id: 'r1', qty_per_guest: { qty: 0.5, unit: 'oz' } }],
       checklist_template_ids: ['bi-cc-prep'],
     }))
+  })
+
+  it('lets the operator pick a different compatible unit for a consumable line', async () => {
+    render(<PackagesTab orgId="o1" isAdmin packages={[]} resources={[beans, machine]} templates={[]} />)
+    fireEvent.click(screen.getByRole('button', { name: 'New package' }))
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Bulk Brew' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add consumable' }))
+    fireEvent.change(screen.getByLabelText('Consumable 1 resource'), { target: { value: 'r1' } })
+    fireEvent.change(screen.getByLabelText('Consumable 1 qty per guest'), { target: { value: '0.05' } })
+    fireEvent.change(screen.getByLabelText('Consumable 1 unit'), { target: { value: 'lb' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save package' }))
+    await waitFor(() => expect(createWorkPackage).toHaveBeenCalledWith('o1', expect.objectContaining({
+      lines: [{ kind: 'consumable', resource_id: 'r1', qty_per_guest: { qty: 0.05, unit: 'lb' } }],
+    })))
   })
 
   it('warns before deleting a package', async () => {

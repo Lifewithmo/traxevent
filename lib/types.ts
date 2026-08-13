@@ -715,6 +715,28 @@ export interface Vendor {
 
 // ── Operations core (spec 2026-08-05 §3) ─────────────────────────────
 
+// ── Units & conversions (spec 2026-08-13 §3) ─────────────────────────
+
+export type Dimension = 'volume' | 'weight' | 'count'
+
+/** A physical quantity: amount + unit string (normalized lowercase). */
+export interface Quantity {
+  qty: number
+  unit: string
+}
+
+/**
+ * Ingredient-specific conversion, AI-inferred or operator-entered:
+ * density (weight↔volume), yield (1 lb beans → 40 shot), or custom
+ * serving units (1 keg → 124 pint). Never duplicates the universal table.
+ */
+export interface ConversionBridge {
+  from: Quantity
+  to: Quantity
+  source: 'ai' | 'operator'
+  note?: string
+}
+
 export type ResourceKind = 'consumable' | 'reusable' | 'serialized'
 
 export interface OpsResource {
@@ -722,14 +744,18 @@ export interface OpsResource {
   name: string
   kind: ResourceKind
   unit?: string        // display unit for quantities: 'oz', 'each', 'gal'
-  unit_cost?: number   // dollars per unit; feeds closeout margin
+  unit_cost?: number   // dollars per `unit`; feeds closeout margin
+  dimension?: Dimension            // fundamental measure; legacy docs inferred on read (spec §3.3)
+  conversions?: ConversionBridge[] // AI/operator bridges: density, yields, custom serving units
   notes?: string
   created_at: string
   updated_at?: string
 }
 
 export type WorkPackageLine =
-  | { kind: 'consumable'; resource_id: string; qty_per_guest: number; base_qty?: number }
+  // consumable quantities: bare numbers are legacy docs, read as the resource's
+  // display unit (spec 2026-08-13 §4.1); new writes use Quantity.
+  | { kind: 'consumable'; resource_id: string; qty_per_guest: number | Quantity; base_qty?: number | Quantity }
   | { kind: 'equipment'; resource_id: string; qty: number }
   | { kind: 'labor'; role: string; count: number }   // recorded stub; staffing is a later phase
 
@@ -777,6 +803,7 @@ export interface OpsListItem {
   name: string        // denormalized resource name at derivation time
   qty: number
   unit?: string
+  needs_conversion?: boolean  // quantity kept in its entered unit; no path to the resource's canonical unit (spec §3.4)
   checked: boolean
 }
 
@@ -836,6 +863,7 @@ export interface CloseoutSummary {
   revenue: number            // package prices + recorded sales
   planned_margin: number     // revenue - planned cost
   actual_margin: number      // revenue - actual cost
+  cost_gaps?: string[]  // resource names omitted from planned cost: cost known but no conversion path to its unit (spec §4.3)
 }
 
 export type IssueSeverity = 'low' | 'medium' | 'high'

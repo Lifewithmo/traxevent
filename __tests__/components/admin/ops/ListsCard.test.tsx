@@ -32,7 +32,7 @@ describe('ListsCard', () => {
     const onPlanChange = vi.fn()
     render(<ListsCard orgId="o1" eventId="e1" plan={plan} orgSlug="acme" eventSlug="gala" onPlanChange={onPlanChange} />)
     fireEvent.click(screen.getByLabelText('Espresso beans'))
-    await waitFor(() => expect(toggleListItem).toHaveBeenCalledWith('o1', 'e1', 'shopping_list', 'r1', true))
+    await waitFor(() => expect(toggleListItem).toHaveBeenCalledWith('o1', 'e1', 'shopping_list', 'r1', true, 'oz'))
     expect(onPlanChange).toHaveBeenCalled()
   })
 

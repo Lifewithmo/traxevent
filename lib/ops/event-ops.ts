@@ -154,9 +154,9 @@ export async function updateOpsRequirementsCore(
         if (!foundIds.has(id)) throw new Error(`Package no longer exists: ${id}`)
       }
       const resources = await listResourcesCore(orgId)
-      const prevChecked = new Map(plan.shopping_list.map((i) => [i.resource_id, i.checked]))
+      const prevChecked = new Map(plan.shopping_list.map((i) => [`${i.resource_id}|${i.unit ?? ''}`, i.checked]))
       payload.shopping_list = computeShoppingList(packages, resources, guests)
-        .map((i) => ({ ...i, checked: prevChecked.get(i.resource_id) ?? false }))
+        .map((i) => ({ ...i, checked: prevChecked.get(`${i.resource_id}|${i.unit ?? ''}`) ?? false }))
       // packing_list intentionally omitted: it doesn't depend on guests.
       payload.needs_review = true
     }
@@ -164,12 +164,19 @@ export async function updateOpsRequirementsCore(
   })
 }
 
+/**
+ * `unit` disambiguates the rare case where a resource has two list items with
+ * the same resource_id but different units (e.g. one converted item plus one
+ * needs_conversion item for the same resource — spec 2026-08-13 §4.3 finding).
+ * Optional so pre-units callers/tests matching by resource_id alone still work.
+ */
 export async function toggleListItemCore(
   orgId: string,
   eventId: string,
   list: 'shopping_list' | 'packing_list',
   resourceId: string,
   checked: boolean,
+  unit?: string,
 ): Promise<void> {
   const ref = opsPlanRef(orgId, eventId)
   await adminDb.runTransaction(async (tx) => {
@@ -177,7 +184,7 @@ export async function toggleListItemCore(
     if (!snap.exists) throw new Error('No ops plan for this event')
     const plan = snap.data() as OpsPlan
     const items = plan[list]
-    const idx = items.findIndex((i) => i.resource_id === resourceId)
+    const idx = items.findIndex((i) => i.resource_id === resourceId && (i.unit ?? null) === (unit ?? null))
     if (idx === -1) throw new Error('Item not found')
     const next = items.map((i, n) => (n === idx ? { ...i, checked } : i))
     tx.update(ref, { [list]: next, updated_at: new Date().toISOString() })

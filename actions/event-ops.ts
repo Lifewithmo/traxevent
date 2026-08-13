@@ -52,10 +52,10 @@ export async function updateOpsRequirements(
 
 export async function toggleListItem(
   orgId: string, eventId: string,
-  list: 'shopping_list' | 'packing_list', resourceId: string, checked: boolean,
+  list: 'shopping_list' | 'packing_list', resourceId: string, checked: boolean, unit?: string,
 ): Promise<void> {
   await assertEventPage(orgId, eventId, 'ops')
-  return toggleListItemCore(orgId, eventId, list, resourceId, checked)
+  return toggleListItemCore(orgId, eventId, list, resourceId, checked, unit)
 }
 
 export async function completeChecklistStep(

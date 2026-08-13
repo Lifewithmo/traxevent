@@ -25,10 +25,12 @@ export function ListsCard({ orgId, eventId, plan, orgSlug, eventSlug, onPlanChan
   async function handleToggle(list: 'shopping_list' | 'packing_list', item: OpsListItem, checked: boolean) {
     setError(null)
     try {
-      await toggleListItem(orgId, eventId, list, item.resource_id, checked)
+      await toggleListItem(orgId, eventId, list, item.resource_id, checked, item.unit)
       onPlanChange({
         ...plan,
-        [list]: plan[list].map((x) => (x.resource_id === item.resource_id ? { ...x, checked } : x)),
+        [list]: plan[list].map((x) => (
+          x.resource_id === item.resource_id && (x.unit ?? null) === (item.unit ?? null) ? { ...x, checked } : x
+        )),
       })
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to save')
@@ -42,7 +44,7 @@ export function ListsCard({ orgId, eventId, plan, orgSlug, eventSlug, onPlanChan
         <h3 className="text-sm font-semibold mb-2">{title}</h3>
         <div className="space-y-1">
           {items.map((i) => (
-            <label key={i.resource_id} className="flex items-center gap-2 text-sm">
+            <label key={`${i.resource_id}|${i.unit ?? ''}`} className="flex items-center gap-2 text-sm">
               <input type="checkbox" aria-label={i.name} checked={i.checked}
                 onChange={(e) => handleToggle(list, i, e.target.checked)} />
               <span className={i.checked ? 'line-through text-gray-400' : ''}>{i.name}</span>

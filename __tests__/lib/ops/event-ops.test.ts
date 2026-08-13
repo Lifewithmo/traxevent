@@ -61,7 +61,8 @@ describe('instantiateOpsPlanCore', () => {
 
   it('derives lists, deadlines, and checklists from packages + requirements', async () => {
     const plan = await instantiateOpsPlanCore('o1', 'e1', input)
-    expect(plan.shopping_list).toEqual([{ resource_id: 'res-beans', name: 'Beans', qty: 75, unit: 'oz', checked: false }])
+    // 0.75 × 100 = 75 oz (weight) → 4.69 lb
+    expect(plan.shopping_list).toEqual([{ resource_id: 'res-beans', name: 'Beans', qty: 4.69, unit: 'lb', checked: false }])
     expect(plan.packing_list).toEqual([{ resource_id: 'res-machine', name: 'Machine', qty: 1, checked: false }])
     expect(plan.deadlines.length).toBeGreaterThan(0)
     expect(plan.checklists[0].id).toBe('bi-cc-prep')
@@ -121,7 +122,10 @@ describe('updateOpsRequirementsCore', () => {
     package_ids: ['wp1'],
     requirements: { guests: 100, site_needs: ['power'] },
     deadlines: [], packing_list: [{ resource_id: 'res-machine', name: 'Machine', qty: 1, checked: false }],
-    shopping_list: [{ resource_id: 'res-beans', name: 'Beans', qty: 75, unit: 'oz', checked: true }],
+    // unit is 'lb' to match what computeShoppingList actually derives for this
+    // resource/guest range (formatQuantity picks the human-scale unit) — the
+    // carry-forward key is resource_id + unit, so it must match the recompute.
+    shopping_list: [{ resource_id: 'res-beans', name: 'Beans', qty: 75, unit: 'lb', checked: true }],
     checklists: [], needs_review: false, change_log: [],
     industry_pack_id: 'coffee-cart', created_at: 't',
   }
@@ -132,7 +136,7 @@ describe('updateOpsRequirementsCore', () => {
     const payload = planUpdateSpy.mock.calls[0][0]
     expect(payload['requirements.guests']).toBe(120)
     expect(payload.needs_review).toBe(true)
-    expect(payload.shopping_list[0].qty).toBe(90) // 0.75 × 120
+    expect(payload.shopping_list[0].qty).toBe(5.63) // 0.75 × 120 = 90 oz → 5.63 lb
     expect('packing_list' in payload).toBe(false)
     // change_log appended via FieldValue.arrayUnion — an opaque sentinel, not a plain array
     expect(Array.isArray(payload.change_log)).toBe(false)

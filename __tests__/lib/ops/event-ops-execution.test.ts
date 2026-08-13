@@ -58,6 +58,23 @@ describe('toggleListItemCore', () => {
   it('throws for an unknown item', async () => {
     await expect(toggleListItemCore('o1', 'e1', 'packing_list', 'res-nope', true)).rejects.toThrow('Item not found')
   })
+
+  it('disambiguates two items sharing resource_id by unit — toggling one leaves the other unchecked', async () => {
+    planGetSpy.mockResolvedValue({
+      exists: true,
+      data: () => ({
+        ...plan(),
+        shopping_list: [
+          { resource_id: 'res-beans', name: 'Beans', qty: 5, unit: 'lb', checked: false },
+          { resource_id: 'res-beans', name: 'Beans', qty: 3, unit: 'shot', checked: false, needs_conversion: true },
+        ],
+      }),
+    })
+    await toggleListItemCore('o1', 'e1', 'shopping_list', 'res-beans', true, 'lb')
+    const payload = planUpdateSpy.mock.calls[0][0]
+    expect(payload.shopping_list[0]).toMatchObject({ unit: 'lb', checked: true })
+    expect(payload.shopping_list[1]).toMatchObject({ unit: 'shot', checked: false })
+  })
 })
 
 describe('completeChecklistStepCore', () => {

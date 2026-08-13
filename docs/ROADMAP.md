@@ -70,6 +70,17 @@ EventTrax pivot (neutralization, multi-brand, ops core). Detailed designs live i
   merge. Manual browser walk not yet run.
   Spec: `docs/superpowers/specs/2026-08-08-customer-page-completion-design.md`.
 
+- **Ops catalog units core** (branch `units-core`, 2026-08-13) — increment 1 of
+  the ops-catalog deepening: pure conversion engine (`lib/ops/units.ts` —
+  universal unit table, per-ingredient AI/operator conversion bridges, graph-walk
+  `convert()`, unit-system-aware display), resource `dimension`/`conversions`
+  with legacy inference (no migration), unit-aware package lines
+  (`number | Quantity`), derive converts-to-canonical-then-merges with
+  `needs_conversion` bucketing and `cost_gaps`, unit selector on package lines.
+  Spec: `superpowers/specs/2026-08-13-ops-catalog-units-vendors-design.md`
+  (increments 2–5 queued: recipes/yields, vendor price books, proposal
+  `catalog_ref`, one-door AI intake).
+
 ## In flight
 
 - **Pipeline KPI header** (branch `claude/pipeline-kpi-header`) — first-principles
