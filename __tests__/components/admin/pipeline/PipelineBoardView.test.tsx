@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { render, screen, fireEvent, cleanup } from '@testing-library/react'
 import { PipelineBoardView } from '@/components/admin/pipeline/PipelineBoardView'
 import type { Lead } from '@/lib/types'
 
@@ -32,7 +32,14 @@ describe('PipelineBoardView', () => {
   beforeEach(() => {
     setLeadStage.mockClear()
     push.mockClear()
-    document.body.innerHTML += '<div id="tx-pipeline-actions"></div>'
+    const slot = document.createElement('div')
+    slot.id = 'tx-pipeline-actions'
+    document.body.appendChild(slot)
+  })
+
+  afterEach(() => {
+    cleanup()
+    document.getElementById('tx-pipeline-actions')?.remove()
   })
 
   it('moves a card stage with arrow keys', async () => {
@@ -41,6 +48,14 @@ describe('PipelineBoardView', () => {
     card.focus()
     fireEvent.keyDown(card, { key: 'ArrowRight' })
     expect(setLeadStage).toHaveBeenCalledWith('o1', 'l1', 'consultation')
+  })
+
+  it('does not move stage when arrow keys fire from a focused descendant', () => {
+    render(<PipelineBoardView {...baseProps} />)
+    const trigger = screen.getByRole('button', { name: /Stage: Inquiry/ })
+    trigger.focus()
+    fireEvent.keyDown(trigger, { key: 'ArrowRight' })
+    expect(setLeadStage).not.toHaveBeenCalled()
   })
 
   it('renders uppercase column headers with count and value', () => {

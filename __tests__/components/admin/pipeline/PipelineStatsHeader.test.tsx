@@ -43,4 +43,16 @@ describe('PipelineStatsHeader', () => {
     expect(screen.getByText('rolling 12 months · solid booked · light open')).toBeInTheDocument()
     expect(localStorage.getItem('tx-backlog-open')).toBe('1')
   })
+
+  it('renders the destructive color, not muted, when YoY is down', () => {
+    const downStats = {
+      ...stats,
+      bookedThisMonth: { count: 2, value: 5000 },
+      bookedLastYearSameMonth: { count: 1, value: 6000 },
+    }
+    render(<PipelineStatsHeader stats={downStats} />)
+    const note = screen.getByText('down 17% vs this month last year')
+    expect(note.className).toContain('text-destructive')
+    expect(note.className).not.toContain('text-muted-foreground')
+  })
 })

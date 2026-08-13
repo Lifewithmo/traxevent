@@ -168,6 +168,7 @@ export function PipelineBoardView({
                       data-health={row.health}
                       onDragStart={(e) => e.dataTransfer.setData('text/plain', lead.id)}
                       onKeyDown={(e) => {
+                        if (e.target !== e.currentTarget) return
                         if (e.key === 'ArrowRight') { e.preventDefault(); handleArrowMove(row, 1) }
                         if (e.key === 'ArrowLeft') { e.preventDefault(); handleArrowMove(row, -1) }
                       }}

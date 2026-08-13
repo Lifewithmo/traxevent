@@ -61,7 +61,7 @@ function Kpi({
       >
         {value}
       </p>
-      <p className={`text-xs text-muted-foreground${destructive ? ' text-destructive' : ''}`}>{note}</p>
+      <p className={`text-xs ${destructive ? 'text-destructive' : 'text-muted-foreground'}`}>{note}</p>
     </div>
   )
 }
