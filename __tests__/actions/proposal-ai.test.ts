@@ -42,11 +42,11 @@ const streamFn = vi.fn((_req: StreamRequest) => ({ finalMessage }))
 vi.mock('@/lib/ai/client', () => ({
   isAiEnabled: () => true,
   getAnthropicClient: () => ({ beta: { messages: { stream: streamFn } } }),
-  AI_MODEL: 'claude-sonnet-5',
+  AI_MODEL: 'claude-opus-5',
   AI_MAX_TOKENS: 16000,
-  AI_EFFORT: 'high',
-  AI_BETAS: [],
-  AI_FALLBACKS: null,
+  AI_EFFORT: 'medium',
+  AI_BETAS: ['server-side-fallback-2026-07-01'],
+  AI_FALLBACKS: 'default',
 }))
 
 const logAiUsage = vi.fn()
@@ -102,12 +102,12 @@ describe('generateProposalDraft', () => {
   it('sends the spec-fixed request shape', async () => {
     await generateProposalDraft('o1', 'p1', 'call notes here')
     const req = streamFn.mock.calls[0][0]
-    expect(req.model).toBe('claude-sonnet-5')
+    expect(req.model).toBe('claude-opus-5')
     expect(req.max_tokens).toBe(16000)
-    expect(req.fallbacks).toBeUndefined()
-    expect(req.betas).toBeUndefined()
+    expect(req.fallbacks).toBe('default')
+    expect(req.betas).toEqual(['server-side-fallback-2026-07-01'])
     expect(req.thinking).toBeUndefined()
-    expect(req.output_config.effort).toBe('high')
+    expect(req.output_config.effort).toBe('medium')
     expect(req.output_config.format.type).toBe('json_schema')
     expect(req.system[1].cache_control).toEqual({ type: 'ephemeral' })
     expect(JSON.stringify(req.messages)).toContain('call notes here')
