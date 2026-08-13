@@ -64,15 +64,18 @@ export function TotalsCanvas({
         <span className="text-2xl font-bold text-gray-900">{moneySpan(range)}</span>
       </div>
 
-      {/* Discount */}
-      {discount ? (
+      {/* Discount — one popover reused by both the set row (button) and the
+          unset ghost ("+ Add discount"); it reads discount?.type ?? 'none'
+          the same way the Deposit popover below does, so there is exactly
+          one copy of the patch logic regardless of which row opened it. */}
+      {(discount || !disabled) && (
         <div className="relative">
           {disabled ? (
             <div className="flex items-center justify-between text-sm">
               <span className="text-gray-500">Discount</span>
               <span className="text-gray-900">{discountText}</span>
             </div>
-          ) : (
+          ) : discount ? (
             <button
               type="button"
               className="flex w-full items-center justify-between rounded px-1 text-sm hover:bg-gray-50"
@@ -80,6 +83,14 @@ export function TotalsCanvas({
             >
               <span className="text-gray-500">Discount</span>
               <span className="text-gray-900">{discountText}</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="text-sm text-gray-500 hover:text-gray-700"
+              onClick={() => setPopover(popover === 'discount' ? null : 'discount')}
+            >
+              + Add discount
             </button>
           )}
           {popover === 'discount' && !disabled && (
@@ -121,52 +132,17 @@ export function TotalsCanvas({
             </div>
           )}
         </div>
-      ) : (
-        !disabled && (
-          <button
-            type="button"
-            className="text-sm text-gray-500 hover:text-gray-700"
-            onClick={() => setPopover('discount')}
-          >
-            + Add discount
-          </button>
-        )
-      )}
-      {!discount && popover === 'discount' && !disabled && (
-        <div className="relative">
-          <div className="absolute right-0 z-30 mt-1 w-64 space-y-2 rounded-md border bg-white p-3 shadow-lg">
-            <div className="space-y-1">
-              <Label htmlFor="discountType">Discount</Label>
-              <select
-                id="discountType"
-                value="none"
-                onChange={(e) => {
-                  const t = e.target.value
-                  update({ discount: t === 'none' ? undefined : { type: t as 'percent' | 'fixed', value: 0 } })
-                }}
-                className="flex h-8 w-full rounded-md border border-input bg-transparent px-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              >
-                <option value="none">None</option>
-                <option value="percent">Percent</option>
-                <option value="fixed">Fixed</option>
-              </select>
-            </div>
-            <Button type="button" size="sm" className="w-full" onClick={() => setPopover(null)}>
-              Done
-            </Button>
-          </div>
-        </div>
       )}
 
-      {/* Tax */}
-      {draft.tax_rate != null ? (
+      {/* Tax — same single-popover shape as Discount above. */}
+      {(draft.tax_rate != null || !disabled) && (
         <div className="relative">
           {disabled ? (
             <div className="flex items-center justify-between text-sm">
               <span className="text-gray-500">Tax</span>
               <span className="text-gray-900">{taxText}</span>
             </div>
-          ) : (
+          ) : draft.tax_rate != null ? (
             <button
               type="button"
               className="flex w-full items-center justify-between rounded px-1 text-sm hover:bg-gray-50"
@@ -174,6 +150,14 @@ export function TotalsCanvas({
             >
               <span className="text-gray-500">Tax</span>
               <span className="text-gray-900">{taxText}</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="text-sm text-gray-500 hover:text-gray-700"
+              onClick={() => setPopover(popover === 'tax' ? null : 'tax')}
+            >
+              + Add tax
             </button>
           )}
           {popover === 'tax' && !disabled && (
@@ -195,36 +179,6 @@ export function TotalsCanvas({
             </div>
           )}
         </div>
-      ) : (
-        !disabled && (
-          <div className="relative">
-            <button
-              type="button"
-              className="text-sm text-gray-500 hover:text-gray-700"
-              onClick={() => setPopover(popover === 'tax' ? null : 'tax')}
-            >
-              + Add tax
-            </button>
-            {popover === 'tax' && (
-              <div className="absolute right-0 z-30 mt-1 w-64 space-y-2 rounded-md border bg-white p-3 shadow-lg">
-                <div className="space-y-1">
-                  <Label htmlFor="taxRate">Tax rate (%)</Label>
-                  <Input
-                    id="taxRate"
-                    type="number"
-                    value={draft.tax_rate != null ? String(draft.tax_rate) : ''}
-                    onChange={(e) =>
-                      update({ tax_rate: e.target.value.trim() === '' ? undefined : Number(e.target.value) })
-                    }
-                  />
-                </div>
-                <Button type="button" size="sm" className="w-full" onClick={() => setPopover(null)}>
-                  Done
-                </Button>
-              </div>
-            )}
-          </div>
-        )
       )}
 
       {/* Deposit — always a row (never a ghost); the popover's own type
