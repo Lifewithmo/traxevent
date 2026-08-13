@@ -7,19 +7,21 @@ import type { ConversionBridge, Dimension, Quantity } from '@/lib/types'
 
 export const CANONICAL_UNIT: Record<Dimension, string> = { volume: 'ml', weight: 'g', count: 'each' }
 
+export type UnitSystem = 'metric' | 'us'
+
 /** factor = how many canonical units one of this unit is. 'oz' is WEIGHT; volume ounces are 'fl-oz'. */
-export const UNIVERSAL_UNITS: Record<string, { dimension: Dimension; factor: number }> = {
-  ml: { dimension: 'volume', factor: 1 },
-  l: { dimension: 'volume', factor: 1000 },
-  'fl-oz': { dimension: 'volume', factor: 29.5735295625 },
-  cup: { dimension: 'volume', factor: 236.5882365 },
-  pint: { dimension: 'volume', factor: 473.176473 },
-  quart: { dimension: 'volume', factor: 946.352946 },
-  gal: { dimension: 'volume', factor: 3785.411784 },
-  g: { dimension: 'weight', factor: 1 },
-  kg: { dimension: 'weight', factor: 1000 },
-  oz: { dimension: 'weight', factor: 28.349523125 },
-  lb: { dimension: 'weight', factor: 453.59237 },
+export const UNIVERSAL_UNITS: Record<string, { dimension: Dimension; factor: number; system?: UnitSystem }> = {
+  ml: { dimension: 'volume', factor: 1, system: 'metric' },
+  l: { dimension: 'volume', factor: 1000, system: 'metric' },
+  'fl-oz': { dimension: 'volume', factor: 29.5735295625, system: 'us' },
+  cup: { dimension: 'volume', factor: 236.5882365, system: 'us' },
+  pint: { dimension: 'volume', factor: 473.176473, system: 'us' },
+  quart: { dimension: 'volume', factor: 946.352946, system: 'us' },
+  gal: { dimension: 'volume', factor: 3785.411784, system: 'us' },
+  g: { dimension: 'weight', factor: 1, system: 'metric' },
+  kg: { dimension: 'weight', factor: 1000, system: 'metric' },
+  oz: { dimension: 'weight', factor: 28.349523125, system: 'us' },
+  lb: { dimension: 'weight', factor: 453.59237, system: 'us' },
   each: { dimension: 'count', factor: 1 },
   dozen: { dimension: 'count', factor: 12 },
 }
@@ -104,17 +106,22 @@ export function convert(value: Quantity, targetUnit: string, bridges: Conversion
 
 /**
  * Human display (spec §3.5): largest universal unit of the dimension where the
- * value is ≥ 1, else the smallest. Count always renders as 'each' (12.5 dozen
- * is not a human quantity). Custom units pass through as entered. 2dp rounding.
+ * value is ≥ 1, restricted to ONE unit system — the system of `systemHintUnit`
+ * (typically the resource's display unit) when it names a universal unit, else
+ * the system of q.unit. Mixing systems would turn a US operator's 79.75 oz into
+ * "2.26 kg". Count always renders as 'each' (12.5 dozen is not a human
+ * quantity). Custom units pass through as entered. 2dp rounding.
  */
-export function formatQuantity(q: Quantity): Quantity {
+export function formatQuantity(q: Quantity, systemHintUnit?: string): Quantity {
   const unit = normalizeUnit(q.unit)
   const def = UNIVERSAL_UNITS[unit]
   if (!def) return { qty: round2(q.qty), unit }
   if (def.dimension === 'count') return { qty: round2(q.qty * def.factor), unit: 'each' }
+  const hintDef = systemHintUnit ? UNIVERSAL_UNITS[normalizeUnit(systemHintUnit)] : undefined
+  const system = (hintDef?.dimension === def.dimension ? hintDef.system : undefined) ?? def.system
   const canonical = q.qty * def.factor
   const candidates = Object.entries(UNIVERSAL_UNITS)
-    .filter(([, d]) => d.dimension === def.dimension)
+    .filter(([, d]) => d.dimension === def.dimension && d.system === system)
     .sort((a, b) => b[1].factor - a[1].factor)
   for (const [u, d] of candidates) {
     const v = canonical / d.factor

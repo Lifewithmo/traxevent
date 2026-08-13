@@ -64,9 +64,17 @@ describe('convert — bridges', () => {
 })
 
 describe('formatQuantity', () => {
-  it('renders the largest universal unit where the value is ≥ 1', () => {
-    expect(formatQuantity({ qty: 5678, unit: 'ml' })).toEqual({ qty: 1.5, unit: 'gal' })
-    expect(formatQuantity({ qty: 2260.87, unit: 'g' })).toEqual({ qty: 4.98, unit: 'lb' })
+  it('renders the largest unit ≥ 1 within the hinted unit system', () => {
+    expect(formatQuantity({ qty: 5678, unit: 'ml' }, 'gal')).toEqual({ qty: 1.5, unit: 'gal' })
+    expect(formatQuantity({ qty: 2260.87, unit: 'g' }, 'oz')).toEqual({ qty: 4.98, unit: 'lb' })
+  })
+  it('stays in the input unit system without a hint', () => {
+    expect(formatQuantity({ qty: 2260.87, unit: 'g' })).toEqual({ qty: 2.26, unit: 'kg' })
+    expect(formatQuantity({ qty: 5678, unit: 'ml' })).toEqual({ qty: 5.68, unit: 'l' })
+  })
+  it('ignores a hint from a different dimension or a custom unit', () => {
+    expect(formatQuantity({ qty: 2260.87, unit: 'g' }, 'gal')).toEqual({ qty: 2.26, unit: 'kg' })
+    expect(formatQuantity({ qty: 2260.87, unit: 'g' }, 'shot')).toEqual({ qty: 2.26, unit: 'kg' })
   })
   it('falls back to the smallest unit below 1', () => {
     expect(formatQuantity({ qty: 0.5, unit: 'ml' })).toEqual({ qty: 0.5, unit: 'ml' })
