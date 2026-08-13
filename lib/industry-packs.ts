@@ -40,7 +40,7 @@ const BUILT_IN_PACKS: IndustryPack[] = [
     name: 'Coffee Cart',
     description: 'Mobile beverage vendor booking private events.',
     eventTypeId: 'coffee-service',
-    modules: ['leads', 'clients', 'proposals', 'invoices', 'calendar', 'reports', 'forms', 'catalog', 'compliance', 'inventory'],
+    modules: ['leads', 'clients', 'proposals', 'invoices', 'events', 'vendors', 'calendar', 'reports', 'forms', 'catalog', 'compliance', 'inventory'],
     catalogKind: 'menu',
     publicMode: false,
   },
