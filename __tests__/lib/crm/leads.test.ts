@@ -55,6 +55,16 @@ describe('createLeadCore', () => {
     expect(leadDoc.set).toHaveBeenCalledWith(lead)
   })
 
+  it('stamps source when provided', async () => {
+    const lead = await createLeadCore('o1', { name: 'A', stage: 'inquiry', customer_id: 'c1', source: 'intake' })
+    expect(lead.source).toBe('intake')
+  })
+
+  it('omits source when not provided', async () => {
+    const lead = await createLeadCore('o1', { name: 'A', stage: 'inquiry', customer_id: 'c1' })
+    expect('source' in lead).toBe(false)
+  })
+
   it('omits blank optional fields entirely', async () => {
     const lead = await createLeadCore('o1', {
       name: 'Ada', stage: 'inquiry', customer_id: 'c1', phone: '   ', notes: '',

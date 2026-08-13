@@ -1,6 +1,6 @@
 # TraxEvent — Product Roadmap
 
-Rollup of where the build stands and what's next. Last updated: 2026-08-10.
+Rollup of where the build stands and what's next. Last updated: 2026-08-12.
 
 The original vision/architecture spec is
 [2026-06-02-product-roadmap-design.md](superpowers/specs/2026-06-02-product-roadmap-design.md)
@@ -64,7 +64,13 @@ EventTrax pivot (neutralization, multi-brand, ops core). Detailed designs live i
 
 ## In flight
 
-*(empty — PRs #65, #66, and #71 all merged 2026-08-10.)*
+- **Pipeline KPI header** (branch `claude/pipeline-kpi-header`) — first-principles
+  header on the pipeline page: booked this month (vs same month last year),
+  booked ahead next 90 days, needs-action count, and a booked-revenue-by-month
+  backlog bar (`lib/pipeline-stats.ts`). Ride-along capture for future Reports:
+  `Lead.source` (`intake`/`manual`) stamped at creation, structured `stage` on
+  stage-change activity events
+  (plan: `superpowers/plans/2026-08-12-pipeline-kpi-header.md`).
 
 ## Next (approved queue)
 
