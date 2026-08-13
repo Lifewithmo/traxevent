@@ -67,4 +67,10 @@ describe('backlogByMonth', () => {
     expect(rows[2]).toMatchObject({ label: 'Oct', booked: 0, open: 0 })
     expect(rows[3]).toMatchObject({ label: 'Nov', booked: 0, open: 1800 })
   })
+  it('backlogByMonth spans 12 months and wraps the year', () => {
+    const rows = backlogByMonth([], '2026-08-13', 12)
+    expect(rows).toHaveLength(12)
+    expect(rows[0]).toMatchObject({ ym: '2026-08', label: 'Aug' })
+    expect(rows[11]).toMatchObject({ ym: '2027-07', label: 'Jul' })
+  })
 })

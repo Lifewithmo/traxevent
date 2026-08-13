@@ -25,7 +25,7 @@ describe('buildPipelineRows', () => {
       tasks: [], proposals: [],
     }], today)
     expect(g.needs_attention).toHaveLength(1)
-    expect(g.needs_attention[0].statusLine).toBe('Sep 4 · 60 guests · no task, no touch in 11 days')
+    expect(g.needs_attention[0].statusLine).toBe('No next step — last touched 11 days ago')
     expect(g.needs_attention[0].quickAction).toBe('set_next_step')
   })
   it('flags an unopened sent proposal with a nudge action, using the sent event time', () => {
@@ -37,7 +37,7 @@ describe('buildPipelineRows', () => {
         events: [{ kind: 'sent', at: '2026-07-29T00:00:00.000Z' }],
       } as Proposal],
     }], today)
-    expect(g.needs_attention[0].statusLine).toBe('proposal sent 9 days ago, unopened')
+    expect(g.needs_attention[0].statusLine).toBe('Proposal sent 9 days ago — no opens')
     expect(g.needs_attention[0].quickAction).toBe('nudge')
   })
   it('falls back to created_at for a legacy proposal with no sent event', () => {
@@ -46,14 +46,14 @@ describe('buildPipelineRows', () => {
       tasks: [],
       proposals: [{ id: 'p1', status: 'sent', created_at: '2026-07-29T00:00:00.000Z', updated_at: '2026-07-29T00:00:00.000Z' } as Proposal],
     }], today)
-    expect(g.needs_attention[0].statusLine).toBe('proposal sent 9 days ago, unopened')
+    expect(g.needs_attention[0].statusLine).toBe('Proposal sent 9 days ago — no opens')
   })
   it('builds waiting rows with follow-up countdown', () => {
     const g = buildPipelineRows([{
       lead: lead({ waiting: { reason: 'PO number', follow_up_date: '2026-08-09' } }),
       tasks: [], proposals: [],
     }], today)
-    expect(g.waiting[0].statusLine).toBe('Waiting: PO number · follow up 2026-08-09')
+    expect(g.waiting[0].statusLine).toBe('Waiting on them — PO number · follow up 2026-08-09')
     expect(g.waiting[0].countdown).toBe('in 2 days')
   })
   it('builds active rows from the next task and sorts groups oldest-touch first', () => {
