@@ -50,11 +50,12 @@ export interface SystemBlock {
   cache_control?: { type: 'ephemeral' }
 }
 
-export function buildDraftSystemBlocks(catalogText: string): SystemBlock[] {
+export function buildDraftSystemBlocks(catalogText: string, voiceText?: string | null): SystemBlock[] {
   return [
     { type: 'text', text: DRAFT_SYSTEM_PROMPT },
-    // cache_control on the LAST stable block: system prompt + catalog cache
+    ...(voiceText ? [{ type: 'text' as const, text: voiceText }] : []),
+    // cache_control on the LAST stable block: prompt + voice + catalog cache
     // together; the per-request notes go in the user message after this.
-    { type: 'text', text: `# Org catalog (ground truth)\n\n${catalogText}`, cache_control: { type: 'ephemeral' } },
+    { type: 'text', text: `# Org catalog (ground truth)\n\n${catalogText}`, cache_control: { type: 'ephemeral' as const } },
   ]
 }

@@ -89,6 +89,13 @@ export async function updateOrgBranding(orgId: string, input: OrgBranding): Prom
   return branding
 }
 
+/** Save the optional "How we sound" note used by AI proposal drafting. */
+export async function updateOrgVoiceNote(orgId: string, note: string): Promise<void> {
+  await assertOrgAdmin(orgId)
+  const trimmed = typeof note === 'string' ? note.trim().slice(0, 1000) : ''
+  await adminDb.collection('orgs').doc(orgId).update({ ai_voice_note: trimmed || FieldValue.delete() })
+}
+
 export async function setOrgIndustry(orgId: string, industryPackId: string): Promise<void> {
   await assertOrgAdmin(orgId)
   const known = getAllIndustryPacks().some((p) => p.id === industryPackId)

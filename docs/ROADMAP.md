@@ -1,6 +1,6 @@
 # TraxEvent — Product Roadmap
 
-Rollup of where the build stands and what's next. Last updated: 2026-08-12.
+Rollup of where the build stands and what's next. Last updated: 2026-08-13.
 
 The original vision/architecture spec is
 [2026-06-02-product-roadmap-design.md](superpowers/specs/2026-06-02-product-roadmap-design.md)
@@ -35,6 +35,14 @@ EventTrax pivot (neutralization, multi-brand, ops core). Detailed designs live i
   ⚠️ Authenticated editor walk (save → upload → live page → 404 → handle
   conflict) not yet run — gate before customer handoff. Rest of the Beacons
   buildout logged in `strategy/2026-08-08-beacons-parity-feature-request.md`.
+- **Proposal builder redesign v2** (2026-08-13) — right rail removed: command
+  bar (send/copy-link/AI/overflow), in-context totals editing on the document,
+  Review & Send pre-flight dialog, AI drafting as the mainline path (in-canvas
+  hero, placeholder fill, streaming Opus 5 drafts with voice few-shot from sent
+  proposals + "How we sound" note)
+  (spec: `superpowers/specs/2026-08-12-proposal-builder-redesign-design.md`).
+  ⚠️ Authenticated builder walkthrough + model bake-off
+  (`scripts/proposal-draft-bakeoff.md`) still owed.
 - **Today / Clients / nav redesign** (PR #69, merged 2026-08-09) — Today as one
   ranked move queue with a booked-work agenda rail; Clients grouped by dormant
   repeat business, detail as story + timeline; sidebar quick links with

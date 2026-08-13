@@ -65,6 +65,7 @@ describe('createLeadCore', () => {
     expect('source' in lead).toBe(false)
   })
 
+
   it('omits blank optional fields entirely', async () => {
     const lead = await createLeadCore('o1', {
       name: 'Ada', stage: 'inquiry', customer_id: 'c1', phone: '   ', notes: '',

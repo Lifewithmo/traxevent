@@ -25,6 +25,7 @@ export interface Org {
   branding?: OrgBranding
   public_profile?: PublicProfile
   intake_token?: string              // public intake form access token; minted lazily (actions/intake.ts)
+  ai_voice_note?: string              // optional "How we sound" style note fed to AI drafting
   default_proposal_terms?: string    // seeded into new proposals' `terms` (snapshot, not a live reference)
   created_at: string
 }

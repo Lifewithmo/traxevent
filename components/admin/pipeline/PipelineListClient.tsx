@@ -144,6 +144,8 @@ export function PipelineListClient({
 
       <IntakeLinkCard orgId={orgId} open={intakeOpen} onClose={() => setIntakeOpen(false)} />
 
+      <IntakeLinkCard orgId={orgId} open={intakeOpen} onClose={() => setIntakeOpen(false)} />
+
       <div className="flex gap-2">
         <Button
           variant={activeTab === 'needs_move' ? 'default' : 'outline'}

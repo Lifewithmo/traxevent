@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { updateOrgBranding, updateOrgDefaultProposalTerms } from '@/actions/orgs'
+import { updateOrgBranding, updateOrgVoiceNote, updateOrgDefaultProposalTerms } from '@/actions/orgs'
 import { uploadOrgAsset } from '@/actions/org-assets'
 import type { OrgBranding } from '@/lib/types'
 
@@ -13,6 +13,7 @@ interface BrandingClientProps {
   orgId: string
   orgName: string
   initialBranding: OrgBranding
+  initialVoiceNote: string
   initialDefaultTerms: string
 }
 
@@ -92,7 +93,7 @@ function UploadField({
   )
 }
 
-export function BrandingClient({ orgId, orgName, initialBranding, initialDefaultTerms }: BrandingClientProps) {
+export function BrandingClient({ orgId, orgName, initialBranding, initialVoiceNote, initialDefaultTerms }: BrandingClientProps) {
   const [displayName, setDisplayName] = useState(initialBranding.display_name ?? '')
   const [address, setAddress] = useState(initialBranding.address ?? '')
   const [logoUrl, setLogoUrl] = useState(initialBranding.logo_url ?? '')
@@ -107,6 +108,11 @@ export function BrandingClient({ orgId, orgName, initialBranding, initialDefault
   const [termsBusy, setTermsBusy] = useState(false)
   const [termsError, setTermsError] = useState<string | null>(null)
   const [termsNotice, setTermsNotice] = useState<string | null>(null)
+
+  const [voiceNote, setVoiceNote] = useState(initialVoiceNote)
+  const [voiceBusy, setVoiceBusy] = useState(false)
+  const [voiceError, setVoiceError] = useState<string | null>(null)
+  const [voiceNotice, setVoiceNotice] = useState<string | null>(null)
 
   async function handleSave() {
     setBusy(true)
@@ -134,6 +140,20 @@ export function BrandingClient({ orgId, orgName, initialBranding, initialDefault
       setError(err instanceof Error ? err.message : 'Failed to save branding')
     } finally {
       setBusy(false)
+    }
+  }
+
+  async function handleSaveVoiceNote() {
+    setVoiceBusy(true)
+    setVoiceError(null)
+    setVoiceNotice(null)
+    try {
+      await updateOrgVoiceNote(orgId, voiceNote)
+      setVoiceNotice('Saved')
+    } catch (err: unknown) {
+      setVoiceError(err instanceof Error ? err.message : 'Failed to save')
+    } finally {
+      setVoiceBusy(false)
     }
   }
 
@@ -230,6 +250,35 @@ export function BrandingClient({ orgId, orgName, initialBranding, initialDefault
 
           <Button onClick={handleSave} disabled={busy || uploading !== null}>
             {busy ? 'Saving…' : 'Save branding'}
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>How we sound</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-1">
+            <Label htmlFor="branding-voice-note">How we sound</Label>
+            <textarea
+              id="branding-voice-note"
+              value={voiceNote}
+              maxLength={1000}
+              rows={3}
+              onChange={(e) => setVoiceNote(e.target.value)}
+              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+            />
+            <p className="text-xs text-gray-500">
+              Optional. A sentence or two about your writing style — the AI matches it when drafting proposals.
+            </p>
+          </div>
+
+          {voiceError && <p className="text-sm text-red-600">{voiceError}</p>}
+          {voiceNotice && <p className="text-sm text-green-700">{voiceNotice}</p>}
+
+          <Button onClick={handleSaveVoiceNote} disabled={voiceBusy}>
+            {voiceBusy ? 'Saving…' : 'Save'}
           </Button>
         </CardContent>
       </Card>

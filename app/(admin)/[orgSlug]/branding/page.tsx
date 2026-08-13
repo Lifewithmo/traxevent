@@ -20,6 +20,7 @@ export default async function BrandingPage({
       orgId={org.id}
       orgName={org.name}
       initialBranding={org.branding ?? {}}
+      initialVoiceNote={org.ai_voice_note ?? ''}
       initialDefaultTerms={org.default_proposal_terms ?? ''}
     />
   )

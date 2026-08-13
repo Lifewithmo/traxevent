@@ -2,8 +2,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 
 const updateOrgBranding = vi.hoisted(() => vi.fn())
+const updateOrgVoiceNote = vi.hoisted(() => vi.fn())
 const uploadOrgAsset = vi.hoisted(() => vi.fn())
-vi.mock('@/actions/orgs', () => ({ updateOrgBranding }))
+vi.mock('@/actions/orgs', () => ({ updateOrgBranding, updateOrgVoiceNote }))
 vi.mock('@/actions/org-assets', () => ({ uploadOrgAsset }))
 
 import { BrandingClient } from '@/components/admin/BrandingClient'
@@ -14,6 +15,7 @@ const baseProps = {
   orgId: 'o1',
   orgName: 'Gem State Events',
   initialBranding: { accent_color: '#1d4ed8' },
+  initialVoiceNote: '',
 }
 
 describe('BrandingClient', () => {
@@ -58,5 +60,14 @@ describe('BrandingClient', () => {
     expect(uploadOrgAsset.mock.calls[0][0]).toBe('o1')
     expect(uploadOrgAsset.mock.calls[0][1]).toBe('logo')
     await waitFor(() => expect(screen.getByAltText(/logo image preview/i)).toHaveAttribute('src', 'https://storage/logo.png'))
+  })
+
+  it('saves the "How we sound" note through updateOrgVoiceNote', async () => {
+    updateOrgVoiceNote.mockResolvedValue(undefined)
+    render(<BrandingClient {...baseProps} />)
+    fireEvent.change(screen.getByLabelText(/how we sound/i), { target: { value: 'Warm and a little playful.' } })
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
+    await waitFor(() => expect(updateOrgVoiceNote).toHaveBeenCalledWith('o1', 'Warm and a little playful.'))
+    expect(await screen.findByText(/saved/i)).toBeTruthy()
   })
 })
