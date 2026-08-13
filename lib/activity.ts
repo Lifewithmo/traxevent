@@ -17,15 +17,24 @@ export async function logActivity(
     parent_id: string
     kind: ActivityEvent['kind']
     summary: string
+    stage?: ActivityEvent['stage']
   }
 ): Promise<void> {
   const id = randomBytes(8).toString('hex')
   const created_at = new Date().toISOString()
   try {
-    await activityRef(orgId).doc(id).set({ id, created_at, ...e })
+    // Firestore rejects undefined values; only spread stage when present.
+    const { stage, ...rest } = e
+    await activityRef(orgId).doc(id).set({ id, created_at, ...rest, ...(stage ? { stage } : {}) })
     if (e.parent_type === 'opportunity') {
       // Denormalized freshness signal for the pipeline; best-effort like the rest.
       await adminDb.collection('orgs').doc(orgId).collection('leads')
+        .doc(e.parent_id).update({ last_touch_at: created_at })
+        .catch(() => {})
+    }
+    if (e.parent_type === 'customer') {
+      // Same denormalized freshness signal for the client list; best-effort.
+      await adminDb.collection('orgs').doc(orgId).collection('customers')
         .doc(e.parent_id).update({ last_touch_at: created_at })
         .catch(() => {})
     }

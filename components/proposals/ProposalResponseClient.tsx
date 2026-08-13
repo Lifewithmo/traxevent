@@ -314,6 +314,17 @@ export function ProposalResponseClient({
           </Card>
         )}
 
+        {proposal.terms && (
+          <Card className="mt-6">
+            <CardHeader>
+              <CardTitle>Terms</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="whitespace-pre-wrap text-sm text-gray-700">{proposal.terms}</p>
+            </CardContent>
+          </Card>
+        )}
+
         {showForm && (
           <Card className="mt-6">
             <CardHeader>

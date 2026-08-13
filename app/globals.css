@@ -46,41 +46,165 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+
+  /* Copper accent ramp (design system: links, emphasis, public flows). */
+  --color-copper-50: var(--copper-50);
+  --color-copper-100: var(--copper-100);
+  --color-copper-200: var(--copper-200);
+  --color-copper-300: var(--copper-300);
+  --color-copper-400: var(--copper-400);
+  --color-copper-500: var(--copper-500);
+  --color-copper-600: var(--copper-600);
+  --color-copper-700: var(--copper-700);
+
+  /* Warm re-grade of the stock palettes actually used in screen code, so
+     existing utility classes pick up the design system without edits:
+     gray -> warm neutrals, purple -> copper (registration zone),
+     emerald -> moss (booked work), red -> terracotta, amber/yellow -> honey,
+     blue -> copper (links/info). */
+  --color-gray-50: var(--warm-50);
+  --color-gray-100: var(--warm-100);
+  --color-gray-200: var(--warm-200);
+  --color-gray-300: var(--warm-300);
+  --color-gray-400: var(--warm-400);
+  --color-gray-500: var(--warm-500);
+  --color-gray-600: var(--warm-600);
+  --color-gray-700: var(--warm-700);
+  --color-gray-800: var(--warm-800);
+  --color-gray-900: var(--warm-950);
+
+  --color-purple-50: var(--copper-50);
+  --color-purple-100: var(--copper-100);
+  --color-purple-200: var(--copper-200);
+  --color-purple-300: var(--copper-300);
+  --color-purple-500: var(--copper-400);
+  --color-purple-600: var(--copper-500);
+  --color-purple-700: var(--copper-600);
+  --color-purple-800: var(--copper-700);
+
+  --color-green-50: #eef2e8;
+  --color-green-100: #e4ebdb;
+  --color-green-200: #c6d4b6;
+  --color-green-600: #5d7a45;
+  --color-green-700: #4c6438;
+  --color-green-800: #3f5730;
+
+  --color-emerald-200: #c6d4b6;
+  --color-emerald-400: #5d7a45;
+  --color-emerald-600: #4c6438;
+  --color-emerald-700: #3f5730;
+  --color-emerald-900: #2c3d22;
+
+  --color-red-50: #fbeee9;
+  --color-red-100: #f7e0da;
+  --color-red-300: #dda694;
+  --color-red-500: #b8492f;
+  --color-red-600: #a33b28;
+  --color-red-700: #8c3524;
+  --color-red-800: #7a2e1f;
+  --color-red-900: #66261a;
+
+  --color-amber-50: #fdf4e3;
+  --color-amber-100: #fbeed2;
+  --color-amber-300: #e3c07a;
+  --color-amber-400: #d9a94e;
+  --color-amber-500: #c9962f;
+  --color-amber-600: #a87a1e;
+  --color-amber-700: #7d5a18;
+  --color-amber-800: #6b4b14;
+  --color-amber-900: #59400f;
+  --color-amber-950: #3f2d0a;
+  --color-yellow-100: #fbeed2;
+  --color-yellow-800: #6b4b14;
+
+  --color-blue-100: var(--copper-100);
+  --color-blue-600: var(--copper-600);
+  --color-blue-700: var(--copper-700);
+  --color-blue-800: #5c3213;
 }
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
+  /* TraxEvent warm neutral system (claude.ai/design "TraxEvent Design System").
+     Greige paper, espresso ink, copper accent; nothing here is a true gray. */
+  --warm-0: #ffffff;
+  --warm-25: #fdfbf9;
+  --warm-50: #faf7f3;
+  --warm-100: #f2ece5;
+  --warm-200: #e7ded4;
+  --warm-300: #d6c9bb;
+  --warm-400: #a9998a;
+  --warm-500: #786a5c;
+  --warm-600: #6d5d4f;
+  --warm-700: #52453a;
+  --warm-800: #3a2f27;
+  --warm-900: #2a211b;
+  --warm-950: #1c1511;
+
+  --copper-50: #fdf3ea;
+  --copper-100: #f7e2cd;
+  --copper-200: #eec49f;
+  --copper-300: #dfa26f;
+  --copper-400: #c9803f;
+  --copper-500: #905525;
+  --copper-600: #8a4e20;
+  --copper-700: #6b3b19;
+
+  /* Design-system semantic roles beyond the shadcn contract: status pills
+     (moss / honey / terracotta), booked-work money green, alert surfaces,
+     and copper links. */
+  --status-confirmed-bg: #e4ebdb;
+  --status-confirmed-fg: #3f5730;
+  --status-pending-bg: #fbeed2;
+  --status-pending-fg: #7d5a18;
+  --status-alert-bg: #f7e0da;
+  --status-alert-fg: #8c3524;
+  --status-neutral-bg: var(--warm-100);
+  --status-neutral-fg: var(--warm-500);
+  --money-green: #4c6438;
+  --money-green-strong: #5d7a45;
+  --money-green-border: #c6d4b6;
+  --warn-bg: #fdf4e3;
+  --warn-border: #e3c07a;
+  --warn-fg: #6b4b14;
+  --danger-bg: #fbeee9;
+  --danger-border: #dda694;
+  --danger-fg: #8c3524;
+  --danger-text: #a33b28;
+  --link: var(--copper-600);
+  --link-hover: var(--copper-700);
+
+  --background: var(--warm-50);
+  --foreground: var(--warm-950);
+  --card: var(--warm-0);
+  --card-foreground: var(--warm-950);
+  --popover: var(--warm-0);
+  --popover-foreground: var(--warm-950);
+  --primary: var(--warm-900);
+  --primary-foreground: var(--warm-25);
+  --secondary: var(--warm-100);
+  --secondary-foreground: var(--warm-800);
+  --muted: var(--warm-100);
+  --muted-foreground: var(--warm-500);
+  --accent: var(--warm-100);
+  --accent-foreground: var(--warm-800);
+  --destructive: #a33b28;
+  --border: var(--warm-200);
+  --input: var(--warm-200);
+  --ring: var(--warm-400);
+  --chart-1: var(--warm-300);
+  --chart-2: var(--warm-500);
+  --chart-3: var(--copper-300);
+  --chart-4: var(--copper-500);
+  --chart-5: var(--warm-800);
   --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --sidebar: #f5efe8;
+  --sidebar-foreground: var(--warm-950);
+  --sidebar-primary: var(--warm-900);
+  --sidebar-primary-foreground: var(--warm-25);
+  --sidebar-accent: var(--warm-100);
+  --sidebar-accent-foreground: var(--warm-800);
+  --sidebar-border: var(--warm-200);
+  --sidebar-ring: var(--warm-400);
 }
 
 .dark {

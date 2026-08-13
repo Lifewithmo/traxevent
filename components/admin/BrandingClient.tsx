@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { updateOrgBranding, updateOrgVoiceNote } from '@/actions/orgs'
+import { updateOrgBranding, updateOrgVoiceNote, updateOrgDefaultProposalTerms } from '@/actions/orgs'
 import { uploadOrgAsset } from '@/actions/org-assets'
 import type { OrgBranding } from '@/lib/types'
 
@@ -14,6 +14,7 @@ interface BrandingClientProps {
   orgName: string
   initialBranding: OrgBranding
   initialVoiceNote: string
+  initialDefaultTerms: string
 }
 
 const HEX = /^#[0-9a-fA-F]{6}$/
@@ -92,8 +93,9 @@ function UploadField({
   )
 }
 
-export function BrandingClient({ orgId, orgName, initialBranding, initialVoiceNote }: BrandingClientProps) {
+export function BrandingClient({ orgId, orgName, initialBranding, initialVoiceNote, initialDefaultTerms }: BrandingClientProps) {
   const [displayName, setDisplayName] = useState(initialBranding.display_name ?? '')
+  const [address, setAddress] = useState(initialBranding.address ?? '')
   const [logoUrl, setLogoUrl] = useState(initialBranding.logo_url ?? '')
   const [coverUrl, setCoverUrl] = useState(initialBranding.cover_image_url ?? '')
   const [accent, setAccent] = useState(initialBranding.accent_color ?? '')
@@ -102,6 +104,10 @@ export function BrandingClient({ orgId, orgName, initialBranding, initialVoiceNo
   const [uploading, setUploading] = useState<'logo' | 'cover' | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const [defaultTerms, setDefaultTerms] = useState(initialDefaultTerms)
+  const [termsBusy, setTermsBusy] = useState(false)
+  const [termsError, setTermsError] = useState<string | null>(null)
+  const [termsNotice, setTermsNotice] = useState<string | null>(null)
 
   const [voiceNote, setVoiceNote] = useState(initialVoiceNote)
   const [voiceBusy, setVoiceBusy] = useState(false)
@@ -115,6 +121,7 @@ export function BrandingClient({ orgId, orgName, initialBranding, initialVoiceNo
     try {
       const saved = await updateOrgBranding(orgId, {
         display_name: displayName,
+        address,
         logo_url: logoUrl,
         cover_image_url: coverUrl,
         accent_color: accent,
@@ -123,6 +130,7 @@ export function BrandingClient({ orgId, orgName, initialBranding, initialVoiceNo
       // Re-seed from what actually persisted — the server's normalization
       // (trimming, hex lowercasing, empty-field drops) is the truth.
       setDisplayName(saved.display_name ?? '')
+      setAddress(saved.address ?? '')
       setLogoUrl(saved.logo_url ?? '')
       setCoverUrl(saved.cover_image_url ?? '')
       setAccent(saved.accent_color ?? '')
@@ -165,6 +173,21 @@ export function BrandingClient({ orgId, orgName, initialBranding, initialVoiceNo
     }
   }
 
+  async function handleSaveTerms() {
+    setTermsBusy(true)
+    setTermsError(null)
+    setTermsNotice(null)
+    try {
+      const saved = await updateOrgDefaultProposalTerms(orgId, defaultTerms)
+      setDefaultTerms(saved)
+      setTermsNotice('Saved')
+    } catch (err: unknown) {
+      setTermsError(err instanceof Error ? err.message : 'Failed to save terms')
+    } finally {
+      setTermsBusy(false)
+    }
+  }
+
   return (
     <div className="mx-auto max-w-2xl space-y-6 p-6">
       <div>
@@ -188,6 +211,18 @@ export function BrandingClient({ orgId, orgName, initialBranding, initialVoiceNo
               onChange={(e) => setDisplayName(e.target.value)}
             />
             <p className="text-xs text-gray-500">Falls back to your org name, {orgName}.</p>
+          </div>
+
+          <div className="space-y-1">
+            <Label htmlFor="branding-address">Business address</Label>
+            <textarea
+              id="branding-address"
+              value={address}
+              placeholder={"123 Main St\nSpringfield, ID 83000"}
+              onChange={(e) => setAddress(e.target.value)}
+              className="flex min-h-16 w-full rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-sm transition-colors outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+            />
+            <p className="text-xs text-gray-500">Shown on your invoices under your business name.</p>
           </div>
 
           <div className="flex flex-wrap gap-6">
@@ -244,6 +279,32 @@ export function BrandingClient({ orgId, orgName, initialBranding, initialVoiceNo
 
           <Button onClick={handleSaveVoiceNote} disabled={voiceBusy}>
             {voiceBusy ? 'Saving…' : 'Save'}
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Proposal terms</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="space-y-1">
+            <Label htmlFor="branding-default-terms">Proposal terms</Label>
+            <textarea
+              id="branding-default-terms"
+              value={defaultTerms}
+              onChange={(e) => setDefaultTerms(e.target.value)}
+              placeholder="e.g. A 50% deposit reserves your date. Balance is due 7 days before the event…"
+              className="flex min-h-32 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            />
+            <p className="text-xs text-gray-500">
+              Included on every new proposal. Editable per proposal; changing this never alters existing proposals.
+            </p>
+          </div>
+          {termsError && <p className="text-sm text-red-600">{termsError}</p>}
+          {termsNotice && <p className="text-sm text-green-700">{termsNotice}</p>}
+          <Button onClick={handleSaveTerms} disabled={termsBusy}>
+            {termsBusy ? 'Saving…' : 'Save terms'}
           </Button>
         </CardContent>
       </Card>

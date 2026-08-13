@@ -11,6 +11,10 @@ import type {
 
 export const MAX_PACKAGES = 3
 
+// Shared cap for proposal terms AND the org default they're seeded from.
+// Lives here (not in actions/) because 'use server' modules cannot export constants.
+export const MAX_TERMS_CHARS = 10_000
+
 // The builder's typed client-side draft state — structurally assignable to
 // ProposalDraftInput (whose content fields are `unknown` because they accept
 // untrusted input; this is the shape the builder actually holds).
@@ -25,6 +29,7 @@ export interface ProposalDraftUpdate {
   deposit?: ProposalDeposit
   deposit_gate?: 'before_accept' | 'after_accept'
   deposit_terms?: string
+  terms?: string
   expires_at?: string
 }
 
@@ -43,6 +48,7 @@ export function draftFromProposal(p: Proposal): ProposalDraftUpdate {
   if (p.deposit !== undefined) draft.deposit = p.deposit
   if (p.deposit_gate !== undefined) draft.deposit_gate = p.deposit_gate
   if (p.deposit_terms !== undefined) draft.deposit_terms = p.deposit_terms
+  if (p.terms !== undefined) draft.terms = p.terms
   if (p.expires_at !== undefined) draft.expires_at = p.expires_at
   return draft
 }
@@ -72,6 +78,7 @@ export interface ProposalDraftInput {
   expires_at?: string
   deposit_gate?: 'before_accept' | 'after_accept'
   deposit_terms?: string
+  terms?: string
 }
 
 export interface NormalizedProposalDraft {
@@ -86,6 +93,7 @@ export interface NormalizedProposalDraft {
   expires_at?: string
   deposit_gate?: 'before_accept' | 'after_accept'
   deposit_terms?: string
+  terms?: string
 }
 
 function str(v: unknown): string {
@@ -275,6 +283,12 @@ export function normalizeProposalDraft(
   const deposit_terms = str(input.deposit_terms).trim()
   const expires_at = str(input.expires_at).trim()
 
+  let terms = str(input.terms).trim()
+  if (terms.length > MAX_TERMS_CHARS) {
+    terms = terms.slice(0, MAX_TERMS_CHARS)
+    adjustments.push(`Shortened the terms to ${MAX_TERMS_CHARS} characters.`)
+  }
+
   const discount = normalizeMoneyRule(input.discount)
   if (input.discount !== undefined && !discount) adjustments.push('Cleared an invalid discount.')
   const deposit = normalizeMoneyRule(input.deposit)
@@ -304,6 +318,7 @@ export function normalizeProposalDraft(
       ...(expires_at ? { expires_at } : {}),
       ...(deposit_gate ? { deposit_gate } : {}),
       ...(deposit_terms ? { deposit_terms } : {}),
+      ...(terms ? { terms } : {}),
     },
     adjustments,
   }

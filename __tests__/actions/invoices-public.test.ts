@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-const { getSpy } = vi.hoisted(() => ({
+const { getSpy, docSpy } = vi.hoisted(() => ({
   getSpy: vi.fn(),
+  docSpy: vi.fn(),
 }))
 
 vi.mock('@/lib/firebase-admin', () => ({
@@ -10,6 +11,7 @@ vi.mock('@/lib/firebase-admin', () => ({
     where: vi.fn().mockReturnThis(),
     limit: vi.fn().mockReturnThis(),
     get: getSpy,
+    doc: docSpy,
   },
 }))
 
@@ -27,8 +29,22 @@ function mockSnapshot(data: Record<string, unknown> | null) {
   })
 }
 
+// Configures adminDb.doc(path).get() to resolve from a path→data map.
+// Paths absent from the map read as nonexistent docs.
+function mockDocs(byPath: Record<string, Record<string, unknown>>) {
+  docSpy.mockImplementation((path: string) => ({
+    get: async () => ({
+      exists: path in byPath,
+      data: () => byPath[path],
+    }),
+  }))
+}
+
 beforeEach(() => {
   getSpy.mockReset()
+  docSpy.mockReset()
+  // Default: every doc lookup misses, so parties are simply omitted.
+  mockDocs({})
 })
 
 describe('getPublicInvoice', () => {
@@ -167,6 +183,48 @@ describe('getPublicInvoice', () => {
   it('returns null for a draft (explicit lifecycle)', async () => {
     mockSnapshot({ id: 'i1', lifecycle: 'draft', line_items: [], payments: [], created_at: '' })
     expect(await getPublicInvoice('t')).toBeNull()
+  })
+
+  it('projects From (branding display name + address) and Bill-to (customer identity)', async () => {
+    mockDocs({
+      'orgs/org-1': {
+        name: 'Acme Events LLC',
+        branding: { display_name: 'Acme Events', address: '123 Main St\nSpringfield, ID 83000' },
+      },
+      'orgs/org-1/customers/cust-1': {
+        name: 'Dana Kim',
+        company: 'Riverside',
+        email: 'dana@riv.co',
+        phone: '555-1234',
+        notes: 'internal note — never public',
+      },
+    })
+    mockSnapshot({ ...fullDoc('sent'), customer_id: 'cust-1' })
+    const result = await getPublicInvoice('tok')
+    expect(result!.from).toEqual({ name: 'Acme Events', address: '123 Main St\nSpringfield, ID 83000' })
+    expect(result!.bill_to).toEqual({ name: 'Dana Kim', company: 'Riverside', email: 'dana@riv.co' })
+    // Identity fields only — phone/notes never cross the public boundary.
+    expect('phone' in result!.bill_to!).toBe(false)
+    expect('notes' in result!.bill_to!).toBe(false)
+  })
+
+  it('falls back to org name and lead contact when branding/customer are absent', async () => {
+    mockDocs({
+      'orgs/org-1': { name: 'Acme Events LLC' },
+      'orgs/org-1/leads/lead-1': { name: 'Sam Ortiz', organization: 'Oakline', email: 'sam@oakline.co' },
+    })
+    mockSnapshot(fullDoc('sent'))
+    const result = await getPublicInvoice('tok')
+    expect(result!.from).toEqual({ name: 'Acme Events LLC' })
+    expect(result!.bill_to).toEqual({ name: 'Sam Ortiz', company: 'Oakline', email: 'sam@oakline.co' })
+  })
+
+  it('omits parties entirely when the lookups miss (never fails the invoice)', async () => {
+    mockSnapshot(fullDoc('sent'))
+    const result = await getPublicInvoice('tok')
+    expect(result).not.toBeNull()
+    expect('from' in (result as object)).toBe(false)
+    expect('bill_to' in (result as object)).toBe(false)
   })
 
   it('exposes the money breakdown (subtotal/discount/tax/credits/total) for an issued invoice', async () => {

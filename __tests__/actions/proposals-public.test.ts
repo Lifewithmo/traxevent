@@ -175,6 +175,23 @@ describe('getPublicProposal', () => {
     expect('blocks' in (result as object)).toBe(false)
   })
 
+  it('projects terms when present and omits the key when absent', async () => {
+    mockSnapshot({
+      id: 'p1', org_id: 'org-1', lead_id: 'lead-1', token: 'tok-with-terms',
+      status: 'sent', line_items: [], created_at: 'x',
+      terms: 'No refunds.',
+    })
+    const withTerms = await getPublicProposal('tok-with-terms')
+    expect(withTerms?.terms).toBe('No refunds.')
+
+    mockSnapshot({
+      id: 'p1', org_id: 'org-1', lead_id: 'lead-1', token: 'tok-plain',
+      status: 'sent', line_items: [], created_at: 'x',
+    })
+    const withoutTerms = await getPublicProposal('tok-plain')
+    expect(withoutTerms && Object.keys(withoutTerms)).not.toContain('terms')
+  })
+
   it('still never leaks token, org_id, lead_id or id', async () => {
     mockSnapshot({
       id: 'p1', org_id: 'org-1', lead_id: 'l1', token: 'tok',

@@ -46,7 +46,7 @@ EventTrax pivot (neutralization, multi-brand, ops core). Detailed designs live i
 - **Today / Clients / nav redesign** (PR #69, merged 2026-08-09) — Today as one
   ranked move queue with a booked-work agenda rail; Clients grouped by dormant
   repeat business, detail as story + timeline; sidebar quick links with
-  proposals/contracts/invoices nested under Pipeline.
+  proposals/invoices nested under Pipeline.
 - **Calendar week view + ICS + pipeline sub-nav** (PR #70, merged 2026-08-09,
   wireframes 15a/15b/16a) — org calendar as two bands per day (time / owed)
   across six kinds incl. compliance blockers and invoice dues; tokened
@@ -57,16 +57,28 @@ EventTrax pivot (neutralization, multi-brand, ops core). Detailed designs live i
   customer + opportunity at `inquiry`, logs a `form` activity event, emails the
   owner. First abuse-protection seam: honeypot + time gate + Firestore-backed
   rate limiting (`lib/rate-limit.ts`) — registration should adopt it next.
+- **One signed document** — proposals carry legal `terms` (org default in
+  Branding → Proposal terms, per-proposal editable, hash-covered by the
+  e-signature); the standalone contracts feature (pages, nav, portal card,
+  convert gate) is removed
+  (spec: `superpowers/specs/2026-08-09-proposal-terms-contracts-retirement-design.md`).
+
+- **Customer page completion** (PR #65, merged 2026-08-10) —
+  new-opportunity-from-customer + pipeline customer typeahead on one
+  `customer_id` seam, real last-contact via touch stamps, tag editor with
+  autocomplete — features ported onto the PR #69 redesigned Clients pages at
+  merge. Manual browser walk not yet run.
+  Spec: `docs/superpowers/specs/2026-08-08-customer-page-completion-design.md`.
 
 ## In flight
 
-- **Opportunity workspace, increment 1** — PR #64 open
-  (light shell, pill row, dates panel).
-  Plan: `docs/superpowers/plans/2026-08-08-opportunity-workspace.md`.
-- **Customer page completion** — PR #65 open (new-opportunity-from-customer +
-  pipeline customer typeahead on one `customer_id` seam, real last-contact via
-  touch stamps, tag editor with autocomplete). Manual browser walk not yet run.
-  Spec: `docs/superpowers/specs/2026-08-08-customer-page-completion-design.md`.
+- **Pipeline KPI header** (branch `claude/pipeline-kpi-header`) — first-principles
+  header on the pipeline page: booked this month (vs same month last year),
+  booked ahead next 90 days, needs-action count, and a booked-revenue-by-month
+  backlog bar (`lib/pipeline-stats.ts`). Ride-along capture for future Reports:
+  `Lead.source` (`intake`/`manual`) stamped at creation, structured `stage` on
+  stage-change activity events
+  (plan: `superpowers/plans/2026-08-12-pipeline-kpi-header.md`).
 
 ## Next (approved queue)
 

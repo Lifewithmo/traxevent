@@ -9,6 +9,7 @@ const fieldValueDeleteSentinel = vi.hoisted(() => ({ __op: 'delete' }))
 const findOrCreateCustomerCore = vi.hoisted(() =>
   vi.fn().mockResolvedValue({ customer: { id: 'default-customer-id', name: 'x', created_at: 'x' }, created: true })
 )
+const getCustomerCore = vi.hoisted(() => vi.fn())
 
 vi.mock('@/lib/firebase-admin', () => {
   const leadsCol = {
@@ -45,7 +46,7 @@ vi.mock('firebase-admin/firestore', () => ({
 
 vi.mock('@/lib/activity', () => ({ logActivity: vi.fn().mockResolvedValue(undefined) }))
 
-vi.mock('@/lib/crm/customers', () => ({ findOrCreateCustomerCore }))
+vi.mock('@/lib/crm/customers', () => ({ findOrCreateCustomerCore, getCustomerCore }))
 
 import {
   listLeads,
@@ -226,5 +227,41 @@ describe('leads actions', () => {
   it('deleteLead calls .delete()', async () => {
     await deleteLead('org-1', 'l1')
     expect(leadDocDeleteSpy).toHaveBeenCalled()
+  })
+})
+
+describe('createLead linked mode (customer_id)', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('copies the customer contact snapshot and skips find-or-create', async () => {
+    vi.mocked(getCustomerCore).mockResolvedValue({
+      id: 'c9', name: 'Dana Kim', company: 'Riverside', email: 'dana@riv.co', phone: '555-1234', created_at: 'x',
+    })
+    const lead = await createLead('o1', { customer_id: 'c9', title: 'Fall gala' })
+    expect(getCustomerCore).toHaveBeenCalledWith('o1', 'c9')
+    expect(findOrCreateCustomerCore).not.toHaveBeenCalled()
+    expect(leadDocSetSpy).toHaveBeenCalledWith(expect.objectContaining({
+      customer_id: 'c9', name: 'Dana Kim', email: 'dana@riv.co', phone: '555-1234', organization: 'Riverside', title: 'Fall gala',
+    }))
+    expect(lead.customer_id).toBe('c9')
+  })
+
+  it('omits contact fields the customer does not have', async () => {
+    vi.mocked(getCustomerCore).mockResolvedValue({ id: 'c9', name: 'Walk-in', created_at: 'x' })
+    await createLead('o1', { customer_id: 'c9' })
+    const written = leadDocSetSpy.mock.calls[0][0]
+    expect(written).not.toHaveProperty('email')
+    expect(written).not.toHaveProperty('phone')
+    expect(written).not.toHaveProperty('organization')
+  })
+
+  it('throws Customer not found for an unknown id and writes nothing', async () => {
+    vi.mocked(getCustomerCore).mockResolvedValue(null)
+    await expect(createLead('o1', { customer_id: 'nope' })).rejects.toThrow('Customer not found')
+    expect(leadDocSetSpy).not.toHaveBeenCalled()
+  })
+
+  it('still requires a name when no customer_id is given', async () => {
+    await expect(createLead('o1', {})).rejects.toThrow('Name is required')
   })
 })

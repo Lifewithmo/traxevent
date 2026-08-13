@@ -74,6 +74,7 @@ export function ProposalBuilderClient({
       deposit: proposal.deposit,
       deposit_gate: proposal.deposit_gate,
       deposit_terms: proposal.deposit_terms,
+      terms: proposal.terms,
       expires_at: proposal.expires_at,
     }
     if (!base.packages?.length) return { draft: base, upgraded: false }

@@ -6,9 +6,8 @@ import { AttachmentChips } from '@/components/admin/opportunity/AttachmentChips'
 import { TasksPanel, type TasksPanelHandle } from '@/components/admin/opportunity/TasksPanel'
 import { LeadProposalsClient } from '@/components/admin/LeadProposalsClient'
 import { LeadInvoicesClient } from '@/components/admin/LeadInvoicesClient'
-import { LeadContractsClient } from '@/components/admin/LeadContractsClient'
 import { LeadVendorsClient } from '@/components/admin/LeadVendorsClient'
-import type { Contract, NormalizedInvoice, Proposal, Task, Vendor } from '@/lib/types'
+import type { NormalizedInvoice, Proposal, Task, Vendor } from '@/lib/types'
 
 interface TasksAndDocumentsProps {
   orgId: string
@@ -17,7 +16,6 @@ interface TasksAndDocumentsProps {
   tasks: Task[]
   proposals: Proposal[]
   invoices: NormalizedInvoice[]
-  contracts: Contract[]
   vendors: Vendor[]
   acceptedProposals: { id: string; title: string }[]
   today: string
@@ -28,7 +26,7 @@ export interface TasksAndDocumentsHandle {
 }
 
 export const TasksAndDocuments = forwardRef<TasksAndDocumentsHandle, TasksAndDocumentsProps>(function TasksAndDocuments(
-  { orgId, orgSlug, leadId, tasks, proposals, invoices, contracts, vendors, acceptedProposals, today },
+  { orgId, orgSlug, leadId, tasks, proposals, invoices, vendors, acceptedProposals, today },
   ref
 ) {
   const [selected, setSelected] = useState<AttachmentChip['kind']>('task')
@@ -37,7 +35,7 @@ export const TasksAndDocuments = forwardRef<TasksAndDocumentsHandle, TasksAndDoc
   // selected" case (TasksPanel is already mounted, so the effect fires immediately).
   const [pendingComposer, setPendingComposer] = useState(false)
   const tasksPanelRef = useRef<TasksPanelHandle>(null)
-  const chips = attachmentChips({ tasks, proposals, invoices, contracts, vendors, today })
+  const chips = attachmentChips({ tasks, proposals, invoices, vendors, today })
 
   useImperativeHandle(ref, () => ({
     openTaskComposer: () => {
@@ -69,9 +67,6 @@ export const TasksAndDocuments = forwardRef<TasksAndDocumentsHandle, TasksAndDoc
           invoices={invoices}
           acceptedProposals={acceptedProposals}
         />
-      )}
-      {selected === 'contract' && (
-        <LeadContractsClient orgId={orgId} orgSlug={orgSlug} leadId={leadId} contracts={contracts} />
       )}
       {selected === 'vendor' && <LeadVendorsClient orgId={orgId} leadId={leadId} vendors={vendors} />}
     </div>

@@ -8,6 +8,7 @@ const listProposalsSpy = vi.hoisted(() => vi.fn())
 const listAllProposalsSpy = vi.hoisted(() => vi.fn())
 const voiceDocGetSpy = vi.hoisted(() => vi.fn().mockResolvedValue({ exists: false }))
 const voiceDocSetSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
+const orgDocGetSpy = vi.hoisted(() => vi.fn().mockResolvedValue({ exists: true, data: () => ({}) }))
 
 vi.mock('@/lib/firebase-admin', () => {
   const proposalsCol = {
@@ -30,6 +31,7 @@ vi.mock('@/lib/firebase-admin', () => {
     }),
   }
   const orgDoc = {
+    get: orgDocGetSpy,
     collection: vi.fn().mockImplementation((sub: string) => {
       if (sub === 'proposals') return proposalsCol
       if (sub === 'ai_voice') return aiVoiceCol
@@ -376,6 +378,22 @@ describe('proposals actions', () => {
         .rejects.toThrow('Proposal not found')
 
       expect(proposalDocUpdateSpy).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('createProposal terms prefill', () => {
+    it('copies the org default into the new proposal', async () => {
+      orgDocGetSpy.mockResolvedValueOnce({ exists: true, data: () => ({ default_proposal_terms: 'No refunds within 30 days.' }) })
+      await createProposal('org-1', 'lead-1', {})
+      const written = proposalDocSetSpy.mock.calls.at(-1)![0]
+      expect(written.terms).toBe('No refunds within 30 days.')
+    })
+
+    it('writes no terms key when the org has no default', async () => {
+      orgDocGetSpy.mockResolvedValueOnce({ exists: true, data: () => ({}) })
+      await createProposal('org-1', 'lead-1', {})
+      const written = proposalDocSetSpy.mock.calls.at(-1)![0]
+      expect(Object.keys(written)).not.toContain('terms')
     })
   })
 })

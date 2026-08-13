@@ -14,7 +14,7 @@ function canonicalize(value: unknown): unknown {
   return value
 }
 
-type SignableProposal = Pick<Proposal, 'title' | 'notes' | 'packages' | 'line_items' | 'discount' | 'tax_rate' | 'deposit' | 'deposit_terms'>
+type SignableProposal = Pick<Proposal, 'title' | 'notes' | 'packages' | 'line_items' | 'discount' | 'tax_rate' | 'deposit' | 'deposit_terms' | 'terms'>
 type SignableSelection = Pick<ProposalSelection, 'package_id' | 'optional_item_ids' | 'selected_total'>
 
 // A canonical serialization of EXACTLY what the customer agreed to — scope,
@@ -38,6 +38,7 @@ export function canonicalProposalDocument(proposal: Proposal | SignableProposal,
     tax_rate: proposal.tax_rate ?? null,
     deposit: proposal.deposit ?? null,
     deposit_terms: proposal.deposit_terms ?? null,
+    ...(proposal.terms !== undefined ? { terms: proposal.terms } : {}),
     selection: {
       package_id: selection.package_id ?? null,
       optional_item_ids: [...(selection.optional_item_ids ?? [])].sort(),

@@ -107,6 +107,7 @@ export async function submitIntake(
     name,
     stage: 'inquiry',
     customer_id: customer.id,
+    source: 'intake',
     email,
     ...(phone ? { phone } : {}),
     ...(eventType ? { event_type: eventType } : {}),

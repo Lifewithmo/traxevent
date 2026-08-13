@@ -26,6 +26,7 @@ export interface Org {
   public_profile?: PublicProfile
   intake_token?: string              // public intake form access token; minted lazily (actions/intake.ts)
   ai_voice_note?: string              // optional "How we sound" style note fed to AI drafting
+  default_proposal_terms?: string    // seeded into new proposals' `terms` (snapshot, not a live reference)
   created_at: string
 }
 
@@ -33,6 +34,7 @@ export interface Org {
 // by construction — this object is shipped verbatim to public proposal pages.
 export interface OrgBranding {
   display_name?: string        // customer-facing; falls back to org name
+  address?: string             // customer-facing business address (multi-line); shown on invoices
   logo_url?: string
   cover_image_url?: string     // hero behind the proposal title
   accent_color?: string        // #rrggbb
@@ -443,6 +445,7 @@ export interface Lead {
   tags?: string[]
   waiting?: LeadWaiting    // set when the lead is blocked/waiting on something
   guest_count?: number     // estimated guests; prefills convert headcount
+  source?: 'intake' | 'manual'  // how the lead entered the pipeline; absent on pre-2026-08 leads
   last_touch_at?: string   // ISO; stamped by logActivity; fallback updated_at ?? created_at
   closed_at?: string       // ISO; stamped entering closed_won/closed_lost, cleared on reopen
   lost?: { reason: LostReason; note?: string }
@@ -469,6 +472,7 @@ export interface Customer {
   phone?: string
   tags?: string[]
   notes?: string
+  last_touch_at?: string   // ISO; stamped by logActivity, mirrors Lead.last_touch_at
   created_at: string
   updated_at?: string
 }
@@ -548,6 +552,7 @@ export interface Proposal {
   updated_at?: string
   deposit_gate?: 'before_accept' | 'after_accept'
   deposit_terms?: string
+  terms?: string               // legal terms; snapshot from Org.default_proposal_terms at creation, editable per proposal; participates in the signed document hash when present
   payment_status?: PaymentStatus
   signature?: ProposalSignature
   deposit_payment?: ProposalDepositPayment
@@ -673,23 +678,6 @@ export type NormalizedInvoice = Invoice & {
   dispute: InvoiceDisputeStatus
 }
 
-export type ContractStatus = 'draft' | 'sent' | 'signed'
-
-export interface Contract {
-  id: string
-  org_id: string       // denormalized for collectionGroup token lookups
-  lead_id: string
-  token: string        // unguessable public link token
-  title?: string
-  body?: string        // contract terms (plain text)
-  document_url?: string // optional link to an externally-hosted document (PDF/Doc)
-  status: ContractStatus
-  signed_by?: string   // typed signer name (e-signature)
-  signed_at?: string   // ISO, set when signed
-  created_at: string
-  updated_at?: string
-}
-
 export interface Note {
   id: string
   parent_type: 'customer' | 'opportunity'
@@ -704,6 +692,7 @@ export interface ActivityEvent {
   parent_id: string
   kind: 'stage' | 'task' | 'note' | 'email' | 'form' | 'created' | 'waiting' | 'converted' | 'lost' | 'nudge'
   summary: string
+  stage?: LeadStage   // structured stage for kind:'stage' events; summary string is display-only
   created_at: string
 }
 

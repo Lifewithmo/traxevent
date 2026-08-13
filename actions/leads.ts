@@ -4,16 +4,17 @@ import { assertOrgMember, assertOrgAdmin } from '@/lib/auth/assert'
 import { LEAD_STAGES, closedAtPatch, LOST_REASON_LABELS } from '@/lib/leads'
 import { logActivity } from '@/lib/activity'
 import { createLeadCore, leadsRef, listLeadsCore, updateLeadCore, type LeadUpdate } from '@/lib/crm/leads'
-import { findOrCreateCustomerCore } from '@/lib/crm/customers'
+import { findOrCreateCustomerCore, getCustomerCore } from '@/lib/crm/customers'
 import { convertOpportunityToWorkCore, type ConvertToWorkInput } from '@/lib/crm/convert'
-import type { Lead, LeadStage, LeadWaiting, LostReason, Event } from '@/lib/types'
+import type { Lead, LeadStage, LeadWaiting, LostReason, Event, Customer } from '@/lib/types'
 
 // NOTE: this is a 'use server' module — every export must be an async function.
 // LeadUpdate (a type) is therefore NOT re-exported here; import it from
 // '@/lib/crm/leads' directly. Re-exporting it broke `next build` (RSC compiler).
 
 export interface CreateLeadInput {
-  name: string
+  name?: string          // required unless customer_id is present
+  customer_id?: string   // link to an existing customer; contact snapshot is copied from it
   title?: string
   email?: string
   phone?: string
@@ -39,23 +40,45 @@ export async function getLead(orgId: string, leadId: string): Promise<Lead | nul
 
 export async function createLead(orgId: string, input: CreateLeadInput): Promise<Lead> {
   await assertOrgAdmin(orgId)
-  if (!input.name?.trim()) throw new Error('Name is required')
   const stage = input.stage ?? 'inquiry'
   if (!LEAD_STAGES.includes(stage)) throw new Error('Invalid stage')
-  const { customer } = await findOrCreateCustomerCore(orgId, {
-    name: input.name.trim(),
-    ...(input.organization?.trim() ? { company: input.organization.trim() } : {}),
-    ...(input.email?.trim() ? { email: input.email.trim() } : {}),
-    ...(input.phone?.trim() ? { phone: input.phone.trim() } : {}),
-  })
+
+  let customer: Customer
+  if (input.customer_id) {
+    const found = await getCustomerCore(orgId, input.customer_id)
+    if (!found) throw new Error('Customer not found')
+    customer = found
+  } else {
+    if (!input.name?.trim()) throw new Error('Name is required')
+    customer = (await findOrCreateCustomerCore(orgId, {
+      name: input.name.trim(),
+      ...(input.organization?.trim() ? { company: input.organization.trim() } : {}),
+      ...(input.email?.trim() ? { email: input.email.trim() } : {}),
+      ...(input.phone?.trim() ? { phone: input.phone.trim() } : {}),
+    })).customer
+  }
+
+  // Linked mode snapshots contact fields from the customer record; unlinked keeps the typed values.
+  const contact = input.customer_id
+    ? {
+        name: customer.name,
+        ...(customer.email ? { email: customer.email } : {}),
+        ...(customer.phone ? { phone: customer.phone } : {}),
+        ...(customer.company ? { organization: customer.company } : {}),
+      }
+    : {
+        name: input.name!.trim(),
+        ...(input.email?.trim() ? { email: input.email.trim() } : {}),
+        ...(input.phone?.trim() ? { phone: input.phone.trim() } : {}),
+        ...(input.organization?.trim() ? { organization: input.organization.trim() } : {}),
+      }
+
   return createLeadCore(orgId, {
-    name: input.name,
+    ...contact,
     stage,
     customer_id: customer.id,
+    source: 'manual',
     ...(input.title !== undefined ? { title: input.title } : {}),
-    ...(input.email !== undefined ? { email: input.email } : {}),
-    ...(input.phone !== undefined ? { phone: input.phone } : {}),
-    ...(input.organization !== undefined ? { organization: input.organization } : {}),
     ...(input.event_type !== undefined ? { event_type: input.event_type } : {}),
     ...(input.event_date !== undefined ? { event_date: input.event_date } : {}),
     ...(input.estimated_value != null ? { estimated_value: input.estimated_value } : {}),
@@ -76,7 +99,7 @@ export async function updateLead(orgId: string, leadId: string, updates: LeadUpd
     ...(updates.stage && prevStage ? closedAtPatch(prevStage, updates.stage, new Date().toISOString()) : {}),
   })
   if (updates.stage && updates.stage !== prevStage) {
-    await logActivity(orgId, { parent_type: 'opportunity', parent_id: leadId, kind: 'stage', summary: `Stage → ${updates.stage}` })
+    await logActivity(orgId, { parent_type: 'opportunity', parent_id: leadId, kind: 'stage', summary: `Stage → ${updates.stage}`, stage: updates.stage })
   }
 }
 
@@ -89,7 +112,7 @@ export async function setLeadStage(orgId: string, leadId: string, stage: LeadSta
     stage,
     ...(prevStage ? closedAtPatch(prevStage, stage, new Date().toISOString()) : {}),
   })
-  await logActivity(orgId, { parent_type: 'opportunity', parent_id: leadId, kind: 'stage', summary: `Stage → ${stage}` })
+  await logActivity(orgId, { parent_type: 'opportunity', parent_id: leadId, kind: 'stage', summary: `Stage → ${stage}`, stage })
 }
 
 export async function markLeadLost(

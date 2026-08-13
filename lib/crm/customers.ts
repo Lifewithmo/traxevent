@@ -44,6 +44,12 @@ export async function createCustomerCore(orgId: string, input: CreateCustomerInp
   return customer
 }
 
+/** Guard-free customer read. Authorization is the caller's responsibility. */
+export async function getCustomerCore(orgId: string, customerId: string): Promise<Customer | null> {
+  const snap = await customersRef(orgId).doc(customerId).get()
+  return snap.exists ? (snap.data() as Customer) : null
+}
+
 /**
  * Find a customer by normalized email, or create one, atomically. Returns
  * `created: false` when an existing record was reused, `created: true` only when
@@ -73,4 +79,19 @@ export async function findOrCreateCustomerCore(
     tx.set(customersRef(orgId).doc(customer.id), customer)
     return { customer, created: true }
   })
+}
+
+/** Trim, drop empties, dedupe case-insensitively (first-seen casing wins). */
+export function normalizeTags(tags: string[]): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const raw of tags) {
+    const t = raw.trim()
+    if (!t) continue
+    const key = t.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(t)
+  }
+  return out
 }

@@ -17,6 +17,7 @@ const CLEARABLE_FIELDS = [
   'expires_at',
   'deposit_gate',
   'deposit_terms',
+  'terms',
 ] as const
 
 /**

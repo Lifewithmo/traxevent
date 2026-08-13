@@ -334,6 +334,32 @@ export function TotalsCanvas({
           )}
         </div>
       )}
+
+      {/* Terms — the legal `terms` field ported from the old RightRail.tsx
+          Terms textarea (proposal terms increment). Seeded from Branding →
+          Proposal terms; shown above the signature box on the public page
+          and covered by the client's e-signature. */}
+      {(disabled ? draft.terms : true) && (
+        <div className="space-y-1 border-t pt-3">
+          <Label htmlFor="propTerms">Terms</Label>
+          {disabled ? (
+            <p className="text-sm text-gray-700">{draft.terms}</p>
+          ) : (
+            <>
+              <textarea
+                id="propTerms"
+                value={draft.terms ?? ''}
+                onChange={(e) => update({ terms: e.target.value || undefined })}
+                placeholder="Legal terms the client agrees to when signing. Seeded from Branding → Proposal terms."
+                className="flex min-h-16 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              />
+              <p className="text-xs text-gray-500">
+                Shown above the signature box; covered by the client's e-signature.
+              </p>
+            </>
+          )}
+        </div>
+      )}
     </section>
   )
 }

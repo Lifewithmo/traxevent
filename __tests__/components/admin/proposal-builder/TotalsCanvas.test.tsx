@@ -117,6 +117,20 @@ describe('TotalsCanvas', () => {
     expect(update).toHaveBeenCalledWith({ notes: undefined })
   })
 
+  it('terms textarea patches terms', () => {
+    mount()
+    const terms = screen.getByLabelText('Terms')
+    fireEvent.change(terms, { target: { value: 'x' } })
+    expect(update).toHaveBeenCalledWith({ terms: 'x' })
+  })
+
+  it('clearing terms patches undefined', () => {
+    mount({ draft: { ...draft, terms: 'existing' } })
+    const terms = screen.getByLabelText('Terms')
+    fireEvent.change(terms, { target: { value: '' } })
+    expect(update).toHaveBeenCalledWith({ terms: undefined })
+  })
+
   it('disabled renders every row as plain text — no buttons, no ghosts', () => {
     mount({ disabled: true })
     expect(screen.queryByRole('button')).toBeNull()

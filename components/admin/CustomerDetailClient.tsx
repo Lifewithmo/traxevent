@@ -8,6 +8,8 @@ import { updateCustomer } from '@/actions/customers'
 import { buildClientRow } from '@/lib/crm/client-list'
 import { buildClientStory, buildTimeline, todayDividerIndex, type TimelineEntry } from '@/lib/crm/client-story'
 import { formatRelativeTime, todayYmd } from '@/lib/opportunity-detail'
+import { NewOpportunityForm } from '@/components/admin/pipeline/NewOpportunityForm'
+import { TagEditor } from '@/components/admin/TagEditor'
 import type { Customer, Lead, Note } from '@/lib/types'
 
 interface CustomerDetailClientProps {
@@ -16,10 +18,29 @@ interface CustomerDetailClientProps {
   customer: Customer
   opportunities: Lead[]
   notes: Note[]
+  orgTags: string[]
 }
 
 // Blank -> null clears the field (CustomerUpdate maps it to FieldValue.delete()).
 const opt = (v: string): string | null => (v.trim() === '' ? null : v.trim())
+
+// Mirrors lib/crm/customers.normalizeTags (trim, drop empties, case-insensitive
+// dedupe keeping first casing). Reimplemented locally rather than imported: that
+// module pulls in `adminDb` from '@/lib/firebase-admin' at module scope, which is
+// server-only and unsafe to drag into this client component.
+function normalizeTags(tags: string[]): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const raw of tags) {
+    const t = raw.trim()
+    if (!t) continue
+    const key = t.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(t)
+  }
+  return out
+}
 
 const INITIAL_TIMELINE = 4
 
@@ -134,7 +155,7 @@ function TimelineRow({ entry, orgSlug }: { entry: TimelineEntry; orgSlug: string
   )
 }
 
-export function CustomerDetailClient({ orgId, orgSlug, customer, opportunities, notes }: CustomerDetailClientProps) {
+export function CustomerDetailClient({ orgId, orgSlug, customer, opportunities, notes, orgTags }: CustomerDetailClientProps) {
   const router = useRouter()
   const today = todayYmd()
   const [body, setBody] = useState('')
@@ -142,6 +163,8 @@ export function CustomerDetailClient({ orgId, orgSlug, customer, opportunities, 
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [expanded, setExpanded] = useState(false)
+  const [creating, setCreating] = useState(false)
+  const [tags, setTags] = useState(customer.tags ?? [])
 
   const row = buildClientRow(customer, opportunities, today)
   const story = buildClientStory(row, opportunities)
@@ -175,6 +198,21 @@ export function CustomerDetailClient({ orgId, orgSlug, customer, opportunities, 
         <div className="min-w-0">
           <h1 className="text-base font-semibold">{customer.company || customer.name}</h1>
           <ContactLine orgId={orgId} customer={customer} onSaved={() => router.refresh()} />
+          <TagEditor
+            tags={tags}
+            suggestions={orgTags}
+            onSave={async (next) => {
+              const previous = tags
+              setTags(normalizeTags(next))
+              try {
+                await updateCustomer(orgId, customer.id, { tags: next })
+                router.refresh()
+              } catch (e) {
+                setTags(previous)
+                throw e
+              }
+            }}
+          />
         </div>
         <div className="flex shrink-0 gap-2 text-xs">
           {customer.email && (
@@ -182,12 +220,17 @@ export function CustomerDetailClient({ orgId, orgSlug, customer, opportunities, 
               Email
             </a>
           )}
-          {/* No standalone new-opportunity route yet — creation lives in the Pipeline list. */}
-          <Link href={`/${orgSlug}/leads`} className="rounded bg-foreground px-2.5 py-1 text-background">
+          <button
+            type="button"
+            onClick={() => setCreating(true)}
+            className="rounded bg-foreground px-2.5 py-1 text-background"
+          >
             New opportunity
-          </Link>
+          </button>
         </div>
       </div>
+
+      <NewOpportunityForm orgId={orgId} open={creating} onClose={() => setCreating(false)} customer={customer} />
 
       {story.parts.length > 0 && (
         <p

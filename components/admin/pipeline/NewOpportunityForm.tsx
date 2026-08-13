@@ -7,17 +7,23 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { createLead } from '@/actions/leads'
+import { CustomerPicker } from './CustomerPicker'
+import type { Customer } from '@/lib/types'
 
 interface NewOpportunityFormProps {
   orgId: string
   open: boolean
   onClose: () => void
+  customer?: Customer
+  customers?: Customer[]
 }
 
-export function NewOpportunityForm({ orgId, open, onClose }: NewOpportunityFormProps) {
+export function NewOpportunityForm({ orgId, open, onClose, customer, customers }: NewOpportunityFormProps) {
   const router = useRouter()
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [picked, setPicked] = useState<Customer | null>(null)
+  const linked = customer ?? picked
 
   const [title, setTitle] = useState('')
   const [name, setName] = useState('')
@@ -33,21 +39,26 @@ export function NewOpportunityForm({ orgId, open, onClose }: NewOpportunityFormP
   function resetForm() {
     setTitle(''); setName(''); setOrganization(''); setEmail(''); setPhone('')
     setEventType(''); setEventDate(''); setGuestCount(''); setEstimatedValue(''); setNotes('')
+    setPicked(null)
     setError(null)
   }
 
   async function handleCreate() {
-    if (!name.trim()) { setError('Name is required.'); return }
+    if (!linked && !name.trim()) { setError('Name is required.'); return }
     setSaving(true); setError(null)
     try {
       const parsedValue = estimatedValue.trim() === '' ? undefined : Number(estimatedValue)
       const parsedGuests = guestCount.trim() === '' ? undefined : Number(guestCount)
       await createLead(orgId, {
-        name: name.trim(),
+        ...(linked
+          ? { customer_id: linked.id }
+          : {
+              name: name.trim(),
+              organization: organization.trim() || undefined,
+              email: email.trim() || undefined,
+              phone: phone.trim() || undefined,
+            }),
         title: title.trim() || undefined,
-        organization: organization.trim() || undefined,
-        email: email.trim() || undefined,
-        phone: phone.trim() || undefined,
         event_type: eventType.trim() || undefined,
         event_date: eventDate.trim() || undefined,
         notes: notes.trim() || undefined,
@@ -71,26 +82,38 @@ export function NewOpportunityForm({ orgId, open, onClose }: NewOpportunityFormP
         <div aria-live="polite" aria-atomic="true">
           {error && <p className="text-sm text-destructive">{error}</p>}
         </div>
+        {customer && (
+          <p className="text-sm text-muted-foreground">
+            For {customer.name}{customer.company ? ` · ${customer.company}` : ''}
+          </p>
+        )}
+        {!customer && customers && customers.length > 0 && (
+          <CustomerPicker customers={customers} value={picked} onChange={setPicked} />
+        )}
         <div className="space-y-1">
           <Label htmlFor="leadTitle">Title</Label>
           <Input id="leadTitle" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Riverside gala" />
         </div>
-        <div className="space-y-1">
-          <Label htmlFor="leadName">Name</Label>
-          <Input id="leadName" value={name} onChange={(e) => setName(e.target.value)} placeholder="Contact name" />
-        </div>
-        <div className="space-y-1">
-          <Label htmlFor="leadOrg">Organization</Label>
-          <Input id="leadOrg" value={organization} onChange={(e) => setOrganization(e.target.value)} placeholder="Company / organization" />
-        </div>
-        <div className="space-y-1">
-          <Label htmlFor="leadEmail">Email</Label>
-          <Input id="leadEmail" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.com" />
-        </div>
-        <div className="space-y-1">
-          <Label htmlFor="leadPhone">Phone</Label>
-          <Input id="leadPhone" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="(555) 555-5555" />
-        </div>
+        {!linked && (
+          <>
+            <div className="space-y-1">
+              <Label htmlFor="leadName">Name</Label>
+              <Input id="leadName" value={name} onChange={(e) => setName(e.target.value)} placeholder="Contact name" />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="leadOrg">Organization</Label>
+              <Input id="leadOrg" value={organization} onChange={(e) => setOrganization(e.target.value)} placeholder="Company / organization" />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="leadEmail">Email</Label>
+              <Input id="leadEmail" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.com" />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="leadPhone">Phone</Label>
+              <Input id="leadPhone" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="(555) 555-5555" />
+            </div>
+          </>
+        )}
         <div className="space-y-1">
           <Label htmlFor="leadEventType">Event type</Label>
           <Input id="leadEventType" value={eventType} onChange={(e) => setEventType(e.target.value)} placeholder="e.g. Wedding" />
@@ -118,7 +141,7 @@ export function NewOpportunityForm({ orgId, open, onClose }: NewOpportunityFormP
           />
         </div>
         <div className="flex gap-2">
-          <Button onClick={handleCreate} disabled={saving || !name.trim()}>{saving ? 'Saving…' : 'Save'}</Button>
+          <Button onClick={handleCreate} disabled={saving || (!linked && !name.trim())}>{saving ? 'Saving…' : 'Save'}</Button>
           <Button variant="outline" onClick={() => { resetForm(); onClose() }}>Cancel</Button>
         </div>
       </CardContent>

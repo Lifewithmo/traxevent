@@ -13,6 +13,8 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh, push: vi.fn() }
 vi.mock('@/actions/notes', () => ({ createNote: vi.fn().mockResolvedValue({}) }))
 // Same reasoning: updateCustomer is a 'use server' export backed by firebase-admin.
 vi.mock('@/actions/customers', () => ({ updateCustomer: vi.fn().mockResolvedValue(undefined) }))
+// Same reasoning: createLead is a 'use server' export backed by firebase-admin.
+vi.mock('@/actions/leads', () => ({ createLead: vi.fn().mockResolvedValue({ id: 'l9' }) }))
 
 const customer: Customer = {
   id: 'c1', name: 'Dana Kim', company: 'Riverside', email: 'dana@riv.co',
@@ -24,13 +26,18 @@ const opportunities: Lead[] = [
 ]
 const notes: Note[] = []
 
-const props = { orgId: 'o1', orgSlug: 'acme', customer, opportunities, notes }
+const props = { orgId: 'o1', orgSlug: 'acme', customer, opportunities, notes, orgTags: [] }
 
 describe('CustomerDetailClient', () => {
   it('headlines the company and shows the contact as one line', () => {
     render(<CustomerDetailClient {...props} />)
     expect(screen.getByRole('heading', { name: 'Riverside' })).toBeInTheDocument()
     expect(screen.getByText(/Dana Kim · dana@riv\.co/)).toBeInTheDocument()
+  })
+
+  it('shows the customer tags', () => {
+    render(<CustomerDetailClient {...props} />)
+    expect(screen.getByText('vip')).toBeInTheDocument()
   })
 
   it('tells the client story from the opportunities', () => {
@@ -118,5 +125,50 @@ describe('CustomerDetailClient — editing contact details', () => {
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Dana K' } })
     fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
     await waitFor(() => expect(screen.queryByLabelText('Name')).not.toBeInTheDocument())
+  })
+})
+
+describe('CustomerDetailClient — tag buffering', () => {
+  beforeEach(() => { refresh.mockClear(); vi.mocked(updateCustomer).mockClear() })
+
+  it('buffers tags locally so a second rapid add is not lost to a stale customer prop', async () => {
+    render(<CustomerDetailClient {...props} />)
+    const input = screen.getByLabelText('Add tag')
+
+    fireEvent.change(input, { target: { value: 'a' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    await waitFor(() =>
+      expect(updateCustomer).toHaveBeenCalledWith('o1', 'c1', { tags: ['vip', 'a'] })
+    )
+
+    fireEvent.change(input, { target: { value: 'b' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    await waitFor(() =>
+      expect(updateCustomer).toHaveBeenCalledWith('o1', 'c1', { tags: ['vip', 'a', 'b'] })
+    )
+  })
+
+  it('rolls back the optimistic tag badge and surfaces the error when the save fails', async () => {
+    vi.mocked(updateCustomer).mockRejectedValueOnce(new Error('boom'))
+    render(<CustomerDetailClient {...props} />)
+    const input = screen.getByLabelText('Add tag')
+
+    fireEvent.change(input, { target: { value: 'new-tag' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    await waitFor(() =>
+      expect(updateCustomer).toHaveBeenCalledWith('o1', 'c1', { tags: ['vip', 'new-tag'] })
+    )
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('boom'))
+    expect(screen.queryByText('new-tag')).not.toBeInTheDocument()
+  })
+})
+
+describe('CustomerDetailClient — new opportunity', () => {
+  it('opens a linked new-opportunity form from the header button', () => {
+    render(<CustomerDetailClient {...props} />)
+    expect(screen.queryByText(/for dana kim/i)).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'New opportunity' }))
+    expect(screen.getByText(/for dana kim/i)).toBeInTheDocument()
   })
 })

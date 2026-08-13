@@ -250,7 +250,7 @@ export function ReportsClient({ orgId, eventId, eventName, registrationType, dat
                     )}
                   </div>
                   {row.missing.length === 0 ? (
-                    <p className="px-4 py-3 text-sm text-accent">All registrants have signed. 🎉</p>
+                    <p className="px-4 py-3 text-sm text-green-700">All registrants have signed. 🎉</p>
                   ) : (
                     <table className="w-full text-sm">
                       <thead className="border-b">
