@@ -743,7 +743,9 @@ export interface OpsResource {
   name: string
   kind: ResourceKind
   unit?: string        // display unit for quantities: 'oz', 'each', 'gal'
-  unit_cost?: number   // dollars per unit; feeds closeout margin
+  unit_cost?: number   // dollars per `unit`; feeds closeout margin
+  dimension?: Dimension            // fundamental measure; legacy docs inferred on read (spec §3.3)
+  conversions?: ConversionBridge[] // AI/operator bridges: density, yields, custom serving units
   notes?: string
   created_at: string
   updated_at?: string
