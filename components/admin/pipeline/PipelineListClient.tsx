@@ -12,6 +12,7 @@ import type { PipelineGroups, PipelineRow, closedThisMonth } from '@/lib/pipelin
 import type { Customer, Lead } from '@/lib/types'
 import { NewOpportunityForm } from './NewOpportunityForm'
 import { IntakeLinkCard } from './IntakeLinkCard'
+import { ClosedMonthSummary } from './ClosedMonthSummary'
 
 interface PipelineListClientProps {
   orgId: string
@@ -60,7 +61,7 @@ export function PipelineListClient({
             <Link href={`/${orgSlug}/leads/${lead.id}`} className="block text-sm font-medium hover:underline">
               {opportunityTitle(lead)}
             </Link>
-            <p className="text-xs text-muted-foreground">{row.statusLine}</p>
+            <p className={`text-xs ${row.health === 'needs_attention' ? 'text-destructive' : 'text-muted-foreground'}`}>{row.statusLine}</p>
           </div>
           <div className="flex shrink-0 items-center gap-2">
             <Badge variant="outline">{LEAD_STAGE_LABELS[lead.stage]}</Badge>
@@ -144,8 +145,6 @@ export function PipelineListClient({
 
       <IntakeLinkCard orgId={orgId} open={intakeOpen} onClose={() => setIntakeOpen(false)} />
 
-      <IntakeLinkCard orgId={orgId} open={intakeOpen} onClose={() => setIntakeOpen(false)} />
-
       <div className="flex gap-2">
         <Button
           variant={activeTab === 'needs_move' ? 'default' : 'outline'}
@@ -215,6 +214,8 @@ export function PipelineListClient({
           <div className="space-y-2">{closed.map(renderClosedRow)}</div>
         )
       )}
+
+      <ClosedMonthSummary orgSlug={orgSlug} monthly={monthly} />
     </div>
   )
 }

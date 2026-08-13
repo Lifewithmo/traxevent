@@ -83,6 +83,15 @@ EventTrax pivot (neutralization, multi-brand, ops core). Detailed designs live i
 
 ## In flight
 
+- **Pipeline & sidebar mock parity** (branch `pipeline-mock-parity`, PR open
+  2026-08-13) — production catches up to the design-system pipeline mock:
+  sidebar IA (Operations = Vendors/Menu Packages/Forms/Compliance; Events folds
+  into Quick Links; first `'forms'` module + org-level Forms link), 4th
+  "Open pipeline" KPI, rolling-12-month "Revenue by month" chart, stage-column
+  totals in headers, shared won/lost summary on both views, mock-voice health
+  copy, intake-card dedupe
+  (spec: `superpowers/specs/2026-08-13-pipeline-mock-parity-design.md`).
+
 - **Pipeline KPI header** (branch `claude/pipeline-kpi-header`) — first-principles
   header on the pipeline page: booked this month (vs same month last year),
   booked ahead next 90 days, needs-action count, and a booked-revenue-by-month

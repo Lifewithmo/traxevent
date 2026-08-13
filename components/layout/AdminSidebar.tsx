@@ -90,19 +90,18 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
   const has = (m: ModuleId) => !enabledModules || enabledModules.includes(m)
 
   const quickLinks = [
-    { module: 'leads' as ModuleId, label: 'Today', slug: 'today' },
+    { module: 'calendar' as ModuleId, label: 'Calendar', slug: 'calendar' },
     { module: 'clients' as ModuleId, label: 'Clients', slug: 'clients' },
+    { module: 'leads' as ModuleId, label: 'Today', slug: 'today' },
+    { module: 'registrants' as ModuleId, label: 'Registrants', slug: 'registrants' },
   ].filter((l) => has(l.module))
+
+  const beforeEvents = quickLinks.filter((l) => l.slug === 'calendar' || l.slug === 'clients')
+  const afterEvents = quickLinks.filter((l) => l.slug === 'today' || l.slug === 'registrants')
 
   const pipelineChildren = [
     { module: 'proposals' as ModuleId, label: 'Proposals', slug: 'proposals' },
     { module: 'invoices' as ModuleId, label: 'Invoices', slug: 'invoices' },
-  ].filter((l) => has(l.module))
-
-  const eventLinks = [
-    { module: 'registrants' as ModuleId, label: 'Registrants', slug: 'registrants' },
-    { module: 'vendors' as ModuleId, label: 'Vendors', slug: 'vendors' },
-    { module: 'calendar' as ModuleId, label: 'Calendar', slug: 'calendar' },
   ].filter((l) => has(l.module))
 
   const eventNav = getEventNav(t)
@@ -169,9 +168,19 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
         </nav>
       ) : (
         <nav className="flex-1" aria-label="Workspace navigation">
-          {quickLinks.length > 0 && (
+          {(quickLinks.length > 0 || has('events')) && (
             <Section label="Quick Links">
-              {quickLinks.map((l) => (
+              {beforeEvents.map((l) => (
+                <Link key={l.slug} href={`/${orgSlug}/${l.slug}`} className={navClass(`/${orgSlug}/${l.slug}`)}>
+                  {l.label}
+                </Link>
+              ))}
+              {has('events') && (
+                <Link href={`/${orgSlug}`} className={exactNavClass(`/${orgSlug}`)}>
+                  Events
+                </Link>
+              )}
+              {afterEvents.map((l) => (
                 <Link key={l.slug} href={`/${orgSlug}/${l.slug}`} className={navClass(`/${orgSlug}/${l.slug}`)}>
                   {l.label}
                 </Link>
@@ -205,24 +214,11 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
             </Section>
           )}
 
-          {(has('events') || eventLinks.length > 0) && (
-            <Section label="Events">
-              {has('events') && (
-                <Link href={`/${orgSlug}`} className={exactNavClass(`/${orgSlug}`)}>
-                  Events
-                </Link>
-              )}
-              {eventLinks.map((l) => (
-                <Link key={l.slug} href={`/${orgSlug}/${l.slug}`} className={navClass(`/${orgSlug}/${l.slug}`)}>
-                  {l.label}
-                </Link>
-              ))}
-            </Section>
-          )}
-
           {(() => {
             const opsLinks = [
+              ...(has('vendors') ? [{ label: 'Vendors', slug: 'vendors' }] : []),
               ...(has('catalog') ? [{ label: catalogLabel ?? 'Packages', slug: 'packages' }] : []),
+              ...(has('forms') ? [{ label: 'Forms', slug: 'forms' }] : []),
               ...(has('compliance') ? [{ label: 'Compliance', slug: 'compliance' }] : []),
             ]
             return opsLinks.length > 0 && (

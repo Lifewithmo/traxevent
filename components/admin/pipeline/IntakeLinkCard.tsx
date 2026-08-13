@@ -53,7 +53,7 @@ export function IntakeLinkCard({ orgId, open, onClose }: IntakeLinkCardProps) {
   }
 
   return (
-    <Card>
+    <Card data-intake-card>
       <CardHeader>
         <CardTitle className="text-base">Intake link</CardTitle>
       </CardHeader>

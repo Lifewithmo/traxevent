@@ -2,7 +2,7 @@ import type { EventTypeId } from '@/lib/event-types'
 
 export type ModuleId =
   | 'leads' | 'clients' | 'proposals' | 'invoices'
-  | 'events' | 'registrants' | 'vendors' | 'calendar' | 'reports'
+  | 'events' | 'registrants' | 'vendors' | 'calendar' | 'reports' | 'forms'
   // Forward-declared for later phases; no nav renders these yet.
   | 'catalog' | 'compliance' | 'inventory' | 'deliverables' | 'routing' | 'pos'
   | 'attendee-roster'
@@ -22,7 +22,7 @@ export const DEFAULT_INDUSTRY_PACK_ID = 'general'
 // Everything currently shipped in the workspace nav — the backwards-compatible default.
 const ALL_CURRENT_MODULES: ModuleId[] = [
   'leads', 'clients', 'proposals', 'invoices',
-  'events', 'registrants', 'vendors', 'calendar', 'reports',
+  'events', 'registrants', 'vendors', 'calendar', 'reports', 'forms',
 ]
 
 const BUILT_IN_PACKS: IndustryPack[] = [
@@ -40,7 +40,7 @@ const BUILT_IN_PACKS: IndustryPack[] = [
     name: 'Coffee Cart',
     description: 'Mobile beverage vendor booking private events.',
     eventTypeId: 'coffee-service',
-    modules: ['leads', 'clients', 'proposals', 'invoices', 'calendar', 'reports', 'catalog', 'compliance', 'inventory'],
+    modules: ['leads', 'clients', 'proposals', 'invoices', 'calendar', 'reports', 'forms', 'catalog', 'compliance', 'inventory'],
     catalogKind: 'menu',
     publicMode: false,
   },
@@ -49,7 +49,7 @@ const BUILT_IN_PACKS: IndustryPack[] = [
     name: 'Caterer',
     description: 'Event catering: menu, headcount, staffing, delivery.',
     eventTypeId: 'catering',
-    modules: ['leads', 'clients', 'proposals', 'invoices', 'calendar', 'reports', 'catalog', 'inventory', 'deliverables', 'routing'],
+    modules: ['leads', 'clients', 'proposals', 'invoices', 'calendar', 'reports', 'forms', 'catalog', 'inventory', 'deliverables', 'routing'],
     catalogKind: 'menu',
     publicMode: false,
   },
@@ -58,7 +58,7 @@ const BUILT_IN_PACKS: IndustryPack[] = [
     name: 'Event Florist',
     description: 'Wedding & event floral design and installation.',
     eventTypeId: 'floral-event',
-    modules: ['leads', 'clients', 'proposals', 'invoices', 'calendar', 'reports', 'inventory', 'deliverables', 'routing'],
+    modules: ['leads', 'clients', 'proposals', 'invoices', 'calendar', 'reports', 'forms', 'inventory', 'deliverables', 'routing'],
     catalogKind: 'services',
     publicMode: false,
   },
@@ -67,7 +67,7 @@ const BUILT_IN_PACKS: IndustryPack[] = [
     name: 'Photographer',
     description: 'Event & portrait photography with questionnaires and galleries.',
     eventTypeId: 'photo-shoot',
-    modules: ['leads', 'clients', 'proposals', 'invoices', 'calendar', 'reports', 'deliverables'],
+    modules: ['leads', 'clients', 'proposals', 'invoices', 'calendar', 'reports', 'forms', 'deliverables'],
     catalogKind: 'services',
     publicMode: false,
   },
