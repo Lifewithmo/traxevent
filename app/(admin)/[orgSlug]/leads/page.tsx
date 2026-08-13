@@ -12,6 +12,8 @@ import { OPEN_STAGES, CLOSED_STAGES } from '@/lib/leads'
 import { PipelineListClient } from '@/components/admin/pipeline/PipelineListClient'
 import { PipelineBoardView } from '@/components/admin/pipeline/PipelineBoardView'
 import { PipelineSubNav } from '@/components/admin/pipeline/PipelineSubNav'
+import { PipelineStatsHeader } from '@/components/admin/pipeline/PipelineStatsHeader'
+import { wonValueInMonth, bookedAhead, backlogByMonth, addMonths } from '@/lib/pipeline-stats'
 
 export default async function LeadsPage({
   params, searchParams,
@@ -45,6 +47,15 @@ export default async function LeadsPage({
     0
   )
 
+  const ym = today.slice(0, 7)
+  const stats = {
+    bookedThisMonth: wonValueInMonth(leads, ym),
+    bookedLastYearSameMonth: wonValueInMonth(leads, addMonths(ym, -12)),
+    bookedNext90: bookedAhead(leads, today),
+    needsActionCount: groups.needs_attention.length,
+    backlog: backlogByMonth(leads, today),
+  }
+
   const shared = {
     orgId, orgSlug, groups,
     openCount: open.length, openValue, monthly,
@@ -52,6 +63,9 @@ export default async function LeadsPage({
   return (
     <div>
       <PipelineSubNav orgSlug={orgSlug} active="opportunities" openCount={open.length} dueTodayCount={dueToday} />
+      <div className="px-6 pt-6">
+        <PipelineStatsHeader stats={stats} />
+      </div>
       {view === 'board'
         ? <PipelineBoardView {...shared} />
         : <PipelineListClient {...shared} closed={closed} customers={customers} />}
