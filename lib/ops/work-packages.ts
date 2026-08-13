@@ -1,6 +1,7 @@
 import { adminDb } from '@/lib/firebase-admin'
 import { FieldValue } from 'firebase-admin/firestore'
 import type { WorkPackage, WorkPackageLine } from '@/lib/types'
+import { qtyValue } from '@/lib/ops/units'
 
 export interface CreateWorkPackageInput {
   name: string
@@ -37,8 +38,11 @@ function validateLines(lines: WorkPackageLine[], validResourceIds: Set<string>):
       continue
     }
     if (!validResourceIds.has(line.resource_id)) throw new Error(`Unknown resource: ${line.resource_id}`)
-    const qty = line.kind === 'consumable' ? line.qty_per_guest : line.qty
+    const qty = line.kind === 'consumable' ? qtyValue(line.qty_per_guest) : line.qty
     if (qty <= 0) throw new Error('Quantities must be positive')
+    if (line.kind === 'consumable' && typeof line.qty_per_guest === 'object' && !line.qty_per_guest.unit.trim()) {
+      throw new Error('Unit is required')
+    }
   }
 }
 

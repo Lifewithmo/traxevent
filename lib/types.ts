@@ -752,7 +752,9 @@ export interface OpsResource {
 }
 
 export type WorkPackageLine =
-  | { kind: 'consumable'; resource_id: string; qty_per_guest: number; base_qty?: number }
+  // consumable quantities: bare numbers are legacy docs, read as the resource's
+  // display unit (spec 2026-08-13 §4.1); new writes use Quantity.
+  | { kind: 'consumable'; resource_id: string; qty_per_guest: number | Quantity; base_qty?: number | Quantity }
   | { kind: 'equipment'; resource_id: string; qty: number }
   | { kind: 'labor'; role: string; count: number }   // recorded stub; staffing is a later phase
 
