@@ -168,7 +168,7 @@ describe('submitIntake', () => {
       name: 'Ada Lovelace', email: 'Ada@Example.com', phone: '555-1234',
     })
     expect(createLeadCoreSpy).toHaveBeenCalledWith('org-1', {
-      name: 'Ada Lovelace', stage: 'inquiry', customer_id: 'cust-1',
+      name: 'Ada Lovelace', stage: 'inquiry', customer_id: 'cust-1', source: 'intake',
       email: 'Ada@Example.com', phone: '555-1234', event_type: 'Wedding',
       event_date: '2026-10-10', guest_count: 120, notes: 'Looking forward to it',
     })

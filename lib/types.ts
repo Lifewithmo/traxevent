@@ -444,6 +444,7 @@ export interface Lead {
   tags?: string[]
   waiting?: LeadWaiting    // set when the lead is blocked/waiting on something
   guest_count?: number     // estimated guests; prefills convert headcount
+  source?: 'intake' | 'manual'  // how the lead entered the pipeline; absent on pre-2026-08 leads
   last_touch_at?: string   // ISO; stamped by logActivity; fallback updated_at ?? created_at
   closed_at?: string       // ISO; stamped entering closed_won/closed_lost, cleared on reopen
   lost?: { reason: LostReason; note?: string }

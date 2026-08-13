@@ -77,6 +77,7 @@ export async function createLead(orgId: string, input: CreateLeadInput): Promise
     ...contact,
     stage,
     customer_id: customer.id,
+    source: 'manual',
     ...(input.title !== undefined ? { title: input.title } : {}),
     ...(input.event_type !== undefined ? { event_type: input.event_type } : {}),
     ...(input.event_date !== undefined ? { event_date: input.event_date } : {}),

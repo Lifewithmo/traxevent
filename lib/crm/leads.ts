@@ -49,6 +49,7 @@ export interface CreateLeadCoreInput {
   estimated_value?: number
   guest_count?: number
   notes?: string
+  source?: 'intake' | 'manual'
 }
 
 /** Guard-free lead create. Validates name/stage; performs no auth, no customer
@@ -72,6 +73,7 @@ export async function createLeadCore(orgId: string, input: CreateLeadCoreInput):
     ...(input.estimated_value != null ? { estimated_value: input.estimated_value } : {}),
     ...(input.guest_count != null ? { guest_count: input.guest_count } : {}),
     ...(input.notes?.trim() ? { notes: input.notes.trim() } : {}),
+    ...(input.source ? { source: input.source } : {}),
   }
   await leadsRef(orgId).doc(id).set(lead)
   return lead
