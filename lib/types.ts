@@ -802,6 +802,7 @@ export interface OpsListItem {
   name: string        // denormalized resource name at derivation time
   qty: number
   unit?: string
+  needs_conversion?: boolean  // quantity kept in its entered unit; no path to the resource's canonical unit (spec §3.4)
   checked: boolean
 }
 
@@ -861,6 +862,7 @@ export interface CloseoutSummary {
   revenue: number            // package prices + recorded sales
   planned_margin: number     // revenue - planned cost
   actual_margin: number      // revenue - actual cost
+  cost_gaps?: string[]  // resource names omitted from planned cost: cost known but no conversion path to its unit (spec §4.3)
 }
 
 export type IssueSeverity = 'low' | 'medium' | 'high'
