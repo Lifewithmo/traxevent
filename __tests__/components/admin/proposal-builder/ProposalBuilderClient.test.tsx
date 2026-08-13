@@ -196,8 +196,11 @@ describe('ProposalBuilderClient locked & rail', () => {
 
   it('links to the print view', () => {
     mount()
-    const link = screen.getByRole('link', { name: /open print view/i })
-    expect(link).toHaveAttribute('href', '/proposals/tok-1/print')
+    fireEvent.click(screen.getByRole('button', { name: 'More actions' }))
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null)
+    fireEvent.click(screen.getByRole('menuitem', { name: /open print view/i }))
+    expect(openSpy).toHaveBeenCalledWith('/proposals/tok-1/print', '_blank')
+    openSpy.mockRestore()
   })
 
   it('edits pricing terms in the rail and includes them in the consolidated save', async () => {
