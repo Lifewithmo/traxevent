@@ -41,7 +41,7 @@ describe('lib/ai/client', () => {
   it('exports the spec-fixed model configuration', async () => {
     const mod = await import('@/lib/ai/client')
     expect(mod.AI_MODEL).toBe('claude-opus-5')
-    expect(mod.AI_MAX_TOKENS).toBe(16000)
+    expect(mod.AI_MAX_TOKENS).toBe(32000)
     expect(mod.AI_EFFORT).toBe('medium')
     expect(mod.AI_BETAS).toEqual(['server-side-fallback-2026-07-01'])
     expect(mod.AI_FALLBACKS).toBe('default')

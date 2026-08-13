@@ -48,6 +48,11 @@ describe('TopBar', () => {
     expect(screen.queryByRole('button', { name: '✦ Draft with AI' })).not.toBeInTheDocument()
   })
 
+  it('AI button absent when locked, even if aiEnabled is true', () => {
+    render(<TopBar {...baseProps({ status: 'accepted', locked: true, aiEnabled: true })} />)
+    expect(screen.queryByRole('button', { name: '✦ Draft with AI' })).not.toBeInTheDocument()
+  })
+
   it('sent state: primary Copy client link calls onCopyLink; overflow contains print/viewport/void, no Delete', () => {
     const onCopyLink = vi.fn()
     render(<TopBar {...baseProps({ status: 'sent', locked: false, onCopyLink })} />)

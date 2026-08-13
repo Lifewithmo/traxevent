@@ -152,6 +152,14 @@ export function ProposalBuilderClient({
     document.querySelector('[data-placeholder-block]')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }
 
+  // Placeholder chip click (spec §3: "Fill remaining with AI"): when AI is
+  // available, scroll to the first placeholder AND open the composer so the
+  // operator can fill the rest in one click; otherwise it's a plain jump.
+  function handlePlaceholderChip() {
+    scrollToPlaceholder()
+    if (aiEnabled && !locked) setAiOpen(true)
+  }
+
   // Pre-flight (placeholder/expiry warnings) now lives in SendDialog; this is
   // just the confirmed send.
   async function handleSend() {
@@ -225,7 +233,7 @@ export function ProposalBuilderClient({
         saveStatus={saveStatus}
         retryNow={retryNow}
         placeholderCount={placeholderCount}
-        onPlaceholderChip={scrollToPlaceholder}
+        onPlaceholderChip={handlePlaceholderChip}
         aiEnabled={aiEnabled}
         onOpenAi={() => setAiOpen(true)}
         onSend={() => setSendOpen(true)}

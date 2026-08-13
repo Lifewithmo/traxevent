@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { useState } from 'react'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { TotalsCanvas } from '@/components/admin/proposal-builder/TotalsCanvas'
 import type { ProposalDraftUpdate } from '@/lib/proposals/draft'
@@ -75,6 +76,31 @@ describe('TotalsCanvas', () => {
     const dateInput = screen.getByLabelText('Expiry')
     fireEvent.change(dateInput, { target: { value: '' } })
     expect(update).toHaveBeenCalledWith({ expires_at: undefined })
+  })
+
+  it('keeps the expiry input mounted while focused after the date is cleared, instead of reverting to the ghost', () => {
+    // A live-state wrapper (unlike `mount`, whose `update` is a no-op spy) so
+    // the component actually re-renders on the patch the way the real
+    // autosave-backed draft does — that's what exposes the collapse bug.
+    function Wrapper() {
+      const [d, setD] = useState<ProposalDraftUpdate>({ ...draft, expires_at: '2026-09-01' })
+      return (
+        <TotalsCanvas
+          draft={d}
+          update={(patch) => setD((prev) => ({ ...prev, ...patch }))}
+          range={{ min: 100, max: 100 }}
+          disabled={false}
+        />
+      )
+    }
+    render(<Wrapper />)
+    const dateInput = screen.getByLabelText('Expiry')
+    fireEvent.focus(dateInput)
+    fireEvent.change(dateInput, { target: { value: '' } })
+
+    // Still an input, not the "+ Add expiry" ghost — focus is preserved.
+    expect(screen.getByLabelText('Expiry')).toBeInTheDocument()
+    expect(screen.queryByText('+ Add expiry')).not.toBeInTheDocument()
   })
 
   it('notes textarea patches notes', () => {

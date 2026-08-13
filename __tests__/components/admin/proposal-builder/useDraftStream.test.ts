@@ -112,6 +112,49 @@ describe('useDraftStream', () => {
     expect(result.current.state).toEqual({ status: 'error', message: 'Network down' })
   })
 
+  it('passes an AbortSignal to fetch and reset() aborts the in-flight request, landing on idle (not error)', async () => {
+    let rejectFetch: (e: unknown) => void = () => {}
+    const fetchPromise = new Promise<Response>((_resolve, reject) => { rejectFetch = reject })
+    global.fetch = vi.fn().mockImplementation((_url: string, init?: RequestInit) => {
+      init?.signal?.addEventListener('abort', () => {
+        rejectFetch(new DOMException('Aborted', 'AbortError'))
+      })
+      return fetchPromise
+    })
+
+    const { result } = renderHook(() => useDraftStream())
+    let genPromise!: Promise<void>
+    act(() => {
+      genPromise = result.current.generate({ orgId: 'o1', proposalId: 'p1', notes: 'notes' })
+    })
+    await waitFor(() => expect(result.current.state.status).toBe('streaming'))
+
+    act(() => result.current.reset())
+    // reset() sets idle synchronously...
+    expect(result.current.state).toEqual({ status: 'idle' })
+
+    // ...and the late-arriving abort rejection must not flip it to 'error'.
+    await act(async () => { await genPromise })
+    expect(result.current.state).toEqual({ status: 'idle' })
+  })
+
+  it('unmounting aborts the in-flight request', async () => {
+    const abortListener = vi.fn()
+    global.fetch = vi.fn().mockImplementation((_url: string, init?: RequestInit) => {
+      init?.signal?.addEventListener('abort', abortListener)
+      return new Promise<Response>(() => {}) // never resolves
+    })
+
+    const { result, unmount } = renderHook(() => useDraftStream())
+    act(() => {
+      void result.current.generate({ orgId: 'o1', proposalId: 'p1', notes: 'notes' })
+    })
+    await waitFor(() => expect(result.current.state.status).toBe('streaming'))
+
+    unmount()
+    expect(abortListener).toHaveBeenCalled()
+  })
+
   it('resets to idle', async () => {
     const line = JSON.stringify({ type: 'error', message: 'boom' })
     global.fetch = vi.fn().mockResolvedValue(ndjsonResponse([line]))

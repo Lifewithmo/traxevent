@@ -120,7 +120,7 @@ export function TopBar({
           </button>
         )}
 
-        {aiEnabled && onOpenAi && (
+        {aiEnabled && !locked && onOpenAi && (
           <Button size="sm" variant="outline" onClick={onOpenAi}>✦ Draft with AI</Button>
         )}
 

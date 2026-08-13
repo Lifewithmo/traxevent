@@ -295,6 +295,16 @@ export function TotalsCanvas({
             type="date"
             className="w-40"
             value={draft.expires_at ?? ''}
+            // Latch editing true on focus so clearing the date (which patches
+            // expires_at to undefined) doesn't drop showExpiryInput back to
+            // false mid-edit — that would swap the input for the ghost button
+            // and steal focus. Only unlatch on blur, and only when the field
+            // was actually left empty (a value present means it's a real,
+            // settled date — no need to keep latching).
+            onFocus={() => setExpiryEditing(true)}
+            onBlur={() => {
+              if (!draft.expires_at) setExpiryEditing(false)
+            }}
             onChange={(e) => update({ expires_at: e.target.value || undefined })}
           />
         </div>

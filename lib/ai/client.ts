@@ -8,7 +8,11 @@ import Anthropic from '@anthropic-ai/sdk'
 // restores the server-side refusal fallback ('default' mode routes by
 // refusal category) and drops the prompt-cache minimum to 512 tokens.
 export const AI_MODEL = 'claude-opus-5'
-export const AI_MAX_TOKENS = 16000
+// 32000: on Opus 5 thinking is on by default and max_tokens caps thinking +
+// output *together*, so headroom has to cover both, not just the visible
+// JSON draft. Both call sites (the streaming route and finalMessage()) read
+// the response as a stream, so raising this does not risk an HTTP timeout.
+export const AI_MAX_TOKENS = 32000
 export const AI_EFFORT = 'medium' as const
 export const AI_FALLBACKS: 'default' | null = 'default'
 export const AI_BETAS: string[] = ['server-side-fallback-2026-07-01']

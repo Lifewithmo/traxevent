@@ -284,6 +284,27 @@ describe('ProposalBuilderClient hero composer', () => {
     fireEvent.click(screen.getByText('topbar-open-ai'))
     expect(screen.getByTestId('modal-composer')).toBeInTheDocument()
   })
+
+  it('placeholder chip scrolls to the first placeholder AND opens the AI composer when AI is enabled', () => {
+    mount(makeProposal(), true)
+    const scrollSpy = vi.fn()
+    const el = document.querySelector('[data-placeholder-block]') as HTMLElement | null
+    if (el) el.scrollIntoView = scrollSpy
+    expect(screen.queryByTestId('modal-composer')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByText('topbar-placeholder-chip'))
+    if (el) expect(scrollSpy).toHaveBeenCalled()
+    expect(screen.getByTestId('modal-composer')).toBeInTheDocument()
+  })
+
+  it('placeholder chip only scrolls (does not open the composer) when AI is disabled', () => {
+    mount(makeProposal(), false)
+    const scrollSpy = vi.fn()
+    const el = document.querySelector('[data-placeholder-block]') as HTMLElement | null
+    if (el) el.scrollIntoView = scrollSpy
+    fireEvent.click(screen.getByText('topbar-placeholder-chip'))
+    if (el) expect(scrollSpy).toHaveBeenCalled()
+    expect(screen.queryByTestId('modal-composer')).not.toBeInTheDocument()
+  })
 })
 
 describe('ProposalBuilderClient send flow', () => {
