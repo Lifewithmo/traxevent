@@ -122,7 +122,10 @@ describe('updateOpsRequirementsCore', () => {
     package_ids: ['wp1'],
     requirements: { guests: 100, site_needs: ['power'] },
     deadlines: [], packing_list: [{ resource_id: 'res-machine', name: 'Machine', qty: 1, checked: false }],
-    shopping_list: [{ resource_id: 'res-beans', name: 'Beans', qty: 75, unit: 'oz', checked: true }],
+    // unit is 'lb' to match what computeShoppingList actually derives for this
+    // resource/guest range (formatQuantity picks the human-scale unit) — the
+    // carry-forward key is resource_id + unit, so it must match the recompute.
+    shopping_list: [{ resource_id: 'res-beans', name: 'Beans', qty: 75, unit: 'lb', checked: true }],
     checklists: [], needs_review: false, change_log: [],
     industry_pack_id: 'coffee-cart', created_at: 't',
   }

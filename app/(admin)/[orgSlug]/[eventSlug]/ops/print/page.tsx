@@ -11,7 +11,7 @@ function List({ title, items }: { title: string; items: OpsListItem[] }) {
       <h2 className="text-lg font-bold mb-2">{title}</h2>
       <ul className="text-sm space-y-1">
         {items.map((i) => (
-          <li key={i.resource_id}>
+          <li key={`${i.resource_id}|${i.unit ?? ''}`}>
             {i.checked ? '☑' : '☐'} {i.name} — {i.unit ? `${i.qty} ${i.unit}` : `× ${i.qty}`}
           </li>
         ))}
