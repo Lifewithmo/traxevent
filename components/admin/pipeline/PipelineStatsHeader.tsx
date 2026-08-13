@@ -62,7 +62,7 @@ export function PipelineStatsHeader({ stats }: { stats: PipelineHeaderStats }) {
               {needsActionCount}
             </p>
             <p className="text-xs text-muted-foreground">
-              {needsActionCount > 0 ? 'stale or unopened — see below' : 'all caught up'}
+              {needsActionCount > 0 ? 'stale or no opens — see below' : 'all caught up'}
             </p>
           </CardContent>
         </Card>
@@ -73,22 +73,24 @@ export function PipelineStatsHeader({ stats }: { stats: PipelineHeaderStats }) {
             <p className="text-sm font-medium">Revenue by month</p>
             <p className="text-xs text-muted-foreground">rolling 12 months · solid booked · light open</p>
           </div>
-          <div className="flex h-28 items-end gap-3">
-            {backlog.map((m) => (
-              <div key={m.ym} className="flex h-full flex-1 flex-col justify-end">
-                <div
-                  className="rounded-t-sm bg-primary/25"
-                  style={{ height: `${(m.open / max) * 100}%` }}
-                  title={`${m.label} open ${money(m.open)}`}
-                />
-                <div
-                  className="bg-primary"
-                  style={{ height: `${(m.booked / max) * 100}%` }}
-                  title={`${m.label} booked ${money(m.booked)}`}
-                />
-                <p className="mt-1 text-center text-xs text-muted-foreground">{m.label}</p>
-              </div>
-            ))}
+          <div className="overflow-x-auto">
+            <div className="flex h-28 min-w-[560px] items-end gap-3">
+              {backlog.map((m) => (
+                <div key={m.ym} className="flex h-full flex-1 flex-col justify-end">
+                  <div
+                    className="rounded-t-sm bg-primary/25"
+                    style={{ height: `${(m.open / max) * 100}%` }}
+                    title={`${m.label} open ${money(m.open)}`}
+                  />
+                  <div
+                    className="bg-primary"
+                    style={{ height: `${(m.booked / max) * 100}%` }}
+                    title={`${m.label} booked ${money(m.booked)}`}
+                  />
+                  <p className="mt-1 text-center text-xs text-muted-foreground">{m.label}</p>
+                </div>
+              ))}
+            </div>
           </div>
         </CardContent>
       </Card>

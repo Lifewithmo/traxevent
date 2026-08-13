@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { PipelineListClient } from '@/components/admin/pipeline/PipelineListClient'
 import type { Lead } from '@/lib/types'
 
@@ -33,7 +33,8 @@ describe('PipelineListClient', () => {
   it('renders exactly one intake link control block', () => {
     const { container } = render(<PipelineListClient {...baseProps} />)
     expect(screen.getAllByRole('button', { name: 'Intake link' })).toHaveLength(1)
-    expect(container.querySelectorAll('[data-intake-card]').length).toBeLessThanOrEqual(1)
+    fireEvent.click(screen.getByRole('button', { name: 'Intake link' }))
+    expect(container.querySelectorAll('[data-intake-card]')).toHaveLength(1)
   })
 
   it('shows the won/lost month summary', () => {
