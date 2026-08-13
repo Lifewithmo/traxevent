@@ -37,6 +37,12 @@ describe('industry packs', () => {
     expect(cart.modules).not.toContain('registrants')
   })
 
+  it('coffee-cart enables vendors and events modules', () => {
+    const cart = getIndustryPack('coffee-cart')
+    expect(cart.modules).toContain('vendors')
+    expect(cart.modules).toContain('events')
+  })
+
   it('isModuleEnabled reflects pack membership', () => {
     const cart = getIndustryPack('coffee-cart')
     expect(isModuleEnabled(cart, 'invoices')).toBe(true)

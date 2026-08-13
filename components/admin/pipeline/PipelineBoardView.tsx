@@ -1,14 +1,18 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Card, CardContent } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
 import { setLeadStage } from '@/actions/leads'
 import { OPEN_STAGES, LEAD_STAGE_LABELS, opportunityTitle } from '@/lib/leads'
 import type { PipelineGroups, PipelineRow, closedThisMonth } from '@/lib/pipeline-view'
-import type { LeadStage } from '@/lib/types'
+import type { Customer, LeadStage } from '@/lib/types'
 import { ClosedMonthSummary } from './ClosedMonthSummary'
+import { StageChip } from './StageChip'
+import { NewOpportunityForm } from './NewOpportunityForm'
+import { IntakeLinkCard } from './IntakeLinkCard'
 
 interface PipelineBoardViewProps {
   orgId: string
@@ -17,6 +21,7 @@ interface PipelineBoardViewProps {
   openCount: number
   openValue: number
   monthly: ReturnType<typeof closedThisMonth>
+  customers?: Customer[]
 }
 
 const money = (n: number) => `$${n.toLocaleString()}`
@@ -31,14 +36,26 @@ function shortDate(ymd: string): string {
 // opportunity page where a reason is captured.
 const BOARD_STAGES: LeadStage[] = [...OPEN_STAGES, 'closed_won']
 
+const mono11 = {
+  color: 'color-mix(in oklab, var(--muted-foreground) 70%, var(--foreground))',
+} as const
+
 export function PipelineBoardView({
-  orgId, orgSlug, groups, openCount, openValue, monthly,
+  orgId, orgSlug, groups, openCount, openValue, monthly, customers,
 }: PipelineBoardViewProps) {
   const router = useRouter()
   const [rows, setRows] = useState<PipelineRow[]>(
     () => [...groups.needs_attention, ...groups.waiting, ...groups.active]
   )
   const [error, setError] = useState<string | null>(null)
+  const [creating, setCreating] = useState(false)
+  const [intakeOpen, setIntakeOpen] = useState(false)
+  const [dragOverStage, setDragOverStage] = useState<LeadStage | null>(null)
+  const [actionsSlot, setActionsSlot] = useState<HTMLElement | null>(null)
+
+  useEffect(() => {
+    setActionsSlot(document.getElementById('tx-pipeline-actions'))
+  }, [])
 
   async function handleStageChange(row: PipelineRow, newStage: LeadStage) {
     if (newStage === row.lead.stage) return
@@ -64,85 +81,133 @@ export function PipelineBoardView({
 
   function handleDrop(e: React.DragEvent, stage: LeadStage) {
     e.preventDefault()
+    setDragOverStage(null)
     const id = e.dataTransfer.getData('text/plain')
     const row = rows.find((r) => r.lead.id === id)
     if (row) handleStageChange(row, stage)
   }
 
+  function handleArrowMove(row: PipelineRow, direction: 1 | -1) {
+    const sequence = BOARD_STAGES
+    const idx = sequence.indexOf(row.lead.stage)
+    if (idx === -1) return
+    const nextIdx = idx + direction
+    if (nextIdx < 0 || nextIdx >= sequence.length) return
+    handleStageChange(row, sequence[nextIdx])
+  }
+
   return (
     <div className="p-6 space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold">Pipeline</h1>
-          <p className="text-sm text-muted-foreground">
-            {`${openCount} open · ${money(openValue)} · ${monthly.wonCount} booked this month`}
-          </p>
-        </div>
-        <Link href={`/${orgSlug}/leads`} className="text-sm underline-offset-4 hover:underline">
-          List view
-        </Link>
-      </div>
+      {actionsSlot && createPortal(
+        <>
+          <Link href={`/${orgSlug}/leads`} className="text-sm underline-offset-4 hover:underline">
+            List view
+          </Link>
+          <Button variant="outline" onClick={() => setIntakeOpen((v) => !v)}>Intake link</Button>
+          {!creating && (
+            <Button onClick={() => { setCreating(true); setError(null) }}>New opportunity</Button>
+          )}
+        </>,
+        actionsSlot
+      )}
 
       <div aria-live="polite" aria-atomic="true">
         {error && <p className="text-sm text-destructive">{error}</p>}
       </div>
 
-      <div className="flex gap-3 overflow-x-auto">
+      <NewOpportunityForm orgId={orgId} open={creating} onClose={() => setCreating(false)} customers={customers} />
+
+      <IntakeLinkCard orgId={orgId} open={intakeOpen} onClose={() => setIntakeOpen(false)} />
+
+      <div
+        className="grid gap-4"
+        style={{ gridTemplateColumns: `repeat(${OPEN_STAGES.length}, minmax(0, 1fr))` }}
+      >
         {OPEN_STAGES.map((stage) => {
           const cards = rows.filter((r) => r.lead.stage === stage)
           const value = cards.reduce((s, r) => s + (r.lead.estimated_value ?? 0), 0)
           return (
-            <div
-              key={stage}
-              className="min-w-[240px] flex-1 space-y-2"
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={(e) => handleDrop(e, stage)}
-            >
-              <div className="flex items-center justify-between px-1">
-                <h2 className="text-sm font-semibold">{LEAD_STAGE_LABELS[stage]}</h2>
-                <span className="text-xs text-muted-foreground">{`${cards.length} · ${money(value)}`}</span>
+            <div key={stage} className="min-w-0 flex flex-col">
+              <div
+                className="flex items-center justify-between px-1 pb-2"
+                style={{ borderBottom: '1px solid var(--border)' }}
+              >
+                <h2
+                  className="font-mono text-[11px] font-semibold uppercase tracking-[.04em]"
+                  style={mono11}
+                >
+                  {LEAD_STAGE_LABELS[stage]}
+                </h2>
+                <span className="text-[11px] tabular-nums text-muted-foreground">{`${cards.length} · ${money(value)}`}</span>
               </div>
-              <div className="space-y-2">
+              <div
+                onDragOver={(e) => { e.preventDefault(); setDragOverStage(stage) }}
+                onDragLeave={() => setDragOverStage((s) => (s === stage ? null : s))}
+                onDrop={(e) => handleDrop(e, stage)}
+                className="flex-1 space-y-2 overflow-y-auto pt-2 transition-colors duration-[120ms]"
+                style={{
+                  maxHeight: 'calc(100vh - 320px)',
+                  overscrollBehavior: 'contain',
+                  background: dragOverStage === stage ? 'var(--muted)' : undefined,
+                }}
+              >
                 {cards.map((row) => {
                   const { lead } = row
                   const subtitle = [
                     lead.event_type,
                     lead.event_date ? shortDate(lead.event_date) : null,
                   ].filter(Boolean).join(' · ')
+                  const title = opportunityTitle(lead)
                   return (
-                    <Card
+                    <article
                       key={lead.id}
-                      data-health={row.health}
+                      role="article"
+                      aria-label={`${title}, stage ${LEAD_STAGE_LABELS[stage]}. Use arrow keys to move stage.`}
+                      tabIndex={0}
                       draggable
+                      data-health={row.health}
                       onDragStart={(e) => e.dataTransfer.setData('text/plain', lead.id)}
-                      className={row.health === 'needs_attention' ? 'border-l-2 border-l-destructive' : undefined}
+                      onKeyDown={(e) => {
+                        if (e.target !== e.currentTarget) return
+                        if (e.key === 'ArrowRight') { e.preventDefault(); handleArrowMove(row, 1) }
+                        if (e.key === 'ArrowLeft') { e.preventDefault(); handleArrowMove(row, -1) }
+                      }}
+                      className="rounded-md bg-card focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      style={{
+                        border: '1px solid var(--border)',
+                        borderRadius: 6,
+                        padding: '10px 12px',
+                        cursor: 'grab',
+                      }}
                     >
-                      <CardContent className="py-3 space-y-2">
-                        <Link href={`/${orgSlug}/leads/${lead.id}`} className="block space-y-1">
-                          <p className="flex items-center gap-1.5 text-sm font-medium">
-                            {row.health === 'needs_attention' && (
-                              <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-destructive" />
-                            )}
-                            {opportunityTitle(lead)}
-                          </p>
-                          {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
-                          <p className={`truncate text-xs ${row.health === 'needs_attention' ? 'text-destructive' : 'text-muted-foreground'}`}>{row.statusLine}</p>
-                          {lead.estimated_value != null && (
-                            <p className="text-xs font-medium">{money(lead.estimated_value)}</p>
-                          )}
-                        </Link>
-                        <select
-                          value={lead.stage}
-                          onChange={(e) => handleStageChange(row, e.target.value as LeadStage)}
-                          aria-label={`Stage for ${opportunityTitle(lead)}`}
-                          className="w-full rounded-md border border-input bg-transparent px-2 py-1 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      <Link href={`/${orgSlug}/leads/${lead.id}`} className="block space-y-1">
+                        <p
+                          className="flex items-center gap-1.5 truncate text-[13px] font-semibold tracking-[-.005em]"
                         >
-                          {BOARD_STAGES.map((s) => (
-                            <option key={s} value={s}>{LEAD_STAGE_LABELS[s]}</option>
-                          ))}
-                        </select>
-                      </CardContent>
-                    </Card>
+                          {row.health === 'needs_attention' && (
+                            <span
+                              aria-hidden
+                              className="shrink-0 rounded-full bg-destructive"
+                              style={{ height: 5, width: 5 }}
+                            />
+                          )}
+                          <span className="truncate">{title}</span>
+                        </p>
+                        {subtitle && <p className="truncate text-xs text-muted-foreground">{subtitle}</p>}
+                        <p className={`truncate text-xs ${row.health === 'needs_attention' ? 'text-destructive' : 'text-muted-foreground'}`}>{row.statusLine}</p>
+                      </Link>
+                      <div className="mt-2 flex items-center justify-between gap-2">
+                        <StageChip
+                          stage={lead.stage}
+                          ariaContext={title}
+                          onStage={(next) => handleStageChange(row, next)}
+                          onMarkLost={() => router.push(`/${orgSlug}/leads/${lead.id}?focus=lost`)}
+                        />
+                        {lead.estimated_value != null && (
+                          <span className="text-xs font-semibold tabular-nums">{money(lead.estimated_value)}</span>
+                        )}
+                      </div>
+                    </article>
                   )
                 })}
               </div>
@@ -151,7 +216,9 @@ export function PipelineBoardView({
         })}
       </div>
 
-      <ClosedMonthSummary orgSlug={orgSlug} monthly={monthly} />
+      <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+        <ClosedMonthSummary orgSlug={orgSlug} monthly={monthly} />
+      </div>
     </div>
   )
 }

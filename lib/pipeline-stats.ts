@@ -37,9 +37,8 @@ export function bookedAhead(leads: Lead[], today: string, days = 90): { count: n
   return { count: inWindow.length, value: inWindow.reduce((s, l) => s + (l.estimated_value ?? 0), 0) }
 }
 
-export function backlogByMonth(leads: Lead[], today: string, months = 6): BacklogMonth[] {
-  const start = today.slice(0, 7)
-  return Array.from({ length: months }, (_, i) => {
+function buildBacklogRows(leads: Lead[], start: string, length: number): BacklogMonth[] {
+  return Array.from({ length }, (_, i) => {
     const ym = addMonths(start, i)
     const inMonth = leads.filter((l) => l.event_date?.slice(0, 7) === ym)
     const sum = (ls: Lead[]) => ls.reduce((s, l) => s + (l.estimated_value ?? 0), 0)
@@ -50,4 +49,17 @@ export function backlogByMonth(leads: Lead[], today: string, months = 6): Backlo
       open: sum(inMonth.filter((l) => OPEN_STAGES.includes(l.stage))),
     }
   })
+}
+
+export function backlogByMonth(leads: Lead[], today: string, months = 6): BacklogMonth[] {
+  return buildBacklogRows(leads, today.slice(0, 7), months)
+}
+
+// Rolling window spanning `back` months before the current month through
+// `ahead` months after it (inclusive of the current month), for the KPI
+// band's revenue-by-month chart — replaces the forward-only backlogByMonth
+// for that use case.
+export function backlogWindow(leads: Lead[], today: string, back = 5, ahead = 6): BacklogMonth[] {
+  const start = addMonths(today.slice(0, 7), -back)
+  return buildBacklogRows(leads, start, back + ahead + 1)
 }

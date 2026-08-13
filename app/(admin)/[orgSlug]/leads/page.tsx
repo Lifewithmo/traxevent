@@ -13,7 +13,7 @@ import { PipelineListClient } from '@/components/admin/pipeline/PipelineListClie
 import { PipelineBoardView } from '@/components/admin/pipeline/PipelineBoardView'
 import { PipelineSubNav } from '@/components/admin/pipeline/PipelineSubNav'
 import { PipelineStatsHeader } from '@/components/admin/pipeline/PipelineStatsHeader'
-import { wonValueInMonth, bookedAhead, backlogByMonth, addMonths } from '@/lib/pipeline-stats'
+import { wonValueInMonth, bookedAhead, backlogWindow, addMonths } from '@/lib/pipeline-stats'
 
 export default async function LeadsPage({
   params, searchParams,
@@ -54,7 +54,8 @@ export default async function LeadsPage({
     bookedNext90: bookedAhead(leads, today),
     openPipeline: { count: open.length, value: openValue },
     needsActionCount: groups.needs_attention.length,
-    backlog: backlogByMonth(leads, today, 12),
+    backlog: backlogWindow(leads, today),
+    todayYm: ym,
   }
 
   const shared = {
@@ -68,7 +69,7 @@ export default async function LeadsPage({
         <PipelineStatsHeader stats={stats} />
       </div>
       {view === 'board'
-        ? <PipelineBoardView {...shared} />
+        ? <PipelineBoardView {...shared} customers={customers} />
         : <PipelineListClient {...shared} closed={closed} customers={customers} />}
     </div>
   )

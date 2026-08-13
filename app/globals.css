@@ -18,6 +18,7 @@
   --color-sidebar-primary: var(--sidebar-primary);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar: var(--sidebar);
+  --color-sidebar-muted: var(--sidebar-muted);
   --color-chart-5: var(--chart-5);
   --color-chart-4: var(--chart-4);
   --color-chart-3: var(--chart-3);
@@ -197,14 +198,15 @@
   --chart-4: var(--copper-500);
   --chart-5: var(--warm-800);
   --radius: 0.625rem;
-  --sidebar: #f5efe8;
+  --sidebar: #f2eee8;
   --sidebar-foreground: var(--warm-950);
-  --sidebar-primary: var(--warm-900);
-  --sidebar-primary-foreground: var(--warm-25);
-  --sidebar-accent: var(--warm-100);
-  --sidebar-accent-foreground: var(--warm-800);
+  --sidebar-muted: var(--warm-600);
+  --sidebar-primary: var(--copper-600);
+  --sidebar-primary-foreground: #fdf6ef;
+  --sidebar-accent: #e7e1d8;
+  --sidebar-accent-foreground: var(--warm-950);
   --sidebar-border: var(--warm-200);
-  --sidebar-ring: var(--warm-400);
+  --sidebar-ring: var(--copper-400);
 }
 
 .dark {
@@ -233,6 +235,7 @@
   --chart-5: oklch(0.269 0 0);
   --sidebar: oklch(0.205 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-muted: oklch(0.708 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376);
   --sidebar-primary-foreground: oklch(0.985 0 0);
   --sidebar-accent: oklch(0.269 0 0);

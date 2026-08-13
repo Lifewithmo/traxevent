@@ -42,7 +42,8 @@ describe('PipelineBoardView', () => {
         health: 'needs_attention', statusLine: 'stale sentence', quickAction: 'set_next_step' }],
       waiting: [], active: [],
     }} />)
-    fireEvent.change(screen.getByRole('combobox', { name: /Stage for/ }), { target: { value: 'proposal' } })
+    fireEvent.click(screen.getByRole('button', { name: /Stage: Consultation/ }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Proposal' }))
     await waitFor(() => expect(setLeadStage).toHaveBeenCalledWith('o1', 'l1', 'proposal'))
     expect(refresh).toHaveBeenCalled()
     expect(push).not.toHaveBeenCalled()
