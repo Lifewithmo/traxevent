@@ -4,11 +4,11 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import { setLeadStage } from '@/actions/leads'
 import { OPEN_STAGES, LEAD_STAGE_LABELS, opportunityTitle } from '@/lib/leads'
 import type { PipelineGroups, PipelineRow, closedThisMonth } from '@/lib/pipeline-view'
 import type { LeadStage } from '@/lib/types'
+import { ClosedMonthSummary } from './ClosedMonthSummary'
 
 interface PipelineBoardViewProps {
   orgId: string
@@ -100,7 +100,7 @@ export function PipelineBoardView({
             >
               <div className="flex items-center justify-between px-1">
                 <h2 className="text-sm font-semibold">{LEAD_STAGE_LABELS[stage]}</h2>
-                <Badge variant="outline">{cards.length}</Badge>
+                <span className="text-xs text-muted-foreground">{`${cards.length} · ${money(value)}`}</span>
               </div>
               <div className="space-y-2">
                 {cards.map((row) => {
@@ -119,9 +119,14 @@ export function PipelineBoardView({
                     >
                       <CardContent className="py-3 space-y-2">
                         <Link href={`/${orgSlug}/leads/${lead.id}`} className="block space-y-1">
-                          <p className="text-sm font-medium">{opportunityTitle(lead)}</p>
+                          <p className="flex items-center gap-1.5 text-sm font-medium">
+                            {row.health === 'needs_attention' && (
+                              <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-destructive" />
+                            )}
+                            {opportunityTitle(lead)}
+                          </p>
                           {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
-                          <p className="truncate text-xs text-muted-foreground">{row.statusLine}</p>
+                          <p className={`truncate text-xs ${row.health === 'needs_attention' ? 'text-destructive' : 'text-muted-foreground'}`}>{row.statusLine}</p>
                           {lead.estimated_value != null && (
                             <p className="text-xs font-medium">{money(lead.estimated_value)}</p>
                           )}
@@ -141,19 +146,12 @@ export function PipelineBoardView({
                   )
                 })}
               </div>
-              <p className="px-1 text-xs text-muted-foreground">
-                {`${cards.length} · ${money(value)}`}
-              </p>
             </div>
           )
         })}
       </div>
 
-      <p className="text-sm text-muted-foreground">
-        Won this month: {monthly.wonCount} · {money(monthly.wonValue)} — moved to{' '}
-        <Link href={`/${orgSlug}/calendar`} className="underline underline-offset-4">Events</Link>
-        {' '}· Lost: {monthly.lostCount} · {money(monthly.lostValue)} · archived
-      </p>
+      <ClosedMonthSummary orgSlug={orgSlug} monthly={monthly} />
     </div>
   )
 }
