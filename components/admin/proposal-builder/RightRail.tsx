@@ -8,7 +8,6 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { ProposalAiPanel } from '@/components/admin/proposal-builder/ProposalAiPanel'
 import type { SaveStatus } from '@/components/admin/proposal-builder/useDraftAutosave'
 import type { ProposalDraftUpdate } from '@/lib/proposals/draft'
 import type { Proposal, ProposalBlock } from '@/lib/types'
@@ -263,18 +262,6 @@ export function RightRail({
         </div>
       </div>
 
-      {aiEnabled && !locked && (
-        <div className="border-t pt-3">
-          <ProposalAiPanel
-            orgId={proposal.org_id}
-            proposalId={proposal.id}
-            placeholderCount={placeholderCount}
-            hasBlocks={(draft.blocks ?? []).length > 0}
-            disabled={locked}
-            onApply={onAiApply}
-          />
-        </div>
-      )}
     </aside>
   )
 }

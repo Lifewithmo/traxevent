@@ -7,6 +7,7 @@
 // Move up / Move down / Delete (drag is never the only path). Placeholder
 // blocks render greyed and lose their flag on first human edit.
 import { useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { InlineText } from '@/components/admin/proposal-builder/InlineText'
 import type { ProposalBlock as PlaceholderBlock } from '@/lib/types'
@@ -36,11 +37,15 @@ export function BlockCanvas({
   onChange,
   onUploadImage,
   disabled,
+  onFillWithAi,
+  hero,
 }: {
   blocks: PlaceholderBlock[]
   onChange: (next: PlaceholderBlock[]) => void
   onUploadImage: (file: File) => Promise<{ url: string }>
   disabled: boolean
+  onFillWithAi?: () => void
+  hero?: ReactNode
 }) {
   const [menuAt, setMenuAt] = useState<number | null>(null)
   const [uploadError, setUploadError] = useState<string | null>(null)
@@ -150,6 +155,25 @@ export function BlockCanvas({
           onClick={() => remove(index)}
           className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-red-600">✕</button>
       </div>
+    )
+  }
+
+  // A placeholder's ghost "Fill with AI" affordance (spec §3): only offered
+  // when the canvas has somewhere to send it (onFillWithAi wired) and isn't
+  // disabled — it opens the composer modal, which fills every remaining
+  // placeholder, not just this one.
+  function fillWithAiButton(block: PlaceholderBlock) {
+    if (disabled || !onFillWithAi || block.placeholder !== true) return null
+    return (
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        className="absolute right-0 top-0 z-10 text-xs text-gray-400 opacity-0 transition-opacity focus-within:opacity-100 group-hover/block:opacity-100"
+        onClick={onFillWithAi}
+      >
+        Fill with AI
+      </Button>
     )
   }
 
@@ -269,6 +293,7 @@ export function BlockCanvas({
 
   return (
     <div>
+      {hero}
       {uploadError && <p role="alert" className="mb-2 text-sm text-red-600">{uploadError}</p>}
       {divider(0)}
       {blocks.map((block, index) => (
@@ -276,10 +301,12 @@ export function BlockCanvas({
           <div
             className="group/block relative"
             data-placeholder={block.placeholder === true ? 'true' : undefined}
+            data-placeholder-block={block.placeholder === true ? 'true' : undefined}
             onDragOver={(e) => { if (!disabled) e.preventDefault() }}
             onDrop={() => { if (!disabled) drop(index) }}
           >
             {chrome(index)}
+            {fillWithAiButton(block)}
             <div className={block.placeholder === true ? 'opacity-50' : undefined}>
               {editor(block, index)}
             </div>

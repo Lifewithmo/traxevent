@@ -106,6 +106,33 @@ describe('BlockCanvas', () => {
     expect(img.placeholder).toBeUndefined()
   })
 
+  it('fires onFillWithAi from a placeholder block and skips non-placeholder blocks', () => {
+    const onFillWithAi = vi.fn()
+    canvas({ onFillWithAi })
+    const buttons = screen.getAllByRole('button', { name: /fill with ai/i })
+    expect(buttons).toHaveLength(1)
+    fireEvent.click(buttons[0])
+    expect(onFillWithAi).toHaveBeenCalledTimes(1)
+  })
+
+  it('omits the Fill with AI button when onFillWithAi is not provided', () => {
+    canvas()
+    expect(screen.queryByRole('button', { name: /fill with ai/i })).not.toBeInTheDocument()
+  })
+
+  it('marks every placeholder block wrapper with data-placeholder-block', () => {
+    canvas()
+    const wrap = screen.getByText('Replace this intro').closest('[data-placeholder-block]')
+    expect(wrap).not.toBeNull()
+    const nonPlaceholderWrap = screen.getByRole('heading', { name: 'Our offer' }).closest('[data-placeholder-block]')
+    expect(nonPlaceholderWrap).toBeNull()
+  })
+
+  it('renders the hero slot above the blocks when provided', () => {
+    canvas({ hero: <div data-testid="hero-slot">Hero</div> })
+    expect(screen.getByTestId('hero-slot')).toBeInTheDocument()
+  })
+
   it('renders no editing chrome when disabled', () => {
     canvas({ disabled: true })
     expect(screen.queryByRole('button', { name: /add block/i })).not.toBeInTheDocument()
