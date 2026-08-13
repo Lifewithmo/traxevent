@@ -92,6 +92,16 @@ EventTrax pivot (neutralization, multi-brand, ops core). Detailed designs live i
 
 ## In flight
 
+- **Pipeline & sidebar skin parity** (branch `skin-parity`, PR open 2026-08-13) —
+  the visual layer of the design mock, built from the design kit's own source:
+  bespoke nav icon family + sidebar tokens v2 (copper active), icons +
+  collapsible sections + 52px icon rail on the sidebar, borderless mono-caps
+  KPI band with the collapsible rolling-window (-5..+6) revenue chart beside
+  it, StageChip pill menus (Mark lost routes to reason capture), kit board
+  (keyboard stage moves, drag-over highlight) and flat-row list, actions
+  portalled onto the sub-nav row; coffee-cart pack gains vendors+events
+  (spec: `superpowers/specs/2026-08-13-pipeline-skin-parity-design.md`).
+
 - **Pipeline KPI header** (branch `claude/pipeline-kpi-header`) — first-principles
   header on the pipeline page: booked this month (vs same month last year),
   booked ahead next 90 days, needs-action count, and a booked-revenue-by-month
