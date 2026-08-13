@@ -69,7 +69,7 @@ export default async function LeadsPage({
         <PipelineStatsHeader stats={stats} />
       </div>
       {view === 'board'
-        ? <PipelineBoardView {...shared} />
+        ? <PipelineBoardView {...shared} customers={customers} />
         : <PipelineListClient {...shared} closed={closed} customers={customers} />}
     </div>
   )

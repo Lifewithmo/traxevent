@@ -49,6 +49,7 @@ export function PipelineSubNav({ orgSlug, active, openCount, dueTodayCount }: Pi
           )}
         </Link>
       ))}
+      <div id="tx-pipeline-actions" className="ml-auto flex items-center gap-2" />
     </nav>
   )
 }
