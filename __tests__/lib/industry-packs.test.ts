@@ -10,7 +10,7 @@ import {
 
 const ALL_MODULES = [
   'leads', 'clients', 'proposals', 'invoices',
-  'events', 'registrants', 'vendors', 'calendar', 'reports',
+  'events', 'registrants', 'vendors', 'calendar', 'reports', 'forms',
 ] as const
 
 describe('industry packs', () => {
@@ -81,5 +81,13 @@ describe('compliance module', () => {
   it('is enabled for coffee-cart and not for general', () => {
     expect(resolveEnabledModules('coffee-cart')).toContain('compliance')
     expect(resolveEnabledModules('general')).not.toContain('compliance')
+  })
+})
+
+describe('forms module', () => {
+  it('is enabled for every built-in pack (the forms page is reachable by all orgs)', () => {
+    for (const pack of getAllIndustryPacks()) {
+      expect(pack.modules).toContain('forms')
+    }
   })
 })
