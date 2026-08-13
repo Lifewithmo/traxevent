@@ -7,9 +7,10 @@ import { listWorkPackagesCore } from '@/lib/ops/work-packages'
 import { listResourcesCore } from '@/lib/ops/resources'
 import { getAnthropicClient, AI_MODEL, AI_MAX_TOKENS, AI_EFFORT, AI_BETAS, AI_FALLBACKS } from '@/lib/ai/client'
 import { serializeCatalog, buildDraftSystemBlocks } from '@/lib/ai/grounding'
+import { serializeVoice, type VoiceExample } from '@/lib/ai/voice'
 import { PROPOSAL_DRAFT_SCHEMA, parseDraftResponse, mintSuggestedPackages, type ProposalDraft } from '@/lib/ai/proposal-draft'
 import { logAiUsage } from '@/lib/ai/usage'
-import type { Proposal } from '@/lib/types'
+import type { Proposal, Org } from '@/lib/types'
 
 // Read-only by design: the draft lands in the editor as unsaved state and
 // nothing persists until the admin saves through the normal block-editor
@@ -32,10 +33,14 @@ export async function generateProposalDraft(
   if (!snap.exists) throw new Error('Proposal not found')
   const proposal = snap.data() as Proposal
 
-  const [packages, resources] = await Promise.all([
+  const [packages, resources, voiceSnap, orgSnap] = await Promise.all([
     listWorkPackagesCore(orgId),
     listResourcesCore(orgId),
+    adminDb.collection('orgs').doc(orgId).collection('ai_voice').doc('examples').get(),
+    adminDb.collection('orgs').doc(orgId).get(),
   ])
+  const examples = (voiceSnap.exists ? (voiceSnap.data()?.examples ?? []) : []) as VoiceExample[]
+  const voiceText = serializeVoice(examples, (orgSnap.data() as Org | undefined)?.ai_voice_note)
 
   const client = getAnthropicClient()
   // Streaming transport for timeout safety on a long generation; the caller
@@ -50,7 +55,7 @@ export async function generateProposalDraft(
       effort: AI_EFFORT,
       format: { type: 'json_schema', schema: PROPOSAL_DRAFT_SCHEMA },
     },
-    system: buildDraftSystemBlocks(serializeCatalog(packages, resources)),
+    system: buildDraftSystemBlocks(serializeCatalog(packages, resources), voiceText),
     messages: [{
       role: 'user',
       content: `Proposal context: title "${proposal.title ?? ''}", existing pricing notes "${proposal.notes ?? ''}".\n\nOperator notes to draft from:\n\n${trimmed}`,

@@ -15,5 +15,12 @@ export default async function BrandingPage({
   if (orgSnap.empty) notFound()
   const org = { id: orgSnap.docs[0].id, ...orgSnap.docs[0].data() } as Org
 
-  return <BrandingClient orgId={org.id} orgName={org.name} initialBranding={org.branding ?? {}} />
+  return (
+    <BrandingClient
+      orgId={org.id}
+      orgName={org.name}
+      initialBranding={org.branding ?? {}}
+      initialVoiceNote={org.ai_voice_note ?? ''}
+    />
+  )
 }

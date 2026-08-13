@@ -7,10 +7,17 @@ vi.mock('@/lib/auth/assert', () => ({
 }))
 
 const proposalGet = vi.fn()
+const voiceGet = vi.fn()
+const orgGet = vi.fn()
 vi.mock('@/lib/firebase-admin', () => ({
   adminDb: {
     collection: () => ({
-      doc: () => ({ collection: () => ({ doc: () => ({ get: proposalGet }) }) }),
+      doc: () => ({
+        collection: (sub: string) => ({
+          doc: () => ({ get: sub === 'ai_voice' ? voiceGet : proposalGet }),
+        }),
+        get: orgGet,
+      }),
     }),
   },
 }))
@@ -74,6 +81,8 @@ beforeEach(() => {
   proposalGet.mockResolvedValue({ exists: true, data: () => ({ id: 'p1', lead_id: 'l1', status: 'draft' }) })
   listWorkPackagesCore.mockResolvedValue([{ id: 'wp-a', name: 'A', price: 100, lines: [], created_at: 'x' }])
   listResourcesCore.mockResolvedValue([])
+  voiceGet.mockResolvedValue({ exists: false })
+  orgGet.mockResolvedValue({ exists: true, data: () => ({}) })
   finalMessage.mockResolvedValue({
     stop_reason: 'end_turn',
     content: [{ type: 'text', text: DRAFT_JSON }],
@@ -111,6 +120,20 @@ describe('generateProposalDraft', () => {
     expect(req.output_config.format.type).toBe('json_schema')
     expect(req.system[1].cache_control).toEqual({ type: 'ephemeral' })
     expect(JSON.stringify(req.messages)).toContain('call notes here')
+  })
+
+  it('inserts a voice block from the org note and voice examples when present', async () => {
+    voiceGet.mockResolvedValue({
+      exists: true,
+      data: () => ({ examples: [{ proposal_id: 'p9', title: 'Old one', text: 'Cheers!', sent_at: '2026-01-01' }] }),
+    })
+    orgGet.mockResolvedValue({ exists: true, data: () => ({ ai_voice_note: 'Warm and concise.' }) })
+    await generateProposalDraft('o1', 'p1', 'call notes here')
+    const req = streamFn.mock.calls[0][0]
+    expect(req.system).toHaveLength(3)
+    expect(req.system[1].text).toContain('Warm and concise.')
+    expect(req.system[1].text).toContain('Cheers!')
+    expect(req.system[2].cache_control).toEqual({ type: 'ephemeral' })
   })
 
   it('returns the parsed draft with server-minted composed packages and pool items', async () => {

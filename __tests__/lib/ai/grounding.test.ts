@@ -58,4 +58,17 @@ describe('buildDraftSystemBlocks', () => {
     expect(prompt.text).toMatch(/unit_price/)
     expect(prompt.text).not.toMatch(/suggested_package_ids/)
   })
+
+  it('inserts a voice block between the prompt and the cached catalog block', () => {
+    const blocks = buildDraftSystemBlocks('CATALOG', 'VOICE MATERIAL')
+    expect(blocks).toHaveLength(3)
+    expect(blocks[1].text).toContain('VOICE MATERIAL')
+    expect(blocks[1].cache_control).toBeUndefined()
+    expect(blocks[2].cache_control).toEqual({ type: 'ephemeral' })
+  })
+
+  it('omits the voice block when voice is null/absent', () => {
+    expect(buildDraftSystemBlocks('CATALOG')).toHaveLength(2)
+    expect(buildDraftSystemBlocks('CATALOG', null)).toHaveLength(2)
+  })
 })
