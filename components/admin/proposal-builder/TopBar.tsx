@@ -81,7 +81,7 @@ export function TopBar({
 
   const canSend = status === 'draft' && !locked
   const canCopyLink = status === 'sent' || status === 'accepted'
-  const canVoid = status !== 'draft' && status !== 'voided' && !locked
+  const canVoid = status !== 'draft' && status !== 'voided'
   const canDelete = status === 'draft'
 
   return (

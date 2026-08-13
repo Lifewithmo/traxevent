@@ -226,6 +226,27 @@ describe('ProposalBuilderClient locked state', () => {
   })
 })
 
+describe('ProposalBuilderClient sticky "Client sees" bar', () => {
+  it('renders unchanged alongside TotalsCanvas — always-visible-while-scrolling summary vs in-document totals', () => {
+    mount(
+      makeProposal({
+        line_items: [{ id: 'i1', description: 'Thing', quantity: 1, unit_price: 500, taxable: false }],
+        deposit: { type: 'percent', value: 50 },
+      }),
+    )
+    expect(screen.getByText('Client sees: $500.00')).toBeInTheDocument()
+    expect(screen.getByText(/Deposit: \$250\.00/)).toBeInTheDocument()
+    // TotalsCanvas (the in-document editable totals) still renders too.
+    expect(screen.getByTestId('totals-canvas')).toBeInTheDocument()
+  })
+
+  it('omits the deposit line when no deposit is set', () => {
+    mount(makeProposal({ line_items: [{ id: 'i1', description: 'Thing', quantity: 1, unit_price: 500, taxable: false }] }))
+    expect(screen.getByText('Client sees: $500.00')).toBeInTheDocument()
+    expect(screen.queryByText(/^Deposit:/)).not.toBeInTheDocument()
+  })
+})
+
 describe('ProposalBuilderClient hero composer', () => {
   it('shows the hero when AI is enabled and every block is a placeholder', () => {
     mount(

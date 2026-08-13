@@ -73,6 +73,16 @@ describe('TopBar', () => {
     expect(screen.getByRole('menuitem', { name: 'Void proposal' })).toBeDisabled()
   })
 
+  it('signed (locked) proposal still shows Void proposal in the overflow — voiding a signed proposal is deliberate product behavior', () => {
+    const onVoid = vi.fn()
+    render(<TopBar {...baseProps({ status: 'accepted', locked: true, onVoid })} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'More actions' }))
+    const menu = screen.getByRole('menu')
+    fireEvent.click(within(menu).getByText('Void proposal'))
+    expect(onVoid).toHaveBeenCalled()
+  })
+
   it('draft overflow contains Delete (-> onDelete) and not Void proposal', () => {
     const onDelete = vi.fn()
     render(<TopBar {...baseProps({ status: 'draft', locked: false, onDelete })} />)

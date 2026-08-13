@@ -329,6 +329,17 @@ export function ProposalBuilderClient({
             <TotalsCanvas draft={draft} update={update} range={range} disabled={locked} />
           </div>
         </ProposalTheme>
+
+        <div className="sticky bottom-0 mx-auto mt-6 max-w-3xl rounded-t-lg border bg-white/95 px-6 py-3 backdrop-blur">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-semibold">Client sees: {rangeLabel}</p>
+            {draft.deposit && (
+              <p className="text-xs text-muted-foreground">
+                Deposit: {money(depositAmount(range.max, draft.deposit))}
+              </p>
+            )}
+          </div>
+        </div>
       </main>
 
       <DraftComposer
