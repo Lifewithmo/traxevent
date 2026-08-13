@@ -20,8 +20,7 @@ describe('AdminSidebar workspace nav gating', () => {
   it('hides links whose module is not enabled', () => {
     render(<AdminSidebar orgSlug="acme" enabledModules={['leads', 'invoices', 'calendar']} />)
     expect(screen.getByText('Pipeline')).toBeInTheDocument()   // leads
-    // Pipeline children start collapsed off pipeline routes; expand to see them.
-    fireEvent.click(screen.getByRole('button', { name: 'Expand pipeline items' }))
+    // Sales Pipeline section (Pipeline/Proposals/Invoices) is open by default.
     expect(screen.getByText('Invoices')).toBeInTheDocument()   // invoices
     expect(screen.queryByText('Proposals')).not.toBeInTheDocument() // module off
     expect(screen.queryByText('Registrants')).not.toBeInTheDocument()
@@ -65,8 +64,8 @@ describe('Operations nav (phase 3)', () => {
         catalogLabel="Menu Packages"
       />
     )
-    expect(screen.getByText('Menu Packages')).toHaveAttribute('href', '/acme/packages')
-    expect(screen.getByText('Compliance')).toHaveAttribute('href', '/acme/compliance')
+    expect(screen.getByRole('link', { name: 'Menu Packages' })).toHaveAttribute('href', '/acme/packages')
+    expect(screen.getByRole('link', { name: 'Compliance' })).toHaveAttribute('href', '/acme/compliance')
   })
 
   it('hides the Operations section when neither module is enabled', () => {
@@ -76,7 +75,7 @@ describe('Operations nav (phase 3)', () => {
 
   it('falls back to the universal catalog label', () => {
     render(<AdminSidebar orgSlug="acme" enabledModules={['catalog']} />)
-    expect(screen.getByText('Packages')).toHaveAttribute('href', '/acme/packages')
+    expect(screen.getByRole('link', { name: 'Packages' })).toHaveAttribute('href', '/acme/packages')
   })
 
   it('shows Event Ops in the event nav when the ops page is allowed', () => {
@@ -110,10 +109,10 @@ describe('AdminSidebar Today nav', () => {
 })
 
 describe('AdminSidebar light shell', () => {
-  it('renders the light shell', () => {
+  it('renders the sidebar-token shell', () => {
     render(<AdminSidebar orgSlug="acme" />)
     const sidebar = screen.getByRole('complementary')
-    expect(sidebar).toHaveClass('bg-gray-50')
+    expect(sidebar).toHaveClass('bg-[color:var(--sidebar)]')
     expect(sidebar).not.toHaveClass('bg-gray-900')
   })
 })

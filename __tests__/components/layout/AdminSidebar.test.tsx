@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, within, fireEvent } from '@testing-library/react'
 import { describe, it, expect, vi } from 'vitest'
 import { AdminSidebar } from '@/components/layout/AdminSidebar'
 import { getEventType } from '@/lib/event-types'
@@ -61,7 +61,7 @@ describe('AdminSidebar — workspace nav (no eventSlug)', () => {
   }
 
   function sectionFor(label: string) {
-    return screen.getByText(label, { selector: 'p' }).closest('div')!
+    return screen.getByText(label, { selector: 'p, span' }).closest('div')!
   }
 
   it('Quick Links order: Calendar, Clients, Events, Today, Registrants', () => {
@@ -100,5 +100,41 @@ describe('AdminSidebar — workspace nav (no eventSlug)', () => {
   it('omits Operations entirely when none of its modules are enabled', () => {
     renderNav(['calendar'])
     expect(screen.queryByText('Operations')).not.toBeInTheDocument()
+  })
+
+  it('renders an icon with every workspace nav item', () => {
+    renderNav(['calendar', 'clients', 'events', 'leads', 'registrants', 'vendors', 'forms', 'reports'])
+    for (const label of ['Calendar', 'Clients', 'Events', 'Today', 'Pipeline', 'Reports']) {
+      const link = screen.getByRole('link', { name: label })
+      expect(link.querySelector('svg')).toBeInTheDocument()
+    }
+  })
+
+  it('collapses the Operations section', () => {
+    renderNav(['vendors', 'forms'])
+    expect(screen.getByText('Vendors')).toBeInTheDocument()
+    expect(screen.getByText('Forms')).toBeInTheDocument()
+
+    const toggle = screen.getByRole('button', { name: 'Operations' })
+    fireEvent.click(toggle)
+    expect(screen.queryByText('Vendors')).not.toBeInTheDocument()
+    expect(screen.queryByText('Forms')).not.toBeInTheDocument()
+
+    fireEvent.click(toggle)
+    expect(screen.getByText('Vendors')).toBeInTheDocument()
+    expect(screen.getByText('Forms')).toBeInTheDocument()
+  })
+
+  it('collapses to an icon rail and persists', () => {
+    window.localStorage.removeItem('tx-sidebar-collapsed')
+    renderNav(['calendar', 'clients', 'events', 'leads', 'registrants'])
+
+    const collapseButton = screen.getByRole('button', { name: 'Collapse navigation' })
+    fireEvent.click(collapseButton)
+
+    const pipelineLink = screen.getByLabelText('Pipeline')
+    expect(pipelineLink.tagName).toBe('A')
+    expect(pipelineLink.textContent).toBe('')
+    expect(window.localStorage.getItem('tx-sidebar-collapsed')).toBe('1')
   })
 })
