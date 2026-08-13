@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic'
 import { notFound } from 'next/navigation'
 import { adminDb } from '@/lib/firebase-admin'
 import { getProposal } from '@/actions/proposals'
+import { getLead } from '@/actions/leads'
 import { ProposalBuilderClient } from '@/components/admin/proposal-builder/ProposalBuilderClient'
 import { isAiEnabled } from '@/lib/ai/client'
 import type { Org } from '@/lib/types'
@@ -16,6 +17,7 @@ export default async function ProposalBuilderPage({ params }: { params: Promise<
   const proposal = await getProposal(orgId, proposalId)
   if (!proposal || proposal.lead_id !== leadId) notFound()
   const aiEnabled = isAiEnabled()
+  const lead = await getLead(orgId, leadId)
   return (
     <ProposalBuilderClient
       orgId={orgId}
@@ -24,6 +26,7 @@ export default async function ProposalBuilderPage({ params }: { params: Promise<
       proposal={proposal}
       branding={branding}
       aiEnabled={aiEnabled}
+      leadContact={lead ? { name: lead.name, email: lead.email } : null}
     />
   )
 }

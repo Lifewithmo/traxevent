@@ -36,6 +36,9 @@ export function ProposalBuilderClient({
   proposal,
   branding,
   aiEnabled = false,
+  // Wired in Task 9 (Review & Send dialog); accepted now so the builder
+  // page can pass it and the tree compiles.
+  leadContact = null,
 }: {
   orgId: string
   orgSlug: string
@@ -43,8 +46,10 @@ export function ProposalBuilderClient({
   proposal: Proposal
   branding?: OrgBranding
   aiEnabled?: boolean
+  leadContact?: { name: string; email?: string } | null
 }) {
   const router = useRouter()
+  void leadContact
 
   // Locked whenever a signature is in progress or complete — `pending_signature`
   // means a before_accept deposit payment is in flight; editing during that
