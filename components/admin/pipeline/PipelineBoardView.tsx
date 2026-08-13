@@ -216,9 +216,6 @@ export function PipelineBoardView({
       </div>
 
       <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
-        <p className="text-xs text-muted-foreground">
-          {`${openCount} open · ${money(openValue)} · ${monthly.wonCount} booked this month`}
-        </p>
         <ClosedMonthSummary orgSlug={orgSlug} monthly={monthly} />
       </div>
     </div>

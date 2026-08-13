@@ -28,6 +28,5 @@ describe('PipelineListClient', () => {
     expect(screen.getByText('Needs attention')).toBeInTheDocument()
     expect(screen.getByText('Sep 4 · 60 guests · no task, no touch in 11 days')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /set next step/i })).toBeInTheDocument()
-    expect(screen.getByText(/1 open · \$1,180 · 3 booked this month/)).toBeInTheDocument()
   })
 })
