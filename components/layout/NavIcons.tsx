@@ -2,7 +2,7 @@
 // (ui_kits/admin/NavIcons.jsx). Path data is normative; do not swap for a library.
 import type { ReactNode } from 'react'
 
-const P: Record<string, ReactNode> = {
+const P = {
   today: (<><circle cx="8" cy="8" r="6.2" /><path d="M8 4.6V8l2.4 1.6" /></>),
   calendar: (<><rect x="2" y="3.2" width="12" height="10.8" rx="1.8" /><path d="M2 6.4h12M5.4 1.8v2.6M10.6 1.8v2.6" /></>),
   clients: (<><circle cx="8" cy="5.6" r="2.6" /><path d="M2.8 13.6c0-2.5 2.3-4.2 5.2-4.2s5.2 1.7 5.2 4.2" /></>),
@@ -25,7 +25,7 @@ const P: Record<string, ReactNode> = {
   types: (<><path d="M2.6 2.6h4.2v4.2H2.6zM9.2 2.6h4.2v4.2H9.2zM2.6 9.2h4.2v4.2H2.6z" /><circle cx="11.3" cy="11.3" r="2.1" /></>),
   departments: (<><rect x="5.4" y="1.8" width="5.2" height="3.6" rx="1" /><path d="M8 5.4v2.4M3.6 13.2v-2.4h8.8v2.4M8 7.8v3" /><rect x="1.8" y="12.4" width="3.6" height="1.8" rx=".8" /><rect x="10.6" y="12.4" width="3.6" height="1.8" rx=".8" /></>),
   signout: (<><path d="M6.2 2.4H3.6a1.4 1.4 0 0 0-1.4 1.4v8.4a1.4 1.4 0 0 0 1.4 1.4h2.6" /><path d="M10 11.2 13.4 8 10 4.8M13.2 8H6" /></>),
-}
+} satisfies Record<string, ReactNode>
 
 export type NavIconName = keyof typeof P
 
