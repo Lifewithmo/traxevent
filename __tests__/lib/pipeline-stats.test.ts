@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { wonValueInMonth, bookedAhead, backlogByMonth, addMonths, addDaysYmd } from '@/lib/pipeline-stats'
+import { wonValueInMonth, bookedAhead, backlogByMonth, backlogWindow, addMonths, addDaysYmd } from '@/lib/pipeline-stats'
 import type { Lead } from '@/lib/types'
 
 function lead(over: Partial<Lead>): Lead {
@@ -72,5 +72,26 @@ describe('backlogByMonth', () => {
     expect(rows).toHaveLength(12)
     expect(rows[0]).toMatchObject({ ym: '2026-08', label: 'Aug' })
     expect(rows[11]).toMatchObject({ ym: '2027-07', label: 'Jul' })
+  })
+})
+
+describe('backlogWindow', () => {
+  it('spans -5..+6 around the current month', () => {
+    const rows = backlogWindow([], '2026-08-13')
+    expect(rows).toHaveLength(12)
+    expect(rows[0].ym).toBe('2026-03')
+    expect(rows[5].ym).toBe('2026-08')
+    expect(rows[11].ym).toBe('2027-02')
+  })
+
+  it('buckets booked and open value the same way as backlogByMonth', () => {
+    const today = '2026-08-12'
+    const leads = [
+      lead({ stage: 'closed_won', event_date: '2026-08-30', estimated_value: 1000 }),
+      lead({ stage: 'proposal', event_date: '2026-03-14', estimated_value: 2000 }),
+    ]
+    const rows = backlogWindow(leads, today)
+    expect(rows[0]).toMatchObject({ ym: '2026-03', booked: 0, open: 2000 })
+    expect(rows[5]).toMatchObject({ ym: '2026-08', booked: 1000, open: 0 })
   })
 })
