@@ -81,16 +81,16 @@ EventTrax pivot (neutralization, multi-brand, ops core). Detailed designs live i
   (increments 2–5 queued: recipes/yields, vendor price books, proposal
   `catalog_ref`, one-door AI intake).
 
-## In flight
+- **Pipeline & sidebar mock parity** (PR #80, merged 2026-08-13) — production
+  catches up to the design-system pipeline mock: sidebar IA (Operations =
+  Vendors/Menu Packages/Forms/Compliance; Events folds into Quick Links; first
+  `'forms'` module + org-level Forms link), 4th "Open pipeline" KPI,
+  rolling-12-month "Revenue by month" chart, stage-column totals in headers,
+  shared won/lost summary on both views, mock-voice health copy, intake-card
+  dedupe (spec: `superpowers/specs/2026-08-13-pipeline-mock-parity-design.md`).
+  Still old-voice by choice: `actions/leads.ts` activity-log `Waiting: {reason}`.
 
-- **Pipeline & sidebar mock parity** (branch `pipeline-mock-parity`, PR open
-  2026-08-13) — production catches up to the design-system pipeline mock:
-  sidebar IA (Operations = Vendors/Menu Packages/Forms/Compliance; Events folds
-  into Quick Links; first `'forms'` module + org-level Forms link), 4th
-  "Open pipeline" KPI, rolling-12-month "Revenue by month" chart, stage-column
-  totals in headers, shared won/lost summary on both views, mock-voice health
-  copy, intake-card dedupe
-  (spec: `superpowers/specs/2026-08-13-pipeline-mock-parity-design.md`).
+## In flight
 
 - **Pipeline KPI header** (branch `claude/pipeline-kpi-header`) — first-principles
   header on the pipeline page: booked this month (vs same month last year),
