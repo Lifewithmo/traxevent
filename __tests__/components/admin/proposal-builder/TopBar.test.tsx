@@ -64,6 +64,15 @@ describe('TopBar', () => {
     expect(within(menu).queryByText('Delete')).not.toBeInTheDocument()
   })
 
+  it('busy disables the destructive overflow items: Delete (draft) and Void proposal (sent)', () => {
+    const { rerender } = render(<TopBar {...baseProps({ status: 'draft', locked: false, busy: true })} />)
+    fireEvent.click(screen.getByRole('button', { name: 'More actions' }))
+    expect(screen.getByRole('menuitem', { name: 'Delete' })).toBeDisabled()
+
+    rerender(<TopBar {...baseProps({ status: 'sent', locked: false, busy: true })} />)
+    expect(screen.getByRole('menuitem', { name: 'Void proposal' })).toBeDisabled()
+  })
+
   it('draft overflow contains Delete (-> onDelete) and not Void proposal', () => {
     const onDelete = vi.fn()
     render(<TopBar {...baseProps({ status: 'draft', locked: false, onDelete })} />)

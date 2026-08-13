@@ -193,6 +193,7 @@ export function TopBar({
                   size="sm"
                   variant="ghost"
                   className="w-full justify-start text-destructive"
+                  disabled={busy}
                   onClick={() => {
                     onVoid()
                     setMenuOpen(false)
@@ -208,6 +209,7 @@ export function TopBar({
                   size="sm"
                   variant="ghost"
                   className="w-full justify-start text-destructive"
+                  disabled={busy}
                   onClick={() => {
                     onDelete()
                     setMenuOpen(false)
