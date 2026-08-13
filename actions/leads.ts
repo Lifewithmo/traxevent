@@ -99,7 +99,7 @@ export async function updateLead(orgId: string, leadId: string, updates: LeadUpd
     ...(updates.stage && prevStage ? closedAtPatch(prevStage, updates.stage, new Date().toISOString()) : {}),
   })
   if (updates.stage && updates.stage !== prevStage) {
-    await logActivity(orgId, { parent_type: 'opportunity', parent_id: leadId, kind: 'stage', summary: `Stage → ${updates.stage}` })
+    await logActivity(orgId, { parent_type: 'opportunity', parent_id: leadId, kind: 'stage', summary: `Stage → ${updates.stage}`, stage: updates.stage })
   }
 }
 
@@ -112,7 +112,7 @@ export async function setLeadStage(orgId: string, leadId: string, stage: LeadSta
     stage,
     ...(prevStage ? closedAtPatch(prevStage, stage, new Date().toISOString()) : {}),
   })
-  await logActivity(orgId, { parent_type: 'opportunity', parent_id: leadId, kind: 'stage', summary: `Stage → ${stage}` })
+  await logActivity(orgId, { parent_type: 'opportunity', parent_id: leadId, kind: 'stage', summary: `Stage → ${stage}`, stage })
 }
 
 export async function markLeadLost(

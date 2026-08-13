@@ -56,6 +56,17 @@ describe('logActivity', () => {
     )
   })
 
+  it('persists structured stage when provided', async () => {
+    await logActivity('o1', { parent_type: 'opportunity', parent_id: 'l1', kind: 'stage', summary: 'Stage → proposal', stage: 'proposal' })
+    expect(activityDocSpy.set).toHaveBeenCalledWith(expect.objectContaining({ stage: 'proposal' }))
+  })
+
+  it('does not write a stage key when none is provided', async () => {
+    await logActivity('o1', { parent_type: 'opportunity', parent_id: 'l1', kind: 'note', summary: 'hi' })
+    const payload = activityDocSpy.set.mock.calls[0][0]
+    expect('stage' in payload).toBe(false)
+  })
+
   it('is best-effort: does not reject when the underlying write fails', async () => {
     activityDocSpy.set.mockRejectedValueOnce(new Error('firestore down'))
     await expect(

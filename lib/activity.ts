@@ -17,12 +17,15 @@ export async function logActivity(
     parent_id: string
     kind: ActivityEvent['kind']
     summary: string
+    stage?: ActivityEvent['stage']
   }
 ): Promise<void> {
   const id = randomBytes(8).toString('hex')
   const created_at = new Date().toISOString()
   try {
-    await activityRef(orgId).doc(id).set({ id, created_at, ...e })
+    // Firestore rejects undefined values; only spread stage when present.
+    const { stage, ...rest } = e
+    await activityRef(orgId).doc(id).set({ id, created_at, ...rest, ...(stage ? { stage } : {}) })
     if (e.parent_type === 'opportunity') {
       // Denormalized freshness signal for the pipeline; best-effort like the rest.
       await adminDb.collection('orgs').doc(orgId).collection('leads')

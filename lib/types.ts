@@ -691,6 +691,7 @@ export interface ActivityEvent {
   parent_id: string
   kind: 'stage' | 'task' | 'note' | 'email' | 'form' | 'created' | 'waiting' | 'converted' | 'lost' | 'nudge'
   summary: string
+  stage?: LeadStage   // structured stage for kind:'stage' events; summary string is display-only
   created_at: string
 }
 
