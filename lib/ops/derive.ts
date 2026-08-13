@@ -80,7 +80,8 @@ export function computeShoppingList(
 ): OpsListItem[] {
   const byId = resourceById(resources)
   const canonicalTotals = new Map<string, number>()        // resource_id → qty in canonical unit
-  const stuck = new Map<string, OpsListItem>()             // `${resource_id}|${unit}` → unconverted item
+  const displayUnit = new Map<string, OpsListItem>()        // resource_id → contributions already in the resource's own display unit (no conversion path, but not foreign)
+  const stuck = new Map<string, OpsListItem>()             // `${resource_id}|${unit}` → unconverted, genuinely foreign-unit item
   const legacy = new Map<string, OpsListItem>()            // unknown resources: pre-units behavior
 
   for (const p of packages) {
@@ -99,6 +100,16 @@ export function computeShoppingList(
         const canon = convert(c, CANONICAL_UNIT[dim], res.conversions ?? [])
         if (canon) {
           canonicalTotals.set(res.id, (canonicalTotals.get(res.id) ?? 0) + canon.qty)
+        } else if (normalizeUnit(c.unit) === normalizeUnit(res.unit ?? '')) {
+          // Same unit as the resource's own display unit (e.g. a custom free-text
+          // unit like 'bag' with no universal conversion): NOT a genuine
+          // conversion gap — merge and ceil/round like any other resolved total,
+          // never flag (spec: legacy custom-unit resources must not regress).
+          const existing = displayUnit.get(res.id)
+          if (existing) existing.qty += c.qty
+          else displayUnit.set(res.id, {
+            resource_id: res.id, name: res.name, qty: c.qty, unit: normalizeUnit(c.unit), checked: false,
+          })
         } else {
           const key = `${res.id}|${normalizeUnit(c.unit)}`
           const existing = stuck.get(key)
@@ -119,6 +130,12 @@ export function computeShoppingList(
     const rounded = dim === 'count' ? Math.ceil(total) : total
     const display = formatQuantity({ qty: rounded, unit: CANONICAL_UNIT[dim] }, res.unit)
     items.push({ resource_id: id, name: res.name, qty: display.qty, unit: display.unit, checked: false })
+  }
+  for (const [id, item] of displayUnit) {
+    const res = byId.get(id)!
+    const dim = resolveDimension(res)
+    const qty = dim === 'count' ? Math.ceil(item.qty) : Math.round(item.qty * 100) / 100
+    items.push({ ...item, qty })
   }
   for (const item of stuck.values()) {
     items.push({ ...item, qty: Math.round(item.qty * 100) / 100 })

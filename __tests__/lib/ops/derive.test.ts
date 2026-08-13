@@ -58,6 +58,33 @@ describe('computeShoppingList', () => {
     }])
   })
 
+  it('keeps a legacy custom display-unit resource merged, ceiled, and unflagged (no regression pre-units)', () => {
+    const bagResources: OpsResource[] = [
+      ...resources,
+      { id: 'res-bags', name: 'Bean bags', kind: 'consumable', unit: 'bag', created_at: 't' },
+    ]
+    const p = pkg({ lines: [{ kind: 'consumable', resource_id: 'res-bags', qty_per_guest: 0.5 }] })
+    const list = computeShoppingList([p], bagResources, 101)
+    // 0.5 × 101 = 50.5 → ceil → 51 bag; 'bag' has no universal conversion but
+    // matches the resource's own display unit, so it must not be flagged.
+    expect(list).toEqual([{ resource_id: 'res-bags', name: 'Bean bags', qty: 51, unit: 'bag', checked: false }])
+  })
+
+  it('keeps a genuinely foreign unit flagged even when the resource also has display-unit contributions', () => {
+    const bagResources: OpsResource[] = [
+      ...resources,
+      { id: 'res-bags', name: 'Bean bags', kind: 'consumable', unit: 'bag', created_at: 't' },
+    ]
+    const a = pkg({ id: 'a', lines: [{ kind: 'consumable', resource_id: 'res-bags', qty_per_guest: 0.5 }] })
+    const b = pkg({ id: 'b', lines: [{ kind: 'consumable', resource_id: 'res-bags', qty_per_guest: { qty: 1, unit: 'scoop' } }] })
+    const list = computeShoppingList([a, b], bagResources, 101)
+    expect(list).toEqual(expect.arrayContaining([
+      { resource_id: 'res-bags', name: 'Bean bags', qty: 51, unit: 'bag', checked: false },
+      { resource_id: 'res-bags', name: 'Bean bags', qty: 101, unit: 'scoop', checked: false, needs_conversion: true },
+    ]))
+    expect(list).toHaveLength(2)
+  })
+
   it('ignores equipment and labor lines; unknown resources become named placeholders', () => {
     const p = pkg({
       lines: [
