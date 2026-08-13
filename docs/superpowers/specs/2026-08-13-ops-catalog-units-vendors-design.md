@@ -75,7 +75,7 @@ Ambiguity rule: if multiple paths exist, shortest path wins; ties broken by pref
 
 ### 3.5 Display
 
-Rollup totals render in the most human unit of the ingredient's dimension: largest unit where the quantity is ≥ 1 (5,678 ml → "1.5 gal", 380 g → "13.4 oz"). Exception: count totals always render as `each` — "12.5 dozen" is not a human quantity; `dozen` is an input convenience only. Entered quantities always render as entered.
+Rollup totals render in the most human unit of the ingredient's dimension, **within the unit system (metric vs US) of the ingredient's display unit**: largest such unit where the quantity is ≥ 1 (display unit 'gal': 5,678 ml → "1.5 gal"; display unit 'oz': 380 g → "13.4 oz", never "0.38 kg"). Exception: count totals always render as `each` — "12.5 dozen" is not a human quantity; `dozen` is an input convenience only. Entered quantities always render as entered.
 
 ## 4. Recipes and packages
 
