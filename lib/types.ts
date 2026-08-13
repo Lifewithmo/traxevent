@@ -714,6 +714,28 @@ export interface Vendor {
 
 // ── Operations core (spec 2026-08-05 §3) ─────────────────────────────
 
+// ── Units & conversions (spec 2026-08-13 §3) ─────────────────────────
+
+export type Dimension = 'volume' | 'weight' | 'count'
+
+/** A physical quantity: amount + unit string (normalized lowercase). */
+export interface Quantity {
+  qty: number
+  unit: string
+}
+
+/**
+ * Ingredient-specific conversion, AI-inferred or operator-entered:
+ * density (weight↔volume), yield (1 lb beans → 40 shot), or custom
+ * serving units (1 keg → 124 pint). Never duplicates the universal table.
+ */
+export interface ConversionBridge {
+  from: Quantity
+  to: Quantity
+  source: 'ai' | 'operator'
+  note?: string
+}
+
 export type ResourceKind = 'consumable' | 'reusable' | 'serialized'
 
 export interface OpsResource {
