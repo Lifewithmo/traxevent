@@ -49,4 +49,27 @@ describe('StageChip', () => {
     expect(items).toEqual(['Inquiry', 'Consultation', 'Proposal', 'Closed Won', 'Mark lost'])
     expect(menu).toBeInTheDocument()
   })
+
+  it('closes on an outside pointerdown', () => {
+    render(<StageChip stage="inquiry" ariaContext="Test opp" onStage={vi.fn()} onMarkLost={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: /Stage: Inquiry/ }))
+    expect(screen.getByRole('menu')).toBeInTheDocument()
+    fireEvent.pointerDown(document.body)
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+  })
+
+  it('closes on scroll', () => {
+    render(<StageChip stage="inquiry" ariaContext="Test opp" onStage={vi.fn()} onMarkLost={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: /Stage: Inquiry/ }))
+    expect(screen.getByRole('menu')).toBeInTheDocument()
+    fireEvent.scroll(document)
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+  })
+
+  it('does not close on a pointerdown inside the menu', () => {
+    render(<StageChip stage="inquiry" ariaContext="Test opp" onStage={vi.fn()} onMarkLost={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: /Stage: Inquiry/ }))
+    fireEvent.pointerDown(screen.getByRole('menuitem', { name: 'Consultation' }))
+    expect(screen.getByRole('menu')).toBeInTheDocument()
+  })
 })
