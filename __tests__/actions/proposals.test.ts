@@ -6,6 +6,8 @@ const proposalDocUpdateSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefine
 const proposalDocDeleteSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const listProposalsSpy = vi.hoisted(() => vi.fn())
 const listAllProposalsSpy = vi.hoisted(() => vi.fn())
+const voiceDocGetSpy = vi.hoisted(() => vi.fn().mockResolvedValue({ exists: false }))
+const voiceDocSetSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 
 vi.mock('@/lib/firebase-admin', () => {
   const proposalsCol = {
@@ -21,9 +23,16 @@ vi.mock('@/lib/firebase-admin', () => {
     }),
     orderBy: vi.fn().mockReturnValue({ get: listAllProposalsSpy }),
   }
+  const aiVoiceCol = {
+    doc: vi.fn().mockReturnValue({
+      get: voiceDocGetSpy,
+      set: voiceDocSetSpy,
+    }),
+  }
   const orgDoc = {
     collection: vi.fn().mockImplementation((sub: string) => {
       if (sub === 'proposals') return proposalsCol
+      if (sub === 'ai_voice') return aiVoiceCol
       return {}
     }),
   }
@@ -61,6 +70,7 @@ describe('proposals actions', () => {
     // callers here who never set up their own get() response. Tests that
     // care about a specific stored state override this explicitly.
     proposalDocGetSpy.mockResolvedValue({ exists: true, data: () => ({}) })
+    voiceDocGetSpy.mockResolvedValue({ exists: false })
   })
 
   it('createProposal writes a proposal with generated id, token, org/lead, draft status, created_at, and passed fields', async () => {
@@ -137,6 +147,57 @@ describe('proposals actions', () => {
     expect(proposalDocUpdateSpy).toHaveBeenCalledWith(
       expect.objectContaining({ status: 'sent', updated_at: expect.any(String) })
     )
+  })
+
+  describe('sendProposal voice capture', () => {
+    it('writes a voice example distilled from the sent blocks (best-effort)', async () => {
+      proposalDocGetSpy.mockResolvedValue({
+        exists: true,
+        data: () => ({
+          id: 'p1',
+          title: 'Wedding Package',
+          status: 'draft',
+          blocks: [{ id: '1', type: 'paragraph', text: 'A full espresso bar with two baristas.' }],
+        }),
+      })
+      await sendProposal('org-1', 'p1')
+      expect(voiceDocSetSpy).toHaveBeenCalledWith({
+        examples: [
+          expect.objectContaining({
+            proposal_id: 'p1',
+            title: 'Wedding Package',
+            text: expect.stringContaining('espresso bar'),
+            sent_at: expect.any(String),
+          }),
+        ],
+      })
+    })
+
+    it('is a no-op when there are no blocks', async () => {
+      proposalDocGetSpy.mockResolvedValue({
+        exists: true,
+        data: () => ({ id: 'p1', status: 'draft' }),
+      })
+      await sendProposal('org-1', 'p1')
+      expect(voiceDocSetSpy).not.toHaveBeenCalled()
+    })
+
+    it('never fails the send when the voice write throws', async () => {
+      proposalDocGetSpy.mockResolvedValue({
+        exists: true,
+        data: () => ({
+          id: 'p1',
+          title: 'Wedding Package',
+          status: 'draft',
+          blocks: [{ id: '1', type: 'paragraph', text: 'A full espresso bar with two baristas.' }],
+        }),
+      })
+      voiceDocGetSpy.mockRejectedValueOnce(new Error('firestore down'))
+      await expect(sendProposal('org-1', 'p1')).resolves.toBeUndefined()
+      expect(proposalDocUpdateSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'sent' })
+      )
+    })
   })
 
   it('deleteProposal calls .delete()', async () => {

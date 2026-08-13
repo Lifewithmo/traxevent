@@ -6,7 +6,8 @@ import { generateAccessToken } from '@/lib/tokens'
 import { assertOrgMember, assertOrgAdmin } from '@/lib/auth/assert'
 import { updateProposalDraftCore } from '@/lib/proposals/draft-core'
 import type { ProposalDraftInput } from '@/lib/proposals/draft'
-import type { Proposal, ProposalLineItem, ProposalPackage, ProposalDiscount, ProposalDeposit } from '@/lib/types'
+import type { Proposal, ProposalLineItem, ProposalPackage, ProposalDiscount, ProposalDeposit, ProposalBlock } from '@/lib/types'
+import { blocksToVoiceText, pushVoiceExample, type VoiceExample } from '@/lib/ai/voice'
 
 function proposalsRef(orgId: string) {
   return adminDb.collection('orgs').doc(orgId).collection('proposals')
@@ -79,6 +80,30 @@ export async function sendProposal(orgId: string, proposalId: string): Promise<v
     }
   }
   await ref.update({ status: 'sent', updated_at: new Date().toISOString() })
+
+  // Voice capture (redesign spec §4): the sent document's final text becomes
+  // few-shot voice material for future AI drafts. Best-effort — a capture
+  // failure must never fail the send.
+  try {
+    const blocks = (snap?.exists ? ((snap.data() as Proposal).blocks ?? []) : []) as ProposalBlock[]
+    const text = blocksToVoiceText(blocks)
+    if (text.trim()) {
+      const voiceRef = adminDb.collection('orgs').doc(orgId).collection('ai_voice').doc('examples')
+      const voiceSnap = await voiceRef.get()
+      const existing = (voiceSnap.exists ? (voiceSnap.data()?.examples ?? []) : []) as VoiceExample[]
+      const title = (snap?.exists ? (snap.data() as Proposal).title : undefined) ?? 'Untitled proposal'
+      await voiceRef.set({
+        examples: pushVoiceExample(existing, {
+          proposal_id: proposalId,
+          title,
+          text,
+          sent_at: new Date().toISOString(),
+        }),
+      })
+    }
+  } catch {
+    // non-fatal
+  }
 }
 
 // Voids a proposal without deleting it — retains the record with a cause
