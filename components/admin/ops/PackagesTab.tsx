@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { createWorkPackage, updateWorkPackage, deleteWorkPackage } from '@/actions/work-packages'
 import { formatMoney } from '@/lib/utils'
+import { asQuantity, qtyValue, unitOptionsForResource } from '@/lib/ops/units'
 import type { OpsResource, WorkPackage, WorkPackageLine, ChecklistTemplate } from '@/lib/types'
 
 interface PackagesTabProps {
@@ -40,9 +41,9 @@ function lineSummary(line: WorkPackageLine, resourceById: Map<string, OpsResourc
   const r = resourceById.get(line.resource_id)
   const name = r?.name ?? line.resource_id
   if (line.kind === 'consumable') {
-    const unit = r?.unit ? `${r.unit} ` : ''
-    const base = line.base_qty ? ` + ${line.base_qty} base` : ''
-    return `${name}: ${line.qty_per_guest} ${unit}× guests${base}`
+    const per = asQuantity(line.qty_per_guest, r?.unit ?? 'each')
+    const base = line.base_qty !== undefined ? asQuantity(line.base_qty, per.unit) : undefined
+    return `${name}: ${per.qty} ${per.unit} × guests${base ? ` + ${base.qty} ${base.unit} base` : ''}`
   }
   return `${name} × ${line.qty}`
 }
@@ -50,7 +51,7 @@ function lineSummary(line: WorkPackageLine, resourceById: Map<string, OpsResourc
 /** Every line has the fields it needs to be saved — gates the Save button. */
 function linesComplete(lines: WorkPackageLine[]): boolean {
   return lines.every((l) => {
-    if (l.kind === 'consumable') return l.resource_id !== '' && l.qty_per_guest > 0
+    if (l.kind === 'consumable') return l.resource_id !== '' && qtyValue(l.qty_per_guest) > 0
     if (l.kind === 'equipment') return l.resource_id !== '' && l.qty > 0
     return l.role.trim() !== '' && l.count > 0
   })
@@ -79,6 +80,11 @@ export function PackagesTab({ orgId, isAdmin, packages: initial, resources, temp
 
   function setLine(i: number, line: WorkPackageLine) {
     setDraft((d) => d && { ...d, lines: d.lines.map((l, idx) => (idx === i ? line : l)) })
+  }
+
+  function lineUnit(line: Extract<WorkPackageLine, { kind: 'consumable' }>): string {
+    if (typeof line.qty_per_guest === 'object') return line.qty_per_guest.unit
+    return resourceById.get(line.resource_id)?.unit ?? 'each'
   }
 
   // CreateWorkPackageInput has no null variants — omit unset optional fields entirely.
@@ -160,7 +166,15 @@ export function PackagesTab({ orgId, isAdmin, packages: initial, resources, temp
       max_guests: p.max_guests !== undefined ? String(p.max_guests) : '',
       setup_minutes: p.setup_minutes !== undefined ? String(p.setup_minutes) : '',
       teardown_minutes: p.teardown_minutes !== undefined ? String(p.teardown_minutes) : '',
-      lines: p.lines,
+      lines: p.lines.map((l): WorkPackageLine => {
+        if (l.kind !== 'consumable') return l
+        const unit = typeof l.qty_per_guest === 'object' ? l.qty_per_guest.unit : (resourceById.get(l.resource_id)?.unit ?? 'each')
+        return {
+          ...l,
+          qty_per_guest: asQuantity(l.qty_per_guest, unit),
+          ...(l.base_qty !== undefined ? { base_qty: asQuantity(l.base_qty, unit) } : {}),
+        }
+      }),
       checklist_template_ids: p.checklist_template_ids ?? [],
     })
   }
@@ -253,7 +267,15 @@ export function PackagesTab({ orgId, isAdmin, packages: initial, resources, temp
                       <select
                         aria-label={`Consumable ${i + 1} resource`}
                         value={line.resource_id}
-                        onChange={(e) => setLine(i, { ...line, resource_id: e.target.value })}
+                        onChange={(e) => {
+                          const unit = resourceById.get(e.target.value)?.unit ?? 'each'
+                          setLine(i, {
+                            ...line,
+                            resource_id: e.target.value,
+                            qty_per_guest: { qty: qtyValue(line.qty_per_guest), unit },
+                            ...(line.base_qty !== undefined ? { base_qty: { qty: qtyValue(line.base_qty), unit } } : {}),
+                          })
+                        }}
                         className="h-9 rounded-md border border-gray-300 px-2 text-sm"
                       >
                         <option value="">Pick a consumable…</option>
@@ -262,18 +284,33 @@ export function PackagesTab({ orgId, isAdmin, packages: initial, resources, temp
                       <Input
                         aria-label={`Consumable ${i + 1} qty per guest`}
                         type="number" step="0.01" className="w-24" placeholder="per guest"
-                        value={line.qty_per_guest || ''}
-                        onChange={(e) => setLine(i, { ...line, qty_per_guest: Number(e.target.value) })}
+                        value={qtyValue(line.qty_per_guest) || ''}
+                        onChange={(e) => setLine(i, { ...line, qty_per_guest: { qty: Number(e.target.value), unit: lineUnit(line) } })}
                       />
+                      <select
+                        aria-label={`Consumable ${i + 1} unit`}
+                        value={lineUnit(line)}
+                        onChange={(e) => setLine(i, {
+                          ...line,
+                          qty_per_guest: { qty: qtyValue(line.qty_per_guest), unit: e.target.value },
+                          ...(line.base_qty !== undefined ? { base_qty: { qty: qtyValue(line.base_qty), unit: e.target.value } } : {}),
+                        })}
+                        className="h-9 rounded-md border border-gray-300 px-2 text-sm"
+                      >
+                        {(resourceById.has(line.resource_id)
+                          ? unitOptionsForResource(resourceById.get(line.resource_id)!)
+                          : ['each']
+                        ).map((u) => <option key={u} value={u}>{u}</option>)}
+                      </select>
                       <span className="text-sm text-gray-500">× guests</span>
                       <Input
                         aria-label={`Consumable ${i + 1} base qty`}
                         type="number" step="0.01" className="w-20" placeholder="base"
-                        value={line.base_qty ?? ''}
+                        value={line.base_qty !== undefined ? qtyValue(line.base_qty) : ''}
                         onChange={(e) => {
                           const v = e.target.value
                           const { base_qty: _drop, ...rest } = line
-                          setLine(i, v === '' ? rest : { ...rest, base_qty: Number(v) })
+                          setLine(i, v === '' ? rest : { ...rest, base_qty: { qty: Number(v), unit: lineUnit(line) } })
                         }}
                       />
                     </>
@@ -322,7 +359,7 @@ export function PackagesTab({ orgId, isAdmin, packages: initial, resources, temp
               ))}
               <div className="flex gap-2">
                 <Button variant="outline" size="sm"
-                  onClick={() => setDraft({ ...draft, lines: [...draft.lines, { kind: 'consumable', resource_id: '', qty_per_guest: 0 }] })}>
+                  onClick={() => setDraft({ ...draft, lines: [...draft.lines, { kind: 'consumable', resource_id: '', qty_per_guest: { qty: 0, unit: 'each' } }] })}>
                   Add consumable
                 </Button>
                 <Button variant="outline" size="sm"
