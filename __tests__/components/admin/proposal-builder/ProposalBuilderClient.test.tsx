@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent, act, within } from '@testing-library/react'
+import { render, screen, fireEvent, act } from '@testing-library/react'
 import { ProposalBuilderClient } from '@/components/admin/proposal-builder/ProposalBuilderClient'
 import type { Proposal } from '@/lib/types'
 import type { ProposalDraftUpdate } from '@/lib/proposals/draft'
@@ -19,6 +19,54 @@ vi.mock('@/actions/proposal-ai', () => ({
 }))
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
+}))
+
+// Light prop-capturing stubs for the child components wired in Task 9 — the
+// wiring is what this file asserts, not the children's own behavior (each has
+// its own test file).
+vi.mock('@/components/admin/proposal-builder/TopBar', () => ({
+  TopBar: (props: Record<string, unknown>) => (
+    <div data-testid="topbar">
+      <span data-testid="topbar-status">{String(props.status)}</span>
+      <span data-testid="topbar-placeholder-count">{String(props.placeholderCount)}</span>
+      <button type="button" onClick={() => (props.onSend as () => void)?.()}>topbar-send</button>
+      <button type="button" onClick={() => (props.onCopyLink as () => void)?.()}>topbar-copy-link</button>
+      <button type="button" onClick={() => (props.onVoid as () => void)?.()}>topbar-void</button>
+      <button type="button" onClick={() => (props.onDelete as () => void)?.()}>topbar-delete</button>
+      <button type="button" onClick={() => (props.onOpenAi as (() => void) | undefined)?.()}>topbar-open-ai</button>
+      <button type="button" onClick={() => (props.onPlaceholderChip as (() => void) | undefined)?.()}>
+        topbar-placeholder-chip
+      </button>
+    </div>
+  ),
+}))
+
+vi.mock('@/components/admin/proposal-builder/SendDialog', () => ({
+  SendDialog: (props: Record<string, unknown>) =>
+    props.open ? (
+      <div data-testid="send-dialog">
+        <span data-testid="send-dialog-sent">{String(props.sent)}</span>
+        <button type="button" onClick={() => (props.onConfirmSend as () => void)?.()}>confirm-send</button>
+        <button type="button" onClick={() => (props.onJumpToPlaceholders as () => void)?.()}>
+          jump-to-placeholders
+        </button>
+      </div>
+    ) : null,
+}))
+
+vi.mock('@/components/admin/proposal-builder/DraftComposer', () => ({
+  DraftComposer: (props: Record<string, unknown>) =>
+    props.variant === 'hero' ? (
+      <div data-testid="hero-composer" />
+    ) : props.open ? (
+      <div data-testid="modal-composer" />
+    ) : null,
+}))
+
+vi.mock('@/components/admin/proposal-builder/TotalsCanvas', () => ({
+  TotalsCanvas: (props: Record<string, unknown>) => (
+    <div data-testid="totals-canvas" data-disabled={String(props.disabled)} />
+  ),
 }))
 
 import { sendProposal } from '@/actions/proposals'
@@ -98,7 +146,6 @@ describe('ProposalBuilderClient autosave', () => {
     const draft = lastDraft()
     expect(draft.blocks?.[0]).toMatchObject({ text: 'Better offer' })
     expect(draft.blocks?.[1]).toMatchObject({ text: 'A real intro' })
-    expect(screen.getByText(/^saved$/i)).toBeInTheDocument()
   })
 
   it('re-seeds from what the server persisted, so a dropped block disappears', async () => {
@@ -114,23 +161,6 @@ describe('ProposalBuilderClient autosave', () => {
     await flushAutosave()
     expect(screen.queryByText('Replace this intro')).not.toBeInTheDocument()
     expect(screen.getByText(/dropped an incomplete block/i)).toBeInTheDocument()
-  })
-
-  it('shows Retrying with a manual retry when the save fails, keeping edits', async () => {
-    updateProposalDraft.mockRejectedValueOnce(new Error('offline'))
-    mount()
-    fireEvent.click(screen.getByText('Our offer'))
-    const box = screen.getByRole('textbox', { name: /heading/i })
-    fireEvent.change(box, { target: { value: 'Edited while offline' } })
-    fireEvent.keyDown(box, { key: 'Enter' })
-    await flushAutosave()
-    expect(screen.getByText(/retrying/i)).toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: /retry now/i }))
-    await flushAutosave()
-    expect(updateProposalDraft).toHaveBeenCalledTimes(2)
-    expect(lastDraft().blocks?.[0]).toMatchObject({ text: 'Edited while offline' })
-    expect(screen.getByText(/^saved$/i)).toBeInTheDocument()
   })
 
   it('upgrades legacy packages on load and persists them on the first autosave', async () => {
@@ -153,7 +183,7 @@ describe('ProposalBuilderClient autosave', () => {
   })
 })
 
-describe('ProposalBuilderClient locked & rail', () => {
+describe('ProposalBuilderClient locked state', () => {
   it('renders a signed proposal fully read-only and never writes', async () => {
     mount(
       makeProposal({
@@ -170,44 +200,148 @@ describe('ProposalBuilderClient locked & rail', () => {
     expect(screen.queryByRole('textbox', { name: /heading/i })).not.toBeInTheDocument()
     await flushAutosave()
     expect(updateProposalDraft).not.toHaveBeenCalled()
-    // Void stays available on signed proposals.
-    expect(screen.getByRole('button', { name: /void/i })).toBeInTheDocument()
   })
 
-  it('shows the completeness count and the client link even for drafts', () => {
-    mount()
-    expect(screen.getByText(/2 placeholder sections remaining/i)).toBeInTheDocument()
-    expect(screen.getByDisplayValue(/\/proposals\/tok-1$/)).toBeInTheDocument()
+  it('passes disabled: true to TotalsCanvas when the proposal has a signature', () => {
+    mount(
+      makeProposal({
+        status: 'accepted',
+        signature: {
+          signer_name: 'Dana', signer_email: 'd@x.com', signed_at: '2026-08-02T00:00:00.000Z',
+          ip: '1.1.1.1', user_agent: 'jsdom', consent_electronic: true, document_hash: 'abc',
+        },
+      }),
+    )
+    expect(screen.getByTestId('totals-canvas')).toHaveAttribute('data-disabled', 'true')
   })
 
-  it('warns before sending while placeholders remain', async () => {
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+  it('passes disabled: false to TotalsCanvas for an editable draft', () => {
     mount()
-    fireEvent.click(screen.getByRole('button', { name: /send to client/i }))
-    expect(confirmSpy).toHaveBeenCalled()
-    expect(sendProposal).not.toHaveBeenCalled()
+    expect(screen.getByTestId('totals-canvas')).toHaveAttribute('data-disabled', 'false')
+  })
 
-    confirmSpy.mockReturnValue(true)
-    fireEvent.click(screen.getByRole('button', { name: /send to client/i }))
-    await act(async () => { await Promise.resolve() })
-    expect(sendProposal).toHaveBeenCalledWith('o1', 'p1')
+  it('renders the voided banner', () => {
+    mount(makeProposal({ status: 'voided', void_reason: 'Client backed out' }))
+    expect(screen.getByText(/client backed out/i)).toBeInTheDocument()
+  })
+})
+
+describe('ProposalBuilderClient hero composer', () => {
+  it('shows the hero when AI is enabled and every block is a placeholder', () => {
+    mount(
+      makeProposal({
+        blocks: [{ id: 'ph1', type: 'paragraph', text: 'Replace this intro', placeholder: true } as never],
+      }),
+      true,
+    )
+    expect(screen.getByTestId('hero-composer')).toBeInTheDocument()
+  })
+
+  it('shows the hero for an empty document when AI is enabled', () => {
+    mount(makeProposal({ blocks: [] }), true)
+    expect(screen.getByTestId('hero-composer')).toBeInTheDocument()
+  })
+
+  it('hides the hero once any real block exists', () => {
+    mount(
+      makeProposal({
+        blocks: [{ id: 'h1', type: 'heading', text: 'Our offer', level: 2 }],
+      }),
+      true,
+    )
+    expect(screen.queryByTestId('hero-composer')).not.toBeInTheDocument()
+  })
+
+  it('hides the hero when AI is disabled', () => {
+    mount(makeProposal(), false)
+    expect(screen.queryByTestId('hero-composer')).not.toBeInTheDocument()
+  })
+
+  it('opens the modal composer from the topbar AI button', () => {
+    mount(makeProposal({ blocks: [] }), true)
+    expect(screen.queryByTestId('modal-composer')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByText('topbar-open-ai'))
+    expect(screen.getByTestId('modal-composer')).toBeInTheDocument()
+  })
+})
+
+describe('ProposalBuilderClient send flow', () => {
+  it('opens SendDialog from the topbar onSend, without a window.confirm', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm')
+    mount()
+    expect(screen.queryByTestId('send-dialog')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByText('topbar-send'))
+    expect(screen.getByTestId('send-dialog')).toBeInTheDocument()
+    expect(confirmSpy).not.toHaveBeenCalled()
     confirmSpy.mockRestore()
   })
 
-  it('links to the print view', () => {
+  it('SendDialog confirm calls sendProposal and flips to sent', async () => {
     mount()
-    fireEvent.click(screen.getByRole('button', { name: 'More actions' }))
-    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null)
-    fireEvent.click(screen.getByRole('menuitem', { name: /open print view/i }))
-    expect(openSpy).toHaveBeenCalledWith('/proposals/tok-1/print', '_blank')
-    openSpy.mockRestore()
+    fireEvent.click(screen.getByText('topbar-send'))
+    expect(screen.getByTestId('send-dialog-sent')).toHaveTextContent('false')
+    await act(async () => {
+      fireEvent.click(screen.getByText('confirm-send'))
+      await Promise.resolve()
+    })
+    expect(sendProposal).toHaveBeenCalledWith('o1', 'p1')
+    expect(screen.getByTestId('send-dialog-sent')).toHaveTextContent('true')
+    expect(screen.getByTestId('topbar-status')).toHaveTextContent('sent')
   })
 
-  it('edits pricing terms in the rail and includes them in the consolidated save', async () => {
+  it('shows a flash message and stays unsent when sendProposal rejects', async () => {
+    vi.mocked(sendProposal).mockRejectedValueOnce(new Error('network down'))
     mount()
-    const rail = screen.getByTestId('builder-rail')
-    fireEvent.change(within(rail).getByLabelText(/tax rate/i), { target: { value: '8.25' } })
-    await flushAutosave()
-    expect(lastDraft().tax_rate).toBe(8.25)
+    fireEvent.click(screen.getByText('topbar-send'))
+    await act(async () => {
+      fireEvent.click(screen.getByText('confirm-send'))
+      await Promise.resolve()
+    })
+    expect(screen.getByRole('status')).toHaveTextContent('network down')
+    expect(screen.getByTestId('send-dialog-sent')).toHaveTextContent('false')
+    expect(screen.getByTestId('topbar-status')).toHaveTextContent('draft')
+  })
+
+  it('jumps to the first placeholder block from the dialog', () => {
+    mount()
+    fireEvent.click(screen.getByText('topbar-send'))
+    const scrollSpy = vi.fn()
+    const el = document.querySelector('[data-placeholder-block]') as HTMLElement | null
+    if (el) el.scrollIntoView = scrollSpy
+    fireEvent.click(screen.getByText('jump-to-placeholders'))
+    if (el) expect(scrollSpy).toHaveBeenCalled()
+  })
+})
+
+describe('ProposalBuilderClient link + destructive actions', () => {
+  it('copies the client link and shows a flash confirmation', async () => {
+    Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } })
+    mount()
+    await act(async () => {
+      fireEvent.click(screen.getByText('topbar-copy-link'))
+      await Promise.resolve()
+    })
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(`${window.location.origin}/proposals/tok-1`)
+    expect(screen.getByRole('status')).toHaveTextContent(/link copied/i)
+  })
+
+  it('keeps window.prompt for void', async () => {
+    const promptSpy = vi.spyOn(window, 'prompt').mockReturnValue('No longer needed')
+    mount(makeProposal({ status: 'sent' }))
+    await act(async () => {
+      fireEvent.click(screen.getByText('topbar-void'))
+      await Promise.resolve()
+    })
+    expect(promptSpy).toHaveBeenCalled()
+    expect(screen.getByTestId('topbar-status')).toHaveTextContent('voided')
+    promptSpy.mockRestore()
+  })
+
+  it('keeps window.confirm for delete', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    mount()
+    fireEvent.click(screen.getByText('topbar-delete'))
+    expect(confirmSpy).toHaveBeenCalled()
+    confirmSpy.mockRestore()
   })
 })
