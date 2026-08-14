@@ -37,6 +37,29 @@ describe('NewOpportunityForm linked mode', () => {
     expect(input).not.toHaveProperty('email')
   })
 
+  it('shows an editable per-event organization field prefilled from the linked customer', () => {
+    render(<NewOpportunityForm orgId="o1" open onClose={() => {}} customer={customer} />)
+    expect(screen.getByLabelText('Organization (for this event)')).toHaveValue('Riverside')
+  })
+
+  it('submits an overridden organization alongside customer_id', async () => {
+    render(<NewOpportunityForm orgId="o1" open onClose={() => {}} customer={customer} />)
+    fireEvent.change(screen.getByLabelText('Organization (for this event)'), {
+      target: { value: 'First Baptist Church' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(createLead).toHaveBeenCalledWith('o1', expect.objectContaining({
+      customer_id: 'c1', organization: 'First Baptist Church',
+    })))
+  })
+
+  it('prefills the per-event organization when picking a customer via the typeahead', () => {
+    render(<NewOpportunityForm orgId="o1" open onClose={() => {}} customers={[customer]} />)
+    fireEvent.change(screen.getByLabelText(/link to existing customer/i), { target: { value: 'dana' } })
+    fireEvent.click(screen.getByRole('button', { name: /dana kim/i }))
+    expect(screen.getByLabelText('Organization (for this event)')).toHaveValue('Riverside')
+  })
+
   it('still requires a name in standalone mode', () => {
     render(<NewOpportunityForm orgId="o1" open onClose={() => {}} />)
     expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()

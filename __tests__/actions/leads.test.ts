@@ -408,6 +408,26 @@ describe('createLead linked mode (customer_id)', () => {
     expect(written).not.toHaveProperty('organization')
   })
 
+  it('a typed organization overrides the customer snapshot on the lead only', async () => {
+    vi.mocked(getCustomerCore).mockResolvedValue({
+      id: 'c9', name: 'Dana Kim', company: 'Riverside', email: 'dana@riv.co', created_at: 'x',
+    })
+    await createLead('o1', { customer_id: 'c9', organization: '  First Baptist Church  ' })
+    expect(leadDocSetSpy).toHaveBeenCalledWith(expect.objectContaining({
+      customer_id: 'c9', organization: 'First Baptist Church',
+    }))
+    expect(findOrCreateCustomerCore).not.toHaveBeenCalled()
+  })
+
+  it('an explicitly blank organization omits it instead of falling back to the snapshot', async () => {
+    vi.mocked(getCustomerCore).mockResolvedValue({
+      id: 'c9', name: 'Dana Kim', company: 'Riverside', created_at: 'x',
+    })
+    await createLead('o1', { customer_id: 'c9', organization: '' })
+    const written = leadDocSetSpy.mock.calls[0][0]
+    expect(written).not.toHaveProperty('organization')
+  })
+
   it('throws Customer not found for an unknown id and writes nothing', async () => {
     vi.mocked(getCustomerCore).mockResolvedValue(null)
     await expect(createLead('o1', { customer_id: 'nope' })).rejects.toThrow('Customer not found')
