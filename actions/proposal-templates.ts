@@ -66,14 +66,13 @@ export async function duplicateProposalTemplate(orgId: string, templateId: strin
   const source = snap.data() as ProposalTemplate
   const id = randomBytes(8).toString('hex')
   // usage_count deliberately not copied: the copy has never been used.
-  const { usage_count: _unused, ...rest } = source
+  const { usage_count: _unusedCount, updated_at: _unusedStamp, ...rest } = source
   const copy: ProposalTemplate = {
     ...rest,
     id,
     name: `${source.name} (copy)`,
     created_at: new Date().toISOString(),
   }
-  delete (copy as Record<string, unknown>).updated_at
   await templatesRef(orgId).doc(id).set(copy)
   return copy
 }

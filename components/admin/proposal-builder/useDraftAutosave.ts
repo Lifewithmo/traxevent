@@ -13,18 +13,28 @@ export type SaveStatus = 'saved' | 'dirty' | 'saving' | 'retrying'
 
 const DEBOUNCE_MS = 800
 
+// Injectable persistence seam: the proposal builder uses the default
+// (updateProposalDraft, re-seeding from the persisted Proposal); the template
+// editor supplies its own save targeting proposal_templates. The reseed value
+// is whatever the server actually wrote — "never lie about what persisted".
+export type DraftSave = (
+  draft: ProposalDraftUpdate
+) => Promise<{ adjustments: string[]; reseed: ProposalDraftUpdate }>
+
 export function useDraftAutosave({
   orgId,
   proposalId,
   initial,
   enabled,
   initiallyDirty = false,
+  save,
 }: {
   orgId: string
   proposalId: string
   initial: ProposalDraftUpdate
   enabled: boolean
   initiallyDirty?: boolean
+  save?: DraftSave
 }) {
   const [draft, setDraft] = useState<ProposalDraftUpdate>(initial)
   // A locked proposal never autosaves, so the legacy upgrade computed at load
@@ -55,10 +65,16 @@ export function useDraftAutosave({
     const timer = setTimeout(async () => {
       setStatus('saving')
       try {
-        const res = await updateProposalDraft(orgId, proposalId, draftRef.current)
+        const doSave: DraftSave =
+          save ??
+          (async (d) => {
+            const res = await updateProposalDraft(orgId, proposalId, d)
+            return { adjustments: res.adjustments, reseed: draftFromProposal(res.proposal) }
+          })
+        const res = await doSave(draftRef.current)
         setAdjustments(res.adjustments)
         if (versionRef.current === version) {
-          setDraft((d) => ({ ...d, ...draftFromProposal(res.proposal) }))
+          setDraft((d) => ({ ...d, ...res.reseed }))
           setStatus('saved')
         } else {
           // Newer edits arrived mid-flight; leave them dirty so the effect
@@ -70,7 +86,7 @@ export function useDraftAutosave({
       }
     }, DEBOUNCE_MS)
     return () => clearTimeout(timer)
-  }, [enabled, status, draft, orgId, proposalId])
+  }, [enabled, status, draft, orgId, proposalId, save])
 
   const retryNow = useCallback(() => setStatus('dirty'), [])
 
