@@ -9,6 +9,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { sendProposal, deleteProposal, voidProposal } from '@/actions/proposals'
+import { createProposalTemplate } from '@/actions/proposal-templates'
+import { templateContentFromDraft } from '@/lib/proposals/templates'
 import { uploadProposalImage } from '@/actions/proposal-images'
 import { proposalRange, depositAmount, packagePrice } from '@/lib/proposals'
 import { upgradeLegacyProposal } from '@/lib/proposals/upgrade'
@@ -203,6 +205,20 @@ export function ProposalBuilderClient({
     }
   }
 
+  async function handleSaveAsTemplate() {
+    const name = window.prompt('Template name:', draft.title || 'My proposal template')
+    if (!name?.trim()) return
+    setBusy(true)
+    try {
+      await createProposalTemplate(orgId, { name: name.trim(), content: templateContentFromDraft(draft) })
+      showFlash('Template saved — find it under Settings → Proposal templates')
+    } catch (e) {
+      showFlash(e instanceof Error ? e.message : 'Failed to save template')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   function handleAiApply(draftBlocks: ProposalBlock[], mode: 'fill' | 'replace') {
     if (mode === 'fill') {
       const merged = mergeDraftIntoBlocks(blocks, draftBlocks)
@@ -241,6 +257,7 @@ export function ProposalBuilderClient({
         onCopyLink={copyLink}
         onVoid={handleVoid}
         onDelete={handleDelete}
+        onSaveAsTemplate={handleSaveAsTemplate}
         busy={busy}
       />
 
