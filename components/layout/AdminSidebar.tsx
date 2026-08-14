@@ -272,6 +272,7 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
     { slug: 'permissions', label: 'Permissions', icon: 'permissions' as NavIconName },
     { slug: 'billing', label: 'Billing', icon: 'billing' as NavIconName },
     { slug: 'branding', label: 'Branding', icon: 'branding' as NavIconName },
+    { slug: 'proposal-templates', label: 'Proposal templates', icon: 'proposals' as NavIconName },
     { slug: 'public-profile', label: 'Public profile', icon: 'profile' as NavIconName },
     { slug: 'email-domain', label: 'Email domain', icon: 'email' as NavIconName },
     { slug: 'event-types', label: 'Event types', icon: 'types' as NavIconName },
