@@ -560,6 +560,29 @@ export interface Proposal {
   events?: ProposalEvent[]
 }
 
+// Org-owned reusable proposal starting point (spec 2026-08-13). Same content
+// shape as a Proposal document, minus everything transactional: no lead,
+// token, status, expiry, signature, or payment fields.
+export interface ProposalTemplate {
+  id: string
+  org_id: string
+  name: string
+  description?: string
+  blocks?: ProposalBlock[]
+  line_items: ProposalLineItem[]
+  packages?: ProposalPackage[]
+  discount?: ProposalDiscount
+  tax_rate?: number
+  deposit?: ProposalDeposit
+  deposit_gate?: 'before_accept' | 'after_accept'
+  deposit_terms?: string
+  terms?: string
+  notes?: string
+  usage_count?: number
+  created_at: string
+  updated_at?: string
+}
+
 export type PaymentStatus = 'not_required' | 'deposit_pending' | 'deposit_paid'
 
 export interface ProposalSignature {
