@@ -5,6 +5,7 @@ import { adminDb } from '@/lib/firebase-admin'
 import { getLead } from '@/actions/leads'
 import { getCustomer } from '@/actions/customers'
 import { SkeletonPicker } from '@/components/admin/proposal-builder/SkeletonPicker'
+import { listProposalTemplates } from '@/actions/proposal-templates'
 import type { OrgBranding } from '@/lib/types'
 
 // "New proposal" (spec §3): full-screen skeleton picker with CRM autofill —
@@ -19,7 +20,10 @@ export default async function NewProposalPage({ params }: { params: Promise<{ or
 
   const lead = await getLead(orgId, leadId)
   if (!lead) notFound()
-  const customer = lead.customer_id ? await getCustomer(orgId, lead.customer_id) : null
+  const [customer, templates] = await Promise.all([
+    lead.customer_id ? getCustomer(orgId, lead.customer_id) : Promise.resolve(null),
+    listProposalTemplates(orgId),
+  ])
 
   const displayName = org.branding?.display_name ?? org.name
   const opportunityName = lead.title ?? lead.name
@@ -33,6 +37,7 @@ export default async function NewProposalPage({ params }: { params: Promise<{ or
       leadId={leadId}
       title={title}
       contactName={contactName}
+      templates={templates}
     />
   )
 }

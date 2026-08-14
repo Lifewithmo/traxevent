@@ -27,6 +27,14 @@ vi.mock('@/lib/auth/assert', () => ({
   assertOrgMember: vi.fn().mockResolvedValue({}),
   assertOrgAdmin: vi.fn().mockResolvedValue({}),
 }))
+const createProposalSpy = vi.hoisted(() =>
+  vi.fn().mockResolvedValue({ id: 'p1', title: 'Acme — Gala', terms: 'Org default terms' })
+)
+vi.mock('@/actions/proposals', () => ({ createProposal: createProposalSpy }))
+const updateDraftCoreSpy = vi.hoisted(() =>
+  vi.fn().mockResolvedValue({ proposal: { id: 'p1' }, adjustments: [] })
+)
+vi.mock('@/lib/proposals/draft-core', () => ({ updateProposalDraftCore: updateDraftCoreSpy }))
 
 import {
   createProposalTemplate,
@@ -34,6 +42,7 @@ import {
   renameProposalTemplate,
   deleteProposalTemplate,
   updateTemplateDraft,
+  createProposalFromTemplate,
 } from '@/actions/proposal-templates'
 import { assertOrgAdmin } from '@/lib/auth/assert'
 import type { ProposalTemplate } from '@/lib/types'
@@ -98,6 +107,36 @@ describe('renameProposalTemplate / deleteProposalTemplate', () => {
   it('delete removes the doc', async () => {
     await deleteProposalTemplate('o1', 't1')
     expect(tplDoc.delete).toHaveBeenCalled()
+  })
+})
+
+describe('createProposalFromTemplate', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('creates, applies template content full-state, keeps the autofilled title, bumps usage', async () => {
+    tplDoc.get.mockResolvedValueOnce({ exists: true, data: () => stored })
+    const created = await createProposalFromTemplate('o1', 'l1', 't1', { title: 'Acme — Gala' })
+    expect(created.id).toBe('p1')
+    expect(createProposalSpy).toHaveBeenCalledWith('o1', 'l1', { title: 'Acme — Gala' })
+    const [, , draft] = updateDraftCoreSpy.mock.calls[0]
+    expect(draft.title).toBe('Acme — Gala')
+    expect(draft.line_items).toEqual(stored.line_items)
+    expect(draft.terms).toBe('Tpl terms')
+    expect(tplDoc.update).toHaveBeenCalled()
+  })
+
+  it('falls back to the org default terms already seeded on the proposal', async () => {
+    const { terms: _t, ...noTerms } = stored
+    tplDoc.get.mockResolvedValueOnce({ exists: true, data: () => noTerms })
+    await createProposalFromTemplate('o1', 'l1', 't1', { title: 'T' })
+    const [, , draft] = updateDraftCoreSpy.mock.calls[0]
+    expect(draft.terms).toBe('Org default terms')
+  })
+
+  it('throws when the template is gone', async () => {
+    tplDoc.get.mockResolvedValueOnce({ exists: false })
+    await expect(createProposalFromTemplate('o1', 'l1', 't1', { title: 'T' })).rejects.toThrow('not found')
+    expect(createProposalSpy).not.toHaveBeenCalled()
   })
 })
 

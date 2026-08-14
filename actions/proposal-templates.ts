@@ -5,8 +5,10 @@ import { FieldValue } from 'firebase-admin/firestore'
 import { adminDb } from '@/lib/firebase-admin'
 import { assertOrgMember, assertOrgAdmin } from '@/lib/auth/assert'
 import { normalizeProposalDraft, type ProposalDraftInput, type ProposalDraftUpdate } from '@/lib/proposals/draft'
-import { TEMPLATE_CONTENT_FIELDS, type TemplateContent } from '@/lib/proposals/templates'
-import type { ProposalTemplate } from '@/lib/types'
+import { updateProposalDraftCore } from '@/lib/proposals/draft-core'
+import { TEMPLATE_CONTENT_FIELDS, proposalDraftFromTemplate, type TemplateContent } from '@/lib/proposals/templates'
+import { createProposal } from '@/actions/proposals'
+import type { Proposal, ProposalTemplate } from '@/lib/types'
 
 // NOTE: 'use server' module — async function exports only, no type re-exports.
 
@@ -80,6 +82,39 @@ export async function duplicateProposalTemplate(orgId: string, templateId: strin
 export async function deleteProposalTemplate(orgId: string, templateId: string): Promise<void> {
   await assertOrgAdmin(orgId)
   await templatesRef(orgId).doc(templateId).delete()
+}
+
+/**
+ * Create a proposal for a lead from a template — mirrors the skeleton flow:
+ * createProposal (CRM-autofilled title, org default terms seeded), then one
+ * full-state draft write with the template's content. The template's terms
+ * win; when it has none, the org default the create just seeded is re-sent
+ * so the full-state write doesn't clear it. Usage bump is best-effort.
+ */
+export async function createProposalFromTemplate(
+  orgId: string,
+  leadId: string,
+  templateId: string,
+  input: { title: string }
+): Promise<Proposal> {
+  await assertOrgAdmin(orgId)
+  const snap = await templatesRef(orgId).doc(templateId).get()
+  if (!snap.exists) throw new Error('Template not found')
+  const template = snap.data() as ProposalTemplate
+
+  const created = await createProposal(orgId, leadId, { title: input.title })
+  const draft = proposalDraftFromTemplate(template, {
+    title: input.title,
+    fallbackTerms: created.terms,
+  })
+  await updateProposalDraftCore(orgId, created.id, draft)
+
+  await templatesRef(orgId)
+    .doc(templateId)
+    .update({ usage_count: FieldValue.increment(1) })
+    .catch(() => {})
+
+  return created
 }
 
 /**
