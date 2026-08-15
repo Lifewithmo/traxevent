@@ -1,18 +1,22 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useRef, useState, useEffect } from 'react'
 import { subscribeToDrops } from '@/actions/storefront-public'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 
 export function SubscribeCard({ handle }: { handle: string }) {
-  const mountedAt = useRef(Date.now())
+  const mountedAt = useRef(0)
   const [email, setEmail] = useState('')
   const [name, setName] = useState('')
   const [website, setWebsite] = useState('')   // honeypot — humans never see it
   const [state, setState] = useState<'idle' | 'saving' | 'done'>('idle')
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (mountedAt.current === 0) mountedAt.current = Date.now()
+  }, [])
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()

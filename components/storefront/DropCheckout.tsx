@@ -78,12 +78,10 @@ export function DropCheckout({ request, total }: { request: CheckoutRequest; tot
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  const stripeAccountId = intent?.stripeAccountId
   const stripePromise = useMemo(
-    () =>
-      intent?.stripeAccountId
-        ? loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!, { stripeAccount: intent.stripeAccountId })
-        : null,
-    [intent?.stripeAccountId],
+    () => (stripeAccountId ? loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!, { stripeAccount: stripeAccountId }) : null),
+    [stripeAccountId],
   )
 
   if (intent?.error) {
