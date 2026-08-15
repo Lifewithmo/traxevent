@@ -335,22 +335,58 @@ describe('AdminSidebar — active state', () => {
 })
 
 describe('AdminSidebar — independent nav scroll', () => {
-  // The <aside> can exceed the viewport (nine Settings children stack up
-  // fast), and only the middle <nav> should scroll — the logo/toggle header
-  // and the Sign out footer must stay pinned. overflow-y-auto alone does
-  // nothing on a flex child: it won't shrink below its content size without
-  // min-h-0, so both classes are required together.
-  it('gives the expanded nav its own scroll region', () => {
+  // The real invariant is layout, not class names: the <aside>'s computed
+  // height must never exceed the viewport, and — given content taller than
+  // the nav's box — nav.scrollHeight must exceed nav.clientHeight (i.e. the
+  // nav, not the window, is the thing that scrolls).
+  //
+  // jsdom does not run a layout engine: every element reports
+  // clientHeight/scrollHeight/getComputedStyle height as 0, regardless of
+  // content or CSS, so neither half of that invariant is observable here.
+  // These assertions are therefore an honest fallback, not a substitute:
+  // they confirm the three classes that together produce the bounded-height
+  // mechanism are present on the right elements —
+  //   <aside>: h-screen (bounds it to the viewport) + sticky top-0 (keeps it
+  //     pinned to the viewport while the page scrolls, since min-h-screen is
+  //     only a floor and lets the aside grow past the viewport with content)
+  //   <nav>: min-h-0 + overflow-y-auto (lets the nav actually shrink to the
+  //     space the bounded aside leaves it, and scroll internally once it does)
+  // — but they cannot prove the box is actually bounded or actually scrolls.
+  // That requires a real layout engine: verified manually in a browser (see
+  // pre-merge-fix-report.md) since this repo's test setup has no Playwright/
+  // browser-mode Vitest target to assert scrollHeight/clientHeight against.
+  it('bounds the aside to the viewport and pins it (expanded nav)', () => {
     render(<AdminSidebar orgSlug="acme" />)
+    const aside = document.querySelector('aside')!
+    expect(aside.className.split(/\s+/)).toEqual(
+      expect.arrayContaining(['h-screen', 'sticky', 'top-0'])
+    )
+    expect(aside.className).not.toMatch(/(^|\s)min-h-screen(\s|$)/)
     const nav = screen.getByRole('navigation', { name: 'Workspace navigation' })
     expect(nav.className.split(/\s+/)).toEqual(
       expect.arrayContaining(['overflow-y-auto', 'min-h-0'])
     )
   })
 
-  it('gives the collapsed icon rail its own scroll region too', () => {
+  it('bounds the aside to the viewport and pins it (collapsed rail)', () => {
     render(<AdminSidebar orgSlug="acme" />)
     fireEvent.click(screen.getByRole('button', { name: 'Collapse navigation' }))
+    const aside = document.querySelector('aside')!
+    expect(aside.className.split(/\s+/)).toEqual(
+      expect.arrayContaining(['h-screen', 'sticky', 'top-0'])
+    )
+    const nav = screen.getByRole('navigation', { name: 'Workspace navigation' })
+    expect(nav.className.split(/\s+/)).toEqual(
+      expect.arrayContaining(['overflow-y-auto', 'min-h-0'])
+    )
+  })
+
+  it('bounds the aside to the viewport in the in-job nav too', () => {
+    render(<AdminSidebar orgSlug="acme" eventSlug="hendricks" />)
+    const aside = document.querySelector('aside')!
+    expect(aside.className.split(/\s+/)).toEqual(
+      expect.arrayContaining(['h-screen', 'sticky', 'top-0'])
+    )
     const nav = screen.getByRole('navigation', { name: 'Workspace navigation' })
     expect(nav.className.split(/\s+/)).toEqual(
       expect.arrayContaining(['overflow-y-auto', 'min-h-0'])

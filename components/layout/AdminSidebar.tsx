@@ -357,7 +357,7 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
     <aside
       className={[
         'bg-[color:var(--sidebar)] text-[color:var(--sidebar-foreground)] border-r border-[color:var(--sidebar-border)]',
-        'min-h-screen flex flex-col flex-shrink-0 print:hidden transition-[width] duration-[160ms]',
+        'h-screen sticky top-0 flex flex-col flex-shrink-0 print:hidden transition-[width] duration-[160ms]',
         !eventSlug && collapsed ? 'w-[52px]' : 'w-56',
       ].join(' ')}
     >
