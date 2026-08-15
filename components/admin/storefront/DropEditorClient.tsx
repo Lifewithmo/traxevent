@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -57,19 +57,14 @@ export function DropEditorClient({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Origin is read post-mount only — `window` doesn't exist during the
-  // server render pass ('use client' components still render on the
-  // server first), so reading it inline would crash there. Resolving it
-  // in an effect mirrors the house pattern (see PublicProfileClient).
-  const [origin, setOrigin] = useState('')
-  useEffect(() => {
-    setOrigin(window.location.origin)
-  }, [])
-
   const activeProducts = products.filter((p) => p.active)
-  const publicUrl = handle && drop && origin ? `${origin}/p/${handle}/drops/${drop.id}` : null
+  // Relative path only during render — reading window.location.origin here
+  // would crash SSR ('use client' components render on the server too, and
+  // `window` doesn't exist there). The copy handlers below resolve the
+  // absolute URL at click time (house pattern, see PublicProfileClient).
+  const publicPath = handle && drop ? `/p/${handle}/drops/${drop.id}` : null
   const shareText = drop
-    ? `${title} — orders open soon! ☕ Order ahead: ${publicUrl ?? ''}`
+    ? `${title} — orders open soon! ☕ Order ahead: ${publicPath ?? ''}`
     : ''
 
   function buildInput(): CreateDropInput {
@@ -238,14 +233,14 @@ export function DropEditorClient({
           <p className="text-sm text-gray-600">
             Published. Items, prices, and windows are locked — you can adjust stock, close sales early, or share the link.
           </p>
-          {publicUrl && (
+          {publicPath && (
             <div className="rounded-xl border p-4">
               <h2 className="font-semibold">Share kit</h2>
-              <p className="mt-1 break-all text-sm text-gray-600">{publicUrl}</p>
+              <p className="mt-1 break-all text-sm text-gray-600">{publicPath}</p>
               <p className="mt-2 rounded-md bg-gray-50 p-2 text-sm">{shareText}</p>
               <div className="mt-2 flex gap-2">
-                <Button variant="outline" onClick={() => navigator.clipboard.writeText(publicUrl)}>Copy link</Button>
-                <Button variant="outline" onClick={() => navigator.clipboard.writeText(shareText)}>Copy post</Button>
+                <Button variant="outline" onClick={() => navigator.clipboard.writeText(`${window.location.origin}${publicPath}`)}>Copy link</Button>
+                <Button variant="outline" onClick={() => navigator.clipboard.writeText(`${title} — orders open soon! ☕ Order ahead: ${window.location.origin}${publicPath}`)}>Copy post</Button>
               </div>
             </div>
           )}
@@ -257,6 +252,7 @@ export function DropEditorClient({
                 <Input
                   className="w-28" type="number" min="0" placeholder="∞"
                   defaultValue={i.stock !== undefined ? String(i.stock) : ''}
+                  disabled={busy}
                   onBlur={(e) =>
                     run(() => adjustDropStock(orgId, drop!.id, i.product_id, e.target.value === '' ? null : Number(e.target.value)))
                   }
