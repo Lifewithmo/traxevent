@@ -8,6 +8,8 @@ import type { Event, EventRegistrationType } from '@/lib/types'
 import type { Terminology } from '@/lib/event-types'
 import { createEventCore, listEventsCore, listEventsByLeadCore, resolveUniqueEventSlug } from '@/lib/events'
 
+const DAY_RE = /^\d{4}-\d{2}-\d{2}$/
+
 export async function createEvent(
   orgId: string,
   input: {
@@ -173,4 +175,32 @@ export async function duplicateEvent(
   }
 
   return newEvent
+}
+
+/** Direct market-day creation (spec §3.1/§6: "+ New → Market day"). Born active — no draft gate. */
+export async function createMarketDay(
+  orgId: string,
+  input: {
+    name: string
+    date: string
+    location: { name: string; address?: string }
+    hours?: { start: string; end: string }
+    booth_fee?: number
+  },
+): Promise<Event> {
+  await assertOrgAdmin(orgId)
+  if (!input.name?.trim()) throw new Error('A name is required')
+  if (!DAY_RE.test(input.date ?? '')) throw new Error('Pick a valid date')
+  if (!input.location?.name?.trim()) throw new Error('A location is required')
+  return createEventCore(orgId, {
+    name: input.name.trim(),
+    year: Number(input.date.slice(0, 4)),
+    kind: 'market_day',
+    status: 'active',
+    event_start: input.date,
+    event_end: input.date,
+    location: { name: input.location.name.trim(), ...(input.location.address?.trim() ? { address: input.location.address.trim() } : {}) },
+    ...(input.hours ? { hours: input.hours } : {}),
+    ...(input.booth_fee !== undefined ? { booth_fee: input.booth_fee } : {}),
+  })
 }
