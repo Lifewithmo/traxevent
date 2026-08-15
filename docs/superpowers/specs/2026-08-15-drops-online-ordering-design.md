@@ -25,9 +25,13 @@ delivering a booked job, per the positioning source — this is not "a POS produ
 **Decisions taken (Ryan, 2026-08-15):**
 1. **Approach A, drops first.** Native build on existing rails; counter/tab follow on
    the same primitives.
-2. **Owner-first fees.** No customer-side surcharge, ever. Platform revenue stays the
-   existing 1% Stripe application fee absorbed by the org (same seam as registration
-   payments and proposal deposits). Marketing wedge: "your customers pay menu price."
+2. **Subscription-only monetization (updated 2026-08-15).** Platform revenue is the
+   monthly SaaS subscription; drop orders carry **no platform application fee** and
+   no customer-side surcharge, ever. Buyers pay menu price; the org keeps everything
+   except Stripe processing. Marketing wedge vs Hot Plate: "no per-order fees — for
+   you or your customers." (The legacy 1% application fee on registration payments
+   and proposal deposits predates this decision and is untouched by this spec;
+   aligning it is logged as an open thread in the roadmap.)
 3. **Multi-channel announcements, modeled as a set.** Per drop, the operator chooses
    any combination of channels. V1 ships **email** (Resend, wired) + a **social share
    kit** (pre-composed post text + link for IG/FB/TikTok — no platform APIs). **SMS**
@@ -49,7 +53,7 @@ delivering a booked job, per the positioning source — this is not "a POS produ
 - Subscribers ("Don't miss the next drop"): email capture on the profile and drop
   pages, stored on Customer, announcement email on drop publish, unsubscribe.
 - `/p/[handle]` grows a "Next drop" card + subscribe CTA; calendar gains a `drop` kind.
-- Tips at checkout honoring `org.tips_enabled` (excluded from the platform fee).
+- Tips at checkout honoring `org.tips_enabled` (100% to the operator).
 
 **Out of scope (named, deliberately):**
 - Counter and tab channels (next increments; the Order model reserves them).
@@ -206,8 +210,8 @@ field on subscribe. Input caps mirror intake's.
 ### 5.1 Money path
 
 PaymentIntent on the org's connected account (`stripeAccount: org.stripe_account_id`),
-`application_fee_amount = round((total − tip) × 1%)` — the existing seam, with tips
-excluded from the fee (owner-first; Hot Plate also exempts tips). Metadata:
+with **no `application_fee_amount`** — monetization is the monthly subscription
+(decision 2), so the org keeps everything but Stripe's processing cost. Metadata:
 `{ purpose: 'drop_order', order_id, org_id }`. 400 if the org has no
 `stripe_account_id`, same as existing intent routes. New route:
 `app/api/payments/drop-order/intent/route.ts`.
@@ -256,9 +260,8 @@ until a hype-drop customer forces the upgrade).
 ### 5.4 Refunds (new capability)
 
 Admin action `cancelOrder(orderId, { restock?: boolean, note? })` →
-`stripe.refunds.create({ payment_intent }, { stripeAccount })` with
-`refund_application_fee: true` (the platform eats its 1% on refunds — owner-first),
-sets `status: 'canceled'` immediately; `charge.refunded` webhook settles the
+`stripe.refunds.create({ payment_intent }, { stripeAccount })`, sets
+`status: 'canceled'` immediately; `charge.refunded` webhook settles the
 `refund` record. Restock is implicit: canceled/refunded orders drop out of the
 availability sum. Partial refunds are out of scope.
 
@@ -288,6 +291,13 @@ server actions guarded by `assertOrgAdmin`):
    **aggregated prep view** (Σ qty per product across confirmed orders — Hot Plate's
    "prep list", derivable with zero recipe data).
 4. **Products** — grid with photos, add/edit/archive.
+
+**Mobile constraint:** the orders board is used one-handed at the cart on pickup
+day, but the admin shell's fixed 224px sidebar is not mobile-responsive today
+(~63px of content at 375px). The implementation plan must give the orders board a
+mobile-workable layout — either collapsing the shell or rendering the board
+full-bleed — and this becomes mandatory groundwork before the counter increment,
+whose register screen is mobile-first by nature.
 
 Payout visibility, charge lists, etc. stay in the org's own Stripe dashboard — same
 stance as every existing payment feature.

@@ -167,6 +167,12 @@ in PR #70; queue the next increment here.)*
 
 ## Open decisions & small threads
 
+- Monetization decided 2026-08-15: subscription-only — drop orders carry no
+  platform application fee (spec:
+  `superpowers/specs/2026-08-15-drops-online-ordering-design.md`). Open thread:
+  the legacy hardcoded 1% `application_fee_amount` on registration payments and
+  proposal deposits predates this — retire it (and the billing-page copy) or keep
+  it deliberately.
 - Deposit-invoice numbering: reconciled deposit invoices are `issued` but
   unnumbered — assign numbers vs document the exemption (accounting call).
 - Parked `git stash` of pre-redesign proposals WIP — likely stale; keep or drop.
