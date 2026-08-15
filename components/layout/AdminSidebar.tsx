@@ -385,11 +385,11 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
       </div>
 
       {!eventSlug && collapsed ? (
-        <nav className="flex-1" aria-label="Workspace navigation">
+        <nav className="flex-1 min-h-0 overflow-y-auto" aria-label="Workspace navigation">
           <IconRailGroup items={railLinks} />
         </nav>
       ) : (
-        <nav className="flex-1 px-2 py-3 space-y-0.5" aria-label="Workspace navigation">
+        <nav className="flex-1 min-h-0 overflow-y-auto px-2 py-3 space-y-0.5" aria-label="Workspace navigation">
           {topLinks.map((l) => (
             <NavItem key={l.href} {...l} />
           ))}

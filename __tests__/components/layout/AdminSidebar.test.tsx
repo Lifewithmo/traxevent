@@ -334,6 +334,30 @@ describe('AdminSidebar — active state', () => {
   })
 })
 
+describe('AdminSidebar — independent nav scroll', () => {
+  // The <aside> can exceed the viewport (nine Settings children stack up
+  // fast), and only the middle <nav> should scroll — the logo/toggle header
+  // and the Sign out footer must stay pinned. overflow-y-auto alone does
+  // nothing on a flex child: it won't shrink below its content size without
+  // min-h-0, so both classes are required together.
+  it('gives the expanded nav its own scroll region', () => {
+    render(<AdminSidebar orgSlug="acme" />)
+    const nav = screen.getByRole('navigation', { name: 'Workspace navigation' })
+    expect(nav.className.split(/\s+/)).toEqual(
+      expect.arrayContaining(['overflow-y-auto', 'min-h-0'])
+    )
+  })
+
+  it('gives the collapsed icon rail its own scroll region too', () => {
+    render(<AdminSidebar orgSlug="acme" />)
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse navigation' }))
+    const nav = screen.getByRole('navigation', { name: 'Workspace navigation' })
+    expect(nav.className.split(/\s+/)).toEqual(
+      expect.arrayContaining(['overflow-y-auto', 'min-h-0'])
+    )
+  })
+})
+
 describe('AdminSidebar — open section follows client-side navigation', () => {
   it('opens the destination section and closes the previous one', () => {
     nav.pathname = '/acme/invoices'

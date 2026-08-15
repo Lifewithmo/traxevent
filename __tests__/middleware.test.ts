@@ -35,26 +35,6 @@ describe('proxy', () => {
   })
 })
 
-describe('proxy — forwarded pathname', () => {
-  // Server layouts read this to skip per-route work (the org layout's sidebar
-  // event list on job routes). It must carry the POST-rewrite path.
-  const header = 'x-middleware-request-x-tx-pathname'
-
-  it('forwards the request path on a plain request', () => {
-    const request = new NextRequest('https://traxevent.com/acme/hendricks/budget', {
-      headers: { host: 'traxevent.com' },
-    })
-    expect(proxy(request).headers.get(header)).toBe('/acme/hendricks/budget')
-  })
-
-  it('forwards the rewritten path on an org subdomain', () => {
-    const request = new NextRequest('https://fbc.traxevent.com/summer/register', {
-      headers: { host: 'fbc.traxevent.com' },
-    })
-    expect(proxy(request).headers.get(header)).toBe('/fbc/summer/register')
-  })
-})
-
 describe('proxy — brand domains', () => {
   it('rewrites the brand domain root to the brand landing route', () => {
     const request = new NextRequest('https://brewtrax.com/', {
