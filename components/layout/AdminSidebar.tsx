@@ -66,6 +66,13 @@ function activeSection(pathname: string, orgSlug: string): string | null {
   return SECTION_FOR_SLUG[seg[1]] ?? null
 }
 
+// The sidebar's own "+ New" row activates on a hard load of any of these —
+// the chooser plus every route it fans out to. isActive() only matches an
+// exact path or a '/'-delimited prefix, so this can't be collapsed to a
+// single isActive(pathname, `/${orgSlug}/new`) check: sibling routes like
+// /new-event don't start with /new/.
+const CREATE_SLUGS = ['new', 'new-event', 'new-market-day', 'new-series']
+
 const SIDEBAR_COLLAPSED_KEY = 'tx-sidebar-collapsed'
 
 function getEventNav(terminology: Terminology) {
@@ -372,7 +379,7 @@ export function AdminSidebar({ orgSlug, eventSlug, eventKind, terminology, allow
   }))
 
   const allEventsActive = pathname === `/${orgSlug}`
-  const newEventActive = isActive(pathname, `/${orgSlug}/new`)
+  const newEventActive = CREATE_SLUGS.some((s) => isActive(pathname, `/${orgSlug}/${s}`))
   const eventsActive = allEventsActive || newEventActive || Boolean(eventSlug)
 
   const pipelineActive = pipelineChildren.some((l) => l.active)
@@ -588,7 +595,7 @@ export function AdminSidebar({ orgSlug, eventSlug, eventKind, terminology, allow
                     href={`/${orgSlug}/new`}
                     label="+ New"
                     icon="events"
-                    active={isActive(pathname, `/${orgSlug}/new`) && !isActive(pathname, `/${orgSlug}/new-event`)}
+                    active={newEventActive}
                     indent
                   />
                 </>

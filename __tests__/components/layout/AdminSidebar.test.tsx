@@ -367,13 +367,16 @@ describe('AdminSidebar — active state', () => {
     expect(icon.className.split(/\s+/)).toContain('bg-[color:var(--sidebar-accent)]')
   })
 
-  it('opens Events and highlights "+ New" on /new', () => {
-    nav.pathname = '/acme/new'
-    render(<AdminSidebar orgSlug="acme" />)
-    expect(rowActive('+ New')).toBe(true)
-    expect(rowActive('All events')).toBe(false)
-    expect(sectionActive('Events')).toBe(true)
-  })
+  it.each(['new', 'new-event', 'new-series'])(
+    'opens Events and highlights "+ New" on /%s',
+    (slug) => {
+      nav.pathname = `/acme/${slug}`
+      render(<AdminSidebar orgSlug="acme" />)
+      expect(rowActive('+ New')).toBe(true)
+      expect(rowActive('All events')).toBe(false)
+      expect(sectionActive('Events')).toBe(true)
+    },
+  )
 
   it('highlights "All events" on the org root', () => {
     nav.pathname = '/acme'
