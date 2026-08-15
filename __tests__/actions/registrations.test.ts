@@ -146,4 +146,22 @@ describe('createRegistration — waitlist', () => {
 
     expect(sendEmailSpy).not.toHaveBeenCalled()
   })
+
+  // sendRegistrationConfirmation now throws on a rejected send (the Resend SDK resolves
+  // with { error } rather than rejecting, so the failure used to be discarded). The
+  // registration is already written by then, so a send failure must not fail the action —
+  // otherwise the caller sees an error for a registration that exists and retries it.
+  it('still succeeds when the confirmation email fails', async () => {
+    getEventSpy.mockResolvedValue({ exists: true, data: () => ({ id: 'camp-1', capacity: undefined }) })
+    getFamiliesSpy.mockResolvedValue({ docs: [] })
+    sendEmailSpy.mockRejectedValueOnce(new Error('Invalid `to` field.'))
+    const consoleErr = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    const result = await createRegistration(baseInput)
+
+    expect(result).toBeTruthy()
+    expect(sendEmailSpy).toHaveBeenCalled()
+    expect(consoleErr).toHaveBeenCalled()
+    consoleErr.mockRestore()
+  })
 })

@@ -2,6 +2,26 @@ import { getResend, buildFromAddress } from '@/lib/resend'
 
 const PUBLIC_BASE_URL = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://traxevent.com'
 
+/**
+ * The Resend SDK does not reject on API failure — a 422 validation error, 403
+ * unverified-domain, 429 rate limit, 5xx, or even a dropped connection all RESOLVE
+ * as `{ data: null, error }`. Awaiting a send therefore reports success for every
+ * failure mode; the only way to know whether delivery happened is to inspect
+ * `error`. Every sender in this module routes through here so that a failed send
+ * is a thrown error, not silence.
+ *
+ * Callers decide what a failure means. Where the business action is already
+ * committed (a registration written, a proposal signed, a form stored) the send is
+ * best-effort and the caller swallows and logs. Where the send IS the action —
+ * `sendProposalNudge` — the throw propagates, so nothing downstream records that a
+ * message went out when it did not.
+ */
+function assertDelivered(result: { error: { message?: string; name?: string } | null }): void {
+  if (result.error) {
+    throw new Error(result.error.message ?? result.error.name ?? 'Email delivery failed')
+  }
+}
+
 interface RegistrationConfirmationParams {
   to: string
   firstName: string
@@ -24,7 +44,7 @@ export async function sendRegistrationConfirmation(
 
   const from = buildFromAddress({ displayName: params.fromDisplayName, domain: params.fromDomain })
 
-  await getResend().emails.send({
+  assertDelivered(await getResend().emails.send({
     from,
     to: params.to,
     ...(params.replyTo ? { replyTo: params.replyTo } : {}),
@@ -52,7 +72,7 @@ export async function sendRegistrationConfirmation(
         </p>
       </div>
     `,
-  })
+  }))
 }
 
 interface FormSignedConfirmationParams {
@@ -72,7 +92,7 @@ export async function sendFormSignedConfirmation(
 ): Promise<void> {
   const from = buildFromAddress({ displayName: params.fromDisplayName, domain: params.fromDomain })
 
-  await getResend().emails.send({
+  assertDelivered(await getResend().emails.send({
     from,
     to: params.to,
     ...(params.replyTo ? { replyTo: params.replyTo } : {}),
@@ -93,7 +113,7 @@ export async function sendFormSignedConfirmation(
         </p>
       </div>
     `,
-  })
+  }))
 }
 
 export interface ProposalNudgeParams {
@@ -109,7 +129,7 @@ export interface ProposalNudgeParams {
 export async function sendProposalNudge(params: ProposalNudgeParams): Promise<void> {
   const from = buildFromAddress({ displayName: params.fromDisplayName, domain: params.fromDomain })
   const proposalUrl = `${PUBLIC_BASE_URL}/proposals/${params.token}`
-  await getResend().emails.send({
+  assertDelivered(await getResend().emails.send({
     from,
     to: params.to,
     ...(params.replyTo ? { replyTo: params.replyTo } : {}),
@@ -128,7 +148,7 @@ export async function sendProposalNudge(params: ProposalNudgeParams): Promise<vo
         </a>
       </div>
     `,
-  })
+  }))
 }
 
 interface ProposalSignedConfirmationParams {
@@ -150,7 +170,7 @@ export async function sendProposalSignedConfirmation(
   const from = buildFromAddress({ displayName: params.fromDisplayName, domain: params.fromDomain })
   const proposalUrl = `${PUBLIC_BASE_URL}/proposals/${params.token}`
 
-  await getResend().emails.send({
+  assertDelivered(await getResend().emails.send({
     from,
     to: params.to,
     ...(params.replyTo ? { replyTo: params.replyTo } : {}),
@@ -175,7 +195,7 @@ export async function sendProposalSignedConfirmation(
         </p>
       </div>
     `,
-  })
+  }))
 }
 
 // Minimal HTML entity escaping for user-supplied strings interpolated into
@@ -228,7 +248,7 @@ export async function sendIntakeNotification(params: IntakeNotificationParams): 
     )
     .join('')
 
-  await getResend().emails.send({
+  assertDelivered(await getResend().emails.send({
     from,
     to: params.to,
     subject: `New inquiry — ${params.leadName}`,
@@ -246,7 +266,7 @@ export async function sendIntakeNotification(params: IntakeNotificationParams): 
         </a>
       </div>
     `,
-  })
+  }))
 }
 
 export interface InvoiceEmailParams {
@@ -261,18 +281,6 @@ export interface InvoiceEmailParams {
   fromDisplayName?: string
   fromDomain?: string
   replyTo?: string
-}
-
-/**
- * The Resend SDK does not reject on API failure — a 422, 403, 429, 5xx, or even a
- * dropped connection all RESOLVE as `{ data: null, error }`. Callers that need to
- * know whether delivery actually happened must inspect `error` themselves; simply
- * awaiting the send reports success for every failure mode.
- */
-function assertDelivered(result: { error: { message?: string; name?: string } | null }): void {
-  if (result.error) {
-    throw new Error(result.error.message ?? result.error.name ?? 'Email delivery failed')
-  }
 }
 
 export async function sendInvoiceEmail(params: InvoiceEmailParams): Promise<void> {

@@ -252,4 +252,32 @@ describe('submitSignedForm', () => {
       })
     )
   })
+
+  // sendFormSignedConfirmation now throws on a rejected send. The signature is already
+  // stored and legally authoritative by then, so the receipt failing must not fail the
+  // action — that would invite the signer to sign a second time.
+  it('still returns the signed form when the confirmation email fails', async () => {
+    sendEmailSpy.mockRejectedValueOnce(new Error('Invalid `to` field.'))
+    const consoleErr = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    const signed = await submitSignedForm('org-1', 'camp-1', 'fam-1', {
+      assignmentId: 'assign-1',
+      templateId: 'tmpl-1',
+      templateVersion: 1,
+      templateName: 'Liability Waiver',
+      responses: {},
+      signatureName: 'Jane Smith',
+      signerEmail: 'jane@example.com',
+      signerFirstName: 'Jane',
+      eventName: 'Summer Camp 2026',
+      orgName: 'First Hills',
+      orgSlug: 'firsthills',
+      eventSlug: 'summer-2026',
+    })
+
+    expect(signed).toBeTruthy()
+    expect(signed.signature_name).toBe('Jane Smith')
+    expect(consoleErr).toHaveBeenCalled()
+    consoleErr.mockRestore()
+  })
 })
