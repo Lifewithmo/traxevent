@@ -8,7 +8,7 @@ import { endSession } from '@/lib/auth/establish-session'
 import { NavIcon, type NavIconName } from '@/components/layout/NavIcons'
 import { SidebarSection } from '@/components/layout/SidebarSection'
 import type { Terminology } from '@/lib/event-types'
-import type { EventPage } from '@/lib/types'
+import type { EventKind, EventPage } from '@/lib/types'
 import type { ModuleId } from '@/lib/industry-packs'
 import { ORG_PAGE_SLUGS } from '@/lib/sidebar-nav'
 import type { SidebarEventRow } from '@/lib/sidebar-events'
@@ -16,6 +16,7 @@ import type { SidebarEventRow } from '@/lib/sidebar-events'
 interface AdminSidebarProps {
   orgSlug: string
   eventSlug?: string
+  eventKind?: EventKind
   terminology?: Terminology
   allowedEventPages?: EventPage[]
   enabledModules?: ModuleId[]
@@ -85,6 +86,14 @@ const DEFAULT_TERMINOLOGY: Terminology = getEventType(DEFAULT_EVENT_TYPE_ID).ter
 
 // Per-event nav items that belong to the optional attendee-roster module.
 const ROSTER_KEYS = new Set(['families', 'assignments', 'checkin'])
+
+// Market days get an explicit, minimal nav — none of the client-job pages
+// (Ops, roster, Teams, Budget, etc.) apply. Register + Closeout join this
+// list with the counter-register increment.
+const MARKET_DAY_NAV = [
+  { key: 'dashboard', label: 'Overview' },
+  { key: 'settings', label: 'Settings' },
+]
 
 // The single source of truth for Settings' children. The parent's active state
 // is derived from these (see settingsActive) rather than from a second hand-kept
@@ -211,7 +220,7 @@ function IconRailGroup({ items }: { items: NavLink[] }) {
   )
 }
 
-export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPages, enabledModules, catalogLabel, storefrontLabel, upcomingEvents }: AdminSidebarProps) {
+export function AdminSidebar({ orgSlug, eventSlug, eventKind, terminology, allowedEventPages, enabledModules, catalogLabel, storefrontLabel, upcomingEvents }: AdminSidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
 
@@ -396,15 +405,18 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
   ]
 
   const eventNav = getEventNav(t)
-  const visibleEventNav = eventNav
-    .filter(
-      (n) =>
-        !allowedEventPages ||
-        n.key === 'dashboard' ||
-        n.key === 'settings' ||
-        allowedEventPages.includes(n.key as EventPage)
-    )
-    .filter((n) => !ROSTER_KEYS.has(n.key) || has('attendee-roster'))
+  const visibleEventNav =
+    eventKind === 'market_day'
+      ? MARKET_DAY_NAV
+      : eventNav
+          .filter(
+            (n) =>
+              !allowedEventPages ||
+              n.key === 'dashboard' ||
+              n.key === 'settings' ||
+              allowedEventPages.includes(n.key as EventPage)
+          )
+          .filter((n) => !ROSTER_KEYS.has(n.key) || has('attendee-roster'))
 
   async function handleSignOut() {
     await endSession()

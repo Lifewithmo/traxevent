@@ -238,6 +238,26 @@ describe('AdminSidebar — Option C IA', () => {
     expect(screen.getByRole('link', { name: 'All events' })).toHaveAttribute('href', '/acme')
   })
 
+  it('market-day job nav shows only Overview and Settings', () => {
+    nav.pathname = '/acme/boise-farmers-market-2026/dashboard'
+    render(<AdminSidebar orgSlug="acme" eventSlug="boise-farmers-market-2026" eventKind="market_day" />)
+    // Scoped to the job's Events section: the workspace Settings section
+    // header (`/acme/settings`) also renders inside a job (see "includes a
+    // Settings nav link" above) and shares the accessible name "Settings".
+    const events = screen.getByRole('button', { name: /collapse events/i }).closest('div')!.parentElement!
+    expect(within(events).getByRole('link', { name: 'Overview' })).toHaveAttribute('href', '/acme/boise-farmers-market-2026/dashboard')
+    expect(within(events).getByRole('link', { name: 'Settings' })).toHaveAttribute('href', '/acme/boise-farmers-market-2026/settings')
+    expect(screen.queryByRole('link', { name: 'Event Ops' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Teams' })).not.toBeInTheDocument()
+  })
+
+  it('client-job nav is unchanged when eventKind is client_job or absent', () => {
+    nav.pathname = '/acme/hendricks/dashboard'
+    render(<AdminSidebar orgSlug="acme" eventSlug="hendricks" />)
+    expect(screen.getByRole('link', { name: 'Dashboard' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Event Ops' })).toBeInTheDocument()
+  })
+
   it('renders on settings pages that are not in the top-level slug list', () => {
     nav.pathname = '/acme/branding'
     render(<AdminSidebar orgSlug="acme" />)

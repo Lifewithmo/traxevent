@@ -1,5 +1,8 @@
 import { requireEvent } from '@/lib/auth/guards'
 import { resolveEnabledModules } from '@/lib/industry-packs'
+import { kindOf } from '@/lib/occasions/kind'
+import { getSeriesCore } from '@/lib/occasions/series'
+import { MarketDayOverview } from '@/components/admin/occasions/MarketDayOverview'
 
 export default async function DashboardPage({
   params,
@@ -8,6 +11,12 @@ export default async function DashboardPage({
 }) {
   const { orgSlug, eventSlug } = await params
   const { org, event } = await requireEvent(orgSlug, eventSlug)
+
+  if (kindOf(event) === 'market_day') {
+    const series = event.series_id ? await getSeriesCore(org.id, event.series_id) : null
+    return <MarketDayOverview orgSlug={orgSlug} event={event} series={series} />
+  }
+
   const enabledModules = resolveEnabledModules(org.industry_pack_id)
   const rosterEnabled = enabledModules.includes('attendee-roster')
 
