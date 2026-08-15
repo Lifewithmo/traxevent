@@ -116,6 +116,35 @@ describe('extendSeriesCore', () => {
     await expect(extendSeriesCore('org-1', 's1', '2026-05-09')).rejects.toThrow('later')
     expect(createEventCoreSpy).not.toHaveBeenCalled()
   })
+
+  it('extends a season past the 30-day cap by generating only the next span (spec §3.2)', async () => {
+    // 28 Saturdays already generated, from 2026-01-03 through 2026-07-11 —
+    // recomputing the whole season from `from` on a further extend would
+    // exceed SERIES_OCCURRENCE_CAP (30), but a single extension span does not.
+    const existingDays: string[] = []
+    const d = new Date('2026-01-03T12:00:00Z')
+    for (let i = 0; i < 28; i++) {
+      existingDays.push(d.toISOString().slice(0, 10))
+      d.setUTCDate(d.getUTCDate() + 7)
+    }
+    expect(existingDays[27]).toBe('2026-07-11') // last generated day = old `until`
+
+    const recurrence = { freq: 'weekly' as const, weekday: 6, from: '2026-01-03', until: '2026-07-11' }
+    seriesGetSpy.mockResolvedValue({ exists: true, data: () => ({
+      id: 's1', ...INPUT, recurrence, kind: 'market_day', active: true, created_at: 'x',
+    }) })
+    daysQueryGetSpy.mockResolvedValue({
+      docs: existingDays.map((day) => ({ data: () => ({ event_start: day }) })),
+    })
+
+    // Extend ~10 more weeks. The delta span (2026-07-11..2026-09-19) is 11
+    // occurrences — under the cap — even though the season would be 38 deep.
+    const { created } = await extendSeriesCore('org-1', 's1', '2026-09-19')
+    expect(created).toBe(10) // 07-18 .. 09-19; 07-11 is the boundary overlap, already on file
+    expect(seriesUpdateSpy).toHaveBeenCalledWith(expect.objectContaining({
+      recurrence: expect.objectContaining({ until: '2026-09-19' }),
+    }))
+  })
 })
 
 describe('endSeriesCore / updateSeriesCore propagation', () => {

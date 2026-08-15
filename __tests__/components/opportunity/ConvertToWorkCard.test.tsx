@@ -2,8 +2,9 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const convertOpportunityToWork = vi.hoisted(() => vi.fn())
+const routerPush = vi.hoisted(() => vi.fn())
 vi.mock('@/actions/leads', () => ({ convertOpportunityToWork }))
-vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }))
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push: routerPush, refresh: vi.fn() }) }))
 
 import { ConvertToWorkCard } from '@/components/admin/opportunity/ConvertToWorkCard'
 import { getEventType } from '@/lib/event-types'
@@ -105,5 +106,18 @@ describe('ConvertToWorkCard', () => {
     await waitFor(() => expect(convertOpportunityToWork).toHaveBeenCalled())
     const arg = convertOpportunityToWork.mock.calls[0][2]
     expect(arg.kind ?? 'client_job').toBe('client_job')
+  })
+
+  it('redirects a market-day conversion to the dashboard, not ops (market-day nav has no Ops page)', async () => {
+    render(<ConvertToWorkCard {...props} open />)
+    fireEvent.change(screen.getByLabelText(/kind/i), { target: { value: 'market_day' } })
+    fireEvent.click(screen.getByRole('button', { name: /^schedule job$/i }))
+    await waitFor(() => expect(routerPush).toHaveBeenCalledWith('/acme/nguyen-wedding-2026/dashboard'))
+  })
+
+  it('redirects a client-job conversion to ops as before', async () => {
+    render(<ConvertToWorkCard {...props} open />)
+    fireEvent.click(screen.getByRole('button', { name: /^schedule job$/i }))
+    await waitFor(() => expect(routerPush).toHaveBeenCalledWith('/acme/nguyen-wedding-2026/ops'))
   })
 })

@@ -49,6 +49,9 @@ export async function listSeriesDaysCore(orgId: string, seriesId: string): Promi
 async function generateDays(orgId: string, series: EventSeries, days: string[]): Promise<number> {
   const existing = new Set((await listSeriesDaysCore(orgId, series.id)).map((e) => e.event_start))
   let created = 0
+  // Sequential on purpose: createEventCore's slug resolution is query-then-write —
+  // parallel creates of same-name days would race into duplicate slugs. Do not
+  // Promise.all this loop.
   for (const day of days) {
     if (existing.has(day)) continue
     await createEventCore(orgId, {
@@ -150,13 +153,22 @@ export async function updateSeriesCore(
   }
 }
 
-/** Raise `until` and generate the delta (idempotent). */
+/**
+ * Raise `until` and generate the NEXT SPAN — not the whole season recomputed
+ * from day one (spec §3.2). The span starts at the OLD `until` so the
+ * SERIES_OCCURRENCE_CAP in seriesOccurrences applies per extension, not to
+ * the season's cumulative length: a season can grow past the cap across
+ * repeated extends. generateDays' idempotent (series, day) skip harmlessly
+ * absorbs the boundary overlap when old-until itself lands on the matching
+ * weekday (it's the first day seriesOccurrences finds on/after `from`).
+ */
 export async function extendSeriesCore(orgId: string, seriesId: string, newUntil: string): Promise<{ created: number }> {
   const series = await getSeriesCore(orgId, seriesId)
   if (!series) throw new Error('Series not found')
   if (newUntil <= series.recurrence.until) throw new Error('The new end date must be later than the current one')
+  const deltaRecurrence: SeriesRecurrence = { ...series.recurrence, from: series.recurrence.until, until: newUntil }
+  const days = seriesOccurrences(deltaRecurrence)
   const recurrence: SeriesRecurrence = { ...series.recurrence, until: newUntil }
-  const days = seriesOccurrences(recurrence)
   const created = await generateDays(orgId, { ...series, recurrence }, days)
   await seriesRef(orgId).doc(seriesId).update({ recurrence, updated_at: new Date().toISOString() })
   return { created }

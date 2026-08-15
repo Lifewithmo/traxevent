@@ -72,7 +72,7 @@ export function ConvertToWorkCard({ orgId, orgSlug, lead, job, eventTypes, open:
         ...(headcount.trim() ? { headcount: Number(headcount) } : {}),
         ...(kind === 'market_day' ? { kind } : {}),
       })
-      router.push(`/${orgSlug}/${event.slug}/ops`)
+      router.push(`/${orgSlug}/${event.slug}/${kind === 'market_day' ? 'dashboard' : 'ops'}`)
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to schedule')
       setSaving(false)

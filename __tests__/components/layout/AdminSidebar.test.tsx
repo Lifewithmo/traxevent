@@ -399,6 +399,21 @@ describe('AdminSidebar — active state', () => {
     expect(rowActive('Opportunities')).toBe(true)
     expect(rowActive('Tasks')).toBe(false)
   })
+
+  it('highlights the Events section on a hard load of /drops when storefront is enabled', () => {
+    // Drops lives under Events, not its own section — a hard load of the page
+    // must still light up its parent section, or nothing in the sidebar shows
+    // where the operator is.
+    nav.pathname = '/acme/drops'
+    render(<AdminSidebar orgSlug="acme" enabledModules={['events', 'storefront']} />)
+    expect(sectionActive('Events')).toBe(true)
+  })
+
+  it('does not highlight Events on /drops when storefront is disabled', () => {
+    nav.pathname = '/acme/drops'
+    render(<AdminSidebar orgSlug="acme" enabledModules={['events']} />)
+    expect(sectionActive('Events')).toBe(false)
+  })
 })
 
 describe('AdminSidebar — independent nav scroll', () => {

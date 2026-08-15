@@ -380,7 +380,11 @@ export function AdminSidebar({ orgSlug, eventSlug, eventKind, terminology, allow
 
   const allEventsActive = pathname === `/${orgSlug}`
   const newEventActive = CREATE_SLUGS.some((s) => isActive(pathname, `/${orgSlug}/${s}`))
-  const eventsActive = allEventsActive || newEventActive || Boolean(eventSlug)
+  // Drops lives under Events (not its own section), so a hard load of
+  // /{orgSlug}/drops must light up the Events row too, or the parent section
+  // shows nothing highlighted while its own child page is open.
+  const dropsActive = has('storefront' as ModuleId) && isActive(pathname, `/${orgSlug}/drops`)
+  const eventsActive = allEventsActive || newEventActive || Boolean(eventSlug) || dropsActive
 
   const pipelineActive = pipelineChildren.some((l) => l.active)
   const moneyActive = isActive(pathname, `/${orgSlug}/money`) || moneyChildren.some((l) => l.active)
