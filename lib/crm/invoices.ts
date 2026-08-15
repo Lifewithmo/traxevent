@@ -1,3 +1,4 @@
+import type { Transaction } from 'firebase-admin/firestore'
 import { adminDb } from '@/lib/firebase-admin'
 import { randomBytes } from 'crypto'
 import { generateAccessToken } from '@/lib/tokens'
@@ -30,6 +31,30 @@ import type {
 
 export function invoicesRef(orgId: string) {
   return adminDb.collection('orgs').doc(orgId).collection('invoices')
+}
+
+export function invoiceCounterRef(orgId: string) {
+  return adminDb.collection('orgs').doc(orgId).collection('counters').doc('invoice_number')
+}
+
+/**
+ * Burns the next value off the org's invoice counter inside `tx` and returns the
+ * formatted number. The read and the increment must share one transaction or two
+ * concurrent sends can hand out the same number, so this is never a standalone call —
+ * pass the caller's transaction. Firestore requires every read before any write, so
+ * call this before the transaction's own writes.
+ *
+ * Shared by the first-send transition (markInvoiceSentCore) and the resend backfill for
+ * legacy `status: 'sent'` docs that were never numbered; the number assignment is the
+ * only thing they have in common, hence no lifecycle write here.
+ */
+export async function assignNextInvoiceNumber(tx: Transaction, orgId: string): Promise<string> {
+  const counterRef = invoiceCounterRef(orgId)
+  const counterSnap = await tx.get(counterRef)
+  const counterData = counterSnap.exists ? (counterSnap.data() as { seq: number; prefix?: string }) : undefined
+  const seq = (counterData?.seq ?? 1000) + 1
+  tx.set(counterRef, { seq }, { merge: true })
+  return formatInvoiceNumber(seq, counterData?.prefix)
 }
 
 export interface CreateInvoiceCoreInput {
@@ -173,7 +198,6 @@ export async function markInvoiceSentCore(
   opts?: { sentAt?: string },
 ): Promise<{ number: string }> {
   const ref = invoicesRef(orgId).doc(invoiceId)
-  const counterRef = adminDb.collection('orgs').doc(orgId).collection('counters').doc('invoice_number')
 
   return adminDb.runTransaction(async (tx) => {
     const snap = await tx.get(ref)
@@ -182,14 +206,10 @@ export async function markInvoiceSentCore(
     if (inv.lifecycle !== 'draft') {
       throw new Error(`Cannot send an invoice that is ${inv.lifecycle}`)
     }
-    const counterSnap = await tx.get(counterRef)
-    const counterData = counterSnap.exists ? (counterSnap.data() as { seq: number; prefix?: string }) : undefined
-    const seq = (counterData?.seq ?? 1000) + 1
-    const number = formatInvoiceNumber(seq, counterData?.prefix)
+    const number = await assignNextInvoiceNumber(tx, orgId)
     const now = new Date().toISOString()
     const sent_at = opts?.sentAt ?? now
 
-    tx.set(counterRef, { seq }, { merge: true })
     tx.set(ref, {
       lifecycle: 'sent', number, sent_at, updated_at: now,
       versions: [...(inv.versions ?? []), invoiceVersionSnapshot(inv, sent_at)],

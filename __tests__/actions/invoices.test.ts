@@ -767,6 +767,94 @@ describe('sendInvoice', () => {
     expect(sendInvoiceEmailSpy).toHaveBeenCalledWith(expect.objectContaining({ isUpdate: true }))
   })
 
+  // Send update is the only write path onto a sent invoice. Without a whitelist its
+  // `updates` payload is a raw ref.update(), so any org admin could hand it `number`
+  // and rewrite the counter-assigned number — two invoices could then share one.
+  it('sent: rejects a send update that tries to rewrite the counter-assigned number', async () => {
+    invoiceDocGetSpy.mockResolvedValue({ exists: true, data: () => sentInvoiceWithOneVersion })
+    await expect(
+      sendInvoice('org1', 'inv1', { to: 'c@e.com', updates: { title: 'Renamed', number: 'INV-0001' } }),
+    ).rejects.toThrow(/number/i)
+    // Nothing may reach Firestore: not the number, not the title that rode along with it.
+    expect(invoiceDocUpdateSpy).not.toHaveBeenCalled()
+    expect(sendInvoiceEmailSpy).not.toHaveBeenCalled()
+  })
+
+  it('sent: rejects a send update carrying type/source/credits', async () => {
+    invoiceDocGetSpy.mockResolvedValue({ exists: true, data: () => sentInvoiceWithOneVersion })
+    await expect(
+      sendInvoice('org1', 'inv1', { to: 'c@e.com', updates: { type: 'final' } }),
+    ).rejects.toThrow(/type/i)
+    expect(invoiceDocUpdateSpy).not.toHaveBeenCalled()
+  })
+
+  it('sent: allows the editor\'s own pricing/terms fields through', async () => {
+    invoiceDocGetSpy.mockResolvedValue({ exists: true, data: () => sentInvoiceAfterUpdate })
+    await sendInvoice('org1', 'inv1', {
+      to: 'c@e.com',
+      updates: {
+        title: 'T', due_date: '2026-09-01', notes: 'n',
+        line_items: [{ description: 'Extra hour', quantity: 1, unit_price: 100 }],
+        discount: { type: 'fixed', value: 5 }, tax_rate: 8.25,
+      },
+    })
+    expect(invoiceDocUpdateSpy).toHaveBeenCalledWith(expect.objectContaining({ title: 'T', tax_rate: 8.25 }))
+  })
+
+  // A sent proposal-derived invoice is still editable through Send update, so running
+  // the scope guardrail only on first send left a UI-reachable bypass: a $500 deposit
+  // against a $1000 proposal could be re-sent as $5000.
+  const sentDeposit = {
+    id: 'inv1', org_id: 'org1', lead_id: 'lead-1', token: 't', lifecycle: 'sent', type: 'deposit',
+    number: 'BRW-1042', payments: [], created_at: '2026-01-01', sent_at: '2026-01-02T00:00:00.000Z',
+    source: { type: 'proposal', id: 'p1', label: 'Accepted proposal' },
+    line_items: [{ description: 'Deposit', quantity: 1, unit_price: 500, source: { type: 'proposal', id: 'p1' } }],
+    versions: [{ sent_at: '2026-01-02T00:00:00.000Z', line_items: [{ description: 'Deposit', quantity: 1, unit_price: 500 }] }],
+  }
+  const acceptedProposal = {
+    id: 'p1', org_id: 'org1', lead_id: 'lead-1', token: 'pt', status: 'accepted',
+    line_items: [{ description: 'Package', quantity: 1, unit_price: 1000 }], created_at: '2026-01-01',
+  }
+
+  it('resend: rejects a send update that raises the invoice past the accepted proposal total', async () => {
+    getProposalSpy.mockResolvedValue(acceptedProposal)
+    const raised = { ...sentDeposit, line_items: [{ description: 'Deposit', quantity: 1, unit_price: 5000, source: { type: 'proposal' as const, id: 'p1' } }] }
+    invoiceDocGetSpy
+      .mockResolvedValueOnce({ exists: true, data: () => sentDeposit })   // preSnap
+      .mockResolvedValueOnce({ exists: true, data: () => raised })        // post-update refetch
+    // The sibling list read happens after the update lands, so this invoice appears in it
+    // at its NEW amount — the guard must exclude itself rather than double-count it.
+    listInvoicesSpy.mockResolvedValueOnce({ docs: [{ data: () => raised }] })
+
+    await expect(
+      sendInvoice('org1', 'inv1', { to: 'c@e.com', updates: { line_items: raised.line_items } }),
+    ).rejects.toThrow(/exceeds approved scope/i)
+    expect(txUpdateSpy).not.toHaveBeenCalled()
+    expect(sendInvoiceEmailSpy).not.toHaveBeenCalled()
+  })
+
+  it('resend: a raise that stays inside the accepted total passes (own current amount is not counted as billed)', async () => {
+    getProposalSpy.mockResolvedValue(acceptedProposal)
+    const raised = { ...sentDeposit, line_items: [{ description: 'Deposit', quantity: 1, unit_price: 900, source: { type: 'proposal' as const, id: 'p1' } }] }
+    const sibling = {
+      id: 'inv2', org_id: 'org1', lead_id: 'lead-1', token: 't', lifecycle: 'sent', type: 'progress',
+      number: 'BRW-1043', payments: [], created_at: '2026-01-03',
+      source: { type: 'proposal', id: 'p1' },
+      line_items: [{ description: 'Progress', quantity: 1, unit_price: 100 }],
+    }
+    invoiceDocGetSpy
+      .mockResolvedValueOnce({ exists: true, data: () => sentDeposit })
+      .mockResolvedValueOnce({ exists: true, data: () => raised })
+      .mockResolvedValueOnce({ exists: true, data: () => raised })  // resend tx re-read
+    // 900 (new) + 100 (sibling) = 1000 = accepted. Counting this invoice's own 900 as
+    // already-billed would push the check to 1900 and wrongly reject.
+    listInvoicesSpy.mockResolvedValueOnce({ docs: [{ data: () => raised }, { data: () => sibling }] })
+
+    const res = await sendInvoice('org1', 'inv1', { to: 'c@e.com', updates: { line_items: raised.line_items } })
+    expect(res.number).toBe('BRW-1042')
+    expect(sendInvoiceEmailSpy).toHaveBeenCalledWith(expect.objectContaining({ isUpdate: true }))
+  })
+
   it('void: rejects', async () => {
     invoiceDocGetSpy.mockResolvedValue({ exists: true, data: () => ({ ...draftInvoice, lifecycle: 'void' }) })
     await expect(sendInvoice('org1', 'inv1', { to: 'c@e.com' })).rejects.toThrow(/void/)
@@ -790,6 +878,36 @@ describe('sendInvoice', () => {
     invoiceDocUpdateSpy.mockRejectedValueOnce(new Error('firestore unavailable'))
     await expect(sendInvoice('org1', 'inv1', { to: 'c@e.com' })).rejects.toThrow(/firestore unavailable/)
     expect(invoiceDocUpdateSpy).not.toHaveBeenCalledWith(expect.objectContaining({ delivery: 'bounced' }))
+  })
+
+  // Legacy pre-lifecycle docs were written as `status: 'sent'` without ever burning a
+  // counter value, so they normalize to lifecycle 'sent' carrying no number. Resending
+  // one used to mail a blank number forever and leave the editor showing the draft's
+  // "№ assigned when sent" placeholder on an obviously-sent invoice.
+  it('resend: backfills a number for a legacy sent invoice that never got one', async () => {
+    const legacySent = {
+      id: 'inv1', org_id: 'org1', lead_id: 'lead-1', token: 't', status: 'sent', type: 'quick',
+      line_items: [{ description: 'x', quantity: 1, unit_price: 500 }], payments: [], created_at: '2026-01-01',
+    }
+    invoiceDocGetSpy.mockResolvedValue({ exists: true, data: () => legacySent })
+    counterGetSpy.mockResolvedValue({ exists: true, data: () => ({ seq: 1041, prefix: 'BRW-' }) })
+
+    const res = await sendInvoice('org1', 'inv1', { to: 'c@e.com' })
+
+    expect(res.number).toBe('BRW-1042')
+    // The number is written in the SAME transaction that burns the counter value —
+    // two concurrent resends must not be able to hand out the same number.
+    expect(txSetSpy).toHaveBeenCalledWith(expect.anything(), { seq: 1042 }, { merge: true })
+    expect(txUpdateSpy).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ number: 'BRW-1042' }))
+    expect(sendInvoiceEmailSpy).toHaveBeenCalledWith(expect.objectContaining({ invoiceNumber: 'BRW-1042', isUpdate: true }))
+  })
+
+  it('resend: an already-numbered invoice keeps its number and burns no counter value', async () => {
+    invoiceDocGetSpy.mockResolvedValue({ exists: true, data: () => sentInvoiceWithOneVersion })
+    const res = await sendInvoice('org1', 'inv1', { to: 'c@e.com' })
+    expect(res.number).toBe('BRW-1042')
+    expect(txSetSpy).not.toHaveBeenCalled()
+    expect(txUpdateSpy.mock.calls[0][1]).not.toHaveProperty('number')
   })
 
   // voidInvoice is a plain update outside the resend transaction, so the transaction

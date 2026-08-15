@@ -5,7 +5,7 @@ import { assertOrgMember, assertOrgAdmin } from '@/lib/auth/assert'
 import { invoiceAmountDue } from '@/lib/invoices'
 import { normalizeInvoice } from '@/lib/invoice-normalize'
 import { previouslyBilled, assertWithinScope, acceptedProposalTotal } from '@/lib/invoice-progress'
-import { assertEditable } from '@/lib/invoice-lock'
+import { assertEditable, assertSendEditable } from '@/lib/invoice-lock'
 import { getProposal } from '@/actions/proposals'
 import { getLead } from '@/actions/leads'
 import { adminDb } from '@/lib/firebase-admin'
@@ -14,11 +14,13 @@ import { getOpsPlanCore } from '@/lib/ops/event-ops'
 import { getWorkPackagesByIdsCore } from '@/lib/ops/work-packages'
 import {
   invoicesRef,
+  invoiceCounterRef,
   listInvoicesCore,
   createInvoiceCore,
   generateFromProposalCore,
   recordPaymentCore,
   markInvoiceSentCore,
+  assignNextInvoiceNumber,
   invoiceVersionSnapshot,
 } from '@/lib/crm/invoices'
 import { sendInvoiceEmail } from '@/lib/email'
@@ -156,6 +158,30 @@ export interface SendInvoiceInput {
 }
 
 /**
+ * The proposal-scope guardrail for a send. `inv` must be the post-updates invoice, so the
+ * amount asserted is what the customer is about to be billed.
+ *
+ * The invoice being sent is filtered out of the sibling list on purpose: on a resend it is
+ * already `sent`, so previouslyBilled would count its CURRENT amount as prior billing and
+ * then add the new amount on top — a plain resend of an at-scope invoice would fail, and a
+ * raise would be measured against the wrong baseline. Excluding it makes `billed` mean
+ * "what the OTHER sent invoices claim", which is the comparison the invariant wants. On a
+ * first send the draft is not `sent`, so the filter is a no-op there.
+ *
+ * Not exported: this module is 'use server', where every export must be an async server
+ * action — an internal helper must stay internal.
+ */
+async function assertSendWithinScope(orgId: string, invoiceId: string, inv: NormalizedInvoice): Promise<void> {
+  if (inv.source?.type !== 'proposal' || !inv.source.id || inv.type === 'quick') return
+  const proposal = await getProposal(orgId, inv.source.id)
+  if (!proposal) return
+  const approved = acceptedProposalTotal(proposal)
+  const existing = await listInvoices(orgId, inv.lead_id)
+  const billed = previouslyBilled(existing.filter((i) => i.id !== invoiceId), inv.source.id)
+  assertWithinScope(invoiceAmountDue(inv), billed, approved)
+}
+
+/**
  * The one send motion (spec §6): apply any pending edits, assign the number on first
  * send, snapshot the content-as-sent into versions[], email the customer, and record
  * delivery. Email failure never rolls back the send — numbers must be unique, not
@@ -175,6 +201,11 @@ export async function sendInvoice(
   if (inv.lifecycle === 'void') throw new Error('Cannot send a void invoice')
 
   if (input.updates) {
+    // Send update is the ONLY write path onto a sent invoice, so this payload has to be
+    // whitelisted the way updateInvoice's is: without it any org admin could pass
+    // `number` (or type/source/credits) here and rewrite the counter-assigned number,
+    // breaking the invariant that two invoices can never share one.
+    assertSendEditable(Object.keys(input.updates))
     const cleaned: Record<string, unknown> = {}
     for (const [k, v] of Object.entries(input.updates)) {
       cleaned[k] = v === undefined ? FieldValue.delete() : v
@@ -183,24 +214,20 @@ export async function sendInvoice(
     inv = normalizeInvoice((await ref.get()).data()!)
   }
 
+  // Scope invariant, verbatim from the retired issueInvoice: plain reads only —
+  // Firestore transactions cannot run queries. Checked on EVERY send, not just the
+  // first: a sent proposal-derived invoice is still editable through Send update, so
+  // skipping the resend would let a $500 deposit be re-sent as $5000 against a $1000
+  // proposal. `inv` is post-updates here, so the amount checked is the new one.
+  await assertSendWithinScope(orgId, invoiceId, inv)
+
   const isUpdate = inv.lifecycle === 'sent'
   let number: string
   if (!isUpdate) {
-    // Scope invariant, verbatim from the retired issueInvoice: plain reads only —
-    // Firestore transactions cannot run queries.
-    if (inv.source?.type === 'proposal' && inv.source.id && inv.type !== 'quick') {
-      const proposal = await getProposal(orgId, inv.source.id)
-      if (proposal) {
-        const approved = acceptedProposalTotal(proposal)
-        const existing = await listInvoices(orgId, inv.lead_id)
-        const billed = previouslyBilled(existing, inv.source.id)
-        assertWithinScope(invoiceAmountDue(inv), billed, approved)
-      }
-    }
     const res = await markInvoiceSentCore(orgId, invoiceId)
     number = res.number
   } else {
-    number = inv.number ?? ''
+    let resentNumber = inv.number ?? ''
     const now = new Date().toISOString()
     // Resend: read-append-write must be one transaction. A bare ref.update() built from
     // an earlier read would let two concurrent resends (double-click, two admins) both
@@ -213,12 +240,21 @@ export async function sendInvoice(
       // Recheck inside the transaction: voidInvoice is a plain update outside it,
       // so an invoice voided since the pre-read would otherwise still be emailed.
       if (txInv.lifecycle === 'void') throw new Error('Cannot send a void invoice')
+      // Legacy pre-lifecycle docs (`status: 'sent'`) reach the resend branch having never
+      // burned a counter value, so they carry no number. Backfill one — the same
+      // transactional bump as the first send, minus the lifecycle transition — or every
+      // resend mails a blank invoice number and the editor keeps showing the draft's
+      // "№ assigned when sent" placeholder on an invoice that is demonstrably sent.
+      const backfilled = txInv.number ? undefined : await assignNextInvoiceNumber(tx, orgId)
+      resentNumber = txInv.number ?? backfilled ?? ''
       tx.update(ref, {
         versions: [...(txInv.versions ?? []), invoiceVersionSnapshot(txInv, now)],
+        ...(backfilled ? { number: backfilled } : {}),
         sent_at: now,
         updated_at: now,
       })
     })
+    number = resentNumber
   }
 
   const orgSnap = await adminDb.collection('orgs').doc(orgId).get()
@@ -291,10 +327,6 @@ export async function deleteInvoice(orgId: string, invoiceId: string): Promise<v
   const inv = normalizeInvoice(snap.data()!)
   if (inv.lifecycle !== 'draft') throw new Error('Cannot delete a sent invoice — void it instead')
   await ref.delete()
-}
-
-function invoiceCounterRef(orgId: string) {
-  return adminDb.collection('orgs').doc(orgId).collection('counters').doc('invoice_number')
 }
 
 export async function getInvoiceNumbering(orgId: string): Promise<{ prefix?: string; next_number: number }> {
