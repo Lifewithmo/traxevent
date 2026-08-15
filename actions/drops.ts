@@ -9,7 +9,7 @@ import {
 } from '@/lib/storefront/drops'
 import { adminDb } from '@/lib/firebase-admin'
 import { customersRef } from '@/lib/crm/customers'
-import { buildDropAnnouncementEmail } from '@/lib/email'
+import { buildDropAnnouncementEmail, assertDelivered } from '@/lib/email'
 import { getResend } from '@/lib/resend'
 import { getVerifiedSendingDomain } from '@/actions/domains'
 import type { Customer, Drop, Org } from '@/lib/types'
@@ -98,7 +98,10 @@ export async function publishDrop(orgId: string, dropId: string): Promise<Drop> 
         )
         const resend = getResend()
         for (let i = 0; i < payloads.length; i += 100) {
-          await resend.batch.send(payloads.slice(i, i + 100))
+          // resend.batch.send RESOLVES `{ data: null, error }` on failure — it
+          // does not reject. assertDelivered (lib/email.ts) throws so a dead
+          // batch is caught below and announced_at is never stamped.
+          assertDelivered(await resend.batch.send(payloads.slice(i, i + 100)))
         }
       }
       await dropsRef(orgId).doc(dropId).update({ announced_at: new Date().toISOString() })

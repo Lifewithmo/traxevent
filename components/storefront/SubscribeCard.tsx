@@ -6,7 +6,13 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 
-export function SubscribeCard({ handle }: { handle: string }) {
+export function SubscribeCard({
+  handle,
+  source = 'profile',
+}: {
+  handle: string
+  source?: 'profile' | 'drop_page'
+}) {
   const mountedAt = useRef(0)
   const [email, setEmail] = useState('')
   const [name, setName] = useState('')
@@ -27,6 +33,7 @@ export function SubscribeCard({ handle }: { handle: string }) {
         handle,
         { email, ...(name.trim() ? { name } : {}), ...(website ? { website } : {}) },
         Date.now() - mountedAt.current,
+        source,
       )
       setState('done')
     } catch (err) {

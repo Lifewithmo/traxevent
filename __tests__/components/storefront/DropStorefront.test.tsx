@@ -4,6 +4,12 @@ import { render, screen, fireEvent } from '@testing-library/react'
 vi.mock('@/components/storefront/DropCheckout', () => ({
   DropCheckout: () => <div data-testid="checkout" />,
 }))
+// DropStorefront now mounts the real SubscribeCard (upcoming/ended states),
+// which imports the real subscribeToDrops server action — that module chain
+// reaches lib/firebase-admin, which throws without Firebase env vars. Mock
+// it the same way SubscribeCard.test.tsx does; these tests only assert on
+// rendering, not the action's behavior.
+vi.mock('@/actions/storefront-public', () => ({ subscribeToDrops: vi.fn().mockResolvedValue({ ok: true }) }))
 
 import { DropStorefront } from '@/components/storefront/DropStorefront'
 
@@ -37,6 +43,11 @@ describe('DropStorefront', () => {
     render(<DropStorefront drop={{ ...DROP, phase: 'ended' }} />)
     expect(screen.getByText(/sales have ended/i)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /add vanilla latte/i })).not.toBeInTheDocument()
+  })
+
+  it('mounts the subscribe card in the ended state so drop-page traffic can capture the reminder list', () => {
+    render(<DropStorefront drop={{ ...DROP, phase: 'ended' }} />)
+    expect(screen.getByText(/don't miss the next drop/i)).toBeInTheDocument()
   })
 
   it('shows opens-at info when upcoming', () => {

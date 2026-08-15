@@ -15,7 +15,7 @@ export interface CheckoutRequest {
   tip?: number
 }
 
-function PayForm({ total, onPaid }: { total: number; onPaid: () => void }) {
+function PayForm({ total, orderToken, onPaid }: { total: number; orderToken: string; onPaid: () => void }) {
   const stripe = useStripe()
   const elements = useElements()
   const [submitting, setSubmitting] = useState(false)
@@ -26,7 +26,14 @@ function PayForm({ total, onPaid }: { total: number; onPaid: () => void }) {
     if (!stripe || !elements) return
     setSubmitting(true)
     setError(null)
-    const result = await stripe.confirmPayment({ elements, redirect: 'if_required' })
+    // return_url is required for redirect-based payment methods (e.g. bank
+    // redirects) even though the happy path resolves in-page via
+    // `redirect: 'if_required'` — without it, those methods error at confirm.
+    const result = await stripe.confirmPayment({
+      elements,
+      redirect: 'if_required',
+      confirmParams: { return_url: `${window.location.origin}/orders/${orderToken}` },
+    })
     if (result.error) {
       setError(result.error.message ?? 'Payment failed')
       setSubmitting(false)
@@ -91,13 +98,14 @@ export function DropCheckout({ request, total }: { request: CheckoutRequest; tot
       </div>
     )
   }
-  if (!intent?.clientSecret || !stripePromise) {
+  if (!intent?.clientSecret || !intent?.orderToken || !stripePromise) {
     return <p className="text-sm text-gray-500">Loading payment form…</p>
   }
   return (
     <Elements stripe={stripePromise} options={{ clientSecret: intent.clientSecret }}>
       <PayForm
         total={total}
+        orderToken={intent.orderToken}
         onPaid={() => {
           // Status page owns the post-payment experience (webhook may lag —
           // it renders a "confirming" state while the order is pending).

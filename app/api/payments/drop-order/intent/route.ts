@@ -76,8 +76,11 @@ export async function POST(req: Request) {
     } catch {
       // best-effort — the 502 below must always be returned
     }
+    // Log the real (possibly Stripe-internal) error server-side only — the
+    // client gets a generic message so raw Stripe error text never leaks.
+    console.error('drop-order payment intent creation failed', err)
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Failed to create payment' },
+      { error: 'Payment could not be started — please try again.' },
       { status: 502 },
     )
   }

@@ -82,18 +82,19 @@ describe('POST /api/payments/drop-order/intent', () => {
     expect(getDropCoreSpy).not.toHaveBeenCalled()
   })
 
-  it('cleans up the pending hold when PI creation fails', async () => {
+  it('cleans up the pending hold when PI creation fails, returning a generic message (not the raw Stripe error)', async () => {
     piCreateSpy.mockRejectedValue(new Error('stripe down'))
     const res = await POST(makeRequest(BODY))
     expect(res.status).toBe(502)
     expect(deletePendingSpy).toHaveBeenCalledWith('org-1', 'o1')
+    expect(await res.json()).toEqual({ error: 'Payment could not be started — please try again.' })
   })
 
-  it('still returns 502 with the PI error when the cleanup delete itself fails', async () => {
+  it('still returns 502 with the generic message when the cleanup delete itself fails', async () => {
     piCreateSpy.mockRejectedValue(new Error('stripe down'))
     deletePendingSpy.mockRejectedValueOnce(new Error('firestore down'))
     const res = await POST(makeRequest(BODY))
     expect(res.status).toBe(502)
-    expect(await res.json()).toEqual({ error: 'stripe down' })
+    expect(await res.json()).toEqual({ error: 'Payment could not be started — please try again.' })
   })
 })

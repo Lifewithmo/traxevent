@@ -118,6 +118,13 @@ describe('subscribeToDrops', () => {
     expect(marketing.unsubscribe_token).toHaveLength(48)
   })
 
+  it('stores marketing.source as drop_page when passed from the drop page, defaulting to profile otherwise', async () => {
+    getOrgByHandleSpy.mockResolvedValue(ORG)
+    findOrCreateSpy.mockResolvedValue({ customer: { id: 'c1' }, created: true })
+    await subscribeToDrops('lovebrew', { email: 'jane@example.com' }, 5000, 'drop_page')
+    expect(customerUpdateSpy.mock.calls[0][0].marketing.source).toBe('drop_page')
+  })
+
   it('keeps an existing unsubscribe_token on resubscribe', async () => {
     getOrgByHandleSpy.mockResolvedValue(ORG)
     findOrCreateSpy.mockResolvedValue({

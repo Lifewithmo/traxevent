@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { DropCheckout, type CheckoutRequest } from '@/components/storefront/DropCheckout'
+import { SubscribeCard } from '@/components/storefront/SubscribeCard'
 import type { PublicDrop } from '@/actions/storefront-public'
 
 function money(n: number): string {
@@ -76,12 +77,18 @@ export function DropStorefront({ drop }: { drop: PublicDrop }) {
       </header>
 
       {drop.phase === 'upcoming' && (
-        <div className="rounded-xl border p-4 text-sm">
-          Orders open {new Date(drop.opens_at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}.
+        <div className="space-y-4">
+          <div className="rounded-xl border p-4 text-sm">
+            Orders open {new Date(drop.opens_at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}.
+          </div>
+          <SubscribeCard handle={drop.org.handle} source="drop_page" />
         </div>
       )}
       {drop.phase === 'ended' && (
-        <div className="rounded-xl border p-4 text-sm">Sales have ended for this drop.</div>
+        <div className="space-y-4">
+          <div className="rounded-xl border p-4 text-sm">Sales have ended for this drop.</div>
+          <SubscribeCard handle={drop.org.handle} source="drop_page" />
+        </div>
       )}
 
       <main className="mt-6 grid gap-3">

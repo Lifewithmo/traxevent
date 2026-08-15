@@ -88,4 +88,11 @@ describe('publishDrop', () => {
     const out = await publishDrop('org-1', 'd1')
     expect(out.status).toBe('scheduled')
   })
+
+  it('does not stamp announced_at when Resend resolves the batch with an error (SDK does not reject on failure)', async () => {
+    batchSendSpy.mockResolvedValue({ data: null, error: { message: 'invalid api key' } })
+    const out = await publishDrop('org-1', 'd1')
+    expect(out.status).toBe('scheduled')
+    expect(dropUpdateSpy).not.toHaveBeenCalledWith(expect.objectContaining({ announced_at: expect.any(String) }))
+  })
 })

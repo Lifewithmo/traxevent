@@ -140,7 +140,9 @@ export async function subscribeToDrops(
   handle: string,
   input: { name?: string; email: string; website?: string },
   elapsedMs: number,
+  source?: 'profile' | 'drop_page',
 ): Promise<{ ok: true }> {
+  const marketingSource = source === 'drop_page' ? 'drop_page' : 'profile'
   const org = await getOrgByHandle(handle)
   if (!org) throw new Error('This page is no longer available.')
 
@@ -165,7 +167,7 @@ export async function subscribeToDrops(
     marketing: {
       subscribed: true,
       subscribed_at: new Date().toISOString(),
-      source: 'profile',
+      source: marketingSource,
       unsubscribe_token: existing?.unsubscribe_token ?? generateAccessToken(),
     },
     updated_at: new Date().toISOString(),

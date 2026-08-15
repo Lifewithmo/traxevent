@@ -15,8 +15,13 @@ const PUBLIC_BASE_URL = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://traxevent.c
  * best-effort and the caller swallows and logs. Where the send IS the action —
  * `sendProposalNudge` — the throw propagates, so nothing downstream records that a
  * message went out when it did not.
+ *
+ * Exported because `resend.batch.send` resolves the same `{ data, error }`
+ * shape — `publishDrop` (actions/drops.ts) reuses this to detect a failed
+ * announcement batch instead of stamping `announced_at` on a send that never
+ * delivered.
  */
-function assertDelivered(result: { error: { message?: string; name?: string } | null }): void {
+export function assertDelivered(result: { error: { message?: string; name?: string } | null }): void {
   if (result.error) {
     throw new Error(result.error.message ?? result.error.name ?? 'Email delivery failed')
   }
