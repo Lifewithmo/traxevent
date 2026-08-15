@@ -117,9 +117,12 @@ EventTrax pivot (neutralization, multi-brand, ops core). Detailed designs live i
   dialog), printable public invoice document at `/invoices/[token]`, and a
   transactional invoice email
   (spec: `superpowers/sdd/2026-08-15-invoice-experience-redesign`). Built and
-  green (full suite + `next build` clean); PR and authenticated browser
-  walkthrough not yet run. Production email delivery for this flow (and the
-  still-unverified PR #66 intake path) remains to be confirmed post-deploy.
+  green (full suite + `next build` clean). Authenticated walkthrough passed
+  against the emulator 2026-08-15 — login, numbering floor, catalog picker,
+  send with number assignment + version history, public page at desktop and
+  375px, edit → send update; PR still to open. Production email delivery for
+  this flow (and the still-unverified PR #66 intake path) remains to be
+  confirmed post-deploy.
 
 ## In flight
 
