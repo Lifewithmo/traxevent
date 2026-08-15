@@ -139,9 +139,8 @@ describe('PricingCanvas', () => {
     expect(lastPackages().find((p) => p.id === 'pa')?.item_ids).toContain(added.id)
   })
 
-  it('adding a tier can start from the previous tier’s members', () => {
+  it('adding a tier can start from the previous tier’s members — one click, no dropdown', () => {
     mount()
-    fireEvent.click(screen.getByRole('button', { name: /add tier/i }))
     fireEvent.click(screen.getByRole('button', { name: /start from better/i }))
     const added = lastPackages().at(-1)!
     expect(added.item_ids).toEqual(['i1', 'i2'])
@@ -164,5 +163,45 @@ describe('PricingCanvas', () => {
     mount({ disabled: true })
     expect(screen.queryByRole('button', { name: /add tier/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /add item/i })).not.toBeInTheDocument()
+  })
+
+  describe('tier row layout + add-tier slot', () => {
+    it('sizes the grid to its occupants so a lone tier is not stuck in a third-width column', () => {
+      const { container } = mount({ packages: [packages[0]] })
+      // 1 tier + the add slot = 2 columns
+      expect(container.querySelector('.sm\\:grid-cols-2')).toBeTruthy()
+      expect(screen.getByTestId('add-tier-slot')).toBeInTheDocument()
+    })
+
+    it('with no tiers, the slot alone spans the full width and invites the first tier', () => {
+      const { container } = mount({ packages: [] })
+      expect(container.querySelector('.sm\\:grid-cols-1')).toBeTruthy()
+      expect(screen.getByText(/give the customer a choice/i)).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /start from/i })).not.toBeInTheDocument()
+    })
+
+    it('adds an empty tier directly from the slot — no dropdown', () => {
+      mount({ packages: [] })
+      fireEvent.click(screen.getByRole('button', { name: /add empty tier/i }))
+      expect(lastPackages()).toHaveLength(1)
+      expect(lastPackages()[0].item_ids).toEqual([])
+    })
+
+    it('hides the slot at three tiers (the customer-facing max)', () => {
+      const { container } = mount({
+        packages: [
+          ...packages,
+          { id: 'pc', name: 'Best', includes: [], price: 900, item_ids: ['i1', 'i2', 'i4'] },
+        ],
+      })
+      expect(screen.queryByTestId('add-tier-slot')).not.toBeInTheDocument()
+      expect(container.querySelector('.sm\\:grid-cols-3')).toBeTruthy()
+    })
+
+    it('disabled mode still sizes the grid to the tier count alone', () => {
+      const { container } = mount({ packages: [packages[0]], disabled: true })
+      expect(screen.queryByTestId('add-tier-slot')).not.toBeInTheDocument()
+      expect(container.querySelector('.sm\\:grid-cols-1')).toBeTruthy()
+    })
   })
 })

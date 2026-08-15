@@ -27,8 +27,16 @@ type Popover =
   | { kind: 'item'; itemId: string; rowKey: string }
   | { kind: 'price'; pkgId: string }
   | { kind: 'members'; pkgId: string }
-  | { kind: 'add-tier' }
   | null
+
+// The tier row sizes to its occupants (tiers + the add slot) so a single
+// tier fills the document instead of hugging the left third. Explicit map —
+// Tailwind's JIT can't see interpolated class names.
+const TIER_COLS: Record<number, string> = {
+  1: 'sm:grid-cols-1',
+  2: 'sm:grid-cols-2',
+  3: 'sm:grid-cols-3',
+}
 
 export function PricingCanvas({
   lineItems,
@@ -85,7 +93,6 @@ export function PricingCanvas({
         item_ids: fromPrevious && previous?.item_ids ? [...previous.item_ids] : [],
       },
     ])
-    setPopover(null)
   }
 
   function itemRow(item: ProposalLineItem, ariaPrefix: string) {
@@ -259,29 +266,30 @@ export function PricingCanvas({
           <h2 className="mb-3 text-xl font-bold" style={{ color: 'var(--proposal-accent, #111827)' }}>
             Choose an option
           </h2>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          {/* The add-tier slot lives INSIDE the grid as the next empty cell:
+              the row stays symmetric at every tier count and nothing floats
+              over the sections below. */}
+          <div className={`grid grid-cols-1 gap-4 ${TIER_COLS[Math.min(3, packages.length + (!disabled && packages.length < 3 ? 1 : 0)) || 1]}`}>
             {packages.map((pkg) => tierCard(pkg))}
-          </div>
-          {!disabled && packages.length < 3 && (
-            <div className="relative mt-3">
-              <Button type="button" size="sm" variant="outline"
-                onClick={() => setPopover(popover?.kind === 'add-tier' ? null : { kind: 'add-tier' })}>
-                Add tier
-              </Button>
-              {popover?.kind === 'add-tier' && (
-                <div className="absolute z-30 mt-1 flex w-56 flex-col gap-1 rounded-md border bg-white p-2 shadow-lg">
-                  <Button type="button" size="sm" variant="ghost" onClick={() => addTier(false)}>
-                    Empty tier
+            {!disabled && packages.length < 3 && (
+              <div
+                data-testid="add-tier-slot"
+                className="flex min-h-32 flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-300 p-4"
+              >
+                <p className="text-sm font-medium text-gray-500">
+                  {packages.length === 0 ? 'Give the customer a choice' : `Tier ${packages.length + 1}`}
+                </p>
+                <Button type="button" size="sm" variant="outline" onClick={() => addTier(false)}>
+                  Add empty tier
+                </Button>
+                {packages.length > 0 && packages[packages.length - 1].item_ids && (
+                  <Button type="button" size="sm" variant="ghost" onClick={() => addTier(true)}>
+                    Start from {packages[packages.length - 1].name}
                   </Button>
-                  {packages.length > 0 && packages[packages.length - 1].item_ids && (
-                    <Button type="button" size="sm" variant="ghost" onClick={() => addTier(true)}>
-                      Start from {packages[packages.length - 1].name}
-                    </Button>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
+                )}
+              </div>
+            )}
+          </div>
         </section>
       )}
 
