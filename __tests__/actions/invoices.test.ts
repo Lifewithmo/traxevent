@@ -723,6 +723,14 @@ describe('sendInvoice', () => {
     versions: [{ sent_at: '2026-01-02T00:00:00.000Z', line_items: [{ description: 'x', quantity: 1, unit_price: 500 }] }],
   }
 
+  // What Firestore would actually hold after sendInvoice's `input.updates` write lands —
+  // used to mock the post-update refetch (and the transaction's own re-read) so the
+  // resend test can assert the appended snapshot reflects the applied edit, not stale data.
+  const sentInvoiceAfterUpdate = {
+    ...sentInvoiceWithOneVersion,
+    line_items: [{ description: 'Extra hour', quantity: 1, unit_price: 100 }],
+  }
+
   it('draft: assigns number, snapshots v1, emails, marks delivery sent', async () => {
     invoiceDocGetSpy.mockResolvedValue({ exists: true, data: () => draftInvoice })
     counterGetSpy.mockResolvedValue({ exists: true, data: () => ({ seq: 1041, prefix: 'BRW-' }) })
@@ -736,10 +744,22 @@ describe('sendInvoice', () => {
   })
 
   it('sent: applies updates, appends a snapshot, emails as update', async () => {
-    invoiceDocGetSpy.mockResolvedValue({ exists: true, data: () => sentInvoiceWithOneVersion })
+    // Three sequential reads: preSnap, the post-update refetch, and the resend
+    // transaction's own tx.get(ref) re-read (Finding 1's fix) — all must see the
+    // applied update, not the stale pre-update line_items.
+    invoiceDocGetSpy
+      .mockResolvedValueOnce({ exists: true, data: () => sentInvoiceWithOneVersion })
+      .mockResolvedValueOnce({ exists: true, data: () => sentInvoiceAfterUpdate })
+      .mockResolvedValueOnce({ exists: true, data: () => sentInvoiceAfterUpdate })
     await sendInvoice('org1', 'inv1', { to: 'c@e.com', updates: { line_items: [{ description: 'Extra hour', quantity: 1, unit_price: 100 }] } })
-    const updateArg = invoiceDocUpdateSpy.mock.calls.find((c) => (c[0] as { versions?: unknown[] }).versions)![0] as { versions?: unknown[] }
+    // The versions write now happens inside the resend transaction (tx.update), not a
+    // bare ref.update() — assert against txUpdateSpy, and assert the appended snapshot's
+    // content, not just its length, so a dropped refetch/re-read would fail this test.
+    const updateArg = txUpdateSpy.mock.calls.find((c) => (c[1] as { versions?: unknown[] })?.versions)![1] as {
+      versions?: Array<{ line_items?: unknown[] }>
+    }
     expect(updateArg.versions).toHaveLength(2)
+    expect(updateArg.versions![1].line_items).toEqual([{ description: 'Extra hour', quantity: 1, unit_price: 100 }])
     expect(sendInvoiceEmailSpy).toHaveBeenCalledWith(expect.objectContaining({ isUpdate: true }))
   })
 

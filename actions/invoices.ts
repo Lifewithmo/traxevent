@@ -202,10 +202,19 @@ export async function sendInvoice(
   } else {
     number = inv.number ?? ''
     const now = new Date().toISOString()
-    await ref.update({
-      versions: [...(inv.versions ?? []), invoiceVersionSnapshot(inv, now)],
-      sent_at: now,
-      updated_at: now,
+    // Resend: read-append-write must be one transaction. A bare ref.update() built from
+    // an earlier read would let two concurrent resends (double-click, two admins) both
+    // read the same versions[] and clobber each other's appended snapshot. Re-read inside
+    // the transaction and snapshot that transaction-read content, not the outer `inv`.
+    await adminDb.runTransaction(async (tx) => {
+      const snap = await tx.get(ref)
+      if (!snap.exists) throw new Error('Invoice not found')
+      const txInv = normalizeInvoice(snap.data()!)
+      tx.update(ref, {
+        versions: [...(txInv.versions ?? []), invoiceVersionSnapshot(txInv, now)],
+        sent_at: now,
+        updated_at: now,
+      })
     })
   }
 
