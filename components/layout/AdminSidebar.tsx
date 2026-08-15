@@ -6,9 +6,12 @@ import { usePathname, useRouter } from 'next/navigation'
 import { getEventType, DEFAULT_EVENT_TYPE_ID } from '@/lib/event-types'
 import { endSession } from '@/lib/auth/establish-session'
 import { NavIcon, type NavIconName } from '@/components/layout/NavIcons'
+import { SidebarSection } from '@/components/layout/SidebarSection'
 import type { Terminology } from '@/lib/event-types'
 import type { EventPage } from '@/lib/types'
 import type { ModuleId } from '@/lib/industry-packs'
+import { ORG_PAGE_SLUGS } from '@/lib/sidebar-nav'
+import type { SidebarEventRow } from '@/lib/sidebar-events'
 
 interface AdminSidebarProps {
   orgSlug: string
@@ -18,13 +21,45 @@ interface AdminSidebarProps {
   enabledModules?: ModuleId[]
   catalogLabel?: string
   storefrontLabel?: string
+  upcomingEvents?: SidebarEventRow[]
 }
 
-const ORG_PAGE_SLUGS = new Set([
-  'members', 'forms', 'permissions', 'billing', 'email-domain', 'event-types',
-  'departments', 'reports', 'registrants', 'today', 'leads', 'clients', 'proposals',
-  'invoices', 'vendors', 'calendar', 'new-event', 'packages', 'compliance', 'drops',
-])
+// Which parent section owns a given org page — so a hard load of /acme/invoices
+// opens Money with the current page's row already visible.
+const SECTION_FOR_SLUG: Record<string, string> = {
+  'new-event': 'events',
+  leads: 'pipeline',
+  proposals: 'pipeline',
+  money: 'money',
+  invoices: 'money',
+  reports: 'money',
+  catalog: 'catalog',
+  packages: 'catalog',
+  drops: 'catalog',
+  vendors: 'catalog',
+  forms: 'catalog',
+  compliance: 'catalog',
+  settings: 'settings',
+  members: 'settings',
+  permissions: 'settings',
+  billing: 'settings',
+  branding: 'settings',
+  'proposal-templates': 'settings',
+  'public-profile': 'settings',
+  'email-domain': 'settings',
+  'event-types': 'settings',
+  departments: 'settings',
+}
+
+// /{orgSlug} is deliberately absent: it is the all-events page itself and its
+// section's children only duplicate what that page already lists. Inside a job
+// the section is force-open regardless of this seed. /{orgSlug}/new-event is
+// mapped, so hard-loading it opens Events.
+function activeSection(pathname: string, orgSlug: string): string | null {
+  const seg = pathname.split('/').filter(Boolean)
+  if (seg[0] !== orgSlug || seg.length < 2) return null
+  return SECTION_FOR_SLUG[seg[1]] ?? null
+}
 
 const SIDEBAR_COLLAPSED_KEY = 'tx-sidebar-collapsed'
 
@@ -51,7 +86,20 @@ const DEFAULT_TERMINOLOGY: Terminology = getEventType(DEFAULT_EVENT_TYPE_ID).ter
 // Per-event nav items that belong to the optional attendee-roster module.
 const ROSTER_KEYS = new Set(['families', 'assignments', 'checkin'])
 
-const SETTINGS_SLUGS = ['members', 'permissions', 'billing', 'email-domain', 'event-types', 'departments']
+// The single source of truth for Settings' children. The parent's active state
+// is derived from these (see settingsActive) rather than from a second hand-kept
+// slug list, which is how three of the nine drifted out of it.
+const SETTINGS_CHILDREN: Array<{ slug: string; label: string; icon: NavIconName }> = [
+  { slug: 'members', label: 'Members', icon: 'members' },
+  { slug: 'permissions', label: 'Permissions', icon: 'permissions' },
+  { slug: 'billing', label: 'Billing', icon: 'billing' },
+  { slug: 'branding', label: 'Branding', icon: 'branding' },
+  { slug: 'proposal-templates', label: 'Proposal templates', icon: 'proposals' },
+  { slug: 'public-profile', label: 'Public profile', icon: 'profile' },
+  { slug: 'email-domain', label: 'Email domain', icon: 'email' },
+  { slug: 'event-types', label: 'Event types', icon: 'types' },
+  { slug: 'departments', label: 'Departments', icon: 'departments' },
+]
 
 type NavLink = { href: string; label: string; icon: NavIconName; active: boolean }
 
@@ -116,54 +164,6 @@ function PanelIcon() {
   )
 }
 
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="text-[10px] font-semibold uppercase tracking-[0.05em] text-[color:var(--sidebar-muted)]">
-      {children}
-    </span>
-  )
-}
-
-function Section({
-  label,
-  children,
-  collapsible = false,
-  open = true,
-  onToggle,
-}: {
-  label: string
-  children: React.ReactNode
-  collapsible?: boolean
-  open?: boolean
-  onToggle?: () => void
-}) {
-  return (
-    <div className="px-2 py-3">
-      {collapsible ? (
-        <button
-          type="button"
-          onClick={onToggle}
-          aria-expanded={open}
-          className="w-full flex items-center justify-between px-3 pb-1 text-[color:var(--sidebar-muted)] hover:text-[color:var(--sidebar-accent-foreground)]"
-        >
-          <SectionLabel>{label}</SectionLabel>
-          <span
-            aria-hidden
-            className={`text-[10px] transition-transform duration-150 ${open ? '' : '-rotate-90'}`}
-          >
-            &#9662;
-          </span>
-        </button>
-      ) : (
-        <p className="px-3 pb-1">
-          <SectionLabel>{label}</SectionLabel>
-        </p>
-      )}
-      {(!collapsible || open) && <div className="space-y-0.5">{children}</div>}
-    </div>
-  )
-}
-
 function NavItem({ href, label, icon, active, indent = false }: NavLink & { indent?: boolean }) {
   return (
     <Link
@@ -211,22 +211,45 @@ function IconRailGroup({ items }: { items: NavLink[] }) {
   )
 }
 
-export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPages, enabledModules, catalogLabel, storefrontLabel }: AdminSidebarProps) {
+export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPages, enabledModules, catalogLabel, storefrontLabel, upcomingEvents }: AdminSidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
 
   // Hooks must run unconditionally before any early return (rules of hooks).
-  const settingsActive = SETTINGS_SLUGS.some(
-    (s) => pathname === `/${orgSlug}/${s}` || pathname.startsWith(`/${orgSlug}/${s}/`)
-  )
-  const [settingsOpen, setSettingsOpen] = useState(settingsActive)
-  const [salesOpen, setSalesOpen] = useState(true)
-  const [opsOpen, setOpsOpen] = useState(true)
+  const settingsLinks: NavLink[] = SETTINGS_CHILDREN.map((l) => ({
+    href: `/${orgSlug}/${l.slug}`,
+    label: l.label,
+    icon: l.icon,
+    active: isActive(pathname, `/${orgSlug}/${l.slug}`),
+  }))
+  // Derived, never listed twice: the parent lights up whenever any child does,
+  // plus on its own landing page.
+  const settingsActive = settingsLinks.some((l) => l.active) || isActive(pathname, `/${orgSlug}/settings`)
+
+  // Exactly one section is open at a time, seeded to whichever section owns the
+  // current page so a hard load shows the current row without a click.
+  const [openSection, setOpenSection] = useState<string | null>(() => activeSection(pathname, orgSlug))
   const [collapsed, setCollapsed] = useState(false)
   // Below md the sidebar is an off-canvas drawer rather than an in-flow rail —
   // a fixed 224px column leaves ~63px of content at 375px. Deliberately NOT
   // persisted: a drawer should always open closed on a fresh page.
   const [mobileOpen, setMobileOpen] = useState(false)
+
+  // Client-side navigation does not remount the sidebar, so the seed above runs
+  // once and only once — without this, every in-app hop leaves the previous
+  // section open and the destination's shut. Re-seed during render (React's
+  // "adjust state when a prop changes" pattern; no effect, so no flash of the
+  // stale section), guarded by the last-seeded path so a manual toggle on the
+  // page the user is standing on is never undone.
+  const [seededFor, setSeededFor] = useState(pathname)
+  if (seededFor !== pathname) {
+    setSeededFor(pathname)
+    setOpenSection(activeSection(pathname, orgSlug))
+  }
+
+  function toggleSection(key: string) {
+    setOpenSection((cur) => (cur === key ? null : key))
+  }
 
   // Read persisted rail state after mount only — never in a useState
   // initializer, to avoid an SSR/client hydration mismatch.
@@ -271,11 +294,11 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
 
   const has = (m: ModuleId) => !enabledModules || enabledModules.includes(m)
 
-  const quickLinks: NavLink[] = [
+  // The top trio: flat rows, no section header, no chevron.
+  const topLinks: NavLink[] = [
+    { module: 'leads' as ModuleId, label: 'Today', slug: 'today', icon: 'today' as NavIconName },
     { module: 'calendar' as ModuleId, label: 'Calendar', slug: 'calendar', icon: 'calendar' as NavIconName },
     { module: 'clients' as ModuleId, label: 'Clients', slug: 'clients', icon: 'clients' as NavIconName },
-    { module: 'leads' as ModuleId, label: 'Today', slug: 'today', icon: 'today' as NavIconName },
-    { module: 'registrants' as ModuleId, label: 'Registrants', slug: 'registrants', icon: 'clients' as NavIconName },
   ]
     .filter((l) => has(l.module))
     .map((l) => ({
@@ -285,32 +308,48 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
       active: isActive(pathname, `/${orgSlug}/${l.slug}`),
     }))
 
-  const eventsLink: NavLink | null = has('events')
-    ? { href: `/${orgSlug}`, label: 'Events', icon: 'events', active: pathname === `/${orgSlug}` }
+  const registrantsLink: NavLink | null = has('registrants')
+    ? {
+        href: `/${orgSlug}/registrants`,
+        label: 'Registrants',
+        icon: 'clients',
+        active: isActive(pathname, `/${orgSlug}/registrants`),
+      }
     : null
 
-  const beforeEvents = quickLinks.filter((l) => l.href === `/${orgSlug}/calendar` || l.href === `/${orgSlug}/clients`)
-  const afterEvents = quickLinks.filter((l) => l.href === `/${orgSlug}/today` || l.href === `/${orgSlug}/registrants`)
+  // Tasks lives under the Opportunities href, so a plain prefix match lights
+  // both rows on /leads/tasks. The more specific route wins; /leads/{leadId}
+  // detail routes still belong to Opportunities.
+  const tasksActive = isActive(pathname, `/${orgSlug}/leads/tasks`)
 
-  const allQuickLinks: NavLink[] = [...beforeEvents, ...(eventsLink ? [eventsLink] : []), ...afterEvents]
+  const pipelineChildren: NavLink[] = [
+    ...(has('leads') ? [{ slug: 'leads', label: 'Opportunities', icon: 'pipeline' as NavIconName }] : []),
+    ...(has('leads') ? [{ slug: 'leads/tasks', label: 'Tasks', icon: 'today' as NavIconName }] : []),
+    ...(has('proposals') ? [{ slug: 'proposals', label: 'Proposals', icon: 'proposals' as NavIconName }] : []),
+  ].map((l) => ({
+    href: `/${orgSlug}/${l.slug}`,
+    label: l.label,
+    icon: l.icon,
+    active:
+      l.slug === 'leads'
+        ? isActive(pathname, `/${orgSlug}/leads`) && !tasksActive
+        : isActive(pathname, `/${orgSlug}/${l.slug}`),
+  }))
 
-  const salesLinks: NavLink[] = [
-    { module: 'leads' as ModuleId, label: 'Pipeline', slug: 'leads', icon: 'pipeline' as NavIconName },
-    { module: 'proposals' as ModuleId, label: 'Proposals', slug: 'proposals', icon: 'proposals' as NavIconName },
-    { module: 'invoices' as ModuleId, label: 'Invoices', slug: 'invoices', icon: 'invoices' as NavIconName },
-  ]
-    .filter((l) => has(l.module))
-    .map((l) => ({
-      href: `/${orgSlug}/${l.slug}`,
-      label: l.label,
-      icon: l.icon,
-      active: isActive(pathname, `/${orgSlug}/${l.slug}`),
-    }))
+  const moneyChildren: NavLink[] = [
+    ...(has('invoices') ? [{ slug: 'invoices', label: 'Invoices', icon: 'invoices' as NavIconName }] : []),
+    ...(has('reports') ? [{ slug: 'reports', label: 'Reports', icon: 'reports' as NavIconName }] : []),
+  ].map((l) => ({
+    href: `/${orgSlug}/${l.slug}`,
+    label: l.label,
+    icon: l.icon,
+    active: isActive(pathname, `/${orgSlug}/${l.slug}`),
+  }))
 
-  const opsLinks: NavLink[] = [
-    ...(has('vendors') ? [{ slug: 'vendors', label: 'Vendors', icon: 'vendors' as NavIconName }] : []),
+  const catalogChildren: NavLink[] = [
     ...(has('catalog') ? [{ slug: 'packages', label: catalogLabel ?? 'Packages', icon: 'packages' as NavIconName }] : []),
     ...(has('storefront' as ModuleId) ? [{ slug: 'drops', label: storefrontLabel ?? 'Online orders', icon: 'packages' as NavIconName }] : []),
+    ...(has('vendors') ? [{ slug: 'vendors', label: 'Vendors', icon: 'vendors' as NavIconName }] : []),
     ...(has('forms') ? [{ slug: 'forms', label: 'Forms', icon: 'forms' as NavIconName }] : []),
     ...(has('compliance') ? [{ slug: 'compliance', label: 'Compliance', icon: 'compliance' as NavIconName }] : []),
   ].map((l) => ({
@@ -320,26 +359,41 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
     active: isActive(pathname, `/${orgSlug}/${l.slug}`),
   }))
 
-  const reportsLink: NavLink | null = has('reports')
-    ? { href: `/${orgSlug}/reports`, label: 'Reports', icon: 'reports', active: isActive(pathname, `/${orgSlug}/reports`) }
-    : null
+  const allEventsActive = pathname === `/${orgSlug}`
+  const newEventActive = isActive(pathname, `/${orgSlug}/new-event`)
+  const eventsActive = allEventsActive || newEventActive || Boolean(eventSlug)
 
-  const settingsLinks: NavLink[] = [
-    { slug: 'members', label: 'Members', icon: 'members' as NavIconName },
-    { slug: 'permissions', label: 'Permissions', icon: 'permissions' as NavIconName },
-    { slug: 'billing', label: 'Billing', icon: 'billing' as NavIconName },
-    { slug: 'branding', label: 'Branding', icon: 'branding' as NavIconName },
-    { slug: 'proposal-templates', label: 'Proposal templates', icon: 'proposals' as NavIconName },
-    { slug: 'public-profile', label: 'Public profile', icon: 'profile' as NavIconName },
-    { slug: 'email-domain', label: 'Email domain', icon: 'email' as NavIconName },
-    { slug: 'event-types', label: 'Event types', icon: 'types' as NavIconName },
-    { slug: 'departments', label: 'Departments', icon: 'departments' as NavIconName },
-  ].map((l) => ({
-    href: `/${orgSlug}/${l.slug}`,
-    label: l.label,
-    icon: l.icon,
-    active: isActive(pathname, `/${orgSlug}/${l.slug}`),
-  }))
+  const pipelineActive = pipelineChildren.some((l) => l.active)
+  const moneyActive = isActive(pathname, `/${orgSlug}/money`) || moneyChildren.some((l) => l.active)
+  const catalogActive = isActive(pathname, `/${orgSlug}/catalog`) || catalogChildren.some((l) => l.active)
+
+  // At 52px there is nothing to expand, so the rail is flat icon links to each
+  // section's landing page. Gating here must match the expanded nav's exactly,
+  // or the rail offers a destination the expanded sidebar does not.
+  const railLinks: NavLink[] = [
+    ...topLinks,
+    ...(pipelineChildren.length > 0
+      ? [{ href: `/${orgSlug}/leads`, label: 'Pipeline', icon: 'pipeline' as NavIconName, active: pipelineActive }]
+      : []),
+    ...(has('events')
+      ? [{ href: `/${orgSlug}`, label: 'Events', icon: 'events' as NavIconName, active: eventsActive }]
+      : []),
+    // Registrants sits between Events and Money in the expanded nav; the rail
+    // must agree or the two modes teach different maps of the same product.
+    ...(registrantsLink ? [registrantsLink] : []),
+    ...(has('invoices') && moneyChildren.length > 0
+      ? [{ href: `/${orgSlug}/money`, label: 'Money', icon: 'invoices' as NavIconName, active: moneyActive }]
+      : []),
+    ...(catalogChildren.length > 0
+      ? [{ href: `/${orgSlug}/catalog`, label: 'Catalog', icon: 'packages' as NavIconName, active: catalogActive }]
+      : []),
+    {
+      href: `/${orgSlug}/settings`,
+      label: 'Settings',
+      icon: 'settings' as NavIconName,
+      active: settingsActive,
+    },
+  ]
 
   const eventNav = getEventNav(t)
   const visibleEventNav = eventNav
@@ -389,12 +443,16 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
         id="admin-nav"
         className={[
           'bg-[color:var(--sidebar)] text-[color:var(--sidebar-foreground)] border-r border-[color:var(--sidebar-border)]',
-          'min-h-screen flex flex-col print:hidden',
+          // h-screen (not min-h-screen) in both modes: the nav below is the only
+          // scroller, which is what keeps Sign out pinned to the bottom edge.
+          'h-screen sticky top-0 flex flex-col print:hidden',
           // Below md: off-canvas drawer, out of flow so `main` gets full width.
-          'max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-50 max-md:w-64 max-md:overflow-y-auto',
+          // `max-md:fixed` overrides the `sticky` above — Tailwind emits variant
+          // utilities after their bare counterparts, so the media query wins.
+          'max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-50 max-md:w-64',
           'max-md:transition-transform max-md:duration-200',
           mobileOpen ? 'max-md:translate-x-0' : 'max-md:-translate-x-full',
-          // md and up: unchanged in-flow rail.
+          // md and up: the in-flow rail, unchanged.
           'md:flex-shrink-0 md:transition-[width] md:duration-[160ms]',
           !eventSlug && collapsed ? 'md:w-[52px]' : 'md:w-56',
         ].join(' ')}
@@ -434,85 +492,127 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
         </button>
       </div>
 
-      {eventSlug ? (
-        <nav className="flex-1 px-2 py-4 space-y-0.5" aria-label="Event navigation">
-          <Link
-            href={`/${orgSlug}`}
-            className="block px-3 py-2 rounded-md text-sm font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-900 transition-colors"
-          >
-            &larr; Events
-          </Link>
-          {visibleEventNav.map(({ key, label }) => {
-            const href = `/${orgSlug}/${eventSlug}/${key}`
-            const active = isActive(pathname, href)
-            return (
-              <Link
-                key={key}
-                href={href}
-                className={[
-                  'block px-3 py-2 rounded-md text-sm font-medium transition-colors border-l-2',
-                  active
-                    ? 'bg-gray-100 text-gray-900 border-gray-900'
-                    : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 border-transparent',
-                ].join(' ')}
-              >
-                {label}
-              </Link>
-            )
-          })}
-        </nav>
-      ) : collapsed ? (
-        <nav className="flex-1" aria-label="Workspace navigation">
-          <IconRailGroup items={allQuickLinks} />
-          {has('leads') && <IconRailGroup items={salesLinks} />}
-          <IconRailGroup items={opsLinks} />
-          {reportsLink && <IconRailGroup items={[reportsLink]} />}
-          <IconRailGroup
-            items={[{ href: `/${orgSlug}/members`, label: 'Settings', icon: 'settings', active: settingsActive }]}
-          />
+      {!eventSlug && collapsed ? (
+        <nav className="flex-1 min-h-0 overflow-y-auto" aria-label="Workspace navigation">
+          <IconRailGroup items={railLinks} />
         </nav>
       ) : (
-        <nav className="flex-1" aria-label="Workspace navigation">
-          {(allQuickLinks.length > 0) && (
-            <Section label="Quick Links">
-              {allQuickLinks.map((l) => (
-                <NavItem key={l.href} {...l} />
-              ))}
-            </Section>
-          )}
+        <nav className="flex-1 min-h-0 overflow-y-auto px-2 py-3 space-y-0.5" aria-label="Workspace navigation">
+          {topLinks.map((l) => (
+            <NavItem key={l.href} {...l} />
+          ))}
 
-          {has('leads') && salesLinks.length > 0 && (
-            <Section label="Sales Pipeline" collapsible open={salesOpen} onToggle={() => setSalesOpen((v) => !v)}>
-              {salesLinks.map((l) => (
+          {pipelineChildren.length > 0 && (
+            <SidebarSection
+              href={`/${orgSlug}/leads`}
+              label="Pipeline"
+              icon="pipeline"
+              active={pipelineActive}
+              open={openSection === 'pipeline'}
+              onToggle={() => toggleSection('pipeline')}
+            >
+              {pipelineChildren.map((l) => (
                 <NavItem key={l.href} {...l} indent />
               ))}
-            </Section>
+            </SidebarSection>
           )}
 
-          {opsLinks.length > 0 && (
-            <Section label="Operations" collapsible open={opsOpen} onToggle={() => setOpsOpen((v) => !v)}>
-              {opsLinks.map((l) => (
+          {/* Inside a job the section renders regardless of the events module:
+              the [eventSlug] routes are not module-gated, and several packs
+              (caterer, florist, photographer) omit 'events' entirely. Without
+              this the operator would have no job nav at all. */}
+          {(has('events') || Boolean(eventSlug)) && (
+            <SidebarSection
+              href={`/${orgSlug}`}
+              label="Events"
+              icon="events"
+              active={eventsActive}
+              open={openSection === 'events' || Boolean(eventSlug)}
+              onToggle={() => toggleSection('events')}
+            >
+              {eventSlug ? (
+                <>
+                  {visibleEventNav.map(({ key, label }) => (
+                    <NavItem
+                      key={key}
+                      href={`/${orgSlug}/${eventSlug}/${key}`}
+                      label={label}
+                      icon="events"
+                      active={isActive(pathname, `/${orgSlug}/${eventSlug}/${key}`)}
+                      indent
+                    />
+                  ))}
+                  <NavItem href={`/${orgSlug}`} label="All events" icon="events" active={allEventsActive} indent />
+                </>
+              ) : (
+                <>
+                  {(upcomingEvents ?? []).map((e) => (
+                    <Link
+                      key={e.id}
+                      href={`/${orgSlug}/${e.slug}/dashboard`}
+                      className="flex items-center gap-2 pl-[26px] pr-3 py-2 rounded-md text-sm text-[color:var(--sidebar-muted)] hover:bg-[color:var(--sidebar-accent)] hover:text-[color:var(--sidebar-accent-foreground)]"
+                    >
+                      <span className="truncate flex-1">{e.name}</span>
+                      <span className={`text-[10px] shrink-0 ${e.isToday ? 'font-semibold' : ''}`}>{e.label}</span>
+                    </Link>
+                  ))}
+                  <NavItem href={`/${orgSlug}`} label="All events" icon="events" active={allEventsActive} indent />
+                  <NavItem
+                    href={`/${orgSlug}/new-event`}
+                    label="+ New event"
+                    icon="events"
+                    active={newEventActive}
+                    indent
+                  />
+                </>
+              )}
+            </SidebarSection>
+          )}
+
+          {registrantsLink && <NavItem {...registrantsLink} />}
+
+          {has('invoices') && moneyChildren.length > 0 && (
+            <SidebarSection
+              href={`/${orgSlug}/money`}
+              label="Money"
+              icon="invoices"
+              active={moneyActive}
+              open={openSection === 'money'}
+              onToggle={() => toggleSection('money')}
+            >
+              {moneyChildren.map((l) => (
                 <NavItem key={l.href} {...l} indent />
               ))}
-            </Section>
+            </SidebarSection>
           )}
 
-          {reportsLink && (
-            <Section label="Insights">
-              <NavItem {...reportsLink} />
-            </Section>
+          {catalogChildren.length > 0 && (
+            <SidebarSection
+              href={`/${orgSlug}/catalog`}
+              label="Catalog"
+              icon="packages"
+              active={catalogActive}
+              open={openSection === 'catalog'}
+              onToggle={() => toggleSection('catalog')}
+            >
+              {catalogChildren.map((l) => (
+                <NavItem key={l.href} {...l} indent />
+              ))}
+            </SidebarSection>
           )}
 
-          <Section
+          <SidebarSection
+            href={`/${orgSlug}/settings`}
             label="Settings"
-            collapsible
-            open={settingsOpen}
-            onToggle={() => setSettingsOpen((v) => !v)}
+            icon="settings"
+            active={settingsActive}
+            open={openSection === 'settings'}
+            onToggle={() => toggleSection('settings')}
           >
             {settingsLinks.map((l) => (
               <NavItem key={l.href} {...l} indent />
             ))}
-          </Section>
+          </SidebarSection>
         </nav>
       )}
 

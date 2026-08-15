@@ -1,6 +1,6 @@
 import Link from 'next/link'
 
-export type PipelineSubPage = 'opportunities' | 'calendar' | 'tasks'
+export type PipelineSubPage = 'opportunities' | 'tasks'
 
 interface PipelineSubNavProps {
   orgSlug: string
@@ -18,7 +18,6 @@ export function PipelineSubNav({ orgSlug, active, openCount, dueTodayCount }: Pi
       href: `/${orgSlug}/leads`,
       badge: openCount !== undefined ? String(openCount) : undefined,
     },
-    { key: 'calendar', label: 'Calendar', href: `/${orgSlug}/leads/calendar` },
     {
       key: 'tasks',
       label: 'Tasks',
