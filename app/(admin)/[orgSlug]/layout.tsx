@@ -1,6 +1,6 @@
 import { AdminSidebar } from '@/components/layout/AdminSidebar'
 import { requireOrgMember } from '@/lib/auth/guards'
-import { resolveEnabledModules, getIndustryPack, catalogLabel } from '@/lib/industry-packs'
+import { resolveEnabledModules, getIndustryPack, catalogLabel, storefrontLabel } from '@/lib/industry-packs'
 
 export default async function OrgLayout({
   children,
@@ -18,7 +18,12 @@ export default async function OrgLayout({
     // Below md the sidebar renders as a slim bar plus an off-canvas drawer, so the
     // shell stacks and `main` gets the full viewport width instead of ~63px.
     <div className="flex min-h-screen max-md:flex-col">
-      <AdminSidebar orgSlug={orgSlug} enabledModules={enabledModules} catalogLabel={catalogLabel(getIndustryPack(org.industry_pack_id))} />
+      <AdminSidebar
+        orgSlug={orgSlug}
+        enabledModules={enabledModules}
+        catalogLabel={catalogLabel(getIndustryPack(org.industry_pack_id))}
+        storefrontLabel={storefrontLabel(getIndustryPack(org.industry_pack_id))}
+      />
       <main className="flex-1 bg-gray-50 overflow-auto">{children}</main>
     </div>
   )

@@ -102,6 +102,11 @@ describe('AdminSidebar — workspace nav (no eventSlug)', () => {
     expect(screen.queryByText('Operations')).not.toBeInTheDocument()
   })
 
+  it('shows the storefront link with the pack label when the module is enabled', () => {
+    render(<AdminSidebar orgSlug="acme" enabledModules={['storefront']} catalogLabel="Menu Packages" storefrontLabel="Drops" />)
+    expect(screen.getByText('Drops')).toBeInTheDocument()
+  })
+
   it('renders an icon with every workspace nav item', () => {
     renderNav(['calendar', 'clients', 'events', 'leads', 'registrants', 'vendors', 'forms', 'reports'])
     for (const label of ['Calendar', 'Clients', 'Events', 'Today', 'Pipeline', 'Reports']) {

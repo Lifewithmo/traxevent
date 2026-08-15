@@ -17,12 +17,13 @@ interface AdminSidebarProps {
   allowedEventPages?: EventPage[]
   enabledModules?: ModuleId[]
   catalogLabel?: string
+  storefrontLabel?: string
 }
 
 const ORG_PAGE_SLUGS = new Set([
   'members', 'forms', 'permissions', 'billing', 'email-domain', 'event-types',
   'departments', 'reports', 'registrants', 'today', 'leads', 'clients', 'proposals',
-  'invoices', 'vendors', 'calendar', 'new-event', 'packages', 'compliance',
+  'invoices', 'vendors', 'calendar', 'new-event', 'packages', 'compliance', 'drops',
 ])
 
 const SIDEBAR_COLLAPSED_KEY = 'tx-sidebar-collapsed'
@@ -210,7 +211,7 @@ function IconRailGroup({ items }: { items: NavLink[] }) {
   )
 }
 
-export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPages, enabledModules, catalogLabel }: AdminSidebarProps) {
+export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPages, enabledModules, catalogLabel, storefrontLabel }: AdminSidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
 
@@ -309,6 +310,7 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
   const opsLinks: NavLink[] = [
     ...(has('vendors') ? [{ slug: 'vendors', label: 'Vendors', icon: 'vendors' as NavIconName }] : []),
     ...(has('catalog') ? [{ slug: 'packages', label: catalogLabel ?? 'Packages', icon: 'packages' as NavIconName }] : []),
+    ...(has('storefront' as ModuleId) ? [{ slug: 'drops', label: storefrontLabel ?? 'Online orders', icon: 'packages' as NavIconName }] : []),
     ...(has('forms') ? [{ slug: 'forms', label: 'Forms', icon: 'forms' as NavIconName }] : []),
     ...(has('compliance') ? [{ slug: 'compliance', label: 'Compliance', icon: 'compliance' as NavIconName }] : []),
   ].map((l) => ({
