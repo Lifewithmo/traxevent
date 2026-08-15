@@ -90,4 +90,20 @@ describe('ConvertToWorkCard', () => {
     fireEvent.click(screen.getByRole('button', { name: /^schedule job$/i }))
     expect(await screen.findByRole('alert')).toHaveTextContent('This opportunity is already scheduled')
   })
+
+  it('passes the chosen kind to convert', async () => {
+    render(<ConvertToWorkCard {...props} open />)
+    fireEvent.change(screen.getByLabelText(/kind/i), { target: { value: 'market_day' } })
+    fireEvent.click(screen.getByRole('button', { name: /^schedule job$/i }))
+    await waitFor(() => expect(convertOpportunityToWork).toHaveBeenCalledWith('o1', 'l1',
+      expect.objectContaining({ kind: 'market_day' })))
+  })
+
+  it('defaults to client_job (kind omitted or client_job — no market fields sent)', async () => {
+    render(<ConvertToWorkCard {...props} open />)
+    fireEvent.click(screen.getByRole('button', { name: /^schedule job$/i }))
+    await waitFor(() => expect(convertOpportunityToWork).toHaveBeenCalled())
+    const arg = convertOpportunityToWork.mock.calls[0][2]
+    expect(arg.kind ?? 'client_job').toBe('client_job')
+  })
 })

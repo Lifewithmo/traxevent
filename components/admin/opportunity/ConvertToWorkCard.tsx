@@ -11,7 +11,8 @@ import { convertOpportunityToWork } from '@/actions/leads'
 import { eventCreateFieldsFromType, DEFAULT_EVENT_TYPE_ID } from '@/lib/event-types'
 import type { EventType } from '@/lib/event-types'
 import { opportunityTitle } from '@/lib/leads'
-import type { Event, Lead } from '@/lib/types'
+import { EVENT_KIND_LABELS } from '@/lib/occasions/kind'
+import type { Event, Lead, EventKind } from '@/lib/types'
 
 interface ConvertToWorkCardProps {
   orgId: string
@@ -28,6 +29,7 @@ export function ConvertToWorkCard({ orgId, orgSlug, lead, job, eventTypes, open:
   const [open, setOpen] = useState(openProp)
   const [name, setName] = useState(opportunityTitle(lead))
   const [date, setDate] = useState(lead.event_date ?? '')
+  const [kind, setKind] = useState<EventKind>('client_job')
   const [eventTypeId, setEventTypeId] = useState<string>(DEFAULT_EVENT_TYPE_ID)
   const [headcount, setHeadcount] = useState(lead.guest_count != null ? String(lead.guest_count) : '')
   const [saving, setSaving] = useState(false)
@@ -68,6 +70,7 @@ export function ConvertToWorkCard({ orgId, orgSlug, lead, job, eventTypes, open:
         date,
         ...eventCreateFieldsFromType(type),
         ...(headcount.trim() ? { headcount: Number(headcount) } : {}),
+        ...(kind === 'market_day' ? { kind } : {}),
       })
       router.push(`/${orgSlug}/${event.slug}/ops`)
     } catch (e: unknown) {
@@ -99,6 +102,19 @@ export function ConvertToWorkCard({ orgId, orgSlug, lead, job, eventTypes, open:
             <Input id="cw-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
           </div>
           <div className="space-y-1">
+            <Label htmlFor="cw-kind">Kind</Label>
+            <select
+              id="cw-kind"
+              value={kind}
+              onChange={(e) => setKind(e.target.value as EventKind)}
+              className="block h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+            >
+              {(Object.entries(EVENT_KIND_LABELS) as Array<[EventKind, string]>).map(([k, label]) => (
+                <option key={k} value={k}>{label}</option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-1">
             <Label htmlFor="cw-type">Event type</Label>
             <select
               id="cw-type"
@@ -114,7 +130,11 @@ export function ConvertToWorkCard({ orgId, orgSlug, lead, job, eventTypes, open:
             <Input id="cw-headcount" type="number" value={headcount} onChange={(e) => setHeadcount(e.target.value)} placeholder="Optional" />
           </div>
         </div>
-        <p className="text-sm text-muted-foreground">Next you&apos;ll pick packages and requirements on the job&apos;s ops page.</p>
+        <p className="text-sm text-muted-foreground">
+          {kind === 'market_day'
+            ? 'Next you can set the location and hours on the day\'s settings.'
+            : 'Next you\'ll pick packages and requirements on the job\'s ops page.'}
+        </p>
         {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
         <div className="flex gap-2">
           <Button onClick={handleConvert} disabled={saving || !name.trim() || !date}>
