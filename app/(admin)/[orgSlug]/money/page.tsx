@@ -65,7 +65,7 @@ export default async function MoneyPage({ params }: { params: Promise<{ orgSlug:
           <p className={`mt-1 text-sm ${o.overdueCount > 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
             {o.overdueCount > 0
               ? `${o.overdueCount} invoice${o.overdueCount === 1 ? '' : 's'} past due`
-              : 'nothing overdue — all invoices are current'}
+              : 'Nothing overdue — all invoices are current'}
           </p>
 
           {o.overdueInvoices.length > 0 && (
@@ -92,12 +92,12 @@ export default async function MoneyPage({ params }: { params: Promise<{ orgSlug:
           <div>
             <KpiLabel>Outstanding</KpiLabel>
             <p className="text-[22px] font-semibold leading-tight tabular-nums">{money(o.outstanding)}</p>
-            <p className="text-xs text-muted-foreground">everything issued and unpaid</p>
+            <p className="text-xs text-muted-foreground">Everything issued and unpaid</p>
           </div>
           <div>
             <KpiLabel>Paid this month</KpiLabel>
             <p className="text-[22px] font-semibold leading-tight tabular-nums">{money(o.paidThisMonth)}</p>
-            <p className="text-xs text-muted-foreground">payments recorded so far</p>
+            <p className="text-xs text-muted-foreground">Payments recorded so far</p>
           </div>
         </div>
       </div>

@@ -250,9 +250,125 @@ describe('AdminSidebar — Option C IA', () => {
     expect(screen.getByLabelText('Pipeline')).toBeInTheDocument()
   })
 
+  it('renders Registrants between Events and Money in the expanded nav', () => {
+    render(<AdminSidebar orgSlug="acme" />)
+    const labels = screen.getAllByRole('link').map((a) => a.textContent)
+    expect(labels.indexOf('Registrants')).toBe(labels.indexOf('Events') + 1)
+    expect(labels.indexOf('Money')).toBe(labels.indexOf('Registrants') + 1)
+  })
+
+  it('puts Registrants in the same slot on the collapsed rail', () => {
+    render(<AdminSidebar orgSlug="acme" />)
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse navigation' }))
+    const labels = screen.getAllByRole('link').map((a) => a.getAttribute('aria-label'))
+    expect(labels.indexOf('Registrants')).toBe(labels.indexOf('Events') + 1)
+    expect(labels.indexOf('Money')).toBe(labels.indexOf('Registrants') + 1)
+  })
+
   it('hides the Money section when the invoices module is off', () => {
     const modules: ModuleId[] = ['events', 'calendar', 'clients']
     render(<AdminSidebar orgSlug="acme" enabledModules={modules} />)
     expect(screen.queryByRole('link', { name: 'Money' })).not.toBeInTheDocument()
+  })
+})
+
+// Active state is expressed purely through classes: a child row gets the
+// primary left border, a rail icon gets the accent background outright (the
+// inactive variant only carries it behind `hover:`).
+function rowActive(name: string | RegExp) {
+  const link = screen.getByRole('link', { name })
+  return link.className.split(/\s+/).includes('border-[color:var(--sidebar-primary)]')
+}
+
+function sectionActive(label: string) {
+  const row = screen.getByRole('link', { name: label }).parentElement!
+  return row.className.split(/\s+/).includes('border-[color:var(--sidebar-primary)]')
+}
+
+describe('AdminSidebar — active state', () => {
+  it.each(['branding', 'proposal-templates', 'public-profile', 'members', 'departments'])(
+    'highlights the Settings parent on /%s',
+    (slug) => {
+      nav.pathname = `/acme/${slug}`
+      render(<AdminSidebar orgSlug="acme" />)
+      expect(sectionActive('Settings')).toBe(true)
+    },
+  )
+
+  it('highlights the Settings rail icon on a child page missing from the old slug list', () => {
+    nav.pathname = '/acme/branding'
+    render(<AdminSidebar orgSlug="acme" />)
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse navigation' }))
+    const icon = screen.getByLabelText('Settings')
+    expect(icon.className.split(/\s+/)).toContain('bg-[color:var(--sidebar-accent)]')
+  })
+
+  it('opens Events and highlights "+ New event" on /new-event', () => {
+    nav.pathname = '/acme/new-event'
+    render(<AdminSidebar orgSlug="acme" />)
+    expect(rowActive('+ New event')).toBe(true)
+    expect(rowActive('All events')).toBe(false)
+    expect(sectionActive('Events')).toBe(true)
+  })
+
+  it('highlights "All events" on the org root', () => {
+    nav.pathname = '/acme'
+    render(<AdminSidebar orgSlug="acme" />)
+    fireEvent.click(screen.getByRole('button', { name: /expand events/i }))
+    expect(rowActive('All events')).toBe(true)
+    expect(rowActive('+ New event')).toBe(false)
+  })
+
+  it('highlights exactly one row on /leads/tasks', () => {
+    nav.pathname = '/acme/leads/tasks'
+    render(<AdminSidebar orgSlug="acme" />)
+    expect(rowActive('Tasks')).toBe(true)
+    expect(rowActive('Opportunities')).toBe(false)
+  })
+
+  it('keeps Opportunities highlighted on a lead detail route', () => {
+    nav.pathname = '/acme/leads/lead-123'
+    render(<AdminSidebar orgSlug="acme" />)
+    expect(rowActive('Opportunities')).toBe(true)
+    expect(rowActive('Tasks')).toBe(false)
+  })
+})
+
+describe('AdminSidebar — open section follows client-side navigation', () => {
+  it('opens the destination section and closes the previous one', () => {
+    nav.pathname = '/acme/invoices'
+    const { rerender } = render(<AdminSidebar orgSlug="acme" />)
+    expect(screen.getByRole('link', { name: 'Invoices' })).toBeInTheDocument()
+
+    // Same component instance, new pathname — exactly what a sidebar link does.
+    nav.pathname = '/acme/vendors'
+    rerender(<AdminSidebar orgSlug="acme" />)
+    expect(screen.getByRole('link', { name: 'Vendors' })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Invoices' })).not.toBeInTheDocument()
+  })
+
+  it('does not undo a manual toggle while the pathname is unchanged', () => {
+    nav.pathname = '/acme/clients'
+    const { rerender } = render(<AdminSidebar orgSlug="acme" />)
+    fireEvent.click(screen.getByRole('button', { name: /expand money/i }))
+    expect(screen.getByRole('link', { name: 'Invoices' })).toBeInTheDocument()
+
+    rerender(<AdminSidebar orgSlug="acme" />)
+    expect(screen.getByRole('link', { name: 'Invoices' })).toBeInTheDocument()
+  })
+
+  it('leaves Events shut on the org root, whose page already lists them', () => {
+    nav.pathname = '/acme/invoices'
+    const { rerender } = render(<AdminSidebar orgSlug="acme" />)
+    nav.pathname = '/acme'
+    rerender(<AdminSidebar orgSlug="acme" />)
+    expect(screen.queryByRole('link', { name: 'All events' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Invoices' })).not.toBeInTheDocument()
+  })
+
+  it('keeps Events force-open inside a job', () => {
+    nav.pathname = '/acme/hendricks/budget'
+    render(<AdminSidebar orgSlug="acme" eventSlug="hendricks" />)
+    expect(screen.getByRole('link', { name: 'All events' })).toBeInTheDocument()
   })
 })

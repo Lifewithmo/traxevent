@@ -26,10 +26,19 @@ export default async function CatalogPage({ params }: { params: Promise<{ orgSlu
       <h1 className="text-xl font-semibold">Catalog</h1>
 
       {empty ? (
-        <p className="mt-2 max-w-prose text-sm text-muted-foreground">
-          What you sell and who helps you deliver it — packages, vendors, forms, and the documents that have to stay
-          current. Start with {packagesLabel.toLowerCase()}.
-        </p>
+        <>
+          <p className="mt-2 max-w-prose text-sm text-muted-foreground">
+            What you sell and who helps you deliver it — packages, vendors, forms, and the documents that have to stay
+            current. Start with {packagesLabel.toLowerCase()}.
+          </p>
+          {/* A brand-new org lands here first; prose with no way onward is the
+              one state where this page must still navigate. */}
+          <div className="flex flex-wrap gap-x-6 gap-y-2 pt-4 text-sm">
+            {links.map((l) => (
+              <Link key={l.href} href={l.href} className="underline">{l.label}</Link>
+            ))}
+          </div>
+        </>
       ) : (
         <>
           <div className="mt-5" style={{ borderBottom: '1px solid var(--border)', paddingBottom: 20 }}>
@@ -48,10 +57,10 @@ export default async function CatalogPage({ params }: { params: Promise<{ orgSlu
             </p>
             <p className={`mt-1 text-sm ${expired.length > 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
               {o.expiring.length === 0
-                ? 'all current — nothing expiring in the next 60 days'
+                ? 'All current — nothing expiring in the next 60 days'
                 : expired.length > 0
                   ? `${expired.length} already expired`
-                  : `expiring within 60 days`}
+                  : 'Expiring within 60 days'}
             </p>
 
             {o.expiring.length > 0 && (

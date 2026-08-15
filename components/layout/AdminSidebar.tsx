@@ -10,6 +10,7 @@ import { SidebarSection } from '@/components/layout/SidebarSection'
 import type { Terminology } from '@/lib/event-types'
 import type { EventPage } from '@/lib/types'
 import type { ModuleId } from '@/lib/industry-packs'
+import { ORG_PAGE_SLUGS } from '@/lib/sidebar-nav'
 import type { SidebarEventRow } from '@/lib/sidebar-events'
 
 interface AdminSidebarProps {
@@ -22,16 +23,10 @@ interface AdminSidebarProps {
   upcomingEvents?: SidebarEventRow[]
 }
 
-const ORG_PAGE_SLUGS = new Set([
-  'members', 'forms', 'permissions', 'billing', 'email-domain', 'event-types',
-  'departments', 'reports', 'registrants', 'today', 'leads', 'clients', 'proposals',
-  'invoices', 'vendors', 'calendar', 'new-event', 'packages', 'compliance',
-  'money', 'catalog', 'settings', 'branding', 'public-profile', 'proposal-templates',
-])
-
 // Which parent section owns a given org page — so a hard load of /acme/invoices
 // opens Money with the current page's row already visible.
 const SECTION_FOR_SLUG: Record<string, string> = {
+  'new-event': 'events',
   leads: 'pipeline',
   proposals: 'pipeline',
   money: 'money',
@@ -54,8 +49,10 @@ const SECTION_FOR_SLUG: Record<string, string> = {
   departments: 'settings',
 }
 
-// Events is deliberately absent: /{orgSlug} is the all-events page itself, and
-// inside a job the section is force-open regardless of this seed.
+// /{orgSlug} is deliberately absent: it is the all-events page itself and its
+// section's children only duplicate what that page already lists. Inside a job
+// the section is force-open regardless of this seed. /{orgSlug}/new-event is
+// mapped, so hard-loading it opens Events.
 function activeSection(pathname: string, orgSlug: string): string | null {
   const seg = pathname.split('/').filter(Boolean)
   if (seg[0] !== orgSlug || seg.length < 2) return null
@@ -87,7 +84,20 @@ const DEFAULT_TERMINOLOGY: Terminology = getEventType(DEFAULT_EVENT_TYPE_ID).ter
 // Per-event nav items that belong to the optional attendee-roster module.
 const ROSTER_KEYS = new Set(['families', 'assignments', 'checkin'])
 
-const SETTINGS_SLUGS = ['members', 'permissions', 'billing', 'email-domain', 'event-types', 'departments']
+// The single source of truth for Settings' children. The parent's active state
+// is derived from these (see settingsActive) rather than from a second hand-kept
+// slug list, which is how three of the nine drifted out of it.
+const SETTINGS_CHILDREN: Array<{ slug: string; label: string; icon: NavIconName }> = [
+  { slug: 'members', label: 'Members', icon: 'members' },
+  { slug: 'permissions', label: 'Permissions', icon: 'permissions' },
+  { slug: 'billing', label: 'Billing', icon: 'billing' },
+  { slug: 'branding', label: 'Branding', icon: 'branding' },
+  { slug: 'proposal-templates', label: 'Proposal templates', icon: 'proposals' },
+  { slug: 'public-profile', label: 'Public profile', icon: 'profile' },
+  { slug: 'email-domain', label: 'Email domain', icon: 'email' },
+  { slug: 'event-types', label: 'Event types', icon: 'types' },
+  { slug: 'departments', label: 'Departments', icon: 'departments' },
+]
 
 type NavLink = { href: string; label: string; icon: NavIconName; active: boolean }
 
@@ -168,15 +178,32 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
   const router = useRouter()
 
   // Hooks must run unconditionally before any early return (rules of hooks).
-  const settingsActive = SETTINGS_SLUGS.some(
-    (s) => pathname === `/${orgSlug}/${s}` || pathname.startsWith(`/${orgSlug}/${s}/`)
-  )
+  const settingsLinks: NavLink[] = SETTINGS_CHILDREN.map((l) => ({
+    href: `/${orgSlug}/${l.slug}`,
+    label: l.label,
+    icon: l.icon,
+    active: isActive(pathname, `/${orgSlug}/${l.slug}`),
+  }))
+  // Derived, never listed twice: the parent lights up whenever any child does,
+  // plus on its own landing page.
+  const settingsActive = settingsLinks.some((l) => l.active) || isActive(pathname, `/${orgSlug}/settings`)
+
   // Exactly one section is open at a time, seeded to whichever section owns the
   // current page so a hard load shows the current row without a click.
-  const [openSection, setOpenSection] = useState<string | null>(() =>
-    settingsActive ? 'settings' : activeSection(pathname, orgSlug)
-  )
+  const [openSection, setOpenSection] = useState<string | null>(() => activeSection(pathname, orgSlug))
   const [collapsed, setCollapsed] = useState(false)
+
+  // Client-side navigation does not remount the sidebar, so the seed above runs
+  // once and only once — without this, every in-app hop leaves the previous
+  // section open and the destination's shut. Re-seed during render (React's
+  // "adjust state when a prop changes" pattern; no effect, so no flash of the
+  // stale section), guarded by the last-seeded path so a manual toggle on the
+  // page the user is standing on is never undone.
+  const [seededFor, setSeededFor] = useState(pathname)
+  if (seededFor !== pathname) {
+    setSeededFor(pathname)
+    setOpenSection(activeSection(pathname, orgSlug))
+  }
 
   function toggleSection(key: string) {
     setOpenSection((cur) => (cur === key ? null : key))
@@ -233,7 +260,10 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
       }
     : null
 
-  const allQuickLinks: NavLink[] = [...topLinks, ...(registrantsLink ? [registrantsLink] : [])]
+  // Tasks lives under the Opportunities href, so a plain prefix match lights
+  // both rows on /leads/tasks. The more specific route wins; /leads/{leadId}
+  // detail routes still belong to Opportunities.
+  const tasksActive = isActive(pathname, `/${orgSlug}/leads/tasks`)
 
   const pipelineChildren: NavLink[] = [
     ...(has('leads') ? [{ slug: 'leads', label: 'Opportunities', icon: 'pipeline' as NavIconName }] : []),
@@ -243,7 +273,10 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
     href: `/${orgSlug}/${l.slug}`,
     label: l.label,
     icon: l.icon,
-    active: isActive(pathname, `/${orgSlug}/${l.slug}`),
+    active:
+      l.slug === 'leads'
+        ? isActive(pathname, `/${orgSlug}/leads`) && !tasksActive
+        : isActive(pathname, `/${orgSlug}/${l.slug}`),
   }))
 
   const moneyChildren: NavLink[] = [
@@ -268,38 +301,28 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
     active: isActive(pathname, `/${orgSlug}/${l.slug}`),
   }))
 
+  const allEventsActive = pathname === `/${orgSlug}`
+  const newEventActive = isActive(pathname, `/${orgSlug}/new-event`)
+  const eventsActive = allEventsActive || newEventActive || Boolean(eventSlug)
+
   const pipelineActive = pipelineChildren.some((l) => l.active)
   const moneyActive = isActive(pathname, `/${orgSlug}/money`) || moneyChildren.some((l) => l.active)
   const catalogActive = isActive(pathname, `/${orgSlug}/catalog`) || catalogChildren.some((l) => l.active)
-
-  const settingsLinks: NavLink[] = [
-    { slug: 'members', label: 'Members', icon: 'members' as NavIconName },
-    { slug: 'permissions', label: 'Permissions', icon: 'permissions' as NavIconName },
-    { slug: 'billing', label: 'Billing', icon: 'billing' as NavIconName },
-    { slug: 'branding', label: 'Branding', icon: 'branding' as NavIconName },
-    { slug: 'proposal-templates', label: 'Proposal templates', icon: 'proposals' as NavIconName },
-    { slug: 'public-profile', label: 'Public profile', icon: 'profile' as NavIconName },
-    { slug: 'email-domain', label: 'Email domain', icon: 'email' as NavIconName },
-    { slug: 'event-types', label: 'Event types', icon: 'types' as NavIconName },
-    { slug: 'departments', label: 'Departments', icon: 'departments' as NavIconName },
-  ].map((l) => ({
-    href: `/${orgSlug}/${l.slug}`,
-    label: l.label,
-    icon: l.icon,
-    active: isActive(pathname, `/${orgSlug}/${l.slug}`),
-  }))
 
   // At 52px there is nothing to expand, so the rail is flat icon links to each
   // section's landing page. Gating here must match the expanded nav's exactly,
   // or the rail offers a destination the expanded sidebar does not.
   const railLinks: NavLink[] = [
-    ...allQuickLinks,
+    ...topLinks,
     ...(pipelineChildren.length > 0
       ? [{ href: `/${orgSlug}/leads`, label: 'Pipeline', icon: 'pipeline' as NavIconName, active: pipelineActive }]
       : []),
     ...(has('events')
-      ? [{ href: `/${orgSlug}`, label: 'Events', icon: 'events' as NavIconName, active: pathname === `/${orgSlug}` }]
+      ? [{ href: `/${orgSlug}`, label: 'Events', icon: 'events' as NavIconName, active: eventsActive }]
       : []),
+    // Registrants sits between Events and Money in the expanded nav; the rail
+    // must agree or the two modes teach different maps of the same product.
+    ...(registrantsLink ? [registrantsLink] : []),
     ...(has('invoices') && moneyChildren.length > 0
       ? [{ href: `/${orgSlug}/money`, label: 'Money', icon: 'invoices' as NavIconName, active: moneyActive }]
       : []),
@@ -310,7 +333,7 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
       href: `/${orgSlug}/settings`,
       label: 'Settings',
       icon: 'settings' as NavIconName,
-      active: settingsActive || isActive(pathname, `/${orgSlug}/settings`),
+      active: settingsActive,
     },
   ]
 
@@ -395,7 +418,7 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
               href={`/${orgSlug}`}
               label="Events"
               icon="events"
-              active={pathname === `/${orgSlug}` || Boolean(eventSlug)}
+              active={eventsActive}
               open={openSection === 'events' || Boolean(eventSlug)}
               onToggle={() => toggleSection('events')}
             >
@@ -411,7 +434,7 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
                       indent
                     />
                   ))}
-                  <NavItem href={`/${orgSlug}`} label="All events" icon="events" active={false} indent />
+                  <NavItem href={`/${orgSlug}`} label="All events" icon="events" active={allEventsActive} indent />
                 </>
               ) : (
                 <>
@@ -425,8 +448,14 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
                       <span className={`text-[10px] shrink-0 ${e.isToday ? 'font-semibold' : ''}`}>{e.label}</span>
                     </Link>
                   ))}
-                  <NavItem href={`/${orgSlug}`} label="All events" icon="events" active={false} indent />
-                  <NavItem href={`/${orgSlug}/new-event`} label="+ New event" icon="events" active={false} indent />
+                  <NavItem href={`/${orgSlug}`} label="All events" icon="events" active={allEventsActive} indent />
+                  <NavItem
+                    href={`/${orgSlug}/new-event`}
+                    label="+ New event"
+                    icon="events"
+                    active={newEventActive}
+                    indent
+                  />
                 </>
               )}
             </SidebarSection>
@@ -468,7 +497,7 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
             href={`/${orgSlug}/settings`}
             label="Settings"
             icon="settings"
-            active={settingsActive || isActive(pathname, `/${orgSlug}/settings`)}
+            active={settingsActive}
             open={openSection === 'settings'}
             onToggle={() => toggleSection('settings')}
           >

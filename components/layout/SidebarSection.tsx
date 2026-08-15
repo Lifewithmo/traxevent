@@ -10,7 +10,6 @@ interface SidebarSectionProps {
   active: boolean
   open: boolean
   onToggle: () => void
-  badge?: string
   children: React.ReactNode
 }
 
@@ -19,7 +18,7 @@ interface SidebarSectionProps {
  * the chevron toggles its children. Two sibling controls, never nested —
  * the same pattern as Notion's sidebar and the GitHub file tree.
  */
-export function SidebarSection({ href, label, icon, active, open, onToggle, badge, children }: SidebarSectionProps) {
+export function SidebarSection({ href, label, icon, active, open, onToggle, children }: SidebarSectionProps) {
   return (
     <div>
       <div
@@ -34,11 +33,6 @@ export function SidebarSection({ href, label, icon, active, open, onToggle, badg
           <NavIcon name={icon} />
           <span className="truncate">{label}</span>
         </Link>
-        {badge && (
-          <span className="mr-1 rounded-full bg-[color:var(--sidebar-accent)] px-1.5 py-0.5 text-[10px] font-semibold">
-            {badge}
-          </span>
-        )}
         <button
           type="button"
           onClick={onToggle}

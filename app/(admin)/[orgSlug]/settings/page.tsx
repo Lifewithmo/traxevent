@@ -30,7 +30,7 @@ export default async function SettingsPage({ params }: { params: Promise<{ orgSl
             </p>
             <p className="text-[32px] font-semibold leading-none tabular-nums">{unconfigured.length}</p>
             <p className="mt-1 text-sm text-muted-foreground">
-              area{unconfigured.length === 1 ? '' : 's'} clients may notice
+              Area{unconfigured.length === 1 ? '' : 's'} clients may notice
             </p>
             <ul className="mt-4">
               {unconfigured.map((a) => (

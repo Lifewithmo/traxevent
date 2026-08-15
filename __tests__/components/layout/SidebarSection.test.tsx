@@ -56,13 +56,4 @@ describe('SidebarSection', () => {
     )
     expect(screen.getByText('Invoices')).toBeInTheDocument()
   })
-
-  it('renders a badge when provided', () => {
-    render(
-      <SidebarSection href="/acme/money" label="Money" icon="invoices" active={false} open={false} onToggle={vi.fn()} badge="2 late">
-        <a href="/acme/invoices">Invoices</a>
-      </SidebarSection>,
-    )
-    expect(screen.getByText('2 late')).toBeInTheDocument()
-  })
 })
