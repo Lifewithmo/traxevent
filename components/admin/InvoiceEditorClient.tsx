@@ -373,11 +373,11 @@ export function InvoiceEditorClient({
                   <div
                     key={i}
                     data-testid="line-item-row"
-                    className="grid items-center gap-2 border-b py-2 max-md:grid-cols-2 md:grid-cols-[minmax(0,1fr)_4rem_7rem_7rem_5rem_2.5rem]"
+                    className="grid items-center gap-2 border-b py-2 max-md:grid-cols-6 max-md:py-3 md:grid-cols-[minmax(0,1fr)_4rem_7rem_7rem_5rem_2.5rem]"
                   >
                     {/* Labels are visible on mobile and collapse to sr-only at md+,
                         where the table header carries them instead. */}
-                    <div className="space-y-1 max-md:col-span-2">
+                    <div className="space-y-1 max-md:col-span-6">
                       <Label htmlFor={`line-desc-${i}`} className="text-xs text-muted-foreground md:sr-only">
                         Description
                       </Label>
@@ -390,7 +390,7 @@ export function InvoiceEditorClient({
                         className="h-8"
                       />
                     </div>
-                    <div className="space-y-1">
+                    <div className="space-y-1 max-md:col-span-2">
                       <Label htmlFor={`line-qty-${i}`} className="text-xs text-muted-foreground md:sr-only">
                         Qty
                       </Label>
@@ -403,7 +403,7 @@ export function InvoiceEditorClient({
                         className="h-8 md:text-right"
                       />
                     </div>
-                    <div className="space-y-1">
+                    <div className="space-y-1 max-md:col-span-2">
                       <Label htmlFor={`line-price-${i}`} className="text-xs text-muted-foreground md:sr-only">
                         Unit price
                       </Label>
@@ -416,10 +416,10 @@ export function InvoiceEditorClient({
                         className="h-8 md:text-right"
                       />
                     </div>
-                    <p className="text-sm tabular-nums max-md:before:mr-1 max-md:before:text-xs max-md:before:text-muted-foreground max-md:before:content-['Subtotal'] md:text-right">
+                    <p className="text-sm tabular-nums max-md:col-span-2 max-md:before:mr-1 max-md:before:text-xs max-md:before:text-muted-foreground max-md:before:content-['Subtotal'] md:text-right">
                       {money(lineItemSubtotal(item))}
                     </p>
-                    <div className="flex items-center gap-1.5 md:justify-center">
+                    <div className="flex items-center gap-1.5 max-md:col-span-4 md:justify-center">
                       <input
                         id={`taxable-${i}`}
                         type="checkbox"
@@ -435,7 +435,7 @@ export function InvoiceEditorClient({
                       aria-label={`Remove line ${i + 1}`}
                       onClick={() => removeRow(i)}
                       disabled={busy || locked}
-                      className="justify-self-end"
+                      className="justify-self-end max-md:col-span-2"
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
@@ -460,7 +460,7 @@ export function InvoiceEditorClient({
                 <dd className="tabular-nums" data-testid="breakdown-subtotal">{money(subtotal)}</dd>
               </div>
 
-              <div className="flex items-center justify-between gap-2">
+              <div className={`items-center justify-between gap-2 ${showDiscountRow ? 'flex' : 'hidden'}`}>
                 <dt className="flex flex-wrap items-center gap-1.5">
                   <Label htmlFor="discountType" className="text-muted-foreground">Discount</Label>
                   <select
@@ -505,7 +505,7 @@ export function InvoiceEditorClient({
                 </dd>
               </div>
 
-              <div className="flex items-center justify-between gap-2">
+              <div className={`items-center justify-between gap-2 ${showTaxRow ? 'flex' : 'hidden'}`}>
                 <dt className="flex items-center gap-1.5">
                   <Label htmlFor="taxRate" className="text-muted-foreground">Tax rate (%)</Label>
                   <Input

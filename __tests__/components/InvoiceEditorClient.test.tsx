@@ -6,11 +6,14 @@ import type { NormalizedInvoice, InvoiceVersion } from '@/lib/types'
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }))
 
-const sendInvoiceMock = vi.fn(async () => ({ number: 'BRW-1042', emailDelivered: true }))
+type SendInput = { to: string; message?: string; updates?: { line_items?: unknown[]; discount?: unknown } }
+const sendInvoiceMock = vi.fn(
+  async (_orgId: string, _invoiceId: string, _input: SendInput) => ({ number: 'BRW-1042', emailDelivered: true }),
+)
 vi.mock('@/actions/invoices', () => ({
   updateInvoice: vi.fn(), voidInvoice: vi.fn(),
   recordPayment: vi.fn(), deleteInvoice: vi.fn(),
-  sendInvoice: (...args: unknown[]) => sendInvoiceMock(...(args as [])),
+  sendInvoice: (...args: Parameters<typeof sendInvoiceMock>) => sendInvoiceMock(...args),
 }))
 // The catalog picker loads work packages on open; keep it inert here (Task 5 owns its behavior).
 vi.mock('@/actions/work-packages', () => ({
@@ -53,10 +56,16 @@ describe('InvoiceEditorClient — document', () => {
 
   it('shows totals in reading order with an inline discount reason input', async () => {
     const user = userEvent.setup()
-    render(
+    const { container } = render(
       <InvoiceEditorClient orgId="org1" orgSlug="s" leadId="l"
         invoice={draftInvoice({ line_items: [{ description: 'Service', quantity: 1, unit_price: 1000 }] })} />,
     )
+    expect(
+      Array.from(container.querySelectorAll('[data-testid^="breakdown-"]')).map((n) => n.getAttribute('data-testid')),
+    ).toEqual([
+      'breakdown-subtotal', 'breakdown-discount', 'breakdown-tax',
+      'breakdown-total', 'breakdown-paid', 'breakdown-balance',
+    ])
     await user.selectOptions(screen.getByLabelText('Discount'), 'percent')
     await user.clear(screen.getByLabelText('Value'))
     await user.type(screen.getByLabelText('Value'), '10')
@@ -77,6 +86,47 @@ describe('InvoiceEditorClient — document', () => {
     expect(within(dialog).getByLabelText(/^to$/i)).toHaveValue('c@e.com')
     await user.click(within(dialog).getByRole('button', { name: /send invoice/i }))
     expect(sendInvoiceMock).toHaveBeenCalledWith('org1', 'inv1', expect.objectContaining({ to: 'c@e.com' }))
+  })
+
+  it('rides unsaved edits along with the send as `updates`', async () => {
+    const user = userEvent.setup()
+    sendInvoiceMock.mockClear()
+    render(
+      <InvoiceEditorClient orgId="org1" orgSlug="s" leadId="l" customerEmail="c@e.com"
+        invoice={draftInvoice({ line_items: [{ description: 'x', quantity: 1, unit_price: 10 }] })} />,
+    )
+    await user.clear(screen.getByLabelText('Description'))
+    await user.type(screen.getByLabelText('Description'), 'Mobile bar')
+
+    await user.click(screen.getByRole('button', { name: /send invoice/i }))
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: /send invoice/i }))
+
+    const input = sendInvoiceMock.mock.calls[0][2]
+    expect(input.updates?.line_items).toEqual([{ description: 'Mobile bar', quantity: 1, unit_price: 10 }])
+    expect(input.updates?.discount).toBeUndefined()
+  })
+
+  it('warns persistently when the send lands but the email does not', async () => {
+    const user = userEvent.setup()
+    sendInvoiceMock.mockClear()
+    sendInvoiceMock.mockResolvedValueOnce({ number: 'BRW-1042', emailDelivered: false })
+    render(
+      <InvoiceEditorClient orgId="org1" orgSlug="s" leadId="l" customerEmail="c@e.com"
+        invoice={draftInvoice({ line_items: [{ description: 'x', quantity: 1, unit_price: 10 }] })} />,
+    )
+    await user.click(screen.getByRole('button', { name: /send invoice/i }))
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: /send invoice/i }))
+    expect(await screen.findByText(/email delivery failed/i)).toBeInTheDocument()
+  })
+
+  it('offers Add from catalog and Add blank line while editable', async () => {
+    const user = userEvent.setup()
+    render(<InvoiceEditorClient orgId="org1" orgSlug="s" leadId="l" invoice={draftInvoice({ line_items: [] })} />)
+    expect(screen.getByRole('button', { name: /add from catalog/i })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /add blank line/i }))
+    expect(screen.getAllByTestId('line-item-row')).toHaveLength(1)
   })
 
   it('sent invoice is read-only until Edit invoice is clicked, then CTA becomes Send update', async () => {
@@ -161,11 +211,13 @@ describe('InvoiceEditorClient — composition invariants', () => {
   })
 
   it('gives Balance visual dominance over the supporting totals lines', () => {
-    render(<InvoiceEditorClient orgId="org1" orgSlug="s" leadId="l" invoice={withPayment()} />)
+    const { container } = render(<InvoiceEditorClient orgId="org1" orgSlug="s" leadId="l" invoice={withPayment()} />)
     expect(screen.getByTestId('breakdown-balance').className).toMatch(/text-2xl/)
     for (const id of ['breakdown-subtotal', 'breakdown-total', 'breakdown-paid']) {
       expect(screen.getByTestId(id).className).not.toMatch(/text-2xl/)
     }
+    // Nothing else on the document may compete with it — not even the "Invoice" title.
+    expect(container.querySelectorAll('.text-2xl')).toHaveLength(1)
   })
 
   it('shows an interpretation line under Balance for each payment state', () => {
