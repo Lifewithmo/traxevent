@@ -36,4 +36,9 @@ describe('seriesOccurrences', () => {
     expect(() => seriesOccurrences(rec('2026-05-30', '2026-05-02'))).toThrow('after')
     expect(() => seriesOccurrences({ freq: 'weekly', weekday: 7, from: '2026-05-02', until: '2026-05-30' })).toThrow('weekday')
   })
+  it('rejects calendar-invalid dates that match the pattern', () => {
+    expect(() => seriesOccurrences(rec('2026-02-30', '2026-05-30'))).toThrow('date')
+    expect(() => seriesOccurrences(rec('2026-05-02', '2026-13-01'))).toThrow('date')
+    expect(() => seriesOccurrences(rec('2026-04-31', '2026-05-30'))).toThrow('date')
+  })
 })

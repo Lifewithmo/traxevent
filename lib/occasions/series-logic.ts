@@ -28,6 +28,10 @@ export function seriesOccurrences(rec: SeriesRecurrence): string[] {
   }
   const from = toUtc(rec.from)
   const until = toUtc(rec.until)
+  if (Number.isNaN(from.getTime()) || toDay(from) !== rec.from ||
+      Number.isNaN(until.getTime()) || toDay(until) !== rec.until) {
+    throw new Error('Series dates must be YYYY-MM-DD')
+  }
   if (until.getTime() < from.getTime()) throw new Error('A series must end after it starts')
 
   const first = new Date(from)
