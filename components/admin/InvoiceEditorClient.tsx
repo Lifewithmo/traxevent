@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import {
-  updateInvoice, issueInvoice, voidInvoice, deleteInvoice, recordPayment,
+  updateInvoice, sendInvoice, voidInvoice, deleteInvoice, recordPayment,
 } from '@/actions/invoices'
 import {
   lineItemSubtotal, linesSubtotal, amountPaid, invoiceBalance,
@@ -109,13 +109,14 @@ export function InvoiceEditorClient({ orgId, orgSlug, leadId, invoice, orgTipsEn
   }
 
   async function handleIssue() {
+    // Stopgap recipient capture via window.prompt — Task 6 replaces this with a real send dialog.
     setIssuing(true); setError(null); setNotice(null)
     try {
-      await issueInvoice(orgId, invoice.id)
-      setNotice('Invoice issued.')
+      await sendInvoice(orgId, invoice.id, { to: window.prompt('Send to (email):') ?? '' })
+      setNotice('Invoice sent.')
       router.refresh()
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to issue')
+      setError(err instanceof Error ? err.message : 'Failed to send')
     } finally { setIssuing(false) }
   }
 

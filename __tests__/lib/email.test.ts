@@ -13,7 +13,7 @@ vi.mock('@/lib/resend', () => ({
   },
 }))
 
-import { sendRegistrationConfirmation, sendProposalNudge, sendIntakeNotification, escapeHtml } from '@/lib/email'
+import { sendRegistrationConfirmation, sendProposalNudge, sendIntakeNotification, sendInvoiceEmail, escapeHtml } from '@/lib/email'
 
 const baseParams = {
   to: 'jane@example.com',
@@ -141,5 +141,33 @@ describe('sendIntakeNotification', () => {
     const call = emailsSendSpy.mock.calls[0][0]
     expect(call.html).not.toContain('Phone')
     expect(call.html).not.toContain('Message')
+  })
+})
+
+describe('sendInvoiceEmail', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('sends the invoice link with escaped user content and reply-to', async () => {
+    await sendInvoiceEmail({
+      to: 'client@example.com', orgName: 'BrewTrax', invoiceNumber: 'BRW-1042',
+      total: 1100, dueDate: '2026-09-01', message: 'Thanks <3', token: 'tok123',
+      isUpdate: false, fromDisplayName: 'BrewTrax', replyTo: 'ryan@example.com',
+    })
+    const call = emailsSendSpy.mock.calls.at(-1)![0]
+    expect(call.to).toBe('client@example.com')
+    expect(call.replyTo).toBe('ryan@example.com')
+    expect(call.subject).toContain('BRW-1042')
+    expect(call.html).toContain('/invoices/tok123')
+    expect(call.html).toContain('$1100.00')
+    expect(call.html).toContain('Thanks &lt;3')   // user message is escaped
+    expect(call.html).not.toContain('Thanks <3')
+  })
+
+  it('marks updates in the subject', async () => {
+    await sendInvoiceEmail({
+      to: 'c@e.com', orgName: 'BrewTrax', invoiceNumber: '1042', total: 5,
+      token: 't', isUpdate: true,
+    })
+    expect(emailsSendSpy.mock.calls.at(-1)![0].subject).toMatch(/updated/i)
   })
 })

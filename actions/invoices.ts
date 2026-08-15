@@ -19,8 +19,11 @@ import {
   generateFromProposalCore,
   recordPaymentCore,
   markInvoiceSentCore,
+  invoiceVersionSnapshot,
 } from '@/lib/crm/invoices'
-import type { Event, Invoice, InvoiceLineItem, InvoiceType, InvoiceDiscount, NormalizedInvoice } from '@/lib/types'
+import { sendInvoiceEmail } from '@/lib/email'
+import { getVerifiedSendingDomain } from '@/actions/domains'
+import type { Event, Invoice, InvoiceLineItem, InvoiceType, InvoiceDiscount, NormalizedInvoice, Org } from '@/lib/types'
 
 // NOTE: this is a 'use server' module — every export must be an async function.
 // CreateInvoiceInput/InvoiceUpdate/RecordPaymentInput (types) are therefore NOT
@@ -146,28 +149,94 @@ export async function updateInvoice(orgId: string, invoiceId: string, updates: I
   await ref.update({ ...cleaned, updated_at: new Date().toISOString() })
 }
 
-export async function issueInvoice(orgId: string, invoiceId: string): Promise<{ number: string }> {
-  await assertOrgAdmin(orgId)
-  const ref = invoicesRef(orgId).doc(invoiceId)
+export interface SendInvoiceInput {
+  to: string
+  message?: string
+  updates?: InvoiceUpdate
+}
 
-  // Enforce the scope invariant at issue time, mirroring generateFromProposal's
-  // in-memory check. This must happen with plain (non-transaction) reads —
-  // Firestore transactions cannot run queries — so it's done before we ever
-  // delegate to markInvoiceSentCore's transaction below.
+/**
+ * The one send motion (spec §6): apply any pending edits, assign the number on first
+ * send, snapshot the content-as-sent into versions[], email the customer, and record
+ * delivery. Email failure never rolls back the send — numbers must be unique, not
+ * gapless — it surfaces as { emailDelivered: false } + delivery: 'bounced'.
+ */
+export async function sendInvoice(
+  orgId: string,
+  invoiceId: string,
+  input: SendInvoiceInput,
+): Promise<{ number: string; emailDelivered: boolean }> {
+  const member = await assertOrgAdmin(orgId)
+  if (!input.to.trim()) throw new Error('Recipient email is required')
+  const ref = invoicesRef(orgId).doc(invoiceId)
   const preSnap = await ref.get()
   if (!preSnap.exists) throw new Error('Invoice not found')
-  const preInv = normalizeInvoice(preSnap.data()!)
-  if (preInv.source?.type === 'proposal' && preInv.source.id && preInv.type !== 'quick') {
-    const proposal = await getProposal(orgId, preInv.source.id)
-    if (proposal) {
-      const approved = acceptedProposalTotal(proposal)
-      const existing = await listInvoices(orgId, preInv.lead_id)
-      const billed = previouslyBilled(existing, preInv.source.id)
-      assertWithinScope(invoiceAmountDue(preInv), billed, approved)
+  let inv = normalizeInvoice(preSnap.data()!)
+  if (inv.lifecycle === 'void') throw new Error('Cannot send a void invoice')
+
+  if (input.updates) {
+    const cleaned: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(input.updates)) {
+      cleaned[k] = v === undefined ? FieldValue.delete() : v
     }
+    await ref.update({ ...cleaned, updated_at: new Date().toISOString() })
+    inv = normalizeInvoice((await ref.get()).data()!)
   }
 
-  return markInvoiceSentCore(orgId, invoiceId)
+  const isUpdate = inv.lifecycle === 'sent'
+  let number: string
+  if (!isUpdate) {
+    // Scope invariant, verbatim from the retired issueInvoice: plain reads only —
+    // Firestore transactions cannot run queries.
+    if (inv.source?.type === 'proposal' && inv.source.id && inv.type !== 'quick') {
+      const proposal = await getProposal(orgId, inv.source.id)
+      if (proposal) {
+        const approved = acceptedProposalTotal(proposal)
+        const existing = await listInvoices(orgId, inv.lead_id)
+        const billed = previouslyBilled(existing, inv.source.id)
+        assertWithinScope(invoiceAmountDue(inv), billed, approved)
+      }
+    }
+    const res = await markInvoiceSentCore(orgId, invoiceId)
+    number = res.number
+  } else {
+    number = inv.number ?? ''
+    const now = new Date().toISOString()
+    await ref.update({
+      versions: [...(inv.versions ?? []), invoiceVersionSnapshot(inv, now)],
+      sent_at: now,
+      updated_at: now,
+    })
+  }
+
+  const orgSnap = await adminDb.collection('orgs').doc(orgId).get()
+  const org = orgSnap.data() as Org | undefined
+  let fromDomain: string | undefined
+  try {
+    fromDomain = await getVerifiedSendingDomain(orgId)
+  } catch { /* fall back to platform sender */ }
+
+  let emailDelivered = true
+  try {
+    await sendInvoiceEmail({
+      to: input.to.trim(),
+      orgName: org?.branding?.display_name ?? org?.name ?? 'Your vendor',
+      invoiceNumber: number,
+      total: invoiceAmountDue(inv),
+      dueDate: inv.due_date,
+      message: input.message,
+      token: inv.token,
+      isUpdate,
+      fromDisplayName: org?.branding?.display_name ?? org?.name,
+      fromDomain,
+      replyTo: member.email,
+    })
+    await ref.update({ delivery: 'sent' })
+  } catch {
+    emailDelivered = false
+    await ref.update({ delivery: 'bounced' })
+  }
+  return { number, emailDelivered }
 }
 
 export async function voidInvoice(orgId: string, invoiceId: string, reason?: string): Promise<void> {

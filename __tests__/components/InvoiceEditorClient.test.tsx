@@ -5,7 +5,7 @@ import type { NormalizedInvoice } from '@/lib/types'
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }))
 vi.mock('@/actions/invoices', () => ({
-  updateInvoice: vi.fn(), issueInvoice: vi.fn(), voidInvoice: vi.fn(),
+  updateInvoice: vi.fn(), sendInvoice: vi.fn(), voidInvoice: vi.fn(),
   recordPayment: vi.fn(), deleteInvoice: vi.fn(),
 }))
 
