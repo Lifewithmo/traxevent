@@ -32,3 +32,9 @@ export function findExpiringDocs(docs: ComplianceDoc[], now: string, withinDays 
     .filter((d) => d.daysLeft <= withinDays)
     .sort((a, b) => a.daysLeft - b.daysLeft)
 }
+
+export interface CatalogOverview {
+  vendorCount: number
+  formCount: number
+  expiring: ExpiringDoc[]
+}
