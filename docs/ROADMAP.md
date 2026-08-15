@@ -126,6 +126,8 @@ EventTrax pivot (neutralization, multi-brand, ops core). Detailed designs live i
 
 ## In flight
 
+- **Drops & online ordering** — products catalog → drops with email announcements and public checkout on Stripe Connect (no per-order platform fee), orders board, subscriber management, calendar drop kind. Spec: `superpowers/specs/2026-08-15-drops-online-ordering-design.md`. Ship checklist (Firestore indexes, Stripe `charge.refunded` webhook, authenticated walk, side-by-side pilot) documented in the plan's Task 18.
+
 - **Proposal templates** (branch `claude/proposal-templates`) — org-owned
   full-document templates: pick one on New proposal (above the built-in
   skeletons), manage under Settings → Proposal templates, edit in a builder

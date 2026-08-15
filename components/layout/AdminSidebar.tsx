@@ -20,6 +20,7 @@ interface AdminSidebarProps {
   allowedEventPages?: EventPage[]
   enabledModules?: ModuleId[]
   catalogLabel?: string
+  storefrontLabel?: string
   upcomingEvents?: SidebarEventRow[]
 }
 
@@ -34,6 +35,7 @@ const SECTION_FOR_SLUG: Record<string, string> = {
   reports: 'money',
   catalog: 'catalog',
   packages: 'catalog',
+  drops: 'catalog',
   vendors: 'catalog',
   forms: 'catalog',
   compliance: 'catalog',
@@ -209,7 +211,7 @@ function IconRailGroup({ items }: { items: NavLink[] }) {
   )
 }
 
-export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPages, enabledModules, catalogLabel, upcomingEvents }: AdminSidebarProps) {
+export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPages, enabledModules, catalogLabel, storefrontLabel, upcomingEvents }: AdminSidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
 
@@ -346,6 +348,7 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
 
   const catalogChildren: NavLink[] = [
     ...(has('catalog') ? [{ slug: 'packages', label: catalogLabel ?? 'Packages', icon: 'packages' as NavIconName }] : []),
+    ...(has('storefront' as ModuleId) ? [{ slug: 'drops', label: storefrontLabel ?? 'Online orders', icon: 'packages' as NavIconName }] : []),
     ...(has('vendors') ? [{ slug: 'vendors', label: 'Vendors', icon: 'vendors' as NavIconName }] : []),
     ...(has('forms') ? [{ slug: 'forms', label: 'Forms', icon: 'forms' as NavIconName }] : []),
     ...(has('compliance') ? [{ slug: 'compliance', label: 'Compliance', icon: 'compliance' as NavIconName }] : []),

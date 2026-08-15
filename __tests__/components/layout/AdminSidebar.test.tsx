@@ -110,6 +110,23 @@ describe('AdminSidebar — workspace nav (no eventSlug)', () => {
     expect(screen.queryByRole('link', { name: 'Catalog' })).not.toBeInTheDocument()
   })
 
+  it('shows the storefront link with the pack label when the module is enabled', () => {
+    render(<AdminSidebar orgSlug="acme" enabledModules={['storefront']} catalogLabel="Menu Packages" storefrontLabel="Drops" />)
+    fireEvent.click(screen.getByRole('button', { name: /expand catalog/i }))
+    expect(screen.getByRole('link', { name: 'Drops' })).toHaveAttribute('href', '/acme/drops')
+  })
+
+  it('places the storefront link directly after Packages in the Catalog section', () => {
+    renderNav(['catalog', 'storefront', 'vendors', 'forms', 'compliance'])
+    const catalog = screen.getByRole('button', { name: /expand catalog/i }).closest('div')!.parentElement!
+    fireEvent.click(screen.getByRole('button', { name: /expand catalog/i }))
+    const labels = within(catalog)
+      .getAllByRole('link')
+      .map((l) => l.textContent)
+      .filter((l) => l !== 'Catalog')
+    expect(labels).toEqual(['Packages', 'Online orders', 'Vendors', 'Forms', 'Compliance'])
+  })
+
   it('renders an icon with every workspace nav item', () => {
     renderNav(['calendar', 'clients', 'events', 'leads', 'registrants', 'vendors', 'forms', 'reports', 'invoices'])
     fireEvent.click(screen.getByRole('button', { name: /expand money/i }))

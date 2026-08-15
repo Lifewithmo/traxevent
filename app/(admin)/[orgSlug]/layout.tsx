@@ -1,6 +1,6 @@
 import { AdminSidebar } from '@/components/layout/AdminSidebar'
 import { requireOrgMember } from '@/lib/auth/guards'
-import { resolveEnabledModules, getIndustryPack, catalogLabel } from '@/lib/industry-packs'
+import { resolveEnabledModules, getIndustryPack, catalogLabel, storefrontLabel } from '@/lib/industry-packs'
 import { listSidebarEvents } from '@/actions/sidebar-events'
 
 export default async function OrgLayout({
@@ -24,9 +24,9 @@ export default async function OrgLayout({
         orgSlug={orgSlug}
         enabledModules={enabledModules}
         catalogLabel={catalogLabel(getIndustryPack(org.industry_pack_id))}
+        storefrontLabel={storefrontLabel(getIndustryPack(org.industry_pack_id))}
         upcomingEvents={upcomingEvents}
       />
-
       <main className="flex-1 bg-gray-50 overflow-auto">{children}</main>
     </div>
   )

@@ -19,7 +19,7 @@ describe('SubscribePanel', () => {
   it('unchecking a kind produces a filtered feed URL — money can stay off a shared calendar', () => {
     render(<SubscribePanel url={URL_BASE} />)
     fireEvent.click(screen.getByLabelText('Invoice due'))
-    expect(screen.getByText(`${URL_BASE}?include=event,lead,task,follow_up,compliance`)).toBeInTheDocument()
+    expect(screen.getByText(`${URL_BASE}?include=event,lead,task,follow_up,compliance,drop`)).toBeInTheDocument()
   })
 
   it('copies the current URL', async () => {
