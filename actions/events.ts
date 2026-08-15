@@ -4,7 +4,7 @@ import { randomBytes } from 'crypto'
 import { adminDb } from '@/lib/firebase-admin'
 import { assertOrgMember, assertOrgAdmin } from '@/lib/auth/assert'
 import { FieldValue } from 'firebase-admin/firestore'
-import type { Event, EventRegistrationType } from '@/lib/types'
+import type { Event, EventRegistrationType, EventLocation, EventHours } from '@/lib/types'
 import type { Terminology } from '@/lib/event-types'
 import { createEventCore, listEventsCore, listEventsByLeadCore, resolveUniqueEventSlug } from '@/lib/events'
 
@@ -50,7 +50,7 @@ export async function getEventBySlug(orgId: string, slug: string): Promise<Event
 export async function updateEvent(
   orgId: string,
   eventId: string,
-  updates: Partial<Pick<Event,
+  updates: Omit<Partial<Pick<Event,
     | 'name'
     | 'status'
     | 'event_type_id'
@@ -70,7 +70,14 @@ export async function updateEvent(
     | 'location'
     | 'hours'
     | 'booth_fee'
-  >> & { event_type_terminology?: Terminology | null }
+  >>, 'location' | 'hours' | 'booth_fee'> & {
+    event_type_terminology?: Terminology | null
+    // location/hours/booth_fee: null explicitly clears (FieldValue.delete()), see convention below.
+    // Event's own type keeps these non-nullable-when-present; only the write path accepts null.
+    location?: EventLocation | null
+    hours?: EventHours | null
+    booth_fee?: number | null
+  }
 ): Promise<void> {
   await assertOrgAdmin(orgId)
   const ref = adminDb
