@@ -1,5 +1,5 @@
 import { render, screen, within, fireEvent } from '@testing-library/react'
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { AdminSidebar } from '@/components/layout/AdminSidebar'
 import { getEventType } from '@/lib/event-types'
 import type { ModuleId } from '@/lib/industry-packs'
@@ -16,6 +16,12 @@ vi.mock('@/lib/firebase', () => ({
   auth: {},
   db: {},
 }))
+
+// The rail-collapse test persists to localStorage; clear it so later renders
+// in this file start from the expanded sidebar.
+beforeEach(() => {
+  window.localStorage.clear()
+})
 
 describe('AdminSidebar — terminology-driven labels', () => {
   it('shows "Customers" for event event type', () => {
@@ -51,7 +57,10 @@ describe('AdminSidebar — terminology-driven labels', () => {
   it('includes a Settings nav link', () => {
     const { terminology } = getEventType('event')
     render(<AdminSidebar orgSlug="acme" eventSlug="camp-2026" terminology={terminology} />)
-    expect(screen.getByText('Settings')).toBeInTheDocument()
+    // Two Settings links now: the job's own settings page and the workspace
+    // Settings section, which no longer disappears inside a job.
+    const hrefs = screen.getAllByRole('link', { name: 'Settings' }).map((l) => l.getAttribute('href'))
+    expect(hrefs).toContain('/acme/camp-2026/settings')
   })
 })
 
@@ -60,69 +69,62 @@ describe('AdminSidebar — workspace nav (no eventSlug)', () => {
     return render(<AdminSidebar orgSlug="acme" enabledModules={enabledModules} catalogLabel="Packages" />)
   }
 
-  function sectionFor(label: string) {
-    return screen.getByText(label, { selector: 'p, span' }).closest('div')!
-  }
-
-  it('Quick Links order: Calendar, Clients, Events, Today, Registrants', () => {
-    renderNav(['calendar', 'clients', 'events', 'leads', 'registrants'])
-    const quickLinks = sectionFor('Quick Links')
-    const labels = within(quickLinks).getAllByRole('link').map((l) => l.textContent)
-    expect(labels).toEqual(['Calendar', 'Clients', 'Events', 'Today', 'Registrants'])
-  })
-
-  it('omits gated-out Quick Links but keeps relative order', () => {
+  it('omits gated-out top-trio links but keeps relative order', () => {
     renderNav(['calendar', 'events', 'registrants'])
-    const quickLinks = sectionFor('Quick Links')
-    const labels = within(quickLinks).getAllByRole('link').map((l) => l.textContent)
-    expect(labels).toEqual(['Calendar', 'Events', 'Registrants'])
+    const labels = screen.getAllByRole('link').map((l) => l.textContent)
+    const calendar = labels.indexOf('Calendar')
+    expect(calendar).toBeGreaterThanOrEqual(0)
+    expect(labels).not.toContain('Today')
+    expect(labels).not.toContain('Clients')
+    expect(labels.indexOf('Registrants')).toBeGreaterThan(calendar)
   })
 
-  it('does not render an "Events" section', () => {
+  it('renders an Events section whose label links to the events list', () => {
     renderNav(['calendar', 'clients', 'events', 'leads', 'registrants', 'vendors'])
-    expect(screen.queryByText('Events', { selector: 'p' })).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Events' })).toHaveAttribute('href', '/acme')
   })
 
-  it('Operations section contains Vendors and Forms', () => {
+  it('Catalog section contains Vendors and Forms', () => {
     renderNav(['vendors', 'forms'])
-    const operations = sectionFor('Operations')
-    expect(within(operations).getByText('Vendors')).toBeInTheDocument()
-    expect(within(operations).getByText('Forms')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /expand catalog/i }))
+    expect(screen.getByText('Vendors')).toBeInTheDocument()
+    expect(screen.getByText('Forms')).toBeInTheDocument()
   })
 
-  it('Operations section also includes Packages and Compliance when gated in', () => {
+  it('Catalog section also includes Packages and Compliance when gated in', () => {
     renderNav(['vendors', 'forms', 'catalog', 'compliance'])
-    const operations = sectionFor('Operations')
-    const labels = within(operations).getAllByRole('link').map((l) => l.textContent)
-    expect(labels).toEqual(['Vendors', 'Packages', 'Forms', 'Compliance'])
+    const catalog = screen.getByRole('button', { name: /expand catalog/i }).closest('div')!.parentElement!
+    fireEvent.click(screen.getByRole('button', { name: /expand catalog/i }))
+    const labels = within(catalog)
+      .getAllByRole('link')
+      .map((l) => l.textContent)
+      .filter((l) => l !== 'Catalog')
+    expect(labels).toEqual(['Packages', 'Vendors', 'Forms', 'Compliance'])
   })
 
-  it('omits Operations entirely when none of its modules are enabled', () => {
+  it('omits Catalog entirely when none of its modules are enabled', () => {
     renderNav(['calendar'])
-    expect(screen.queryByText('Operations')).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Catalog' })).not.toBeInTheDocument()
   })
 
   it('renders an icon with every workspace nav item', () => {
-    renderNav(['calendar', 'clients', 'events', 'leads', 'registrants', 'vendors', 'forms', 'reports'])
+    renderNav(['calendar', 'clients', 'events', 'leads', 'registrants', 'vendors', 'forms', 'reports', 'invoices'])
+    fireEvent.click(screen.getByRole('button', { name: /expand money/i }))
     for (const label of ['Calendar', 'Clients', 'Events', 'Today', 'Pipeline', 'Reports']) {
       const link = screen.getByRole('link', { name: label })
       expect(link.querySelector('svg')).toBeInTheDocument()
     }
   })
 
-  it('collapses the Operations section', () => {
+  it('collapses the Catalog section', () => {
     renderNav(['vendors', 'forms'])
+    fireEvent.click(screen.getByRole('button', { name: /expand catalog/i }))
     expect(screen.getByText('Vendors')).toBeInTheDocument()
     expect(screen.getByText('Forms')).toBeInTheDocument()
 
-    const toggle = screen.getByRole('button', { name: 'Operations' })
-    fireEvent.click(toggle)
+    fireEvent.click(screen.getByRole('button', { name: /collapse catalog/i }))
     expect(screen.queryByText('Vendors')).not.toBeInTheDocument()
     expect(screen.queryByText('Forms')).not.toBeInTheDocument()
-
-    fireEvent.click(toggle)
-    expect(screen.getByText('Vendors')).toBeInTheDocument()
-    expect(screen.getByText('Forms')).toBeInTheDocument()
   })
 
   it('collapses to an icon rail and persists', () => {
@@ -136,5 +138,80 @@ describe('AdminSidebar — workspace nav (no eventSlug)', () => {
     expect(pipelineLink.tagName).toBe('A')
     expect(pipelineLink.textContent).toBe('')
     expect(window.localStorage.getItem('tx-sidebar-collapsed')).toBe('1')
+  })
+})
+
+describe('AdminSidebar — Option C IA', () => {
+  const events = [
+    { id: 'e1', name: 'Hendricks wedding', slug: 'hendricks', label: 'Today', isToday: true },
+    { id: 'e2', name: 'Boise chamber mixer', slug: 'boise', label: 'Aug 20', isToday: false },
+  ]
+
+  it('renders the top trio in order: Today, Calendar, Clients', () => {
+    render(<AdminSidebar orgSlug="acme" />)
+    const links = screen.getAllByRole('link').map((a) => a.textContent)
+    const today = links.indexOf('Today')
+    expect(today).toBeGreaterThanOrEqual(0)
+    expect(links.indexOf('Calendar')).toBe(today + 1)
+    expect(links.indexOf('Clients')).toBe(today + 2)
+  })
+
+  it('does not render a "Quick Links" group label', () => {
+    render(<AdminSidebar orgSlug="acme" />)
+    expect(screen.queryByText('Quick Links')).not.toBeInTheDocument()
+  })
+
+  it('links the Money label to the money landing page', () => {
+    render(<AdminSidebar orgSlug="acme" />)
+    expect(screen.getByRole('link', { name: 'Money' })).toHaveAttribute('href', '/acme/money')
+  })
+
+  it('links the Catalog label to the catalog landing page', () => {
+    render(<AdminSidebar orgSlug="acme" />)
+    expect(screen.getByRole('link', { name: 'Catalog' })).toHaveAttribute('href', '/acme/catalog')
+  })
+
+  it('links the Settings label to the settings landing page', () => {
+    render(<AdminSidebar orgSlug="acme" />)
+    expect(screen.getByRole('link', { name: 'Settings' })).toHaveAttribute('href', '/acme/settings')
+  })
+
+  it('expands a section when its chevron is clicked, without navigating', () => {
+    render(<AdminSidebar orgSlug="acme" />)
+    fireEvent.click(screen.getByRole('button', { name: /expand money/i }))
+    expect(screen.getByRole('link', { name: 'Invoices' })).toHaveAttribute('href', '/acme/invoices')
+  })
+
+  it('renders upcoming events with their date labels when Events is expanded', () => {
+    render(<AdminSidebar orgSlug="acme" upcomingEvents={events} />)
+    fireEvent.click(screen.getByRole('button', { name: /expand events/i }))
+    // 'Today' appears both as the top-trio nav item and as this row's date
+    // label, so scope the label assertion to the event row itself.
+    const row = screen.getByRole('link', { name: /Hendricks wedding/ })
+    expect(within(row).getByText('Hendricks wedding')).toBeInTheDocument()
+    expect(within(row).getByText('Today')).toBeInTheDocument()
+    expect(screen.getByText('Aug 20')).toBeInTheDocument()
+  })
+
+  it('links an upcoming event row to that job dashboard', () => {
+    render(<AdminSidebar orgSlug="acme" upcomingEvents={events} />)
+    fireEvent.click(screen.getByRole('button', { name: /expand events/i }))
+    expect(screen.getByRole('link', { name: /Hendricks wedding/ })).toHaveAttribute('href', '/acme/hendricks/dashboard')
+  })
+
+  it('keeps the business nav visible inside a job, with the job nav under Events', () => {
+    render(<AdminSidebar orgSlug="acme" eventSlug="hendricks" />)
+    // business nav survives
+    expect(screen.getByRole('link', { name: 'Clients' })).toHaveAttribute('href', '/acme/clients')
+    expect(screen.getByRole('link', { name: 'Money' })).toHaveAttribute('href', '/acme/money')
+    // job nav renders inside the open Events section
+    expect(screen.getByRole('link', { name: 'Dashboard' })).toHaveAttribute('href', '/acme/hendricks/dashboard')
+    expect(screen.getByRole('link', { name: 'All events' })).toHaveAttribute('href', '/acme')
+  })
+
+  it('hides the Money section when the invoices module is off', () => {
+    const modules: ModuleId[] = ['events', 'calendar', 'clients']
+    render(<AdminSidebar orgSlug="acme" enabledModules={modules} />)
+    expect(screen.queryByRole('link', { name: 'Money' })).not.toBeInTheDocument()
   })
 })

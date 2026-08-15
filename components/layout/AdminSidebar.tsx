@@ -6,9 +6,11 @@ import { usePathname, useRouter } from 'next/navigation'
 import { getEventType, DEFAULT_EVENT_TYPE_ID } from '@/lib/event-types'
 import { endSession } from '@/lib/auth/establish-session'
 import { NavIcon, type NavIconName } from '@/components/layout/NavIcons'
+import { SidebarSection } from '@/components/layout/SidebarSection'
 import type { Terminology } from '@/lib/event-types'
 import type { EventPage } from '@/lib/types'
 import type { ModuleId } from '@/lib/industry-packs'
+import type { SidebarEventRow } from '@/lib/sidebar-events'
 
 interface AdminSidebarProps {
   orgSlug: string
@@ -17,12 +19,14 @@ interface AdminSidebarProps {
   allowedEventPages?: EventPage[]
   enabledModules?: ModuleId[]
   catalogLabel?: string
+  upcomingEvents?: SidebarEventRow[]
 }
 
 const ORG_PAGE_SLUGS = new Set([
   'members', 'forms', 'permissions', 'billing', 'email-domain', 'event-types',
   'departments', 'reports', 'registrants', 'today', 'leads', 'clients', 'proposals',
   'invoices', 'vendors', 'calendar', 'new-event', 'packages', 'compliance',
+  'money', 'catalog', 'settings',
 ])
 
 const SIDEBAR_COLLAPSED_KEY = 'tx-sidebar-collapsed'
@@ -79,54 +83,6 @@ function PanelIcon() {
   )
 }
 
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="text-[10px] font-semibold uppercase tracking-[0.05em] text-[color:var(--sidebar-muted)]">
-      {children}
-    </span>
-  )
-}
-
-function Section({
-  label,
-  children,
-  collapsible = false,
-  open = true,
-  onToggle,
-}: {
-  label: string
-  children: React.ReactNode
-  collapsible?: boolean
-  open?: boolean
-  onToggle?: () => void
-}) {
-  return (
-    <div className="px-2 py-3">
-      {collapsible ? (
-        <button
-          type="button"
-          onClick={onToggle}
-          aria-expanded={open}
-          className="w-full flex items-center justify-between px-3 pb-1 text-[color:var(--sidebar-muted)] hover:text-[color:var(--sidebar-accent-foreground)]"
-        >
-          <SectionLabel>{label}</SectionLabel>
-          <span
-            aria-hidden
-            className={`text-[10px] transition-transform duration-150 ${open ? '' : '-rotate-90'}`}
-          >
-            &#9662;
-          </span>
-        </button>
-      ) : (
-        <p className="px-3 pb-1">
-          <SectionLabel>{label}</SectionLabel>
-        </p>
-      )}
-      {(!collapsible || open) && <div className="space-y-0.5">{children}</div>}
-    </div>
-  )
-}
-
 function NavItem({ href, label, icon, active, indent = false }: NavLink & { indent?: boolean }) {
   return (
     <Link
@@ -174,7 +130,7 @@ function IconRailGroup({ items }: { items: NavLink[] }) {
   )
 }
 
-export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPages, enabledModules, catalogLabel }: AdminSidebarProps) {
+export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPages, enabledModules, catalogLabel, upcomingEvents }: AdminSidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
 
@@ -182,10 +138,13 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
   const settingsActive = SETTINGS_SLUGS.some(
     (s) => pathname === `/${orgSlug}/${s}` || pathname.startsWith(`/${orgSlug}/${s}/`)
   )
-  const [settingsOpen, setSettingsOpen] = useState(settingsActive)
-  const [salesOpen, setSalesOpen] = useState(true)
-  const [opsOpen, setOpsOpen] = useState(true)
+  // Exactly one section is open at a time.
+  const [openSection, setOpenSection] = useState<string | null>(settingsActive ? 'settings' : null)
   const [collapsed, setCollapsed] = useState(false)
+
+  function toggleSection(key: string) {
+    setOpenSection((cur) => (cur === key ? null : key))
+  }
 
   // Read persisted rail state after mount only — never in a useState
   // initializer, to avoid an SSR/client hydration mismatch.
@@ -215,11 +174,11 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
 
   const has = (m: ModuleId) => !enabledModules || enabledModules.includes(m)
 
-  const quickLinks: NavLink[] = [
+  // The top trio: flat rows, no section header, no chevron.
+  const topLinks: NavLink[] = [
+    { module: 'leads' as ModuleId, label: 'Today', slug: 'today', icon: 'today' as NavIconName },
     { module: 'calendar' as ModuleId, label: 'Calendar', slug: 'calendar', icon: 'calendar' as NavIconName },
     { module: 'clients' as ModuleId, label: 'Clients', slug: 'clients', icon: 'clients' as NavIconName },
-    { module: 'leads' as ModuleId, label: 'Today', slug: 'today', icon: 'today' as NavIconName },
-    { module: 'registrants' as ModuleId, label: 'Registrants', slug: 'registrants', icon: 'clients' as NavIconName },
   ]
     .filter((l) => has(l.module))
     .map((l) => ({
@@ -229,31 +188,41 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
       active: isActive(pathname, `/${orgSlug}/${l.slug}`),
     }))
 
-  const eventsLink: NavLink | null = has('events')
-    ? { href: `/${orgSlug}`, label: 'Events', icon: 'events', active: pathname === `/${orgSlug}` }
+  const registrantsLink: NavLink | null = has('registrants')
+    ? {
+        href: `/${orgSlug}/registrants`,
+        label: 'Registrants',
+        icon: 'clients',
+        active: isActive(pathname, `/${orgSlug}/registrants`),
+      }
     : null
 
-  const beforeEvents = quickLinks.filter((l) => l.href === `/${orgSlug}/calendar` || l.href === `/${orgSlug}/clients`)
-  const afterEvents = quickLinks.filter((l) => l.href === `/${orgSlug}/today` || l.href === `/${orgSlug}/registrants`)
+  const allQuickLinks: NavLink[] = [...topLinks, ...(registrantsLink ? [registrantsLink] : [])]
 
-  const allQuickLinks: NavLink[] = [...beforeEvents, ...(eventsLink ? [eventsLink] : []), ...afterEvents]
+  const pipelineChildren: NavLink[] = [
+    ...(has('leads') ? [{ slug: 'leads', label: 'Opportunities', icon: 'pipeline' as NavIconName }] : []),
+    ...(has('leads') ? [{ slug: 'leads/tasks', label: 'Tasks', icon: 'today' as NavIconName }] : []),
+    ...(has('proposals') ? [{ slug: 'proposals', label: 'Proposals', icon: 'proposals' as NavIconName }] : []),
+  ].map((l) => ({
+    href: `/${orgSlug}/${l.slug}`,
+    label: l.label,
+    icon: l.icon,
+    active: isActive(pathname, `/${orgSlug}/${l.slug}`),
+  }))
 
-  const salesLinks: NavLink[] = [
-    { module: 'leads' as ModuleId, label: 'Pipeline', slug: 'leads', icon: 'pipeline' as NavIconName },
-    { module: 'proposals' as ModuleId, label: 'Proposals', slug: 'proposals', icon: 'proposals' as NavIconName },
-    { module: 'invoices' as ModuleId, label: 'Invoices', slug: 'invoices', icon: 'invoices' as NavIconName },
-  ]
-    .filter((l) => has(l.module))
-    .map((l) => ({
-      href: `/${orgSlug}/${l.slug}`,
-      label: l.label,
-      icon: l.icon,
-      active: isActive(pathname, `/${orgSlug}/${l.slug}`),
-    }))
+  const moneyChildren: NavLink[] = [
+    ...(has('invoices') ? [{ slug: 'invoices', label: 'Invoices', icon: 'invoices' as NavIconName }] : []),
+    ...(has('reports') ? [{ slug: 'reports', label: 'Reports', icon: 'reports' as NavIconName }] : []),
+  ].map((l) => ({
+    href: `/${orgSlug}/${l.slug}`,
+    label: l.label,
+    icon: l.icon,
+    active: isActive(pathname, `/${orgSlug}/${l.slug}`),
+  }))
 
-  const opsLinks: NavLink[] = [
-    ...(has('vendors') ? [{ slug: 'vendors', label: 'Vendors', icon: 'vendors' as NavIconName }] : []),
+  const catalogChildren: NavLink[] = [
     ...(has('catalog') ? [{ slug: 'packages', label: catalogLabel ?? 'Packages', icon: 'packages' as NavIconName }] : []),
+    ...(has('vendors') ? [{ slug: 'vendors', label: 'Vendors', icon: 'vendors' as NavIconName }] : []),
     ...(has('forms') ? [{ slug: 'forms', label: 'Forms', icon: 'forms' as NavIconName }] : []),
     ...(has('compliance') ? [{ slug: 'compliance', label: 'Compliance', icon: 'compliance' as NavIconName }] : []),
   ].map((l) => ({
@@ -263,9 +232,9 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
     active: isActive(pathname, `/${orgSlug}/${l.slug}`),
   }))
 
-  const reportsLink: NavLink | null = has('reports')
-    ? { href: `/${orgSlug}/reports`, label: 'Reports', icon: 'reports', active: isActive(pathname, `/${orgSlug}/reports`) }
-    : null
+  const pipelineActive = pipelineChildren.some((l) => l.active)
+  const moneyActive = isActive(pathname, `/${orgSlug}/money`) || moneyChildren.some((l) => l.active)
+  const catalogActive = isActive(pathname, `/${orgSlug}/catalog`) || catalogChildren.some((l) => l.active)
 
   const settingsLinks: NavLink[] = [
     { slug: 'members', label: 'Members', icon: 'members' as NavIconName },
@@ -283,6 +252,28 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
     icon: l.icon,
     active: isActive(pathname, `/${orgSlug}/${l.slug}`),
   }))
+
+  // At 52px there is nothing to expand, so the rail is flat icon links to each
+  // section's landing page.
+  const railLinks: NavLink[] = [
+    ...allQuickLinks,
+    ...(has('leads')
+      ? [{ href: `/${orgSlug}/leads`, label: 'Pipeline', icon: 'pipeline' as NavIconName, active: isActive(pathname, `/${orgSlug}/leads`) }]
+      : []),
+    ...(has('events')
+      ? [{ href: `/${orgSlug}`, label: 'Events', icon: 'events' as NavIconName, active: pathname === `/${orgSlug}` }]
+      : []),
+    ...(has('invoices')
+      ? [{ href: `/${orgSlug}/money`, label: 'Money', icon: 'invoices' as NavIconName, active: moneyActive }]
+      : []),
+    { href: `/${orgSlug}/catalog`, label: 'Catalog', icon: 'packages' as NavIconName, active: catalogActive },
+    {
+      href: `/${orgSlug}/settings`,
+      label: 'Settings',
+      icon: 'settings' as NavIconName,
+      active: settingsActive || isActive(pathname, `/${orgSlug}/settings`),
+    },
+  ]
 
   const eventNav = getEventNav(t)
   const visibleEventNav = eventNav
@@ -331,85 +322,117 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
         )}
       </div>
 
-      {eventSlug ? (
-        <nav className="flex-1 px-2 py-4 space-y-0.5" aria-label="Event navigation">
-          <Link
-            href={`/${orgSlug}`}
-            className="block px-3 py-2 rounded-md text-sm font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-900 transition-colors"
-          >
-            &larr; Events
-          </Link>
-          {visibleEventNav.map(({ key, label }) => {
-            const href = `/${orgSlug}/${eventSlug}/${key}`
-            const active = isActive(pathname, href)
-            return (
-              <Link
-                key={key}
-                href={href}
-                className={[
-                  'block px-3 py-2 rounded-md text-sm font-medium transition-colors border-l-2',
-                  active
-                    ? 'bg-gray-100 text-gray-900 border-gray-900'
-                    : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 border-transparent',
-                ].join(' ')}
-              >
-                {label}
-              </Link>
-            )
-          })}
-        </nav>
-      ) : collapsed ? (
+      {!eventSlug && collapsed ? (
         <nav className="flex-1" aria-label="Workspace navigation">
-          <IconRailGroup items={allQuickLinks} />
-          {has('leads') && <IconRailGroup items={salesLinks} />}
-          <IconRailGroup items={opsLinks} />
-          {reportsLink && <IconRailGroup items={[reportsLink]} />}
-          <IconRailGroup
-            items={[{ href: `/${orgSlug}/members`, label: 'Settings', icon: 'settings', active: settingsActive }]}
-          />
+          <IconRailGroup items={railLinks} />
         </nav>
       ) : (
-        <nav className="flex-1" aria-label="Workspace navigation">
-          {(allQuickLinks.length > 0) && (
-            <Section label="Quick Links">
-              {allQuickLinks.map((l) => (
-                <NavItem key={l.href} {...l} />
-              ))}
-            </Section>
-          )}
+        <nav className="flex-1 px-2 py-3 space-y-0.5" aria-label="Workspace navigation">
+          {topLinks.map((l) => (
+            <NavItem key={l.href} {...l} />
+          ))}
 
-          {has('leads') && salesLinks.length > 0 && (
-            <Section label="Sales Pipeline" collapsible open={salesOpen} onToggle={() => setSalesOpen((v) => !v)}>
-              {salesLinks.map((l) => (
+          {pipelineChildren.length > 0 && (
+            <SidebarSection
+              href={`/${orgSlug}/leads`}
+              label="Pipeline"
+              icon="pipeline"
+              active={pipelineActive}
+              open={openSection === 'pipeline'}
+              onToggle={() => toggleSection('pipeline')}
+            >
+              {pipelineChildren.map((l) => (
                 <NavItem key={l.href} {...l} indent />
               ))}
-            </Section>
+            </SidebarSection>
           )}
 
-          {opsLinks.length > 0 && (
-            <Section label="Operations" collapsible open={opsOpen} onToggle={() => setOpsOpen((v) => !v)}>
-              {opsLinks.map((l) => (
+          {has('events') && (
+            <SidebarSection
+              href={`/${orgSlug}`}
+              label="Events"
+              icon="events"
+              active={pathname === `/${orgSlug}` || Boolean(eventSlug)}
+              open={openSection === 'events' || Boolean(eventSlug)}
+              onToggle={() => toggleSection('events')}
+            >
+              {eventSlug ? (
+                <>
+                  {visibleEventNav.map(({ key, label }) => (
+                    <NavItem
+                      key={key}
+                      href={`/${orgSlug}/${eventSlug}/${key}`}
+                      label={label}
+                      icon="events"
+                      active={isActive(pathname, `/${orgSlug}/${eventSlug}/${key}`)}
+                      indent
+                    />
+                  ))}
+                  <NavItem href={`/${orgSlug}`} label="All events" icon="events" active={false} indent />
+                </>
+              ) : (
+                <>
+                  {(upcomingEvents ?? []).map((e) => (
+                    <Link
+                      key={e.id}
+                      href={`/${orgSlug}/${e.slug}/dashboard`}
+                      className="flex items-center gap-2 pl-[26px] pr-3 py-2 rounded-md text-sm text-[color:var(--sidebar-muted)] hover:bg-[color:var(--sidebar-accent)] hover:text-[color:var(--sidebar-accent-foreground)]"
+                    >
+                      <span className="truncate flex-1">{e.name}</span>
+                      <span className={`text-[10px] shrink-0 ${e.isToday ? 'font-semibold' : ''}`}>{e.label}</span>
+                    </Link>
+                  ))}
+                  <NavItem href={`/${orgSlug}`} label="All events" icon="events" active={false} indent />
+                  <NavItem href={`/${orgSlug}/new-event`} label="+ New event" icon="events" active={false} indent />
+                </>
+              )}
+            </SidebarSection>
+          )}
+
+          {registrantsLink && <NavItem {...registrantsLink} />}
+
+          {has('invoices') && moneyChildren.length > 0 && (
+            <SidebarSection
+              href={`/${orgSlug}/money`}
+              label="Money"
+              icon="invoices"
+              active={moneyActive}
+              open={openSection === 'money'}
+              onToggle={() => toggleSection('money')}
+            >
+              {moneyChildren.map((l) => (
                 <NavItem key={l.href} {...l} indent />
               ))}
-            </Section>
+            </SidebarSection>
           )}
 
-          {reportsLink && (
-            <Section label="Insights">
-              <NavItem {...reportsLink} />
-            </Section>
+          {catalogChildren.length > 0 && (
+            <SidebarSection
+              href={`/${orgSlug}/catalog`}
+              label="Catalog"
+              icon="packages"
+              active={catalogActive}
+              open={openSection === 'catalog'}
+              onToggle={() => toggleSection('catalog')}
+            >
+              {catalogChildren.map((l) => (
+                <NavItem key={l.href} {...l} indent />
+              ))}
+            </SidebarSection>
           )}
 
-          <Section
+          <SidebarSection
+            href={`/${orgSlug}/settings`}
             label="Settings"
-            collapsible
-            open={settingsOpen}
-            onToggle={() => setSettingsOpen((v) => !v)}
+            icon="settings"
+            active={settingsActive || isActive(pathname, `/${orgSlug}/settings`)}
+            open={openSection === 'settings'}
+            onToggle={() => toggleSection('settings')}
           >
             {settingsLinks.map((l) => (
               <NavItem key={l.href} {...l} indent />
             ))}
-          </Section>
+          </SidebarSection>
         </nav>
       )}
 
