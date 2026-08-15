@@ -81,8 +81,12 @@ function balanceNote(input: {
   total: number
   dueDate?: string
   isDraft: boolean
+  isVoid: boolean
 }): { text: string; destructive: boolean } {
-  const { balance, paid, total, dueDate, isDraft } = input
+  const { balance, paid, total, dueDate, isDraft, isVoid } = input
+  // A voided invoice is never owed, so it can never be overdue — check this
+  // before the due-date branch or a cancelled invoice reads as delinquent.
+  if (isVoid) return { text: 'Voided — no payment due', destructive: false }
   if (balance <= 0 && total > 0) return { text: 'Paid in full', destructive: false }
   if (isDraft) return { text: 'Not sent yet', destructive: false }
   if (dueDate) {
@@ -178,9 +182,12 @@ export function InvoiceEditorClient({
   async function handleSave() {
     setSaving(true); setError(null); setNotice(null)
     try {
-      const { cleaned, payload } = currentUpdates()
+      const { payload } = currentUpdates()
       await updateInvoice(orgId, invoice.id, payload)
-      setLineItems(cleaned)
+      // Functional update, not the pre-await `cleaned` array — the fields stay
+      // editable during the round-trip, so restoring the snapshot would silently
+      // discard anything typed while the save was in flight.
+      setLineItems((prev) => prev.filter((item) => !isBlankRow(item)))
       setNotice('Saved.')
       router.refresh()
     } catch (err: unknown) {
@@ -190,20 +197,30 @@ export function InvoiceEditorClient({
 
   async function handleSend({ to, message }: { to: string; message?: string }) {
     setError(null); setNotice(null)
-    const { cleaned, payload } = currentUpdates()
+    const { payload } = currentUpdates()
     // Deliberately not clearing `warning` here: if this retry itself throws, the
     // standing "email delivery failed" cue must survive, or a failed retry leaves
     // the operator with nothing but the dialog's inline error.
-    const result = await sendInvoice(orgId, invoice.id, { to, message, updates: payload })
-    setLineItems(cleaned)
-    setEditing(false)
-    if (result && result.emailDelivered === false) {
-      setWarning(DELIVERY_FAILED_WARNING)
-    } else {
-      setWarning(null)
-      setNotice(showLink ? 'Update sent.' : 'Invoice sent.')
+    try {
+      const result = await sendInvoice(orgId, invoice.id, { to, message, updates: payload })
+      // Re-filter live state rather than restoring the array captured before the
+      // await, which would discard anything typed while the send was in flight.
+      setLineItems((prev) => prev.filter((item) => !isBlankRow(item)))
+      setEditing(false)
+      if (result && result.emailDelivered === false) {
+        setWarning(DELIVERY_FAILED_WARNING)
+      } else {
+        setWarning(null)
+        setNotice(showLink ? 'Update sent.' : 'Invoice sent.')
+      }
+      router.refresh()
+    } catch (err) {
+      // sendInvoice can commit the number and lifecycle and still throw afterwards.
+      // Without this the editor keeps rendering Draft chrome for an invoice that is
+      // already sent and numbered. Rethrow so the dialog still shows the error.
+      router.refresh()
+      throw err
     }
-    router.refresh()
   }
 
   async function handleVoid() {
@@ -274,7 +291,7 @@ export function InvoiceEditorClient({
   // discount/tax controls are editor chrome, not part of the invoice.
   const showDiscountRow = !locked || discountAmt > 0
   const showTaxRow = !locked || taxAmt > 0
-  const note = balanceNote({ balance, paid, total: totalDue, dueDate: dueDate || undefined, isDraft })
+  const note = balanceNote({ balance, paid, total: totalDue, dueDate: dueDate || undefined, isDraft, isVoid })
 
   const orgName = branding?.display_name
   const heading = invoice.number ?? '№ assigned when sent'
@@ -502,7 +519,14 @@ export function InvoiceEditorClient({
                     disabled={locked}
                     onChange={(e) => {
                       const t = e.target.value
-                      setDiscount(t === 'none' ? undefined : { type: t as 'percent' | 'fixed', value: discount?.value ?? 0 })
+                      // Spread the previous discount: switching percent↔fixed is a
+                      // normal correction and must not wipe a reason already typed
+                      // (an absent reason is deleted from Firestore on the next save).
+                      setDiscount((prev) =>
+                        t === 'none'
+                          ? undefined
+                          : { ...prev, type: t as 'percent' | 'fixed', value: prev?.value ?? 0 },
+                      )
                     }}
                     className="h-7 rounded-md border border-input bg-transparent px-1.5 text-xs focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
                   >

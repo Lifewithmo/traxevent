@@ -210,6 +210,9 @@ export async function sendInvoice(
       const snap = await tx.get(ref)
       if (!snap.exists) throw new Error('Invoice not found')
       const txInv = normalizeInvoice(snap.data()!)
+      // Recheck inside the transaction: voidInvoice is a plain update outside it,
+      // so an invoice voided since the pre-read would otherwise still be emailed.
+      if (txInv.lifecycle === 'void') throw new Error('Cannot send a void invoice')
       tx.update(ref, {
         versions: [...(txInv.versions ?? []), invoiceVersionSnapshot(txInv, now)],
         sent_at: now,
@@ -240,11 +243,13 @@ export async function sendInvoice(
       fromDomain,
       replyTo: member.email,
     })
-    await ref.update({ delivery: 'sent' })
   } catch {
     emailDelivered = false
-    await ref.update({ delivery: 'bounced' })
   }
+  // Outside the try on purpose: this catch classifies EMAIL failure, so a Firestore
+  // error on the status write must not be reported as a bounce — that would tell the
+  // operator to resend an invoice the customer already received.
+  await ref.update({ delivery: emailDelivered ? 'sent' : 'bounced' })
   return { number, emailDelivered }
 }
 

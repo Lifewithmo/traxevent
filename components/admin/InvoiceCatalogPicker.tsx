@@ -93,6 +93,11 @@ export function InvoiceCatalogPicker({ orgId, open, onOpenChange, onPick }: Invo
     setCreateError(null)
     try {
       const pkg = await createWorkPackage(orgId, { name, price: toNumber(createPrice), lines: [] })
+      // Seed the cache with what we just created. The load effect is guarded by
+      // `loaded` and the picker is never unmounted between opens, so without this
+      // the new item stays invisible and is offered for creation again — writing
+      // a second work package with the same name.
+      setEntries((prev) => [...prev, { id: pkg.id, name: pkg.name, description: pkg.description, price: pkg.price }])
       onPick({ description: pkg.name, unit_price: pkg.price, source: { type: 'manual', id: pkg.id, label: 'Catalog' } })
       handleOpenChange(false)
     } catch (err: unknown) {
@@ -113,15 +118,21 @@ export function InvoiceCatalogPicker({ orgId, open, onOpenChange, onPick }: Invo
         </DialogHeader>
 
         <div className="flex flex-col gap-3">
+          <Label htmlFor="catalog-picker-search" className="sr-only">Search catalog</Label>
           <Input
+            id="catalog-picker-search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search catalog…"
             autoFocus
           />
 
-          {loading && <p className="text-sm text-muted-foreground">Loading catalog…</p>}
-          {loadError && <p className="text-sm text-destructive">{loadError}</p>}
+          {/* Present-but-empty live region: the dialog is already open when a load
+              failure arrives, and Radix only announces the title on open. */}
+          <div aria-live="polite" aria-atomic="true">
+            {loading && <p className="text-sm text-muted-foreground">Loading catalog…</p>}
+            {loadError && <p className="text-sm text-destructive">{loadError}</p>}
+          </div>
 
           {!loading && !loadError && (
             <div className="flex max-h-64 flex-col gap-1 overflow-y-auto">
@@ -180,7 +191,9 @@ export function InvoiceCatalogPicker({ orgId, open, onOpenChange, onPick }: Invo
                   placeholder="0.00"
                 />
               </div>
-              {createError && <p className="text-sm text-destructive">{createError}</p>}
+              <div aria-live="polite" aria-atomic="true">
+                {createError && <p className="text-sm text-destructive">{createError}</p>}
+              </div>
               <div className="flex justify-end gap-2">
                 <Button type="button" variant="ghost" size="sm" onClick={() => setCreating(false)}>
                   Cancel

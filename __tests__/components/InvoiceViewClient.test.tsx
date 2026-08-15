@@ -87,8 +87,25 @@ describe('InvoiceViewClient', () => {
     expect(screen.getByTestId('public-balance-note')).toHaveTextContent(/overdue/i)
   })
 
-  it('shows the due date when it is still ahead', () => {
+  it('reads the note relatively when the due date is still ahead, without repeating the date', () => {
     render(<InvoiceViewClient invoice={inv({ balance: 100, due_date: '2099-01-01' })} />)
-    expect(screen.getByTestId('public-balance-note')).toHaveTextContent(/due 2099-01-01/i)
+    expect(screen.getByTestId('public-balance-note')).toHaveTextContent(/due in \d+ days?/i)
+    // The header already carries the date; the note interprets rather than repeats it.
+    expect(screen.getAllByText(/2099-01-01/)).toHaveLength(1)
+  })
+
+  it('drops the line-items table entirely when there are none, rather than stranding headers', () => {
+    render(<InvoiceViewClient invoice={inv({ line_items: [], subtotal: 0, total: 0, balance: 0 })} />)
+    expect(screen.queryByTestId('invoice-line-items')).not.toBeInTheDocument()
+    expect(screen.queryByText('Unit price')).not.toBeInTheDocument()
+  })
+
+  // jsdom cannot measure overflow, so pin the mechanism structurally: money renders as
+  // unbreakable tokens, so the 4-column table must scroll inside its own container
+  // rather than pushing the page sideways at 375px.
+  it('confines the line-items table to its own scroll container and tightens the sheet on mobile', () => {
+    const { container } = render(<InvoiceViewClient invoice={inv({})} />)
+    expect(screen.getByTestId('invoice-line-items').parentElement?.className).toMatch(/overflow-x-auto/)
+    expect(container.querySelector('.invoice-document')?.className).toMatch(/max-md:px-5/)
   })
 })

@@ -780,6 +780,29 @@ describe('sendInvoice', () => {
     expect(res.emailDelivered).toBe(false)
     expect(invoiceDocUpdateSpy).toHaveBeenCalledWith(expect.objectContaining({ delivery: 'bounced' }))
   })
+
+  // The try around the email classifies EMAIL failure only. A Firestore error on the
+  // status write must not masquerade as a bounce — that tells the operator to resend
+  // an invoice the customer already received.
+  it('a Firestore failure on the delivery write is not reported as a bounce', async () => {
+    invoiceDocGetSpy.mockResolvedValue({ exists: true, data: () => draftInvoice })
+    counterGetSpy.mockResolvedValue({ exists: false })
+    invoiceDocUpdateSpy.mockRejectedValueOnce(new Error('firestore unavailable'))
+    await expect(sendInvoice('org1', 'inv1', { to: 'c@e.com' })).rejects.toThrow(/firestore unavailable/)
+    expect(invoiceDocUpdateSpy).not.toHaveBeenCalledWith(expect.objectContaining({ delivery: 'bounced' }))
+  })
+
+  // voidInvoice is a plain update outside the resend transaction, so the transaction
+  // must recheck the lifecycle it re-read or a concurrently voided invoice still mails.
+  it('rejects a resend when the invoice is voided between the pre-read and the transaction', async () => {
+    // With no `updates` there is no post-update refetch, so the transaction's
+    // tx.get(ref) is the SECOND read, not the third.
+    invoiceDocGetSpy
+      .mockResolvedValueOnce({ exists: true, data: () => sentInvoiceWithOneVersion })
+      .mockResolvedValueOnce({ exists: true, data: () => ({ ...sentInvoiceWithOneVersion, lifecycle: 'void' }) })
+    await expect(sendInvoice('org1', 'inv1', { to: 'c@e.com' })).rejects.toThrow(/void/)
+    expect(sendInvoiceEmailSpy).not.toHaveBeenCalled()
+  })
 })
 
 describe('invoice numbering settings', () => {

@@ -4,7 +4,8 @@ import userEvent from '@testing-library/user-event'
 import { InvoiceEditorClient } from '@/components/admin/InvoiceEditorClient'
 import type { NormalizedInvoice, InvoiceVersion } from '@/lib/types'
 
-vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }))
+const refreshSpy = vi.hoisted(() => vi.fn())
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn(), refresh: refreshSpy }) }))
 
 type Discount = { type: string; value: number; reason?: string }
 type UpdatePayload = {
@@ -386,5 +387,104 @@ describe('InvoiceEditorClient — composition invariants', () => {
   it('omits the History disclosure entirely when there are no versions', () => {
     render(<InvoiceEditorClient orgId="org1" orgSlug="s" leadId="l" invoice={sentInvoice({ versions: [] })} />)
     expect(screen.queryByText(/^History$/i)).not.toBeInTheDocument()
+  })
+})
+
+describe('InvoiceEditorClient — void lifecycle', () => {
+  const voidInvoice = () =>
+    inv({
+      lifecycle: 'void', number: 'BRW-1042', due_date: '2020-01-01',
+      line_items: [{ description: 'x', quantity: 1, unit_price: 100 }],
+    })
+
+  it('reads as voided rather than overdue, and not in destructive red', () => {
+    render(<InvoiceEditorClient orgId="org1" orgSlug="s" leadId="l" invoice={voidInvoice()} />)
+    const note = screen.getByTestId('balance-note')
+    expect(note).toHaveTextContent(/voided/i)
+    expect(note).not.toHaveTextContent(/overdue/i)
+    expect(note.className).not.toMatch(/text-destructive/)
+  })
+
+  it('offers no way to edit, save, send, or take payment', () => {
+    render(<InvoiceEditorClient orgId="org1" orgSlug="s" leadId="l" invoice={voidInvoice()} />)
+    expect(screen.queryByRole('button', { name: /edit invoice/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Save$/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /send (invoice|update)/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /record payment/i })).not.toBeInTheDocument()
+    expect((screen.getByDisplayValue('x') as HTMLInputElement).readOnly).toBe(true)
+  })
+})
+
+describe('InvoiceEditorClient — failure and in-flight paths', () => {
+  it('surfaces the failure message when Save rejects', async () => {
+    const user = userEvent.setup()
+    updateInvoiceMock.mockClear()
+    updateInvoiceMock.mockRejectedValueOnce(new Error('Invoice is locked'))
+    render(
+      <InvoiceEditorClient orgId="org1" orgSlug="s" leadId="l"
+        invoice={draftInvoice({ line_items: [{ description: 'Service', quantity: 1, unit_price: 1000 }] })} />,
+    )
+    await user.click(screen.getByRole('button', { name: /^Save$/ }))
+    expect(await screen.findByText(/invoice is locked/i)).toBeInTheDocument()
+    expect(screen.queryByText(/^Saved\.$/)).not.toBeInTheDocument()
+  })
+
+  // sendInvoice can commit the number and lifecycle and still throw afterwards; without a
+  // refresh the editor keeps showing Draft chrome for an invoice that is already sent.
+  it('refreshes even when the send rejects, so stale Draft chrome cannot persist', async () => {
+    const user = userEvent.setup()
+    refreshSpy.mockClear()
+    sendInvoiceMock.mockClear()
+    sendInvoiceMock.mockRejectedValueOnce(new Error('delivery status write failed'))
+    render(
+      <InvoiceEditorClient orgId="org1" orgSlug="s" leadId="l" customerEmail="c@e.com"
+        invoice={draftInvoice({ line_items: [{ description: 'x', quantity: 1, unit_price: 10 }] })} />,
+    )
+    await user.click(screen.getByRole('button', { name: /send invoice/i }))
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: /send invoice/i }))
+    expect(await within(dialog).findByText(/delivery status write failed/i)).toBeInTheDocument()
+    expect(refreshSpy).toHaveBeenCalled()
+  })
+
+  it('keeps edits typed while a save is in flight', async () => {
+    const user = userEvent.setup()
+    updateInvoiceMock.mockClear()
+    let release: () => void = () => {}
+    updateInvoiceMock.mockImplementationOnce(() => new Promise<void>((res) => { release = res }))
+    render(
+      <InvoiceEditorClient orgId="org1" orgSlug="s" leadId="l"
+        invoice={draftInvoice({ line_items: [{ description: 'Old', quantity: 1, unit_price: 10 }] })} />,
+    )
+    await user.click(screen.getByRole('button', { name: /^Save$/ }))
+    await user.type(screen.getByLabelText('Description'), ' and new')
+    release()
+    expect(await screen.findByText(/^Saved\.$/)).toBeInTheDocument()
+    expect(screen.getByLabelText('Description')).toHaveValue('Old and new')
+  })
+
+  it('keeps the discount reason when only the discount type changes', async () => {
+    const user = userEvent.setup()
+    render(
+      <InvoiceEditorClient orgId="org1" orgSlug="s" leadId="l"
+        invoice={draftInvoice({
+          discount: { type: 'percent', value: 10, reason: 'Returning customer' },
+          line_items: [{ description: 'Service', quantity: 1, unit_price: 1000 }],
+        })} />,
+    )
+    expect(screen.getByLabelText(/reason/i)).toHaveValue('Returning customer')
+    await user.selectOptions(screen.getByLabelText('Discount'), 'fixed')
+    expect(screen.getByLabelText(/reason/i)).toHaveValue('Returning customer')
+  })
+
+  it('renders the org letterhead from branding', () => {
+    const { container } = render(
+      <InvoiceEditorClient orgId="org1" orgSlug="s" leadId="l"
+        branding={{ display_name: 'BrewTrax', address: '12 Main St\nBoise, ID', logo_url: 'https://cdn.test/logo.png' }}
+        invoice={draftInvoice()} />,
+    )
+    expect(screen.getByText('BrewTrax')).toBeInTheDocument()
+    expect(screen.getByText(/12 Main St/)).toBeInTheDocument()
+    expect(container.querySelector('img')).toHaveAttribute('src', 'https://cdn.test/logo.png')
   })
 })

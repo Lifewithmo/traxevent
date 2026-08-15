@@ -28,7 +28,9 @@ function publicBalanceNote(invoice: PublicInvoice, now: Date): string {
     const d = daysPastDue(invoice.due_date, now)
     if (d > 0) return `${d} day${d === 1 ? '' : 's'} overdue`
     if (d === 0) return 'Due today'
-    return `Due ${invoice.due_date}`
+    // Relative, not the raw date — the header already prints the date, and this
+    // line is meant to interpret the balance rather than repeat the metadata.
+    return `Due in ${-d} day${d === -1 ? '' : 's'}`
   }
   if (invoice.amount_paid > 0) return `${money(invoice.amount_paid)} of ${money(invoice.total)} paid`
   return 'Awaiting payment'
@@ -42,7 +44,7 @@ export function InvoiceViewClient({ invoice }: { invoice: PublicInvoice }) {
 
   return (
     <main className="min-h-screen bg-muted/30 py-10 print:bg-white print:py-0">
-      <div className="invoice-document mx-auto max-w-3xl rounded-lg bg-white px-10 py-12 shadow-sm print:rounded-none print:shadow-none">
+      <div className="invoice-document mx-auto max-w-3xl rounded-lg bg-white px-10 py-12 shadow-sm max-md:px-5 max-md:py-8 print:rounded-none print:shadow-none">
         {/* Header: logo + from (left) — number/status/dates (right) */}
         <header className="flex items-start justify-between gap-6 border-b pb-8">
           <div>
@@ -87,8 +89,12 @@ export function InvoiceViewClient({ invoice }: { invoice: PublicInvoice }) {
           </div>
         )}
 
-        {/* Line items */}
-        <table className="mt-6 w-full text-sm" data-testid="invoice-line-items">
+        {/* Line items. Money renders as unbreakable tokens ($1250.00), so a
+            four-column table cannot fit 375px — scroll the table, not the page.
+            With no items the whole table goes, rather than stranding headers. */}
+        {invoice.line_items.length > 0 && (
+        <div className="mt-6 overflow-x-auto">
+        <table className="w-full text-sm" data-testid="invoice-line-items">
           <thead>
             <tr className="border-b text-left text-muted-foreground">
               <th className="py-2 pr-4 font-medium">Description</th>
@@ -108,6 +114,8 @@ export function InvoiceViewClient({ invoice }: { invoice: PublicInvoice }) {
             ))}
           </tbody>
         </table>
+        </div>
+        )}
 
         {/* Totals: right-aligned block */}
         <div className="mt-6 flex justify-end">
@@ -152,12 +160,14 @@ export function InvoiceViewClient({ invoice }: { invoice: PublicInvoice }) {
                 {money(invoice.balance)}
               </dd>
             </div>
-            <p
+            {/* A <p> is not valid inside <dl> — keep the note in a div so the
+                description list stays well-formed. */}
+            <div
               data-testid="public-balance-note"
               className={`text-right text-xs ${isPaid ? 'text-emerald-700' : 'text-muted-foreground'}`}
             >
               {balanceNote}
-            </p>
+            </div>
           </dl>
         </div>
 
