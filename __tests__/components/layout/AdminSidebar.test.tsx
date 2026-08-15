@@ -111,12 +111,14 @@ describe('AdminSidebar — workspace nav (no eventSlug)', () => {
   })
 
   it('shows the storefront link with the pack label when the module is enabled', () => {
-    render(<AdminSidebar orgSlug="acme" enabledModules={['storefront']} catalogLabel="Menu Packages" storefrontLabel="Drops" />)
-    fireEvent.click(screen.getByRole('button', { name: /expand catalog/i }))
+    // Drops lives under Events now (see "AdminSidebar — Option C IA" describe),
+    // so the storefront module also needs 'events' enabled for the row to render.
+    render(<AdminSidebar orgSlug="acme" enabledModules={['events', 'storefront']} catalogLabel="Menu Packages" storefrontLabel="Drops" />)
+    fireEvent.click(screen.getByRole('button', { name: /expand events/i }))
     expect(screen.getByRole('link', { name: 'Drops' })).toHaveAttribute('href', '/acme/drops')
   })
 
-  it('places the storefront link directly after Packages in the Catalog section', () => {
+  it('Catalog section no longer carries a storefront row', () => {
     renderNav(['catalog', 'storefront', 'vendors', 'forms', 'compliance'])
     const catalog = screen.getByRole('button', { name: /expand catalog/i }).closest('div')!.parentElement!
     fireEvent.click(screen.getByRole('button', { name: /expand catalog/i }))
@@ -124,7 +126,7 @@ describe('AdminSidebar — workspace nav (no eventSlug)', () => {
       .getAllByRole('link')
       .map((l) => l.textContent)
       .filter((l) => l !== 'Catalog')
-    expect(labels).toEqual(['Packages', 'Online orders', 'Vendors', 'Forms', 'Compliance'])
+    expect(labels).toEqual(['Packages', 'Vendors', 'Forms', 'Compliance'])
   })
 
   it('renders an icon with every workspace nav item', () => {
@@ -163,8 +165,8 @@ describe('AdminSidebar — workspace nav (no eventSlug)', () => {
 
 describe('AdminSidebar — Option C IA', () => {
   const events = [
-    { id: 'e1', name: 'Hendricks wedding', slug: 'hendricks', label: 'Today', isToday: true },
-    { id: 'e2', name: 'Boise chamber mixer', slug: 'boise', label: 'Aug 20', isToday: false },
+    { id: 'e1', name: 'Hendricks wedding', slug: 'hendricks', label: 'Today', isToday: true, kind: 'client_job' as const },
+    { id: 'e2', name: 'Boise chamber mixer', slug: 'boise', label: 'Aug 20', isToday: false, kind: 'client_job' as const },
   ]
 
   it('renders the top trio in order: Today, Calendar, Clients', () => {
@@ -238,6 +240,26 @@ describe('AdminSidebar — Option C IA', () => {
     expect(screen.getByRole('link', { name: 'All events' })).toHaveAttribute('href', '/acme')
   })
 
+  it('market-day job nav shows only Overview and Settings', () => {
+    nav.pathname = '/acme/boise-farmers-market-2026/dashboard'
+    render(<AdminSidebar orgSlug="acme" eventSlug="boise-farmers-market-2026" eventKind="market_day" />)
+    // Scoped to the job's Events section: the workspace Settings section
+    // header (`/acme/settings`) also renders inside a job (see "includes a
+    // Settings nav link" above) and shares the accessible name "Settings".
+    const events = screen.getByRole('button', { name: /collapse events/i }).closest('div')!.parentElement!
+    expect(within(events).getByRole('link', { name: 'Overview' })).toHaveAttribute('href', '/acme/boise-farmers-market-2026/dashboard')
+    expect(within(events).getByRole('link', { name: 'Settings' })).toHaveAttribute('href', '/acme/boise-farmers-market-2026/settings')
+    expect(screen.queryByRole('link', { name: 'Event Ops' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Teams' })).not.toBeInTheDocument()
+  })
+
+  it('client-job nav is unchanged when eventKind is client_job or absent', () => {
+    nav.pathname = '/acme/hendricks/dashboard'
+    render(<AdminSidebar orgSlug="acme" eventSlug="hendricks" />)
+    expect(screen.getByRole('link', { name: 'Dashboard' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Event Ops' })).toBeInTheDocument()
+  })
+
   it('renders on settings pages that are not in the top-level slug list', () => {
     nav.pathname = '/acme/branding'
     render(<AdminSidebar orgSlug="acme" />)
@@ -287,6 +309,31 @@ describe('AdminSidebar — Option C IA', () => {
     render(<AdminSidebar orgSlug="acme" enabledModules={modules} />)
     expect(screen.queryByRole('link', { name: 'Money' })).not.toBeInTheDocument()
   })
+
+  it('tags market-day rows and moves Drops under Events', () => {
+    const events = [
+      { id: 'm1', name: 'Boise Farmers Market', slug: 'bfm', label: 'Aug 22', isToday: false, kind: 'market_day' as const },
+      { id: 'c1', name: 'Hendricks wedding', slug: 'hendricks', label: 'Aug 23', isToday: false, kind: 'client_job' as const },
+    ]
+    render(<AdminSidebar orgSlug="acme" upcomingEvents={events} enabledModules={['events', 'storefront'] as ModuleId[]} storefrontLabel="Drops" />)
+    fireEvent.click(screen.getByRole('button', { name: /expand events/i }))
+    const marketRow = screen.getByRole('link', { name: /Boise Farmers Market/ })
+    expect(within(marketRow).getByText('Market')).toBeInTheDocument()
+    const clientRow = screen.getByRole('link', { name: /Hendricks wedding/ })
+    expect(within(clientRow).queryByText('Market')).not.toBeInTheDocument()
+    // Drops lives under Events now…
+    expect(screen.getByRole('link', { name: 'Drops' })).toHaveAttribute('href', '/acme/drops')
+    // …and + New points at the chooser
+    expect(screen.getByRole('link', { name: '+ New' })).toHaveAttribute('href', '/acme/new')
+  })
+
+  it('keeps Drops out of Catalog', () => {
+    render(<AdminSidebar orgSlug="acme" enabledModules={['events', 'storefront', 'catalog'] as ModuleId[]} storefrontLabel="Drops" catalogLabel="Menu Packages" />)
+    fireEvent.click(screen.getByRole('button', { name: /expand catalog/i }))
+    // Menu Packages renders; Drops does not appear among Catalog children.
+    expect(screen.getByRole('link', { name: 'Menu Packages' })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Drops' })).not.toBeInTheDocument()
+  })
 })
 
 // Active state is expressed purely through classes: a child row gets the
@@ -320,20 +367,23 @@ describe('AdminSidebar — active state', () => {
     expect(icon.className.split(/\s+/)).toContain('bg-[color:var(--sidebar-accent)]')
   })
 
-  it('opens Events and highlights "+ New event" on /new-event', () => {
-    nav.pathname = '/acme/new-event'
-    render(<AdminSidebar orgSlug="acme" />)
-    expect(rowActive('+ New event')).toBe(true)
-    expect(rowActive('All events')).toBe(false)
-    expect(sectionActive('Events')).toBe(true)
-  })
+  it.each(['new', 'new-event', 'new-series'])(
+    'opens Events and highlights "+ New" on /%s',
+    (slug) => {
+      nav.pathname = `/acme/${slug}`
+      render(<AdminSidebar orgSlug="acme" />)
+      expect(rowActive('+ New')).toBe(true)
+      expect(rowActive('All events')).toBe(false)
+      expect(sectionActive('Events')).toBe(true)
+    },
+  )
 
   it('highlights "All events" on the org root', () => {
     nav.pathname = '/acme'
     render(<AdminSidebar orgSlug="acme" />)
     fireEvent.click(screen.getByRole('button', { name: /expand events/i }))
     expect(rowActive('All events')).toBe(true)
-    expect(rowActive('+ New event')).toBe(false)
+    expect(rowActive('+ New')).toBe(false)
   })
 
   it('highlights exactly one row on /leads/tasks', () => {
@@ -348,6 +398,21 @@ describe('AdminSidebar — active state', () => {
     render(<AdminSidebar orgSlug="acme" />)
     expect(rowActive('Opportunities')).toBe(true)
     expect(rowActive('Tasks')).toBe(false)
+  })
+
+  it('highlights the Events section on a hard load of /drops when storefront is enabled', () => {
+    // Drops lives under Events, not its own section — a hard load of the page
+    // must still light up its parent section, or nothing in the sidebar shows
+    // where the operator is.
+    nav.pathname = '/acme/drops'
+    render(<AdminSidebar orgSlug="acme" enabledModules={['events', 'storefront']} />)
+    expect(sectionActive('Events')).toBe(true)
+  })
+
+  it('does not highlight Events on /drops when storefront is disabled', () => {
+    nav.pathname = '/acme/drops'
+    render(<AdminSidebar orgSlug="acme" enabledModules={['events']} />)
+    expect(sectionActive('Events')).toBe(false)
   })
 })
 

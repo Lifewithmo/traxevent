@@ -2,6 +2,7 @@ import { AdminSidebar } from '@/components/layout/AdminSidebar'
 import { requireEvent, allowedEventPages } from '@/lib/auth/guards'
 import { resolveTerminology } from '@/lib/event-types'
 import { resolveEnabledModules } from '@/lib/industry-packs'
+import { kindOf } from '@/lib/occasions/kind'
 import { EVENT_PAGES } from '@/lib/types'
 
 export default async function EventLayout({
@@ -24,6 +25,7 @@ export default async function EventLayout({
       <AdminSidebar
         orgSlug={orgSlug}
         eventSlug={eventSlug}
+        eventKind={kindOf(event)}
         terminology={terminology}
         allowedEventPages={allowed}
         enabledModules={enabledModules}

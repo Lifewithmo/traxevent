@@ -10,6 +10,7 @@ import { listOrgEventTypes } from '@/actions/event-types'
 import { listDepartments } from '@/actions/departments'
 import type { Department } from '@/lib/types'
 import { resolveEnabledModules, type ModuleId } from '@/lib/industry-packs'
+import { kindOf } from '@/lib/occasions/kind'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -41,6 +42,11 @@ export default function EventSettingsPage() {
   const [enabledModules, setEnabledModules] = useState<ModuleId[]>([])
   const [headcount, setHeadcount] = useState<string>('')
   const [keyContacts, setKeyContacts] = useState<EventKeyContact[]>([])
+  const [locationName, setLocationName] = useState('')
+  const [locationAddress, setLocationAddress] = useState('')
+  const [hoursStart, setHoursStart] = useState('')
+  const [hoursEnd, setHoursEnd] = useState('')
+  const [boothFee, setBoothFee] = useState('')
 
   useEffect(() => {
     async function load() {
@@ -55,6 +61,11 @@ export default function EventSettingsPage() {
       setEvent(c)
       setName(c.name)
       setStatus(c.status)
+      setLocationName(c.location?.name ?? '')
+      setLocationAddress(c.location?.address ?? '')
+      setHoursStart(c.hours?.start ?? '')
+      setHoursEnd(c.hours?.end ?? '')
+      setBoothFee(c.booth_fee != null ? String(c.booth_fee) : '')
       setEventTypeId(c.event_type_id ?? DEFAULT_EVENT_TYPE_ID)
       setDepartmentId(c.department_id ?? '')
       setEventStart(c.event_start)
@@ -72,6 +83,8 @@ export default function EventSettingsPage() {
   }, [orgSlug, eventSlug])
 
   const showHeadcountSection = !enabledModules.includes('attendee-roster')
+  const rosterEnabled = enabledModules.includes('attendee-roster')
+  const isMarketDay = event ? kindOf(event) === 'market_day' : false
 
   function updateKeyContact(index: number, patch: Partial<EventKeyContact>) {
     setKeyContacts((rows) => rows.map((row, i) => (i === index ? { ...row, ...patch } : row)))
@@ -98,12 +111,16 @@ export default function EventSettingsPage() {
       await updateEvent(orgId, event.id, {
         name,
         status,
-        event_type_id: eventTypeId,
         department_id: departmentId || null,
-        registration_type: selectedType ? selectedType.registrationUnit : event.registration_type,
-        event_type_terminology: selectedType
-          ? (selectedType.is_custom ? selectedType.terminology : null)
-          : undefined,
+        ...(isMarketDay
+          ? {}
+          : {
+              event_type_id: eventTypeId,
+              registration_type: selectedType ? selectedType.registrationUnit : (event.registration_type ?? 'individual'),
+              event_type_terminology: selectedType
+                ? (selectedType.is_custom ? selectedType.terminology : null)
+                : undefined,
+            }),
         event_start: eventStart,
         event_end: eventEnd,
         registration_open: registrationOpen || undefined,
@@ -116,6 +133,15 @@ export default function EventSettingsPage() {
           ? {
               headcount: headcount ? Number(headcount) : undefined,
               key_contacts: keyContacts.filter((c) => c.name.trim() || c.role.trim()),
+            }
+          : {}),
+        ...(isMarketDay
+          ? {
+              location: locationName.trim()
+                ? { name: locationName.trim(), ...(locationAddress.trim() ? { address: locationAddress.trim() } : {}) }
+                : null,
+              hours: hoursStart && hoursEnd ? { start: hoursStart, end: hoursEnd } : null,
+              booth_fee: boothFee !== '' ? Number(boothFee) : null,
             }
           : {}),
       })
@@ -150,21 +176,51 @@ export default function EventSettingsPage() {
               />
             </div>
 
-            <div className="space-y-1">
-              <Label htmlFor="eventType">Event type</Label>
-              <select
-                id="eventType"
-                className="w-full border rounded-md px-3 py-2 text-sm bg-white"
-                value={eventTypeId}
-                onChange={(e) => { setEventTypeId(e.target.value); setSaved(false) }}
-              >
-                {eventTypes.map((et) => (
-                  <option key={et.id} value={et.id}>
-                    {et.name}{et.is_custom ? ' (custom)' : ''} — {et.description}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {!isMarketDay && (
+              <div className="space-y-1">
+                <Label htmlFor="eventType">Event type</Label>
+                <select
+                  id="eventType"
+                  className="w-full border rounded-md px-3 py-2 text-sm bg-white"
+                  value={eventTypeId}
+                  onChange={(e) => { setEventTypeId(e.target.value); setSaved(false) }}
+                >
+                  {eventTypes.map((et) => (
+                    <option key={et.id} value={et.id}>
+                      {et.name}{et.is_custom ? ' (custom)' : ''} — {et.description}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {isMarketDay && (
+              <div className="space-y-4">
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Market day</h2>
+                <div className="space-y-1">
+                  <Label htmlFor="md-location">Location name</Label>
+                  <Input id="md-location" value={locationName} onChange={(e) => { setLocationName(e.target.value); setSaved(false) }} />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="md-address">Address (optional)</Label>
+                  <Input id="md-address" value={locationAddress} onChange={(e) => { setLocationAddress(e.target.value); setSaved(false) }} />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <Label htmlFor="md-start">Opens</Label>
+                    <Input id="md-start" type="time" value={hoursStart} onChange={(e) => { setHoursStart(e.target.value); setSaved(false) }} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="md-end">Closes</Label>
+                    <Input id="md-end" type="time" value={hoursEnd} onChange={(e) => { setHoursEnd(e.target.value); setSaved(false) }} />
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="md-fee">Booth fee ($)</Label>
+                  <Input id="md-fee" type="number" min="0" step="1" value={boothFee} onChange={(e) => { setBoothFee(e.target.value); setSaved(false) }} />
+                </div>
+              </div>
+            )}
 
             <div className="space-y-1">
               <Label htmlFor="department">Department (optional)</Label>
@@ -218,54 +274,58 @@ export default function EventSettingsPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <Label htmlFor="regOpen">Registration opens</Label>
-                <Input
-                  id="regOpen"
-                  type="date"
-                  value={registrationOpen}
-                  onChange={(e) => { setRegistrationOpen(e.target.value); setSaved(false) }}
-                />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="regClose">Registration closes</Label>
-                <Input
-                  id="regClose"
-                  type="date"
-                  value={registrationClose}
-                  onChange={(e) => { setRegistrationClose(e.target.value); setSaved(false) }}
-                />
-              </div>
-            </div>
+            {rosterEnabled && !isMarketDay && (
+              <>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <Label htmlFor="regOpen">Registration opens</Label>
+                    <Input
+                      id="regOpen"
+                      type="date"
+                      value={registrationOpen}
+                      onChange={(e) => { setRegistrationOpen(e.target.value); setSaved(false) }}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="regClose">Registration closes</Label>
+                    <Input
+                      id="regClose"
+                      type="date"
+                      value={registrationClose}
+                      onChange={(e) => { setRegistrationClose(e.target.value); setSaved(false) }}
+                    />
+                  </div>
+                </div>
 
-            <div className="space-y-1">
-              <Label htmlFor="capacity">Capacity cap (optional)</Label>
-              <Input
-                id="capacity"
-                type="number"
-                min={1}
-                value={capacity}
-                onChange={(e) => { setCapacity(e.target.value); setSaved(false) }}
-                placeholder="No limit"
-              />
-            </div>
+                <div className="space-y-1">
+                  <Label htmlFor="capacity">Capacity cap (optional)</Label>
+                  <Input
+                    id="capacity"
+                    type="number"
+                    min={1}
+                    value={capacity}
+                    onChange={(e) => { setCapacity(e.target.value); setSaved(false) }}
+                    placeholder="No limit"
+                  />
+                </div>
 
-            <div className="space-y-1">
-              <Label htmlFor="paymentAmount">Registration fee (optional)</Label>
-              <Input
-                id="paymentAmount"
-                type="number"
-                min={0}
-                step="0.01"
-                value={paymentAmount}
-                onChange={(e) => { setPaymentAmount(e.target.value); setSaved(false) }}
-                placeholder="0 for free events"
-              />
-              <p className="text-xs text-muted-foreground">
-                In dollars. Leave blank or 0 for free events. TraxEvent collects 1% of paid registrations automatically.
-              </p>
-            </div>
+                <div className="space-y-1">
+                  <Label htmlFor="paymentAmount">Registration fee (optional)</Label>
+                  <Input
+                    id="paymentAmount"
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={paymentAmount}
+                    onChange={(e) => { setPaymentAmount(e.target.value); setSaved(false) }}
+                    placeholder="0 for free events"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    In dollars. Leave blank or 0 for free events. TraxEvent collects 1% of paid registrations automatically.
+                  </p>
+                </div>
+              </>
+            )}
 
             <div className="space-y-1">
               <Label htmlFor="fromDisplayName">Email sender name (optional)</Label>

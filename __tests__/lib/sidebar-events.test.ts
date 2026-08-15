@@ -50,4 +50,14 @@ describe('selectUpcomingEvents', () => {
     const noDate = { id: 'x', name: 'X', slug: 'x', status: 'active' } as Event
     expect(selectUpcomingEvents([noDate], '2026-08-15')).toEqual([])
   })
+
+  it('carries the occasion kind through', () => {
+    const baseEvent = ev('base', '2026-08-16')
+    const rows = selectUpcomingEvents([
+      { ...baseEvent, id: 'm1', kind: 'market_day', event_start: '2026-08-20' },
+      { ...baseEvent, id: 'c1', event_start: '2026-08-21' },
+    ] as never, '2026-08-16')
+    expect(rows[0].kind).toBe('market_day')
+    expect(rows[1].kind).toBe('client_job')
+  })
 })

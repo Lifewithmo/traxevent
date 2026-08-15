@@ -124,7 +124,12 @@ export function buildCalendarFeed(orgSlug: string, s: CalendarFeedSources): Cale
     items.push({
       id: e.id, title: e.name, date: e.event_start.slice(0, 10), kind: 'event',
       href: `/${orgSlug}/${e.slug}/dashboard`,
-      detail: e.headcount ? `${e.headcount} guests` : undefined,
+      detail: e.headcount
+        ? `${e.headcount} guests`
+        // inline kindOf: lib/calendar stays dependency-light
+        : (e.kind ?? 'client_job') === 'market_day' && e.location
+          ? e.location.name
+          : undefined,
       headcount: e.headcount,
     })
   }

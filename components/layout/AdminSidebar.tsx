@@ -8,7 +8,7 @@ import { endSession } from '@/lib/auth/establish-session'
 import { NavIcon, type NavIconName } from '@/components/layout/NavIcons'
 import { SidebarSection } from '@/components/layout/SidebarSection'
 import type { Terminology } from '@/lib/event-types'
-import type { EventPage } from '@/lib/types'
+import type { EventKind, EventPage } from '@/lib/types'
 import type { ModuleId } from '@/lib/industry-packs'
 import { ORG_PAGE_SLUGS } from '@/lib/sidebar-nav'
 import type { SidebarEventRow } from '@/lib/sidebar-events'
@@ -16,6 +16,7 @@ import type { SidebarEventRow } from '@/lib/sidebar-events'
 interface AdminSidebarProps {
   orgSlug: string
   eventSlug?: string
+  eventKind?: EventKind
   terminology?: Terminology
   allowedEventPages?: EventPage[]
   enabledModules?: ModuleId[]
@@ -28,6 +29,10 @@ interface AdminSidebarProps {
 // opens Money with the current page's row already visible.
 const SECTION_FOR_SLUG: Record<string, string> = {
   'new-event': 'events',
+  new: 'events',
+  'new-market-day': 'events',
+  'new-series': 'events',
+  series: 'events',
   leads: 'pipeline',
   proposals: 'pipeline',
   money: 'money',
@@ -35,7 +40,7 @@ const SECTION_FOR_SLUG: Record<string, string> = {
   reports: 'money',
   catalog: 'catalog',
   packages: 'catalog',
-  drops: 'catalog',
+  drops: 'events',
   vendors: 'catalog',
   forms: 'catalog',
   compliance: 'catalog',
@@ -61,6 +66,13 @@ function activeSection(pathname: string, orgSlug: string): string | null {
   return SECTION_FOR_SLUG[seg[1]] ?? null
 }
 
+// The sidebar's own "+ New" row activates on a hard load of any of these —
+// the chooser plus every route it fans out to. isActive() only matches an
+// exact path or a '/'-delimited prefix, so this can't be collapsed to a
+// single isActive(pathname, `/${orgSlug}/new`) check: sibling routes like
+// /new-event don't start with /new/.
+const CREATE_SLUGS = ['new', 'new-event', 'new-market-day', 'new-series']
+
 const SIDEBAR_COLLAPSED_KEY = 'tx-sidebar-collapsed'
 
 function getEventNav(terminology: Terminology) {
@@ -85,6 +97,14 @@ const DEFAULT_TERMINOLOGY: Terminology = getEventType(DEFAULT_EVENT_TYPE_ID).ter
 
 // Per-event nav items that belong to the optional attendee-roster module.
 const ROSTER_KEYS = new Set(['families', 'assignments', 'checkin'])
+
+// Market days get an explicit, minimal nav — none of the client-job pages
+// (Ops, roster, Teams, Budget, etc.) apply. Register + Closeout join this
+// list with the counter-register increment.
+const MARKET_DAY_NAV = [
+  { key: 'dashboard', label: 'Overview' },
+  { key: 'settings', label: 'Settings' },
+]
 
 // The single source of truth for Settings' children. The parent's active state
 // is derived from these (see settingsActive) rather than from a second hand-kept
@@ -211,7 +231,7 @@ function IconRailGroup({ items }: { items: NavLink[] }) {
   )
 }
 
-export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPages, enabledModules, catalogLabel, storefrontLabel, upcomingEvents }: AdminSidebarProps) {
+export function AdminSidebar({ orgSlug, eventSlug, eventKind, terminology, allowedEventPages, enabledModules, catalogLabel, storefrontLabel, upcomingEvents }: AdminSidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
 
@@ -348,7 +368,6 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
 
   const catalogChildren: NavLink[] = [
     ...(has('catalog') ? [{ slug: 'packages', label: catalogLabel ?? 'Packages', icon: 'packages' as NavIconName }] : []),
-    ...(has('storefront' as ModuleId) ? [{ slug: 'drops', label: storefrontLabel ?? 'Online orders', icon: 'packages' as NavIconName }] : []),
     ...(has('vendors') ? [{ slug: 'vendors', label: 'Vendors', icon: 'vendors' as NavIconName }] : []),
     ...(has('forms') ? [{ slug: 'forms', label: 'Forms', icon: 'forms' as NavIconName }] : []),
     ...(has('compliance') ? [{ slug: 'compliance', label: 'Compliance', icon: 'compliance' as NavIconName }] : []),
@@ -360,8 +379,12 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
   }))
 
   const allEventsActive = pathname === `/${orgSlug}`
-  const newEventActive = isActive(pathname, `/${orgSlug}/new-event`)
-  const eventsActive = allEventsActive || newEventActive || Boolean(eventSlug)
+  const newEventActive = CREATE_SLUGS.some((s) => isActive(pathname, `/${orgSlug}/${s}`))
+  // Drops lives under Events (not its own section), so a hard load of
+  // /{orgSlug}/drops must light up the Events row too, or the parent section
+  // shows nothing highlighted while its own child page is open.
+  const dropsActive = has('storefront' as ModuleId) && isActive(pathname, `/${orgSlug}/drops`)
+  const eventsActive = allEventsActive || newEventActive || Boolean(eventSlug) || dropsActive
 
   const pipelineActive = pipelineChildren.some((l) => l.active)
   const moneyActive = isActive(pathname, `/${orgSlug}/money`) || moneyChildren.some((l) => l.active)
@@ -396,15 +419,18 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
   ]
 
   const eventNav = getEventNav(t)
-  const visibleEventNav = eventNav
-    .filter(
-      (n) =>
-        !allowedEventPages ||
-        n.key === 'dashboard' ||
-        n.key === 'settings' ||
-        allowedEventPages.includes(n.key as EventPage)
-    )
-    .filter((n) => !ROSTER_KEYS.has(n.key) || has('attendee-roster'))
+  const visibleEventNav =
+    eventKind === 'market_day'
+      ? MARKET_DAY_NAV
+      : eventNav
+          .filter(
+            (n) =>
+              !allowedEventPages ||
+              n.key === 'dashboard' ||
+              n.key === 'settings' ||
+              allowedEventPages.includes(n.key as EventPage)
+          )
+          .filter((n) => !ROSTER_KEYS.has(n.key) || has('attendee-roster'))
 
   async function handleSignOut() {
     await endSession()
@@ -553,13 +579,25 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
                       className="flex items-center gap-2 pl-[26px] pr-3 py-2 rounded-md text-sm text-[color:var(--sidebar-muted)] hover:bg-[color:var(--sidebar-accent)] hover:text-[color:var(--sidebar-accent-foreground)]"
                     >
                       <span className="truncate flex-1">{e.name}</span>
+                      {e.kind === 'market_day' && (
+                        <span className="text-[9px] uppercase tracking-wide rounded bg-[color:var(--sidebar-accent)] px-1 shrink-0">Market</span>
+                      )}
                       <span className={`text-[10px] shrink-0 ${e.isToday ? 'font-semibold' : ''}`}>{e.label}</span>
                     </Link>
                   ))}
+                  {has('storefront' as ModuleId) && (
+                    <NavItem
+                      href={`/${orgSlug}/drops`}
+                      label={storefrontLabel ?? 'Online orders'}
+                      icon="packages"
+                      active={isActive(pathname, `/${orgSlug}/drops`)}
+                      indent
+                    />
+                  )}
                   <NavItem href={`/${orgSlug}`} label="All events" icon="events" active={allEventsActive} indent />
                   <NavItem
-                    href={`/${orgSlug}/new-event`}
-                    label="+ New event"
+                    href={`/${orgSlug}/new`}
+                    label="+ New"
                     icon="events"
                     active={newEventActive}
                     indent

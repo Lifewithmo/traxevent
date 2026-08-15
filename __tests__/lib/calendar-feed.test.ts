@@ -131,6 +131,19 @@ describe('buildCalendarFeed', () => {
     expect(items.every((i) => i.tentative)).toBe(true)
   })
 
+  it('market-day events carry their location as the detail line', () => {
+    const items = buildCalendarFeed('acme', {
+      ...empty,
+      events: [event({
+        id: 'm1', slug: 'bfm', name: 'Boise Farmers Market',
+        kind: 'market_day', location: { name: 'Capitol Blvd' }, event_start: '2026-08-22', event_end: '2026-08-22',
+      })],
+    })
+    const row = items.find((i) => i.id === 'm1')!
+    expect(row.kind).toBe('event')
+    expect(row.detail).toBe('Capitol Blvd')
+  })
+
   it('emits one drop item per pickup-window day for scheduled drops, skipping drafts/archived', () => {
     const items = buildCalendarFeed('acme', { ...empty, drops: [drop({})] })
     const dropItems = items.filter((i) => i.kind === 'drop')

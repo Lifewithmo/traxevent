@@ -12,7 +12,7 @@ export const ORG_PAGE_SLUGS = new Set([
   'departments', 'reports', 'registrants', 'today', 'leads', 'clients', 'proposals',
   'invoices', 'vendors', 'calendar', 'new-event', 'packages', 'compliance',
   'money', 'catalog', 'settings', 'branding', 'public-profile', 'proposal-templates',
-  'drops',
+  'drops', 'new', 'new-market-day', 'new-series', 'series',
   // 'drop-orders' is deliberately absent: the orders board relies on the
   // sidebar's self-hide behavior below to render shell-free (see AdminSidebar).
 ])

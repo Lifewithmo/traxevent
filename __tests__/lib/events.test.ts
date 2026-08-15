@@ -54,6 +54,40 @@ describe('createEventCore', () => {
     const event = await createEventCore('o1', base)
     expect(event.slug).toBe('nguyen-wedding-2026-2')
   })
+
+  it('createEventCore writes occasion fields and honors the status override', async () => {
+    const event = await createEventCore('org-1', {
+      name: 'Boise Farmers Market',
+      year: 2026,
+      kind: 'market_day',
+      status: 'active',
+      event_start: '2026-05-02',
+      event_end: '2026-05-02',
+      location: { name: 'Capitol Blvd' },
+      hours: { start: '08:00', end: '13:00' },
+      booth_fee: 45,
+      series_id: 'series-1',
+    })
+    expect(event.kind).toBe('market_day')
+    expect(event.status).toBe('active')
+    expect(event.location).toEqual({ name: 'Capitol Blvd' })
+    expect(event.hours).toEqual({ start: '08:00', end: '13:00' })
+    expect(event.booth_fee).toBe(45)
+    expect(event.series_id).toBe('series-1')
+    expect(event).not.toHaveProperty('registration_type')
+    expect(event).not.toHaveProperty('features')
+  })
+
+  it('createEventCore still writes registration_type when provided and defaults status draft', async () => {
+    const event = await createEventCore('org-1', {
+      name: 'Wedding', year: 2026, registration_type: 'individual',
+      event_start: '2026-09-01', event_end: '2026-09-01',
+    })
+    expect(event.registration_type).toBe('individual')
+    expect(event.status).toBe('draft')
+    expect(event).not.toHaveProperty('features')
+    expect(event).not.toHaveProperty('kind')
+  })
 })
 
 describe('listEventsCore', () => {

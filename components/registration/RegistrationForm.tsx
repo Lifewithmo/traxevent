@@ -37,7 +37,7 @@ export function RegistrationForm({ event, org }: RegistrationFormProps) {
 
 function RegistrationFormInner({ event, org, registrantUid }: RegistrationFormProps & { registrantUid?: string }) {
   const router = useRouter()
-  const registrationUnit = event.registration_type
+  const registrationUnit = event.registration_type ?? 'individual'
   const terminology = resolveTerminology(event.event_type_id, event.event_type_terminology)
   const hasFee = (event.payment_amount ?? 0) > 0
 

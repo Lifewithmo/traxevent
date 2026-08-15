@@ -135,6 +135,17 @@ EventTrax pivot (neutralization, multi-brand, ops core). Detailed designs live i
   linkage arrives with the queued ops "proposal refs" increment
   (spec: `superpowers/specs/2026-08-13-proposal-templates-design.md`).
 
+- **Occasions core** (branch `occasions-core`) — market days (recurring
+  vendor/pop-up dates) as a second Event kind alongside client jobs: up-front
+  series definition generates its days, Events-section nav rework (chooser at
+  `/new`, sidebar splits jobs vs. series), R1 registration slimming. All-events
+  page groups by kind (client jobs by department, market days by series with a
+  link to each series page); calendar market-day rows show their location as
+  the detail line
+  (spec: `superpowers/specs/2026-08-15-selling-occasions-pos-design.md`).
+  Next increments: counter register (in-person sales at a market day) → public
+  tabs/browsing → registration retirement R2.
+
 ## Next (approved queue)
 
 *(empty — pipeline sub-nav #16a and calendar week view + ICS #15a/15b shipped
