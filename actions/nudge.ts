@@ -31,6 +31,11 @@ export async function nudgeProposal(orgId: string, leadId: string): Promise<void
     // domain lookup failure should not block the email — fall back to default
   }
 
+  // Unguarded on purpose, and the ordering is load-bearing: sending IS the nudge, so a
+  // failed send must propagate to the operator AND must skip the activity log below.
+  // sendProposalNudge now throws on a rejected send (previously the Resend error was
+  // discarded, so a nudge that never left the building still logged "reminder sent").
+  // Do not wrap this in a try/catch, and do not move logActivity above it.
   await sendProposalNudge({
     to: lead.email,
     contactName: lead.name,

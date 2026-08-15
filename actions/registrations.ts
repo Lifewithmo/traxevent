@@ -111,22 +111,30 @@ export async function createRegistration(
   // Attach signed URL token
   const accessToken = await attachAccessToken(input.orgId, input.eventId, familyId)
 
-  // Send confirmation email (skipped for paid registrations; sent after payment webhook confirms payment)
+  // Send confirmation email (skipped for paid registrations; sent after payment webhook confirms payment).
+  // Best-effort: the registration is already written and its access token attached, so a send
+  // failure must not fail the action — that would report failure for a registration that exists
+  // and invite a duplicate retry. sendRegistrationConfirmation now throws on a rejected send
+  // (previously the Resend error was discarded), so this needs an explicit guard.
   if (!input.skipConfirmationEmail) {
-    const fromDomain = await getVerifiedSendingDomain(input.orgId)
-    await sendRegistrationConfirmation({
-      to: input.family.email,
-      firstName: input.family.first_name,
-      eventName: input.eventName,
-      orgName: input.orgName,
-      orgSlug: input.orgSlug,
-      eventSlug: input.eventSlug,
-      familyId,
-      accessToken,
-      fromDisplayName: event.from_display_name,
-      replyTo: event.reply_to_email,
-      fromDomain,
-    })
+    try {
+      const fromDomain = await getVerifiedSendingDomain(input.orgId)
+      await sendRegistrationConfirmation({
+        to: input.family.email,
+        firstName: input.family.first_name,
+        eventName: input.eventName,
+        orgName: input.orgName,
+        orgSlug: input.orgSlug,
+        eventSlug: input.eventSlug,
+        familyId,
+        accessToken,
+        fromDisplayName: event.from_display_name,
+        replyTo: event.reply_to_email,
+        fromDomain,
+      })
+    } catch (err) {
+      console.error('sendRegistrationConfirmation failed', { familyId, orgId: input.orgId }, err)
+    }
   }
 
   return { familyId, accessToken, waitlisted }

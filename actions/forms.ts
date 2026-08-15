@@ -173,18 +173,26 @@ export async function submitSignedForm(
 
   await signedFormsRef(orgId, eventId, familyId).doc(id).set(signed)
 
-  const fromDomain = await getVerifiedSendingDomain(orgId)
-  await sendFormSignedConfirmation({
-    to: input.signerEmail,
-    firstName: input.signerFirstName,
-    formName: input.templateName,
-    eventName: input.eventName,
-    orgName: input.orgName,
-    signedAt: now,
-    fromDisplayName: input.fromDisplayName,
-    replyTo: input.replyTo,
-    fromDomain,
-  })
+  // Best-effort: the signature is already stored and legally authoritative, so a send
+  // failure must not fail the action and invite a second signing. The confirmation is a
+  // receipt, not the record. sendFormSignedConfirmation now throws on a rejected send
+  // (previously the Resend error was discarded), so this needs an explicit guard.
+  try {
+    const fromDomain = await getVerifiedSendingDomain(orgId)
+    await sendFormSignedConfirmation({
+      to: input.signerEmail,
+      firstName: input.signerFirstName,
+      formName: input.templateName,
+      eventName: input.eventName,
+      orgName: input.orgName,
+      signedAt: now,
+      fromDisplayName: input.fromDisplayName,
+      replyTo: input.replyTo,
+      fromDomain,
+    })
+  } catch (err) {
+    console.error('sendFormSignedConfirmation failed', { orgId, eventId, familyId, id }, err)
+  }
 
   return signed
 }

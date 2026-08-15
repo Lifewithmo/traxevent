@@ -13,7 +13,15 @@ vi.mock('@/lib/resend', () => ({
   },
 }))
 
-import { sendRegistrationConfirmation, sendProposalNudge, sendIntakeNotification, sendInvoiceEmail, escapeHtml } from '@/lib/email'
+import {
+  sendRegistrationConfirmation,
+  sendFormSignedConfirmation,
+  sendProposalNudge,
+  sendProposalSignedConfirmation,
+  sendIntakeNotification,
+  sendInvoiceEmail,
+  escapeHtml,
+} from '@/lib/email'
 
 const baseParams = {
   to: 'jane@example.com',
@@ -194,5 +202,49 @@ describe('sendInvoiceEmail', () => {
         to: 'c@e.com', orgName: 'BrewTrax', invoiceNumber: '1042', total: 5, token: 't', isUpdate: false,
       }),
     ).rejects.toThrow(/application_error/)
+  })
+})
+
+// Every sender in this module must detect a resolved-with-error send, not just the
+// invoice one. The Resend SDK resolves on 422/403/429/5xx and on a dropped connection,
+// so a sender that ignores `error` reports success for a mail that never left.
+describe('delivery detection across every sender', () => {
+  // mockReset, not clearAllMocks: clearing wipes call history but leaves queued
+  // mockResolvedValueOnce implementations, so a case that throws before reaching
+  // send() would leak its queued error into the next test.
+  beforeEach(() => {
+    emailsSendSpy.mockReset()
+    emailsSendSpy.mockResolvedValue({ data: { id: 'email-1' }, error: null })
+  })
+
+  const resendError = { data: null, error: { name: 'validation_error', message: 'Invalid `to` field.' } }
+
+  const senders: Array<[string, () => Promise<void>]> = [
+    ['sendRegistrationConfirmation', () => sendRegistrationConfirmation(baseParams)],
+    ['sendFormSignedConfirmation', () => sendFormSignedConfirmation({
+      to: 'j@e.com', firstName: 'Jane', formName: 'Waiver', eventName: 'Camp',
+      orgName: 'Org', signedAt: '2026-08-01T00:00:00.000Z',
+    })],
+    ['sendProposalNudge', () => sendProposalNudge({ to: 'j@e.com', contactName: 'Jane', token: 't' })],
+    ['sendProposalSignedConfirmation', () => sendProposalSignedConfirmation({
+      to: 'j@e.com', signerName: 'Jane', token: 't', signedAt: '2026-08-01T00:00:00.000Z',
+    })],
+    ['sendIntakeNotification', () => sendIntakeNotification({
+      to: 'ops@e.com', orgName: 'Org', leadName: 'Jane', email: 'j@e.com',
+      opportunityUrl: 'https://traxevent.com/org/leads/l1',
+    })],
+    ['sendInvoiceEmail', () => sendInvoiceEmail({
+      to: 'j@e.com', orgName: 'Org', invoiceNumber: '1', total: 1, token: 't', isUpdate: false,
+    })],
+  ]
+
+  it.each(senders)('%s throws when Resend resolves with an error', async (_name, send) => {
+    emailsSendSpy.mockResolvedValueOnce(resendError)
+    await expect(send()).rejects.toThrow(/invalid `to` field/i)
+  })
+
+  it.each(senders)('%s resolves normally on a successful send', async (_name, send) => {
+    emailsSendSpy.mockResolvedValueOnce({ data: { id: 'email-1' }, error: null })
+    await expect(send()).resolves.toBeUndefined()
   })
 })
