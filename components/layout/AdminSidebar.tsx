@@ -29,6 +29,10 @@ interface AdminSidebarProps {
 // opens Money with the current page's row already visible.
 const SECTION_FOR_SLUG: Record<string, string> = {
   'new-event': 'events',
+  new: 'events',
+  'new-market-day': 'events',
+  'new-series': 'events',
+  series: 'events',
   leads: 'pipeline',
   proposals: 'pipeline',
   money: 'money',
