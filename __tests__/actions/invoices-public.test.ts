@@ -185,11 +185,11 @@ describe('getPublicInvoice', () => {
     expect(await getPublicInvoice('t')).toBeNull()
   })
 
-  it('projects From (branding display name + address) and Bill-to (customer identity)', async () => {
+  it('projects From (branding display name + address + logo) and Bill-to (customer identity)', async () => {
     mockDocs({
       'orgs/org-1': {
         name: 'Acme Events LLC',
-        branding: { display_name: 'Acme Events', address: '123 Main St\nSpringfield, ID 83000' },
+        branding: { display_name: 'BrewTrax', address: '1 Keg Ln', logo_url: 'https://cdn/logo.png' },
       },
       'orgs/org-1/customers/cust-1': {
         name: 'Dana Kim',
@@ -199,10 +199,17 @@ describe('getPublicInvoice', () => {
         notes: 'internal note — never public',
       },
     })
-    mockSnapshot({ ...fullDoc('sent'), customer_id: 'cust-1' })
+    mockSnapshot({
+      ...fullDoc('sent'),
+      customer_id: 'cust-1',
+      discount: { type: 'percent', value: 10, reason: 'Returning customer' },
+      sent_at: '2026-08-15T00:00:00.000Z',
+    })
     const result = await getPublicInvoice('tok')
-    expect(result!.from).toEqual({ name: 'Acme Events', address: '123 Main St\nSpringfield, ID 83000' })
+    expect(result!.from).toEqual({ name: 'BrewTrax', address: '1 Keg Ln', logo_url: 'https://cdn/logo.png' })
     expect(result!.bill_to).toEqual({ name: 'Dana Kim', company: 'Riverside', email: 'dana@riv.co' })
+    expect(result!.discount).toEqual({ type: 'percent', value: 10, reason: 'Returning customer' })
+    expect(result!.sent_at).toBe('2026-08-15T00:00:00.000Z')
     // Identity fields only — phone/notes never cross the public boundary.
     expect('phone' in result!.bill_to!).toBe(false)
     expect('notes' in result!.bill_to!).toBe(false)

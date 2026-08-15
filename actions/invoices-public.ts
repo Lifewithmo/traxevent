@@ -11,7 +11,7 @@ import {
 } from '@/lib/invoices'
 import { normalizeInvoice } from '@/lib/invoice-normalize'
 import { resolveTipsEnabled } from '@/lib/invoice-status'
-import type { Customer, InvoiceCredit, InvoiceLineItem, InvoiceType, Lead, Org } from '@/lib/types'
+import type { Customer, InvoiceCredit, InvoiceDiscount, InvoiceLineItem, InvoiceType, Lead, Org } from '@/lib/types'
 
 // Public-safe projection of an Invoice. OMITS the secret `token`, internal
 // `org_id`, `lead_id`, and `id`. Includes computed `amount_paid` + `balance`
@@ -19,13 +19,14 @@ import type { Customer, InvoiceCredit, InvoiceLineItem, InvoiceType, Lead, Org }
 export interface PublicInvoice {
   title?: string
   number?: string
-  /** Issuing business: branding display name (fallback org name) + branding address. */
-  from?: { name: string; address?: string }
+  /** Issuing business: branding display name (fallback org name) + branding address + logo. */
+  from?: { name: string; address?: string; logo_url?: string }
   /** Invoiced customer: name plus public-safe contact identity. */
   bill_to?: { name: string; company?: string; email?: string }
   type: InvoiceType
   line_items: InvoiceLineItem[]
   subtotal: number
+  discount?: InvoiceDiscount
   discount_amount: number
   tax_amount: number
   credits: InvoiceCredit[]
@@ -35,6 +36,7 @@ export interface PublicInvoice {
   tips_enabled: boolean
   notes?: string
   due_date?: string
+  sent_at?: string
   created_at: string
 }
 
@@ -78,6 +80,7 @@ async function resolveParties(invoice: {
     out.from = {
       name: fromName,
       ...(org?.branding?.address ? { address: org.branding.address } : {}),
+      ...(org?.branding?.logo_url ? { logo_url: org.branding.logo_url } : {}),
     }
   }
 
@@ -127,5 +130,7 @@ export async function getPublicInvoice(token: string): Promise<PublicInvoice | n
   if (invoice.number !== undefined) publicInvoice.number = invoice.number
   if (invoice.notes !== undefined) publicInvoice.notes = invoice.notes
   if (invoice.due_date !== undefined) publicInvoice.due_date = invoice.due_date
+  if (invoice.discount !== undefined) publicInvoice.discount = invoice.discount
+  if (invoice.sent_at !== undefined) publicInvoice.sent_at = invoice.sent_at
   return publicInvoice
 }
