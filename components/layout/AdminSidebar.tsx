@@ -59,6 +59,42 @@ function isActive(pathname: string, href: string) {
 }
 
 // Two-pane collapse glyph (kit's PanelIcon), used only for the rail toggle button.
+function MenuIcon() {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      aria-hidden
+      focusable="false"
+    >
+      <path d="M3 5h14M3 10h14M3 15h14" />
+    </svg>
+  )
+}
+
+function CloseIcon() {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 18 18"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      aria-hidden
+      focusable="false"
+    >
+      <path d="M4 4l10 10M14 4L4 14" />
+    </svg>
+  )
+}
+
 function PanelIcon() {
   return (
     <svg
@@ -186,6 +222,10 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
   const [salesOpen, setSalesOpen] = useState(true)
   const [opsOpen, setOpsOpen] = useState(true)
   const [collapsed, setCollapsed] = useState(false)
+  // Below md the sidebar is an off-canvas drawer rather than an in-flow rail —
+  // a fixed 224px column leaves ~63px of content at 375px. Deliberately NOT
+  // persisted: a drawer should always open closed on a fresh page.
+  const [mobileOpen, setMobileOpen] = useState(false)
 
   // Read persisted rail state after mount only — never in a useState
   // initializer, to avoid an SSR/client hydration mismatch.
@@ -194,6 +234,21 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
       setCollapsed(true)
     }
   }, [])
+
+  // Navigating is the drawer's implicit dismiss — without this the overlay stays
+  // over the page the operator just chose.
+  useEffect(() => {
+    setMobileOpen(false)
+  }, [pathname])
+
+  useEffect(() => {
+    if (!mobileOpen) return
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setMobileOpen(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [mobileOpen])
 
   function toggleCollapsed() {
     setCollapsed((v) => {
@@ -301,17 +356,54 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
   }
 
   return (
-    <aside
-      className={[
-        'bg-[color:var(--sidebar)] text-[color:var(--sidebar-foreground)] border-r border-[color:var(--sidebar-border)]',
-        'min-h-screen flex flex-col flex-shrink-0 print:hidden transition-[width] duration-[160ms]',
-        !eventSlug && collapsed ? 'w-[52px]' : 'w-56',
-      ].join(' ')}
-    >
+    <>
+      {/* Mobile bar: the only nav chrome that takes layout space below md, so the
+          page itself gets the full viewport width. Hidden from md up. */}
+      <div className="flex items-center gap-3 border-b border-[color:var(--sidebar-border)] bg-[color:var(--sidebar)] px-4 py-3 text-[color:var(--sidebar-foreground)] md:hidden print:hidden">
+        <button
+          type="button"
+          onClick={() => setMobileOpen(true)}
+          aria-label="Open navigation"
+          aria-expanded={mobileOpen}
+          aria-controls="admin-nav"
+          className="flex h-8 w-8 items-center justify-center rounded-md text-[color:var(--sidebar-muted)] hover:bg-[color:var(--sidebar-accent)] hover:text-[color:var(--sidebar-accent-foreground)]"
+        >
+          <MenuIcon />
+        </button>
+        <Link href={`/${orgSlug}`} className="text-lg font-bold tracking-tight">
+          TraxEvent
+        </Link>
+      </div>
+
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/40 md:hidden print:hidden"
+          onClick={() => setMobileOpen(false)}
+          aria-hidden
+        />
+      )}
+
+      <aside
+        id="admin-nav"
+        className={[
+          'bg-[color:var(--sidebar)] text-[color:var(--sidebar-foreground)] border-r border-[color:var(--sidebar-border)]',
+          'min-h-screen flex flex-col print:hidden',
+          // Below md: off-canvas drawer, out of flow so `main` gets full width.
+          'max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-50 max-md:w-64 max-md:overflow-y-auto',
+          'max-md:transition-transform max-md:duration-200',
+          mobileOpen ? 'max-md:translate-x-0' : 'max-md:-translate-x-full',
+          // md and up: unchanged in-flow rail.
+          'md:flex-shrink-0 md:transition-[width] md:duration-[160ms]',
+          !eventSlug && collapsed ? 'md:w-[52px]' : 'md:w-56',
+        ].join(' ')}
+      >
       <div className="px-4 py-5 border-b border-[color:var(--sidebar-border)] flex items-center justify-between gap-2">
         {!eventSlug && collapsed ? (
+          // Collapsed is a desktop-rail state; the drawer is always full width,
+          // so it keeps the wordmark even while the rail shows just "T".
           <Link href={`/${orgSlug}`} className="font-bold text-lg tracking-tight" title="TraxEvent">
-            T
+            <span className="max-md:hidden">T</span>
+            <span className="md:hidden">TraxEvent</span>
           </Link>
         ) : (
           <Link href={`/${orgSlug}`} className="font-bold text-lg tracking-tight">
@@ -324,11 +416,20 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
             onClick={toggleCollapsed}
             aria-label={collapsed ? 'Expand navigation' : 'Collapse navigation'}
             title={collapsed ? 'Expand navigation' : 'Collapse navigation'}
-            className="flex items-center justify-center w-6 h-6 rounded text-[color:var(--sidebar-muted)] hover:text-[color:var(--sidebar-accent-foreground)]"
+            className="flex items-center justify-center w-6 h-6 rounded text-[color:var(--sidebar-muted)] hover:text-[color:var(--sidebar-accent-foreground)] max-md:hidden"
           >
             <PanelIcon />
           </button>
         )}
+        {/* Collapsing is a desktop affordance; on mobile the same slot closes the drawer. */}
+        <button
+          type="button"
+          onClick={() => setMobileOpen(false)}
+          aria-label="Close navigation"
+          className="flex items-center justify-center w-6 h-6 rounded text-[color:var(--sidebar-muted)] hover:text-[color:var(--sidebar-accent-foreground)] md:hidden"
+        >
+          <CloseIcon />
+        </button>
       </div>
 
       {eventSlug ? (
@@ -435,6 +536,7 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
           </button>
         )}
       </div>
-    </aside>
+      </aside>
+    </>
   )
 }

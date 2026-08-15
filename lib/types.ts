@@ -621,7 +621,7 @@ export interface PendingSignature {
 }
 
 export type InvoiceType = 'quick' | 'deposit' | 'progress' | 'final'
-export type InvoiceLifecycle = 'draft' | 'approved' | 'issued' | 'voided' | 'replaced' | 'closed'
+export type InvoiceLifecycle = 'draft' | 'sent' | 'void'
 export type InvoiceDeliveryStatus = 'not_sent' | 'queued' | 'sent' | 'delivered' | 'bounced' | 'viewed' | 'downloaded'
 export type InvoiceAccountingStatus = 'not_connected' | 'ready' | 'syncing' | 'synced' | 'error' | 'mismatch'
 export type InvoiceDisputeStatus = 'none' | 'question' | 'under_review' | 'adjustment_proposed' | 'resolved' | 'escalated'
@@ -646,8 +646,20 @@ export interface InvoiceLineItem {
   taxable?: boolean
 }
 
-export interface InvoiceDiscount { type: 'percent' | 'fixed'; value: number }
+export interface InvoiceDiscount { type: 'percent' | 'fixed'; value: number; reason?: string }
 export interface InvoiceCredit { description: string; amount: number }
+
+// One entry per send: the content exactly as the customer received it at sent_at.
+export interface InvoiceVersion {
+  sent_at: string
+  line_items: InvoiceLineItem[]
+  discount?: InvoiceDiscount
+  tax_rate?: number
+  credits?: InvoiceCredit[]
+  title?: string
+  notes?: string
+  due_date?: string
+}
 
 export interface InvoicePayment {
   amount: number       // dollars APPLIED to the balance
@@ -688,7 +700,9 @@ export interface Invoice {
   replaces_id?: string
   replaced_by_id?: string
   void_reason?: string
-  issued_at?: string
+  issued_at?: string            // legacy at-rest field; no longer written
+  sent_at?: string
+  versions?: InvoiceVersion[]
   created_at: string
   updated_at?: string
 }

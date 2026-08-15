@@ -1,6 +1,6 @@
 import { getResend, buildFromAddress } from '@/lib/resend'
 
-const PROPOSAL_BASE_URL = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://traxevent.com'
+const PUBLIC_BASE_URL = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://traxevent.com'
 
 interface RegistrationConfirmationParams {
   to: string
@@ -108,7 +108,7 @@ export interface ProposalNudgeParams {
 
 export async function sendProposalNudge(params: ProposalNudgeParams): Promise<void> {
   const from = buildFromAddress({ displayName: params.fromDisplayName, domain: params.fromDomain })
-  const proposalUrl = `${PROPOSAL_BASE_URL}/proposals/${params.token}`
+  const proposalUrl = `${PUBLIC_BASE_URL}/proposals/${params.token}`
   await getResend().emails.send({
     from,
     to: params.to,
@@ -148,7 +148,7 @@ export async function sendProposalSignedConfirmation(
   params: ProposalSignedConfirmationParams
 ): Promise<void> {
   const from = buildFromAddress({ displayName: params.fromDisplayName, domain: params.fromDomain })
-  const proposalUrl = `${PROPOSAL_BASE_URL}/proposals/${params.token}`
+  const proposalUrl = `${PUBLIC_BASE_URL}/proposals/${params.token}`
 
   await getResend().emails.send({
     from,
@@ -247,4 +247,59 @@ export async function sendIntakeNotification(params: IntakeNotificationParams): 
       </div>
     `,
   })
+}
+
+export interface InvoiceEmailParams {
+  to: string
+  orgName: string
+  invoiceNumber: string
+  total: number
+  dueDate?: string
+  message?: string
+  token: string
+  isUpdate: boolean
+  fromDisplayName?: string
+  fromDomain?: string
+  replyTo?: string
+}
+
+/**
+ * The Resend SDK does not reject on API failure — a 422, 403, 429, 5xx, or even a
+ * dropped connection all RESOLVE as `{ data: null, error }`. Callers that need to
+ * know whether delivery actually happened must inspect `error` themselves; simply
+ * awaiting the send reports success for every failure mode.
+ */
+function assertDelivered(result: { error: { message?: string; name?: string } | null }): void {
+  if (result.error) {
+    throw new Error(result.error.message ?? result.error.name ?? 'Email delivery failed')
+  }
+}
+
+export async function sendInvoiceEmail(params: InvoiceEmailParams): Promise<void> {
+  const from = buildFromAddress({ displayName: params.fromDisplayName, domain: params.fromDomain })
+  const invoiceUrl = `${PUBLIC_BASE_URL}/invoices/${params.token}`
+  const subject = params.isUpdate
+    ? `Updated invoice ${params.invoiceNumber} from ${params.orgName}`
+    : `Invoice ${params.invoiceNumber} from ${params.orgName}`
+
+  assertDelivered(await getResend().emails.send({
+    from,
+    to: params.to,
+    ...(params.replyTo ? { replyTo: params.replyTo } : {}),
+    subject,
+    html: `
+      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
+        <h1 style="color:#1a1a1a;font-size:20px;margin-bottom:8px">Invoice ${escapeHtml(params.invoiceNumber)}</h1>
+        <p style="color:#1a1a1a;font-size:16px;margin-bottom:8px">
+          ${escapeHtml(params.orgName)} sent you an invoice for <strong>$${params.total.toFixed(2)}</strong>${params.dueDate ? `, due ${escapeHtml(params.dueDate)}` : ''}.
+        </p>
+        ${params.message ? `<p style="color:#4b5563;font-size:15px;margin-bottom:16px">${escapeHtml(params.message)}</p>` : ''}
+        <a href="${invoiceUrl}"
+           style="display:inline-block;background:#1a1a1a;color:#fff;padding:12px 24px;
+                  border-radius:6px;text-decoration:none;font-weight:600">
+          View invoice
+        </a>
+      </div>
+    `,
+  }))
 }

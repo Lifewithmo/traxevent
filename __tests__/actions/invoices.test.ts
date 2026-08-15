@@ -8,6 +8,7 @@ const listInvoicesSpy = vi.hoisted(() => vi.fn())
 const listAllInvoicesSpy = vi.hoisted(() => vi.fn())
 const getProposalSpy = vi.hoisted(() => vi.fn())
 const counterGetSpy = vi.hoisted(() => vi.fn())
+const counterSetSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const txSetSpy = vi.hoisted(() => vi.fn())
 const txUpdateSpy = vi.hoisted(() => vi.fn())
 const getLeadSpy = vi.hoisted(() => vi.fn())
@@ -15,6 +16,13 @@ const getLeadSpy = vi.hoisted(() => vi.fn())
 // leadsRef(orgId).doc(leadId).get() — a direct Firestore read, not the guarded
 // @/actions/leads getLead — so it needs its own mocked doc().get() response.
 const leadDocGetSpy = vi.hoisted(() => vi.fn())
+// sendInvoice reads the org doc directly (adminDb.collection('orgs').doc(orgId).get())
+// for branding, independent of the invoices/counters/leads sub-collections above.
+const orgDocGetSpy = vi.hoisted(() =>
+  vi.fn().mockResolvedValue({ exists: true, data: () => ({ id: 'org-1', name: 'BrewTrax' }) })
+)
+const sendInvoiceEmailSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
+const getVerifiedSendingDomainSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 
 vi.mock('@/lib/firebase-admin', () => {
   const invoicesCol = {
@@ -33,6 +41,7 @@ vi.mock('@/lib/firebase-admin', () => {
   const countersCol = {
     doc: vi.fn().mockImplementation(() => ({
       get: counterGetSpy,
+      set: counterSetSpy,
     })),
   }
   const leadsCol = {
@@ -47,6 +56,7 @@ vi.mock('@/lib/firebase-admin', () => {
       if (sub === 'leads') return leadsCol
       return {}
     }),
+    get: orgDocGetSpy,
   }
   return {
     adminDb: {
@@ -64,7 +74,7 @@ vi.mock('@/lib/firebase-admin', () => {
 
 vi.mock('@/lib/auth/assert', () => ({
   assertOrgMember: vi.fn().mockResolvedValue({ role: 'admin' }),
-  assertOrgAdmin: vi.fn().mockResolvedValue({ role: 'admin' }),
+  assertOrgAdmin: vi.fn().mockResolvedValue({ role: 'admin', email: 'admin@example.com' }),
 }))
 
 vi.mock('@/lib/tokens', () => ({
@@ -79,21 +89,29 @@ vi.mock('@/actions/leads', () => ({
   getLead: getLeadSpy,
 }))
 
+vi.mock('@/lib/email', () => ({
+  sendInvoiceEmail: sendInvoiceEmailSpy,
+}))
+
+vi.mock('@/actions/domains', () => ({
+  getVerifiedSendingDomain: getVerifiedSendingDomainSpy,
+}))
+
 import {
   listInvoices,
   listAllInvoices,
   getInvoice,
   createInvoice,
   updateInvoice,
-  approveInvoice,
-  issueInvoice,
+  sendInvoice,
   voidInvoice,
-  replaceInvoice,
   recordPayment,
   deleteInvoice,
   generateFromProposal,
+  getInvoiceNumbering,
+  updateInvoiceNumbering,
 } from '@/actions/invoices'
-import { issueInvoiceCore } from '@/lib/crm/invoices'
+import { markInvoiceSentCore } from '@/lib/crm/invoices'
 import { invoiceAmountDue } from '@/lib/invoices'
 
 describe('invoices actions', () => {
@@ -199,9 +217,9 @@ describe('invoices actions', () => {
       line_items: [{ description: 'Base', quantity: 1, unit_price: 2000 }],
       selection: { optional_item_ids: [], selected_total: 2000, selected_at: '' }, created_at: '',
     })
-    // one prior issued invoice billed 500 against this source
+    // one prior sent invoice billed 500 against this source
     listInvoicesSpy.mockResolvedValue({ docs: [{ data: () => ({
-      id: 'iA', org_id: 'org-1', lead_id: 'lead-1', token: 't', lifecycle: 'issued',
+      id: 'iA', org_id: 'org-1', lead_id: 'lead-1', token: 't', lifecycle: 'sent',
       source: { type: 'proposal', id: 'p1' }, line_items: [{ description: 'Deposit', quantity: 1, unit_price: 500 }],
       payments: [], created_at: '',
     }) }] })
@@ -219,7 +237,7 @@ describe('invoices actions', () => {
     })
     // already billed 1000 (fully) against this source
     listInvoicesSpy.mockResolvedValue({ docs: [{ data: () => ({
-      id: 'iA', org_id: 'org-1', lead_id: 'lead-1', token: 't', lifecycle: 'issued',
+      id: 'iA', org_id: 'org-1', lead_id: 'lead-1', token: 't', lifecycle: 'sent',
       source: { type: 'proposal', id: 'p1' }, line_items: [{ description: 'x', quantity: 1, unit_price: 1000 }],
       payments: [], created_at: '',
     }) }] })
@@ -249,7 +267,7 @@ describe('invoices actions', () => {
       line_items: [{ id: 'r1', description: 'Base', quantity: 1, unit_price: 1000 }],
       selection: { optional_item_ids: [], selected_total: 1000, selected_at: '' }, created_at: '' })
     listInvoicesSpy.mockResolvedValue({ docs: [{ data: () => ({ id: 'iA', org_id: 'org-1', lead_id: 'lead-1',
-      token: 't', lifecycle: 'issued', source: { type: 'proposal', id: 'p1' },
+      token: 't', lifecycle: 'sent', source: { type: 'proposal', id: 'p1' },
       line_items: [{ description: 'Deposit', quantity: 1, unit_price: 400 }], payments: [], created_at: '' }) }] })
     const inv = await generateFromProposal('org-1', 'lead-1', 'p1', { type: 'final' })
     expect(inv.line_items).toEqual([expect.objectContaining({ description: 'Base', unit_price: 1000 })])
@@ -331,43 +349,25 @@ describe('invoices actions', () => {
     expect('discount' in arg).toBe(true)
   })
 
-  it('updateInvoice rejects financial edits on an issued invoice', async () => {
+  it('updateInvoice rejects financial edits on a sent invoice', async () => {
     invoiceDocGetSpy.mockResolvedValue({
       exists: true,
-      data: () => ({ id: 'inv-1', lifecycle: 'issued', line_items: [], payments: [], created_at: '' }),
+      data: () => ({ id: 'inv-1', lifecycle: 'sent', line_items: [], payments: [], created_at: '' }),
     })
     await expect(updateInvoice('org-1', 'inv-1', { line_items: [] })).rejects.toThrow(/locked/i)
     expect(invoiceDocUpdateSpy).not.toHaveBeenCalled()
   })
 
-  it('updateInvoice allows editing notes on an issued invoice', async () => {
+  it('updateInvoice allows editing notes on a sent invoice', async () => {
     invoiceDocGetSpy.mockResolvedValue({
       exists: true,
-      data: () => ({ id: 'inv-1', lifecycle: 'issued', line_items: [], payments: [], created_at: '' }),
+      data: () => ({ id: 'inv-1', lifecycle: 'sent', line_items: [], payments: [], created_at: '' }),
     })
     await updateInvoice('org-1', 'inv-1', { notes: 'call before delivery' })
     expect(invoiceDocUpdateSpy).toHaveBeenCalledWith(expect.objectContaining({ notes: 'call before delivery' }))
   })
 
-  it('approveInvoice moves draft to approved', async () => {
-    invoiceDocGetSpy.mockResolvedValue({
-      exists: true,
-      data: () => ({ id: 'inv-1', lifecycle: 'draft', line_items: [], payments: [], created_at: '' }),
-    })
-    await approveInvoice('org-1', 'inv-1')
-    expect(invoiceDocUpdateSpy).toHaveBeenCalledWith(expect.objectContaining({ lifecycle: 'approved' }))
-  })
-
-  it('approveInvoice throws when the invoice is not a draft', async () => {
-    invoiceDocGetSpy.mockResolvedValue({
-      exists: true,
-      data: () => ({ id: 'inv-1', lifecycle: 'issued', line_items: [], payments: [], created_at: '' }),
-    })
-    await expect(approveInvoice('org-1', 'inv-1')).rejects.toThrow(/draft/i)
-    expect(invoiceDocUpdateSpy).not.toHaveBeenCalled()
-  })
-
-  it('issueInvoice assigns the next sequential number and locks the invoice', async () => {
+  it('sendInvoice (draft) assigns the next sequential number, locks the invoice, and appends a version snapshot', async () => {
     invoiceDocGetSpy.mockResolvedValue({
       exists: true,
       data: () => ({
@@ -377,19 +377,21 @@ describe('invoices actions', () => {
     })
     counterGetSpy.mockResolvedValue({ exists: true, data: () => ({ seq: 1000, prefix: 'INV-' }) })
 
-    const res = await issueInvoice('org-1', 'inv-1')
+    const res = await sendInvoice('org-1', 'inv-1', { to: 'client@example.com' })
 
     expect(res.number).toBe('INV-1001')
     expect(txSetSpy).toHaveBeenCalledWith(expect.anything(), { seq: 1001 }, { merge: true })
     expect(txSetSpy).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ lifecycle: 'issued', number: 'INV-1001' }),
+      expect.objectContaining({ lifecycle: 'sent', number: 'INV-1001', versions: expect.any(Array) }),
       { merge: true }
     )
+    const invoiceSetCall = txSetSpy.mock.calls.find((c) => (c[1] as { lifecycle?: string })?.lifecycle === 'sent')
+    expect((invoiceSetCall![1] as { versions?: unknown[] }).versions).toHaveLength(1)
     expect(txUpdateSpy).not.toHaveBeenCalled()
   })
 
-  it('issueInvoice seeds the counter doc via set({ merge: true }) when it does not exist yet (first issuance in the org)', async () => {
+  it('sendInvoice (draft) seeds the counter doc via set({ merge: true }) when it does not exist yet (first issuance in the org)', async () => {
     invoiceDocGetSpy.mockResolvedValue({
       exists: true,
       data: () => ({
@@ -400,23 +402,32 @@ describe('invoices actions', () => {
     // No counter doc has ever been created for this org yet.
     counterGetSpy.mockResolvedValue({ exists: false })
 
-    const res = await issueInvoice('org-1', 'inv-1')
+    const res = await sendInvoice('org-1', 'inv-1', { to: 'client@example.com' })
 
     expect(res.number).toBe('1001')
     expect(txSetSpy).toHaveBeenCalledWith(expect.anything(), { seq: 1001 }, { merge: true })
     expect(txUpdateSpy).not.toHaveBeenCalled()
   })
 
-  it('issueInvoice throws when the invoice is not draft or approved', async () => {
+  it('sendInvoice throws when the invoice is void', async () => {
     invoiceDocGetSpy.mockResolvedValue({
       exists: true,
-      data: () => ({ id: 'inv-1', lifecycle: 'voided', line_items: [], payments: [], created_at: '' }),
+      data: () => ({ id: 'inv-1', lifecycle: 'void', line_items: [], payments: [], created_at: '' }),
     })
-    await expect(issueInvoice('org-1', 'inv-1')).rejects.toThrow(/cannot issue/i)
+    await expect(sendInvoice('org-1', 'inv-1', { to: 'client@example.com' })).rejects.toThrow(/cannot send/i)
     expect(txSetSpy).not.toHaveBeenCalled()
   })
 
-  it('issueInvoice enforces the proposal scope invariant across sibling drafts, not just at generate time', async () => {
+  it('sendInvoice requires a non-blank recipient email', async () => {
+    invoiceDocGetSpy.mockResolvedValue({
+      exists: true,
+      data: () => ({ id: 'inv-1', lifecycle: 'draft', line_items: [], payments: [], created_at: '' }),
+    })
+    await expect(sendInvoice('org-1', 'inv-1', { to: '  ' })).rejects.toThrow(/recipient email/i)
+    expect(txSetSpy).not.toHaveBeenCalled()
+  })
+
+  it('sendInvoice (draft) enforces the proposal scope invariant across sibling drafts, not just at generate time', async () => {
     const proposal = {
       id: 'p1', org_id: 'org-1', lead_id: 'lead-1', token: 'pt', status: 'accepted',
       line_items: [{ description: 'Package', quantity: 1, unit_price: 1000 }], created_at: '2026-01-01',
@@ -443,22 +454,22 @@ describe('invoices actions', () => {
     listInvoicesSpy.mockResolvedValueOnce({ docs: [] })
     counterGetSpy.mockResolvedValue({ exists: true, data: () => ({ seq: 1000 }) })
 
-    const first = await issueInvoice('org-1', 'inv-a')
+    const first = await sendInvoice('org-1', 'inv-a', { to: 'client@example.com' })
     expect(first.number).toBe('1001')
 
     // Issuing draftB: pre-check read + tx.get both see draftB; draftA now shows up as
-    // already-issued in the sibling list, at $600 already billed against the $1000 proposal.
+    // already-sent in the sibling list, at $600 already billed against the $1000 proposal.
     invoiceDocGetSpy
       .mockResolvedValueOnce({ exists: true, data: () => draftB })
       .mockResolvedValueOnce({ exists: true, data: () => draftB })
     listInvoicesSpy.mockResolvedValueOnce({
-      docs: [{ data: () => ({ ...draftA, lifecycle: 'issued', number: '1001' }) }],
+      docs: [{ data: () => ({ ...draftA, lifecycle: 'sent', number: '1001' }) }],
     })
 
-    await expect(issueInvoice('org-1', 'inv-b')).rejects.toThrow(/exceeds approved scope/i)
+    await expect(sendInvoice('org-1', 'inv-b', { to: 'client@example.com' })).rejects.toThrow(/exceeds approved scope/i)
   })
 
-  it('issueInvoice scope check uses the accepted total, not invoiceTotal(proposal.line_items) (package proposal)', async () => {
+  it('sendInvoice (draft) scope check uses the accepted total, not invoiceTotal(proposal.line_items) (package proposal)', async () => {
     // proposal.line_items sums to 5000 (would let old, buggy `invoiceTotal(proposal.line_items)`
     // scope math wave through over-billing) but the accepted (selected) total is only 1000.
     const proposal = {
@@ -479,20 +490,20 @@ describe('invoices actions', () => {
     invoiceDocGetSpy
       .mockResolvedValueOnce({ exists: true, data: () => draft })
       .mockResolvedValueOnce({ exists: true, data: () => draft })
-    // a sibling already issued for the full accepted total (1000)
+    // a sibling already sent for the full accepted total (1000)
     listInvoicesSpy.mockResolvedValueOnce({
       docs: [{ data: () => ({
-        id: 'iA', org_id: 'org-1', lead_id: 'lead-1', token: 't', lifecycle: 'issued',
+        id: 'iA', org_id: 'org-1', lead_id: 'lead-1', token: 't', lifecycle: 'sent',
         source: { type: 'proposal', id: 'p1' }, line_items: [{ description: 'Package', quantity: 1, unit_price: 1000 }],
         payments: [], created_at: '2026-02-01',
       }) }],
     })
     counterGetSpy.mockResolvedValue({ exists: true, data: () => ({ seq: 1000 }) })
 
-    await expect(issueInvoice('org-1', 'inv-c')).rejects.toThrow(/exceeds approved scope/i)
+    await expect(sendInvoice('org-1', 'inv-c', { to: 'client@example.com' })).rejects.toThrow(/exceeds approved scope/i)
   })
 
-  it('issueInvoiceCore assigns the next sequential number, honors a caller-supplied issuedAt, and increments the counter', async () => {
+  it('markInvoiceSentCore assigns the next sequential number, honors a caller-supplied sentAt, and increments the counter', async () => {
     invoiceDocGetSpy.mockResolvedValue({
       exists: true,
       data: () => ({
@@ -502,52 +513,55 @@ describe('invoices actions', () => {
     })
     counterGetSpy.mockResolvedValue({ exists: true, data: () => ({ seq: 1000, prefix: 'INV-' }) })
 
-    const res = await issueInvoiceCore('org-1', 'inv-1', { issuedAt: '2026-08-01T00:00:00.000Z' })
+    const res = await markInvoiceSentCore('org-1', 'inv-1', { sentAt: '2026-08-01T00:00:00.000Z' })
 
     expect(res.number).toBe('INV-1001')
     expect(txSetSpy).toHaveBeenCalledWith(expect.anything(), { seq: 1001 }, { merge: true })
     expect(txSetSpy).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ lifecycle: 'issued', number: 'INV-1001', issued_at: '2026-08-01T00:00:00.000Z' }),
+      expect.objectContaining({
+        lifecycle: 'sent', number: 'INV-1001', sent_at: '2026-08-01T00:00:00.000Z',
+        versions: [expect.objectContaining({ sent_at: '2026-08-01T00:00:00.000Z' })],
+      }),
       { merge: true }
     )
   })
 
-  it('issueInvoiceCore also accepts an approved invoice and defaults issued_at to now when opts is omitted', async () => {
+  it('markInvoiceSentCore defaults sent_at to now when opts is omitted', async () => {
     invoiceDocGetSpy.mockResolvedValue({
       exists: true,
       data: () => ({
-        id: 'inv-1', org_id: 'org-1', lead_id: 'lead-1', token: 't', lifecycle: 'approved', type: 'quick',
+        id: 'inv-1', org_id: 'org-1', lead_id: 'lead-1', token: 't', lifecycle: 'draft', type: 'quick',
         line_items: [], payments: [], created_at: '2026-01-01',
       }),
     })
     counterGetSpy.mockResolvedValue({ exists: false })
 
-    const res = await issueInvoiceCore('org-1', 'inv-1')
+    const res = await markInvoiceSentCore('org-1', 'inv-1')
 
     expect(res.number).toBe('1001')
-    const invoiceSetCall = txSetSpy.mock.calls.find((c) => (c[1] as { lifecycle?: string })?.lifecycle === 'issued')
+    const invoiceSetCall = txSetSpy.mock.calls.find((c) => (c[1] as { lifecycle?: string })?.lifecycle === 'sent')
     expect(invoiceSetCall).toBeDefined()
-    expect((invoiceSetCall![1] as { issued_at?: string }).issued_at).toEqual(expect.any(String))
+    expect((invoiceSetCall![1] as { sent_at?: string }).sent_at).toEqual(expect.any(String))
   })
 
-  it('issueInvoiceCore throws when the invoice is not draft or approved and writes nothing', async () => {
+  it('markInvoiceSentCore throws when the invoice is not a draft and writes nothing', async () => {
     invoiceDocGetSpy.mockResolvedValue({
       exists: true,
-      data: () => ({ id: 'inv-1', lifecycle: 'voided', line_items: [], payments: [], created_at: '' }),
+      data: () => ({ id: 'inv-1', lifecycle: 'void', line_items: [], payments: [], created_at: '' }),
     })
-    await expect(issueInvoiceCore('org-1', 'inv-1')).rejects.toThrow(/cannot issue/i)
+    await expect(markInvoiceSentCore('org-1', 'inv-1')).rejects.toThrow(/cannot send/i)
     expect(txSetSpy).not.toHaveBeenCalled()
   })
 
-  it('voidInvoice sets lifecycle voided and keeps the number', async () => {
+  it('voidInvoice sets lifecycle void and keeps the number', async () => {
     invoiceDocGetSpy.mockResolvedValue({
       exists: true,
-      data: () => ({ id: 'inv-1', lifecycle: 'issued', number: 'INV-1001', line_items: [], payments: [], created_at: '' }),
+      data: () => ({ id: 'inv-1', lifecycle: 'sent', number: 'INV-1001', line_items: [], payments: [], created_at: '' }),
     })
     await voidInvoice('org-1', 'inv-1', 'duplicate')
     expect(invoiceDocUpdateSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ lifecycle: 'voided', void_reason: 'duplicate' })
+      expect.objectContaining({ lifecycle: 'void', void_reason: 'duplicate' })
     )
   })
 
@@ -560,47 +574,16 @@ describe('invoices actions', () => {
 
   it('voidInvoice rejects an already-voided invoice', async () => {
     invoiceDocGetSpy.mockResolvedValue({ exists: true, data: () => ({
-      id: 'inv-1', lifecycle: 'voided', line_items: [], payments: [], created_at: '' }) })
-    await expect(voidInvoice('org-1', 'inv-1')).rejects.toThrow(/already voided/i)
+      id: 'inv-1', lifecycle: 'void', line_items: [], payments: [], created_at: '' }) })
+    await expect(voidInvoice('org-1', 'inv-1')).rejects.toThrow(/already void/i)
     expect(invoiceDocUpdateSpy).not.toHaveBeenCalled()
-  })
-
-  it('replaceInvoice rejects a non-issued invoice', async () => {
-    invoiceDocGetSpy.mockResolvedValue({ exists: true, data: () => ({
-      id: 'inv-1', lifecycle: 'draft', line_items: [], payments: [], created_at: '' }) })
-    await expect(replaceInvoice('org-1', 'inv-1')).rejects.toThrow(/issued/i)
-  })
-
-  it('replaceInvoice voids the original and creates a linked draft copy', async () => {
-    invoiceDocGetSpy.mockResolvedValue({
-      exists: true,
-      data: () => ({
-        id: 'inv-1', org_id: 'org-1', lead_id: 'lead-1', token: 't', lifecycle: 'issued', type: 'quick',
-        line_items: [{ description: 'x', quantity: 1, unit_price: 500 }], payments: [], created_at: '2026-01-01',
-        source: { type: 'proposal', id: 'p1', label: 'Accepted proposal' },
-      }),
-    })
-
-    const draft = await replaceInvoice('org-1', 'inv-1')
-
-    expect(draft.lifecycle).toBe('draft')
-    expect(draft.replaces_id).toBe('inv-1')
-    expect(invoiceDocUpdateSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ lifecycle: 'replaced', replaced_by_id: draft.id })
-    )
-    expect(invoiceDocUpdateSpy).toHaveBeenCalledWith(
-      expect.objectContaining({
-        replaces_id: 'inv-1',
-        source: { type: 'proposal', id: 'p1', label: 'Accepted proposal' },
-      })
-    )
   })
 
   it('recordPayment appends a partial payment and sets payment_status to partial', async () => {
     invoiceDocGetSpy.mockResolvedValue({
       exists: true,
       data: () => ({
-        id: 'i1', lifecycle: 'issued',
+        id: 'i1', lifecycle: 'sent',
         line_items: [{ description: 'DJ', quantity: 1, unit_price: 100 }],
         payments: [],
         created_at: '',
@@ -621,7 +604,7 @@ describe('invoices actions', () => {
     invoiceDocGetSpy.mockResolvedValue({
       exists: true,
       data: () => ({
-        id: 'i1', lifecycle: 'issued',
+        id: 'i1', lifecycle: 'sent',
         line_items: [{ description: 'DJ', quantity: 1, unit_price: 100 }],
         payments: [],
         created_at: '',
@@ -648,7 +631,7 @@ describe('invoices actions', () => {
     invoiceDocGetSpy.mockResolvedValue({
       exists: true,
       data: () => ({
-        id: 'i1', lifecycle: 'voided',
+        id: 'i1', lifecycle: 'void',
         line_items: [{ description: 'DJ', quantity: 1, unit_price: 100 }],
         payments: [],
         created_at: '',
@@ -662,7 +645,7 @@ describe('invoices actions', () => {
 
   it('recordPayment stores tip_amount separately and recomputes payment_status', async () => {
     invoiceDocGetSpy.mockResolvedValue({ exists: true, data: () => ({
-      id: 'inv-1', lifecycle: 'issued', line_items: [{ description: 'x', quantity: 1, unit_price: 100 }], payments: [], created_at: '',
+      id: 'inv-1', lifecycle: 'sent', line_items: [{ description: 'x', quantity: 1, unit_price: 100 }], payments: [], created_at: '',
     }) })
     await recordPayment('org-1', 'inv-1', { amount: 100, tip_amount: 20 })
     const arg = invoiceDocUpdateSpy.mock.calls.at(-1)![0]
@@ -679,10 +662,10 @@ describe('invoices actions', () => {
     expect(invoiceDocDeleteSpy).toHaveBeenCalled()
   })
 
-  it('deleteInvoice refuses to delete an issued invoice', async () => {
+  it('deleteInvoice refuses to delete a sent invoice', async () => {
     invoiceDocGetSpy.mockResolvedValue({
       exists: true,
-      data: () => ({ id: 'inv-1', lifecycle: 'issued', line_items: [], payments: [], created_at: '' }),
+      data: () => ({ id: 'inv-1', lifecycle: 'sent', line_items: [], payments: [], created_at: '' }),
     })
     await expect(deleteInvoice('org-1', 'inv-1')).rejects.toThrow(/cannot delete/i)
     expect(invoiceDocDeleteSpy).not.toHaveBeenCalled()
@@ -718,5 +701,254 @@ describe('invoices actions', () => {
     listInvoicesSpy.mockResolvedValue({ docs: [] })
     const inv = await generateFromProposal('org-1', 'lead-1', 'p1', { type: 'deposit' })
     expect(inv.customer_id).toBe('cust-9')
+  })
+})
+
+describe('sendInvoice', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    invoiceDocGetSpy.mockReset()
+    getLeadSpy.mockResolvedValue(null)
+    leadDocGetSpy.mockResolvedValue({ exists: false })
+    orgDocGetSpy.mockResolvedValue({ exists: true, data: () => ({ id: 'org1', name: 'BrewTrax' }) })
+    getVerifiedSendingDomainSpy.mockResolvedValue(undefined)
+    sendInvoiceEmailSpy.mockResolvedValue(undefined)
+  })
+
+  const draftInvoice = {
+    id: 'inv1', org_id: 'org1', lead_id: 'lead-1', token: 't', lifecycle: 'draft', type: 'quick',
+    line_items: [{ description: 'x', quantity: 1, unit_price: 500 }], payments: [], created_at: '2026-01-01',
+  }
+
+  const sentInvoiceWithOneVersion = {
+    id: 'inv1', org_id: 'org1', lead_id: 'lead-1', token: 't', lifecycle: 'sent', type: 'quick', number: 'BRW-1042',
+    line_items: [{ description: 'x', quantity: 1, unit_price: 500 }], payments: [], created_at: '2026-01-01',
+    sent_at: '2026-01-02T00:00:00.000Z',
+    versions: [{ sent_at: '2026-01-02T00:00:00.000Z', line_items: [{ description: 'x', quantity: 1, unit_price: 500 }] }],
+  }
+
+  // What Firestore would actually hold after sendInvoice's `input.updates` write lands —
+  // used to mock the post-update refetch (and the transaction's own re-read) so the
+  // resend test can assert the appended snapshot reflects the applied edit, not stale data.
+  const sentInvoiceAfterUpdate = {
+    ...sentInvoiceWithOneVersion,
+    line_items: [{ description: 'Extra hour', quantity: 1, unit_price: 100 }],
+  }
+
+  it('draft: assigns number, snapshots v1, emails, marks delivery sent', async () => {
+    invoiceDocGetSpy.mockResolvedValue({ exists: true, data: () => draftInvoice })
+    counterGetSpy.mockResolvedValue({ exists: true, data: () => ({ seq: 1041, prefix: 'BRW-' }) })
+    const res = await sendInvoice('org1', 'inv1', { to: 'client@example.com', message: 'hi' })
+    expect(res.number).toBe('BRW-1042')
+    expect(res.emailDelivered).toBe(true)
+    const txPayload = txSetSpy.mock.calls.find((c) => (c[1] as { lifecycle?: string })?.lifecycle === 'sent')![1] as { versions?: unknown[] }
+    expect(txPayload.versions).toHaveLength(1)
+    expect(sendInvoiceEmailSpy).toHaveBeenCalledWith(expect.objectContaining({ to: 'client@example.com', isUpdate: false }))
+    expect(invoiceDocUpdateSpy).toHaveBeenCalledWith(expect.objectContaining({ delivery: 'sent' }))
+  })
+
+  it('sent: applies updates, appends a snapshot, emails as update', async () => {
+    // Three sequential reads: preSnap, the post-update refetch, and the resend
+    // transaction's own tx.get(ref) re-read (Finding 1's fix) — all must see the
+    // applied update, not the stale pre-update line_items.
+    invoiceDocGetSpy
+      .mockResolvedValueOnce({ exists: true, data: () => sentInvoiceWithOneVersion })
+      .mockResolvedValueOnce({ exists: true, data: () => sentInvoiceAfterUpdate })
+      .mockResolvedValueOnce({ exists: true, data: () => sentInvoiceAfterUpdate })
+    await sendInvoice('org1', 'inv1', { to: 'c@e.com', updates: { line_items: [{ description: 'Extra hour', quantity: 1, unit_price: 100 }] } })
+    // The versions write now happens inside the resend transaction (tx.update), not a
+    // bare ref.update() — assert against txUpdateSpy, and assert the appended snapshot's
+    // content, not just its length, so a dropped refetch/re-read would fail this test.
+    const updateArg = txUpdateSpy.mock.calls.find((c) => (c[1] as { versions?: unknown[] })?.versions)![1] as {
+      versions?: Array<{ line_items?: unknown[] }>
+    }
+    expect(updateArg.versions).toHaveLength(2)
+    expect(updateArg.versions![1].line_items).toEqual([{ description: 'Extra hour', quantity: 1, unit_price: 100 }])
+    expect(sendInvoiceEmailSpy).toHaveBeenCalledWith(expect.objectContaining({ isUpdate: true }))
+  })
+
+  // Send update is the only write path onto a sent invoice. Without a whitelist its
+  // `updates` payload is a raw ref.update(), so any org admin could hand it `number`
+  // and rewrite the counter-assigned number — two invoices could then share one.
+  it('sent: rejects a send update that tries to rewrite the counter-assigned number', async () => {
+    invoiceDocGetSpy.mockResolvedValue({ exists: true, data: () => sentInvoiceWithOneVersion })
+    await expect(
+      sendInvoice('org1', 'inv1', { to: 'c@e.com', updates: { title: 'Renamed', number: 'INV-0001' } }),
+    ).rejects.toThrow(/number/i)
+    // Nothing may reach Firestore: not the number, not the title that rode along with it.
+    expect(invoiceDocUpdateSpy).not.toHaveBeenCalled()
+    expect(sendInvoiceEmailSpy).not.toHaveBeenCalled()
+  })
+
+  it('sent: rejects a send update carrying type/source/credits', async () => {
+    invoiceDocGetSpy.mockResolvedValue({ exists: true, data: () => sentInvoiceWithOneVersion })
+    await expect(
+      sendInvoice('org1', 'inv1', { to: 'c@e.com', updates: { type: 'final' } }),
+    ).rejects.toThrow(/type/i)
+    expect(invoiceDocUpdateSpy).not.toHaveBeenCalled()
+  })
+
+  it('sent: allows the editor\'s own pricing/terms fields through', async () => {
+    invoiceDocGetSpy.mockResolvedValue({ exists: true, data: () => sentInvoiceAfterUpdate })
+    await sendInvoice('org1', 'inv1', {
+      to: 'c@e.com',
+      updates: {
+        title: 'T', due_date: '2026-09-01', notes: 'n',
+        line_items: [{ description: 'Extra hour', quantity: 1, unit_price: 100 }],
+        discount: { type: 'fixed', value: 5 }, tax_rate: 8.25,
+      },
+    })
+    expect(invoiceDocUpdateSpy).toHaveBeenCalledWith(expect.objectContaining({ title: 'T', tax_rate: 8.25 }))
+  })
+
+  // A sent proposal-derived invoice is still editable through Send update, so running
+  // the scope guardrail only on first send left a UI-reachable bypass: a $500 deposit
+  // against a $1000 proposal could be re-sent as $5000.
+  const sentDeposit = {
+    id: 'inv1', org_id: 'org1', lead_id: 'lead-1', token: 't', lifecycle: 'sent', type: 'deposit',
+    number: 'BRW-1042', payments: [], created_at: '2026-01-01', sent_at: '2026-01-02T00:00:00.000Z',
+    source: { type: 'proposal', id: 'p1', label: 'Accepted proposal' },
+    line_items: [{ description: 'Deposit', quantity: 1, unit_price: 500, source: { type: 'proposal', id: 'p1' } }],
+    versions: [{ sent_at: '2026-01-02T00:00:00.000Z', line_items: [{ description: 'Deposit', quantity: 1, unit_price: 500 }] }],
+  }
+  const acceptedProposal = {
+    id: 'p1', org_id: 'org1', lead_id: 'lead-1', token: 'pt', status: 'accepted',
+    line_items: [{ description: 'Package', quantity: 1, unit_price: 1000 }], created_at: '2026-01-01',
+  }
+
+  it('resend: rejects a send update that raises the invoice past the accepted proposal total', async () => {
+    getProposalSpy.mockResolvedValue(acceptedProposal)
+    const raised = { ...sentDeposit, line_items: [{ description: 'Deposit', quantity: 1, unit_price: 5000, source: { type: 'proposal' as const, id: 'p1' } }] }
+    invoiceDocGetSpy
+      .mockResolvedValueOnce({ exists: true, data: () => sentDeposit })   // preSnap
+      .mockResolvedValueOnce({ exists: true, data: () => raised })        // post-update refetch
+    // The sibling list read happens after the update lands, so this invoice appears in it
+    // at its NEW amount — the guard must exclude itself rather than double-count it.
+    listInvoicesSpy.mockResolvedValueOnce({ docs: [{ data: () => raised }] })
+
+    await expect(
+      sendInvoice('org1', 'inv1', { to: 'c@e.com', updates: { line_items: raised.line_items } }),
+    ).rejects.toThrow(/exceeds approved scope/i)
+    expect(txUpdateSpy).not.toHaveBeenCalled()
+    expect(sendInvoiceEmailSpy).not.toHaveBeenCalled()
+  })
+
+  it('resend: a raise that stays inside the accepted total passes (own current amount is not counted as billed)', async () => {
+    getProposalSpy.mockResolvedValue(acceptedProposal)
+    const raised = { ...sentDeposit, line_items: [{ description: 'Deposit', quantity: 1, unit_price: 900, source: { type: 'proposal' as const, id: 'p1' } }] }
+    const sibling = {
+      id: 'inv2', org_id: 'org1', lead_id: 'lead-1', token: 't', lifecycle: 'sent', type: 'progress',
+      number: 'BRW-1043', payments: [], created_at: '2026-01-03',
+      source: { type: 'proposal', id: 'p1' },
+      line_items: [{ description: 'Progress', quantity: 1, unit_price: 100 }],
+    }
+    invoiceDocGetSpy
+      .mockResolvedValueOnce({ exists: true, data: () => sentDeposit })
+      .mockResolvedValueOnce({ exists: true, data: () => raised })
+      .mockResolvedValueOnce({ exists: true, data: () => raised })  // resend tx re-read
+    // 900 (new) + 100 (sibling) = 1000 = accepted. Counting this invoice's own 900 as
+    // already-billed would push the check to 1900 and wrongly reject.
+    listInvoicesSpy.mockResolvedValueOnce({ docs: [{ data: () => raised }, { data: () => sibling }] })
+
+    const res = await sendInvoice('org1', 'inv1', { to: 'c@e.com', updates: { line_items: raised.line_items } })
+    expect(res.number).toBe('BRW-1042')
+    expect(sendInvoiceEmailSpy).toHaveBeenCalledWith(expect.objectContaining({ isUpdate: true }))
+  })
+
+  it('void: rejects', async () => {
+    invoiceDocGetSpy.mockResolvedValue({ exists: true, data: () => ({ ...draftInvoice, lifecycle: 'void' }) })
+    await expect(sendInvoice('org1', 'inv1', { to: 'c@e.com' })).rejects.toThrow(/void/)
+  })
+
+  it('email failure: invoice stays sent, delivery bounced, emailDelivered false', async () => {
+    invoiceDocGetSpy.mockResolvedValue({ exists: true, data: () => draftInvoice })
+    counterGetSpy.mockResolvedValue({ exists: false })
+    sendInvoiceEmailSpy.mockRejectedValueOnce(new Error('resend down'))
+    const res = await sendInvoice('org1', 'inv1', { to: 'c@e.com' })
+    expect(res.emailDelivered).toBe(false)
+    expect(invoiceDocUpdateSpy).toHaveBeenCalledWith(expect.objectContaining({ delivery: 'bounced' }))
+  })
+
+  // The try around the email classifies EMAIL failure only. A Firestore error on the
+  // status write must not masquerade as a bounce — that tells the operator to resend
+  // an invoice the customer already received.
+  it('a Firestore failure on the delivery write is not reported as a bounce', async () => {
+    invoiceDocGetSpy.mockResolvedValue({ exists: true, data: () => draftInvoice })
+    counterGetSpy.mockResolvedValue({ exists: false })
+    invoiceDocUpdateSpy.mockRejectedValueOnce(new Error('firestore unavailable'))
+    await expect(sendInvoice('org1', 'inv1', { to: 'c@e.com' })).rejects.toThrow(/firestore unavailable/)
+    expect(invoiceDocUpdateSpy).not.toHaveBeenCalledWith(expect.objectContaining({ delivery: 'bounced' }))
+  })
+
+  // Legacy pre-lifecycle docs were written as `status: 'sent'` without ever burning a
+  // counter value, so they normalize to lifecycle 'sent' carrying no number. Resending
+  // one used to mail a blank number forever and leave the editor showing the draft's
+  // "№ assigned when sent" placeholder on an obviously-sent invoice.
+  it('resend: backfills a number for a legacy sent invoice that never got one', async () => {
+    const legacySent = {
+      id: 'inv1', org_id: 'org1', lead_id: 'lead-1', token: 't', status: 'sent', type: 'quick',
+      line_items: [{ description: 'x', quantity: 1, unit_price: 500 }], payments: [], created_at: '2026-01-01',
+    }
+    invoiceDocGetSpy.mockResolvedValue({ exists: true, data: () => legacySent })
+    counterGetSpy.mockResolvedValue({ exists: true, data: () => ({ seq: 1041, prefix: 'BRW-' }) })
+
+    const res = await sendInvoice('org1', 'inv1', { to: 'c@e.com' })
+
+    expect(res.number).toBe('BRW-1042')
+    // The number is written in the SAME transaction that burns the counter value —
+    // two concurrent resends must not be able to hand out the same number.
+    expect(txSetSpy).toHaveBeenCalledWith(expect.anything(), { seq: 1042 }, { merge: true })
+    expect(txUpdateSpy).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ number: 'BRW-1042' }))
+    expect(sendInvoiceEmailSpy).toHaveBeenCalledWith(expect.objectContaining({ invoiceNumber: 'BRW-1042', isUpdate: true }))
+  })
+
+  it('resend: an already-numbered invoice keeps its number and burns no counter value', async () => {
+    invoiceDocGetSpy.mockResolvedValue({ exists: true, data: () => sentInvoiceWithOneVersion })
+    const res = await sendInvoice('org1', 'inv1', { to: 'c@e.com' })
+    expect(res.number).toBe('BRW-1042')
+    expect(txSetSpy).not.toHaveBeenCalled()
+    expect(txUpdateSpy.mock.calls[0][1]).not.toHaveProperty('number')
+  })
+
+  // voidInvoice is a plain update outside the resend transaction, so the transaction
+  // must recheck the lifecycle it re-read or a concurrently voided invoice still mails.
+  it('rejects a resend when the invoice is voided between the pre-read and the transaction', async () => {
+    // With no `updates` there is no post-update refetch, so the transaction's
+    // tx.get(ref) is the SECOND read, not the third.
+    invoiceDocGetSpy
+      .mockResolvedValueOnce({ exists: true, data: () => sentInvoiceWithOneVersion })
+      .mockResolvedValueOnce({ exists: true, data: () => ({ ...sentInvoiceWithOneVersion, lifecycle: 'void' }) })
+    await expect(sendInvoice('org1', 'inv1', { to: 'c@e.com' })).rejects.toThrow(/void/)
+    expect(sendInvoiceEmailSpy).not.toHaveBeenCalled()
+  })
+})
+
+describe('invoice numbering settings', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('returns defaults when no counter exists', async () => {
+    counterGetSpy.mockResolvedValue({ exists: false })
+    expect(await getInvoiceNumbering('org1')).toEqual({ next_number: 1001 })
+  })
+
+  it('returns stored prefix and next number', async () => {
+    counterGetSpy.mockResolvedValue({ exists: true, data: () => ({ seq: 1041, prefix: 'BRW-' }) })
+    expect(await getInvoiceNumbering('org1')).toEqual({ prefix: 'BRW-', next_number: 1042 })
+  })
+
+  it('rejects a next number at or below the floor', async () => {
+    counterGetSpy.mockResolvedValue({ exists: true, data: () => ({ seq: 1041 }) })
+    await expect(updateInvoiceNumbering('org1', { next_number: 1041 })).rejects.toThrow(/greater than 1041/)
+  })
+
+  it('stores next_number - 1 as seq and trims the prefix', async () => {
+    counterGetSpy.mockResolvedValue({ exists: true, data: () => ({ seq: 1041 }) })
+    await updateInvoiceNumbering('org1', { next_number: 2000, prefix: ' INV- ' })
+    // updateInvoiceNumbering writes via adminDb.runTransaction, whose mock threads
+    // tx.set through the shared txSetSpy (not the counters doc's own counterSetSpy) —
+    // see the runTransaction mock above.
+    expect(txSetSpy).toHaveBeenCalledWith(expect.anything(), { seq: 1999, prefix: 'INV-' }, { merge: true })
   })
 })

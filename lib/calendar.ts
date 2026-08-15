@@ -171,7 +171,7 @@ export function buildCalendarFeed(orgSlug: string, s: CalendarFeedSources): Cale
   }
 
   for (const inv of s.invoices) {
-    if (inv.lifecycle !== 'issued' || !inv.due_date) continue
+    if (inv.lifecycle !== 'sent' || !inv.due_date) continue
     const balance = invoiceBalance(inv)
     if (balance <= 0) continue
     const lead = leadById.get(inv.lead_id)

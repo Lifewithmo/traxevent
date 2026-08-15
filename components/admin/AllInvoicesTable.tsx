@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { Badge } from '@/components/ui/badge'
 import { invoiceAmountDue, invoiceBalance } from '@/lib/invoices'
 import { INVOICE_LIFECYCLE_LABELS } from '@/lib/invoice-status'
+import { InvoiceNumberingSettings } from '@/components/admin/InvoiceNumberingSettings'
 import type { NormalizedInvoice } from '@/lib/types'
 
 export interface InvoiceRow extends NormalizedInvoice {
@@ -10,15 +11,20 @@ export interface InvoiceRow extends NormalizedInvoice {
 
 interface AllInvoicesTableProps {
   orgSlug: string
+  orgId: string
   rows: InvoiceRow[]
+  numbering: { prefix?: string; next_number: number }
 }
 
-export function AllInvoicesTable({ orgSlug, rows }: AllInvoicesTableProps) {
+export function AllInvoicesTable({ orgSlug, orgId, rows, numbering }: AllInvoicesTableProps) {
   return (
     <div className="p-6 max-w-5xl space-y-4">
-      <div className="flex items-baseline gap-2">
-        <h1 className="text-2xl font-bold">Invoices</h1>
-        <span className="text-sm text-muted-foreground">{rows.length}</span>
+      <div className="flex items-baseline justify-between gap-2">
+        <div className="flex items-baseline gap-2">
+          <h1 className="text-2xl font-bold">Invoices</h1>
+          <span className="text-sm text-muted-foreground">{rows.length}</span>
+        </div>
+        <InvoiceNumberingSettings orgId={orgId} initial={numbering} />
       </div>
 
       <div className="bg-card rounded-lg border overflow-x-auto">

@@ -62,7 +62,7 @@ describe('recordPaymentCore', () => {
     invoiceDocGetSpy.mockResolvedValue({
       exists: true,
       data: () => ({
-        id: 'inv-1', lifecycle: 'issued',
+        id: 'inv-1', lifecycle: 'sent',
         line_items: [{ description: 'DJ', quantity: 1, unit_price: 100 }],
         payments: [],
         created_at: '',

@@ -1,6 +1,6 @@
 # TraxEvent — Product Roadmap
 
-Rollup of where the build stands and what's next. Last updated: 2026-08-13.
+Rollup of where the build stands and what's next. Last updated: 2026-08-15.
 
 The original vision/architecture spec is
 [2026-06-02-product-roadmap-design.md](superpowers/specs/2026-06-02-product-roadmap-design.md)
@@ -109,6 +109,20 @@ EventTrax pivot (neutralization, multi-brand, ops core). Detailed designs live i
   (spec: `superpowers/specs/2026-08-13-pipeline-skin-parity-design.md`).
   Follow-ups: keyboard-move focus retention, StageChip roving focus, legacy
   pipeline test consolidation.
+
+- **Invoice experience redesign** (branch `feat/invoice-redesign`, built
+  2026-08-15) — three-state lifecycle (draft/sent/void) with a version
+  history trail, send-time auto-numbering plus org numbering settings,
+  document-first editor (catalog line-item picker with create-in-place, send
+  dialog), printable public invoice document at `/invoices/[token]`, and a
+  transactional invoice email
+  (spec: `superpowers/sdd/2026-08-15-invoice-experience-redesign`). Built and
+  green (full suite + `next build` clean). Authenticated walkthrough passed
+  against the emulator 2026-08-15 — login, numbering floor, catalog picker,
+  send with number assignment + version history, public page at desktop and
+  375px, edit → send update; PR still to open. Production email delivery for
+  this flow (and the still-unverified PR #66 intake path) remains to be
+  confirmed post-deploy.
 
 ## In flight
 
