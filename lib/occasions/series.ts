@@ -1,4 +1,5 @@
 import { adminDb } from '@/lib/firebase-admin'
+import { FieldValue } from 'firebase-admin/firestore'
 import { randomBytes } from 'crypto'
 import { createEventCore } from '@/lib/events'
 import { seriesOccurrences } from '@/lib/occasions/series-logic'
@@ -124,11 +125,13 @@ export async function updateSeriesCore(
   if (!series) throw new Error('Series not found')
   if (updates.hours) validateHours(updates.hours)
   if (updates.name !== undefined && !updates.name.trim()) throw new Error('Name is required')
+  if (updates.location !== undefined && !updates.location.name?.trim()) throw new Error('Location is required')
+  if (updates.booth_fee !== undefined && updates.booth_fee !== null && !(updates.booth_fee >= 0)) throw new Error('Invalid booth fee')
 
   const cleaned: Record<string, unknown> = {}
   for (const [k, v] of Object.entries(updates)) {
     if (v === undefined) continue
-    cleaned[k] = v
+    cleaned[k] = v === null ? FieldValue.delete() : v
   }
   await seriesRef(orgId).doc(seriesId).update({ ...cleaned, updated_at: new Date().toISOString() })
 
@@ -140,7 +143,7 @@ export async function updateSeriesCore(
     if (updates.name !== undefined) dayPatch.name = updates.name.trim()
     if (updates.location !== undefined) dayPatch.location = updates.location
     if (updates.hours !== undefined) dayPatch.hours = updates.hours
-    if (updates.booth_fee !== undefined && updates.booth_fee !== null) dayPatch.booth_fee = updates.booth_fee
+    if (updates.booth_fee !== undefined) dayPatch.booth_fee = updates.booth_fee === null ? FieldValue.delete() : updates.booth_fee
     for (const day of days) {
       await eventsCol(orgId).doc(day.id).update({ ...dayPatch, updated_at: new Date().toISOString() })
     }

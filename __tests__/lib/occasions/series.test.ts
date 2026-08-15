@@ -7,6 +7,7 @@ const seriesListGetSpy = vi.hoisted(() => vi.fn())
 const daysQueryGetSpy = vi.hoisted(() => vi.fn())
 const eventUpdateSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const createEventCoreSpy = vi.hoisted(() => vi.fn())
+const fieldValueDeleteSentinel = vi.hoisted(() => ({ __op: 'delete' }))
 
 vi.mock('@/lib/firebase-admin', () => {
   const seriesCol = {
@@ -33,6 +34,10 @@ vi.mock('@/lib/firebase-admin', () => {
 // import eventsRef), so the firebase mock above covers day queries/updates —
 // only createEventCore needs stubbing here.
 vi.mock('@/lib/events', () => ({ createEventCore: createEventCoreSpy }))
+
+vi.mock('firebase-admin/firestore', () => ({
+  FieldValue: { delete: vi.fn().mockReturnValue(fieldValueDeleteSentinel) },
+}))
 
 import { createSeriesCore, extendSeriesCore, endSeriesCore, updateSeriesCore } from '@/lib/occasions/series'
 
@@ -147,5 +152,21 @@ describe('endSeriesCore / updateSeriesCore propagation', () => {
     await updateSeriesCore('org-1', 's1', { booth_fee: 55 })
     expect(eventUpdateSpy).not.toHaveBeenCalled()
     expect(seriesUpdateSpy).toHaveBeenCalled()
+  })
+
+  it('updateSeriesCore with booth_fee: null and propagate clears the fee on the series and on future non-archived days', async () => {
+    await updateSeriesCore('org-1', 's1', { booth_fee: null }, { propagate: true, today: '2026-05-05' })
+    expect(seriesUpdateSpy).toHaveBeenCalledWith(expect.objectContaining({
+      booth_fee: fieldValueDeleteSentinel,
+    }))
+    expect(eventUpdateSpy).toHaveBeenCalledTimes(1)
+    expect(eventUpdateSpy).toHaveBeenCalledWith(expect.objectContaining({
+      booth_fee: fieldValueDeleteSentinel,
+    }))
+  })
+
+  it('updateSeriesCore rejects a negative booth_fee and a blank location name', async () => {
+    await expect(updateSeriesCore('org-1', 's1', { booth_fee: -10 })).rejects.toThrow('booth fee')
+    await expect(updateSeriesCore('org-1', 's1', { location: { name: '' } })).rejects.toThrow('Location')
   })
 })
