@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-15
 **Status:** Approved in brainstorming; pending spec review
-**Scope:** Admin invoice editor, invoice lifecycle, numbering settings, catalog-driven line items, customer-facing invoice page, transactional email send.
+**Scope:** Admin invoice editor (rebuilt document-first), invoice lifecycle, numbering settings, catalog-driven line items, customer-facing invoice page, transactional email send.
 
 ## Problem
 
@@ -38,6 +38,19 @@ Read-time mapping (in `normalizeInvoice`): `issued` → `sent`; `approved` → `
 - New org settings section, "Invoice numbering": **prefix** (e.g. `BRW-`) and **next number**. Validation: next number cannot be set at or below the highest sequence already consumed (floor = current `seq`).
 - Data model already supports `{ seq, prefix }`; this adds the settings UI and floor validation only.
 
+## 2b. Page architecture: document-first editor
+
+The editor is rebuilt as a **document, not a form stack**. The current six stacked cards (Details / Line items / Discount & tax / Breakdown / Client link / Payments) are replaced by a single page shaped like the final invoice, ordered by the operator's thought sequence — *who is this for → what am I charging → the math → send it*:
+
+- **Header:** org logo/details left, "Invoice №" + status + dates right (due date edited in place), bill-to customer below.
+- **Body:** the line items table (§3).
+- **Footer:** the Totals block (§4), bottom-right where every invoice puts it; notes below.
+- **Everything edits in place** — click the due date to change it, type in rows, adjust discount on its totals line. What you edit is what the customer sees; the separate Preview button dissolves (§5). **Send invoice** is the single primary action, pinned in the page header.
+- Payments and version history are subordinate, not co-equal blocks: a quiet section beneath the document (or side rail on wide screens).
+- Layout is adaptive: the document reflows on mobile; no fixed-width card columns.
+
+This follows the standing design principle: pages follow human task-flow, not schema order; no stacked-card builds.
+
 ## 3. Line items
 
 - Rows render as a tight table: description, qty, unit price, subtotal, taxable checkbox, trash-icon delete (ghost icon button; replaces the "Remove" text button).
@@ -67,7 +80,7 @@ Balance
 
 - The public share page (`/invoices/[token]`) is redesigned as a document: org logo and details, bill-to, invoice number and dates, line items table, totals (including discount reason), notes, payment status.
 - A print stylesheet makes browser Print / Save-as-PDF produce a clean single document.
-- The editor gains a **Preview** button that shows exactly this page pre-send.
+- The editor and the public page share the same document layout (§2b) — the editor is the editable rendition of it, so no separate Preview button is needed; the pre-send confirm dialog (§6) is the last checkpoint.
 - **Deferred:** server-generated PDF attachment (explicit later bolt-on; the web view is the system of record).
 
 ## 6. Send
