@@ -14,29 +14,33 @@ describe('AdminSidebar workspace nav gating', () => {
     render(<AdminSidebar orgSlug="acme" />)
     expect(screen.getByText('Pipeline')).toBeInTheDocument()
     expect(screen.getByText('Registrants')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /expand catalog/i }))
     expect(screen.getByText('Vendors')).toBeInTheDocument()
   })
 
   it('hides links whose module is not enabled', () => {
     render(<AdminSidebar orgSlug="acme" enabledModules={['leads', 'invoices', 'calendar']} />)
     expect(screen.getByText('Pipeline')).toBeInTheDocument()   // leads
-    // Sales Pipeline section (Pipeline/Proposals/Invoices) is open by default.
-    expect(screen.getByText('Invoices')).toBeInTheDocument()   // invoices
-    expect(screen.queryByText('Proposals')).not.toBeInTheDocument() // module off
     expect(screen.queryByText('Registrants')).not.toBeInTheDocument()
-    expect(screen.queryByText('Vendors')).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Catalog' })).not.toBeInTheDocument() // no catalog modules
+
+    fireEvent.click(screen.getByRole('button', { name: /expand pipeline/i }))
+    expect(screen.queryByText('Proposals')).not.toBeInTheDocument() // module off
+
+    fireEvent.click(screen.getByRole('button', { name: /expand money/i }))
+    expect(screen.getByText('Invoices')).toBeInTheDocument()   // invoices
   })
 
-  it('hides a section header when none of its links are enabled', () => {
+  it('hides a section entirely when none of its links are enabled', () => {
     render(<AdminSidebar orgSlug="acme" enabledModules={['leads']} />)
-    // Insights holds only Reports; with reports disabled the header is gone.
-    expect(screen.queryByText('Insights')).not.toBeInTheDocument()
+    // Money holds Invoices and Reports; with both modules off the section is gone.
+    expect(screen.queryByRole('link', { name: 'Money' })).not.toBeInTheDocument()
   })
 
   it('always shows the Settings block regardless of modules', () => {
     render(<AdminSidebar orgSlug="acme" enabledModules={['leads']} />)
     // Settings panel is collapsed by default on non-settings routes; expand it.
-    fireEvent.click(screen.getByText('Settings'))
+    fireEvent.click(screen.getByRole('button', { name: /expand settings/i }))
     expect(screen.getByText('Members')).toBeInTheDocument()
   })
 })
@@ -55,7 +59,7 @@ describe('AdminSidebar event nav roster gating', () => {
   })
 })
 
-describe('Operations nav (phase 3)', () => {
+describe('Catalog nav (phase 3)', () => {
   it('shows catalog + compliance links when modules enabled', () => {
     render(
       <AdminSidebar
@@ -64,23 +68,25 @@ describe('Operations nav (phase 3)', () => {
         catalogLabel="Menu Packages"
       />
     )
+    fireEvent.click(screen.getByRole('button', { name: /expand catalog/i }))
     expect(screen.getByRole('link', { name: 'Menu Packages' })).toHaveAttribute('href', '/acme/packages')
     expect(screen.getByRole('link', { name: 'Compliance' })).toHaveAttribute('href', '/acme/compliance')
   })
 
-  it('hides the Operations section when neither module is enabled', () => {
+  it('hides the Catalog section when neither module is enabled', () => {
     render(<AdminSidebar orgSlug="acme" enabledModules={['leads']} />)
-    expect(screen.queryByText('Operations')).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Catalog' })).not.toBeInTheDocument()
   })
 
   it('falls back to the universal catalog label', () => {
     render(<AdminSidebar orgSlug="acme" enabledModules={['catalog']} />)
+    fireEvent.click(screen.getByRole('button', { name: /expand catalog/i }))
     expect(screen.getByRole('link', { name: 'Packages' })).toHaveAttribute('href', '/acme/packages')
   })
 
   it('shows Event Ops in the event nav when the ops page is allowed', () => {
     render(<AdminSidebar orgSlug="acme" eventSlug="gala" allowedEventPages={['ops']} />)
-    expect(screen.getByText('Event Ops')).toHaveAttribute('href', '/acme/gala/ops')
+    expect(screen.getByRole('link', { name: 'Event Ops' })).toHaveAttribute('href', '/acme/gala/ops')
   })
 
   it('hides Event Ops when the member lacks the ops grant', () => {
