@@ -5,13 +5,13 @@ import type { InvoiceLineItem } from '@/lib/types'
 const line = (n: number): InvoiceLineItem[] => [{ description: 'x', quantity: 1, unit_price: n }]
 
 describe('previouslyBilled', () => {
-  it('sums issued, non-void invoices matching the source id only', () => {
+  it('sums sent, non-void invoices matching the source id only', () => {
     const invs = [
-      { lifecycle: 'issued' as const, source: { id: 'p1' }, line_items: line(300) },
-      { lifecycle: 'issued' as const, source: { id: 'p1' }, line_items: line(200) },
-      { lifecycle: 'draft' as const, source: { id: 'p1' }, line_items: line(999) },   // not issued
-      { lifecycle: 'voided' as const, source: { id: 'p1' }, line_items: line(999) },  // voided
-      { lifecycle: 'issued' as const, source: { id: 'other' }, line_items: line(999) }, // other source
+      { lifecycle: 'sent' as const, source: { id: 'p1' }, line_items: line(300) },
+      { lifecycle: 'sent' as const, source: { id: 'p1' }, line_items: line(200) },
+      { lifecycle: 'draft' as const, source: { id: 'p1' }, line_items: line(999) },   // not sent
+      { lifecycle: 'void' as const, source: { id: 'p1' }, line_items: line(999) },    // void
+      { lifecycle: 'sent' as const, source: { id: 'other' }, line_items: line(999) }, // other source
     ]
     expect(previouslyBilled(invs, 'p1')).toBe(500)
   })
@@ -19,7 +19,7 @@ describe('previouslyBilled', () => {
   it('sums amount due (net of discount/tax/credits), not raw line totals', () => {
     const invs = [
       {
-        lifecycle: 'issued' as const,
+        lifecycle: 'sent' as const,
         source: { id: 'p1' },
         line_items: line(1000),
         discount: { type: 'percent' as const, value: 10 },

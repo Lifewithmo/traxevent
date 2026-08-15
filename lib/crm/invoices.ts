@@ -19,6 +19,7 @@ import type {
   InvoiceType,
   InvoiceDiscount,
   InvoiceCredit,
+  InvoiceVersion,
   NormalizedInvoice,
   Proposal,
   Lead,
@@ -159,19 +160,17 @@ export async function generateFromProposalCore(
 }
 
 /**
- * Guard-free invoice issuance: assigns the next sequential invoice number and locks
- * the invoice to `lifecycle: 'issued'`. Performs no auth and no scope-invariant check
- * (callers that need the proposal-scope guardrail — e.g. `issueInvoice` — must run it
- * themselves before delegating here, since it requires a plain, non-transaction query).
- *
- * `opts.issuedAt` lets a caller backdate `issued_at` to an external event's own
- * timestamp (e.g. the Stripe payment's `paid_at`, in the deposit reconciler) instead of
- * "now".
+ * Guard-free send transition: assigns the next sequential invoice number, flips the
+ * invoice to `lifecycle: 'sent'`, and appends a version snapshot (the content as sent).
+ * Performs no auth and no scope-invariant check (callers needing the proposal-scope
+ * guardrail must run it before delegating here — transactions cannot run queries).
+ * `opts.sentAt` lets a caller backdate to an external event's own timestamp (e.g. the
+ * Stripe payment's `paid_at` in the deposit reconciler).
  */
-export async function issueInvoiceCore(
+export async function markInvoiceSentCore(
   orgId: string,
   invoiceId: string,
-  opts?: { issuedAt?: string },
+  opts?: { sentAt?: string },
 ): Promise<{ number: string }> {
   const ref = invoicesRef(orgId).doc(invoiceId)
   const counterRef = adminDb.collection('orgs').doc(orgId).collection('counters').doc('invoice_number')
@@ -180,21 +179,37 @@ export async function issueInvoiceCore(
     const snap = await tx.get(ref)
     if (!snap.exists) throw new Error('Invoice not found')
     const inv = normalizeInvoice(snap.data()!)
-    if (inv.lifecycle !== 'draft' && inv.lifecycle !== 'approved') {
-      throw new Error(`Cannot issue an invoice that is ${inv.lifecycle}`)
+    if (inv.lifecycle !== 'draft') {
+      throw new Error(`Cannot send an invoice that is ${inv.lifecycle}`)
     }
     const counterSnap = await tx.get(counterRef)
     const counterData = counterSnap.exists ? (counterSnap.data() as { seq: number; prefix?: string }) : undefined
     const seq = (counterData?.seq ?? 1000) + 1
-    const prefix = counterData?.prefix
-    const number = formatInvoiceNumber(seq, prefix)
+    const number = formatInvoiceNumber(seq, counterData?.prefix)
     const now = new Date().toISOString()
-    const issued_at = opts?.issuedAt ?? now
+    const sent_at = opts?.sentAt ?? now
 
     tx.set(counterRef, { seq }, { merge: true })
-    tx.set(ref, { lifecycle: 'issued', number, issued_at, updated_at: now }, { merge: true })
+    tx.set(ref, {
+      lifecycle: 'sent', number, sent_at, updated_at: now,
+      versions: [...(inv.versions ?? []), invoiceVersionSnapshot(inv, sent_at)],
+    }, { merge: true })
     return { number }
   })
+}
+
+/** Content-as-sent snapshot for the versions[] history. */
+export function invoiceVersionSnapshot(inv: NormalizedInvoice, sentAt: string): InvoiceVersion {
+  return {
+    sent_at: sentAt,
+    line_items: inv.line_items,
+    ...(inv.discount ? { discount: inv.discount } : {}),
+    ...(inv.tax_rate != null ? { tax_rate: inv.tax_rate } : {}),
+    ...(inv.credits ? { credits: inv.credits } : {}),
+    ...(inv.title ? { title: inv.title } : {}),
+    ...(inv.notes ? { notes: inv.notes } : {}),
+    ...(inv.due_date ? { due_date: inv.due_date } : {}),
+  }
 }
 
 /** Guard-free payment recording. Performs no auth. */
@@ -204,7 +219,7 @@ export async function recordPaymentCore(orgId: string, invoiceId: string, input:
   const snap = await ref.get()
   if (!snap.exists) throw new Error('Invoice not found')
   const inv = normalizeInvoice(snap.data()!)
-  if (inv.lifecycle === 'voided' || inv.lifecycle === 'replaced') {
+  if (inv.lifecycle === 'void') {
     throw new Error('Cannot record payment on a voided invoice')
   }
 

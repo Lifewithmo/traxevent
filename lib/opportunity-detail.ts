@@ -162,8 +162,8 @@ export function attachmentChips(i: {
 
   const accepted = i.proposals.filter((p) => p.status === 'accepted').length
   // Invoices moved to a lifecycle + balance model (Invoice.status was removed).
-  // "Outstanding" = not voided/replaced and still carrying a positive balance.
-  const isDead = (v: Invoice) => v.lifecycle === 'voided' || v.lifecycle === 'replaced'
+  // "Outstanding" = not void and still carrying a positive balance.
+  const isDead = (v: Invoice) => v.lifecycle === 'void'
   const outstanding = i.invoices.filter((v) => !isDead(v) && invoiceBalance(v) > 0).length
   const anyLiveInvoice = i.invoices.some((v) => !isDead(v))
   const confirmed = i.vendors.filter((v) => v.status === 'confirmed').length

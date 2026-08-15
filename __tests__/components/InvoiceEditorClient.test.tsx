@@ -6,7 +6,7 @@ import type { NormalizedInvoice } from '@/lib/types'
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }))
 vi.mock('@/actions/invoices', () => ({
   updateInvoice: vi.fn(), issueInvoice: vi.fn(), voidInvoice: vi.fn(),
-  replaceInvoice: vi.fn(), approveInvoice: vi.fn(), recordPayment: vi.fn(), deleteInvoice: vi.fn(),
+  recordPayment: vi.fn(), deleteInvoice: vi.fn(),
 }))
 
 const inv = (o: Partial<NormalizedInvoice>): NormalizedInvoice => ({
@@ -24,8 +24,8 @@ describe('InvoiceEditorClient', () => {
     render(<InvoiceEditorClient orgId="o" orgSlug="s" leadId="l" orgTipsEnabled invoice={inv({ tips_enabled: false })} />)
     expect(screen.queryByLabelText(/tip/i)).not.toBeInTheDocument()
   })
-  it('renders line-item fields read-only once issued', () => {
-    render(<InvoiceEditorClient orgId="o" orgSlug="s" leadId="l" invoice={inv({ lifecycle: 'issued', line_items: [{ description: 'x', quantity: 1, unit_price: 10 }] })} />)
+  it('renders line-item fields read-only once sent', () => {
+    render(<InvoiceEditorClient orgId="o" orgSlug="s" leadId="l" invoice={inv({ lifecycle: 'sent', line_items: [{ description: 'x', quantity: 1, unit_price: 10 }] })} />)
     expect((screen.getByDisplayValue('x') as HTMLInputElement).readOnly).toBe(true)
   })
   it('shows "Bill to" with the customer name when provided', () => {
@@ -56,12 +56,12 @@ describe('InvoiceEditorClient', () => {
     expect(screen.getByTestId('breakdown-total')).toHaveTextContent('990.00')
   })
 
-  it('disables the discount/tax/taxable inputs once issued', () => {
+  it('disables the discount/tax/taxable inputs once sent', () => {
     render(
       <InvoiceEditorClient
         orgId="o" orgSlug="s" leadId="l"
         invoice={inv({
-          lifecycle: 'issued',
+          lifecycle: 'sent',
           discount: { type: 'percent', value: 10 },
           tax_rate: 10,
           line_items: [{ description: 'x', quantity: 1, unit_price: 10 }],

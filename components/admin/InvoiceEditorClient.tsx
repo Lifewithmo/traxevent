@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import {
-  updateInvoice, issueInvoice, approveInvoice, voidInvoice, replaceInvoice, deleteInvoice, recordPayment,
+  updateInvoice, issueInvoice, voidInvoice, deleteInvoice, recordPayment,
 } from '@/actions/invoices'
 import {
   lineItemSubtotal, linesSubtotal, amountPaid, invoiceBalance,
@@ -54,10 +54,8 @@ export function InvoiceEditorClient({ orgId, orgSlug, leadId, invoice, orgTipsEn
   const [taxRate, setTaxRate] = useState<string>(invoice.tax_rate != null ? String(invoice.tax_rate) : '')
 
   const [saving, setSaving] = useState(false)
-  const [approving, setApproving] = useState(false)
   const [issuing, setIssuing] = useState(false)
   const [voiding, setVoiding] = useState(false)
-  const [replacing, setReplacing] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [recording, setRecording] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -110,17 +108,6 @@ export function InvoiceEditorClient({ orgId, orgSlug, leadId, invoice, orgTipsEn
     } finally { setSaving(false) }
   }
 
-  async function handleApprove() {
-    setApproving(true); setError(null); setNotice(null)
-    try {
-      await approveInvoice(orgId, invoice.id)
-      setNotice('Invoice approved.')
-      router.refresh()
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to approve')
-    } finally { setApproving(false) }
-  }
-
   async function handleIssue() {
     setIssuing(true); setError(null); setNotice(null)
     try {
@@ -142,18 +129,6 @@ export function InvoiceEditorClient({ orgId, orgSlug, leadId, invoice, orgTipsEn
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to void')
     } finally { setVoiding(false) }
-  }
-
-  async function handleReplace() {
-    setReplacing(true); setError(null); setNotice(null)
-    try {
-      const draft = await replaceInvoice(orgId, invoice.id)
-      router.push(`/${orgSlug}/leads/${leadId}/invoices/${draft.id}`)
-      router.refresh()
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to replace')
-      setReplacing(false)
-    }
   }
 
   async function handleDelete() {
@@ -205,7 +180,7 @@ export function InvoiceEditorClient({ orgId, orgSlug, leadId, invoice, orgTipsEn
   const totalDue = invoiceAmountDue({ line_items: lineItems, discount, tax_rate: taxRateNum, credits })
   const paid = amountPaid(invoice.payments)
   const balance = invoiceBalance(invoice)
-  const busy = saving || approving || issuing || voiding || replacing || deleting || recording
+  const busy = saving || issuing || voiding || deleting || recording
 
   return (
     <div className="p-6 max-w-2xl space-y-6">
@@ -409,18 +384,12 @@ export function InvoiceEditorClient({ orgId, orgSlug, leadId, invoice, orgTipsEn
       <div className="flex flex-wrap gap-2">
         <Button onClick={handleSave} disabled={busy || locked}>{saving ? 'Saving…' : 'Save'}</Button>
         {invoice.lifecycle === 'draft' && (
-          <Button variant="outline" onClick={handleApprove} disabled={busy}>{approving ? 'Approving…' : 'Approve'}</Button>
-        )}
-        {(invoice.lifecycle === 'draft' || invoice.lifecycle === 'approved') && (
           <Button variant="outline" onClick={handleIssue} disabled={busy}>{issuing ? 'Issuing…' : 'Issue'}</Button>
         )}
-        {invoice.lifecycle === 'issued' && (
-          <>
-            <Button variant="outline" onClick={handleVoid} disabled={busy}>{voiding ? 'Voiding…' : 'Void'}</Button>
-            <Button variant="outline" onClick={handleReplace} disabled={busy}>{replacing ? 'Replacing…' : 'Replace'}</Button>
-          </>
+        {invoice.lifecycle === 'sent' && (
+          <Button variant="outline" onClick={handleVoid} disabled={busy}>{voiding ? 'Voiding…' : 'Void'}</Button>
         )}
-        {(invoice.lifecycle === 'draft' || invoice.lifecycle === 'approved') && (
+        {invoice.lifecycle === 'draft' && (
           <Button variant="destructive" onClick={handleDelete} disabled={busy}>{deleting ? 'Deleting…' : 'Delete'}</Button>
         )}
       </div>

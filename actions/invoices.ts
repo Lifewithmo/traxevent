@@ -18,7 +18,7 @@ import {
   createInvoiceCore,
   generateFromProposalCore,
   recordPaymentCore,
-  issueInvoiceCore,
+  markInvoiceSentCore,
 } from '@/lib/crm/invoices'
 import type { Event, Invoice, InvoiceLineItem, InvoiceType, InvoiceDiscount, NormalizedInvoice } from '@/lib/types'
 
@@ -146,16 +146,6 @@ export async function updateInvoice(orgId: string, invoiceId: string, updates: I
   await ref.update({ ...cleaned, updated_at: new Date().toISOString() })
 }
 
-export async function approveInvoice(orgId: string, invoiceId: string): Promise<void> {
-  await assertOrgAdmin(orgId)
-  const ref = invoicesRef(orgId).doc(invoiceId)
-  const snap = await ref.get()
-  if (!snap.exists) throw new Error('Invoice not found')
-  const inv = normalizeInvoice(snap.data()!)
-  if (inv.lifecycle !== 'draft') throw new Error('Only a draft can be approved')
-  await ref.update({ lifecycle: 'approved', updated_at: new Date().toISOString() })
-}
-
 export async function issueInvoice(orgId: string, invoiceId: string): Promise<{ number: string }> {
   await assertOrgAdmin(orgId)
   const ref = invoicesRef(orgId).doc(invoiceId)
@@ -163,7 +153,7 @@ export async function issueInvoice(orgId: string, invoiceId: string): Promise<{ 
   // Enforce the scope invariant at issue time, mirroring generateFromProposal's
   // in-memory check. This must happen with plain (non-transaction) reads —
   // Firestore transactions cannot run queries — so it's done before we ever
-  // delegate to issueInvoiceCore's transaction below.
+  // delegate to markInvoiceSentCore's transaction below.
   const preSnap = await ref.get()
   if (!preSnap.exists) throw new Error('Invoice not found')
   const preInv = normalizeInvoice(preSnap.data()!)
@@ -177,7 +167,7 @@ export async function issueInvoice(orgId: string, invoiceId: string): Promise<{ 
     }
   }
 
-  return issueInvoiceCore(orgId, invoiceId)
+  return markInvoiceSentCore(orgId, invoiceId)
 }
 
 export async function voidInvoice(orgId: string, invoiceId: string, reason?: string): Promise<void> {
@@ -186,42 +176,16 @@ export async function voidInvoice(orgId: string, invoiceId: string, reason?: str
   const snap = await ref.get()
   if (!snap.exists) throw new Error('Invoice not found')
   const inv = normalizeInvoice(snap.data()!)
-  if (inv.lifecycle !== 'issued') {
-    if (inv.lifecycle === 'draft' || inv.lifecycle === 'approved') {
-      throw new Error('Only an issued invoice can be voided — delete the draft instead')
-    }
-    throw new Error(`Invoice is already ${inv.lifecycle} and cannot be voided`)
+  if (inv.lifecycle !== 'sent') {
+    if (inv.lifecycle === 'draft') throw new Error('Only a sent invoice can be voided — delete the draft instead')
+    throw new Error('Invoice is already void')
   }
   const now = new Date().toISOString()
   await ref.update({
-    lifecycle: 'voided',
+    lifecycle: 'void',
     updated_at: now,
     ...(reason?.trim() ? { void_reason: reason.trim() } : {}),
   })
-}
-
-export async function replaceInvoice(orgId: string, invoiceId: string): Promise<Invoice> {
-  await assertOrgAdmin(orgId)
-  const ref = invoicesRef(orgId).doc(invoiceId)
-  const snap = await ref.get()
-  if (!snap.exists) throw new Error('Invoice not found')
-  const original = normalizeInvoice(snap.data()!)
-  if (original.lifecycle !== 'issued') {
-    throw new Error('Only an issued invoice can be replaced')
-  }
-  const draft = await createInvoice(orgId, original.lead_id, {
-    type: original.type,
-    line_items: original.line_items,
-    title: original.title,
-    due_date: original.due_date,
-    notes: original.notes,
-  })
-  const now = new Date().toISOString()
-  await invoicesRef(orgId)
-    .doc(draft.id)
-    .update({ replaces_id: invoiceId, ...(original.source ? { source: original.source } : {}) })
-  await ref.update({ lifecycle: 'replaced', replaced_by_id: draft.id, updated_at: now })
-  return { ...draft, replaces_id: invoiceId }
 }
 
 export interface RecordPaymentInput {
@@ -242,8 +206,6 @@ export async function deleteInvoice(orgId: string, invoiceId: string): Promise<v
   const snap = await ref.get()
   if (!snap.exists) return
   const inv = normalizeInvoice(snap.data()!)
-  if (inv.lifecycle !== 'draft' && inv.lifecycle !== 'approved') {
-    throw new Error('Cannot delete an issued invoice — void it instead')
-  }
+  if (inv.lifecycle !== 'draft') throw new Error('Cannot delete a sent invoice — void it instead')
   await ref.delete()
 }

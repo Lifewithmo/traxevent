@@ -22,7 +22,7 @@ vi.mock('@/lib/crm/invoices', () => ({
   createInvoiceCore: vi.fn().mockResolvedValue({ id: 'inv1' }),
   generateFromProposalCore: vi.fn(),
   recordPaymentCore: vi.fn(),
-  issueInvoiceCore: vi.fn(),
+  markInvoiceSentCore: vi.fn(),
 }))
 vi.mock('@/actions/leads', () => ({
   getLead: vi.fn().mockResolvedValue({ id: 'l1', name: 'Dana', customer_id: 'cust1' }),

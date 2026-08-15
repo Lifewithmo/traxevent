@@ -1,6 +1,6 @@
 import type { InvoiceLifecycle } from '@/lib/types'
 
-export const LOCKED_LIFECYCLES: InvoiceLifecycle[] = ['issued', 'voided', 'replaced', 'closed']
+export const LOCKED_LIFECYCLES: InvoiceLifecycle[] = ['sent', 'void']
 export const FINANCIAL_FIELDS = ['line_items', 'type', 'source', 'due_date', 'number', 'discount', 'tax_rate', 'credits']
 
 export class InvoiceLockedError extends Error {
@@ -12,7 +12,7 @@ export function assertEditable(lifecycle: InvoiceLifecycle, updateKeys: string[]
   const blocked = updateKeys.filter((k) => FINANCIAL_FIELDS.includes(k))
   if (blocked.length > 0) {
     throw new InvoiceLockedError(
-      `Invoice is ${lifecycle} and locked; cannot edit ${blocked.join(', ')}. Void or replace instead.`,
+      `Invoice is ${lifecycle} and locked; cannot edit ${blocked.join(', ')}. Use Send update to change a sent invoice.`,
     )
   }
 }

@@ -99,7 +99,7 @@ describe('attachmentChips', () => {
   })
 
   it('does not count a voided invoice as unpaid, and shows no hint when all are void', () => {
-    const voided: Partial<Invoice> = { lifecycle: 'voided', line_items: [{ description: 'x', quantity: 1, unit_price: 100 }], payments: [] }
+    const voided: Partial<Invoice> = { lifecycle: 'void', line_items: [{ description: 'x', quantity: 1, unit_price: 100 }], payments: [] }
     const chips = attachmentChips({ tasks: [], today: '2026-08-07', proposals: [], invoices: [asInvoice(voided)], vendors: [] })
     const invoice = chips.find((c) => c.kind === 'invoice')!
     expect(invoice.count).toBe(1)

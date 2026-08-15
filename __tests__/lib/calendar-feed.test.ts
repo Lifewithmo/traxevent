@@ -20,7 +20,7 @@ const doc = (over: Partial<ComplianceDoc>): ComplianceDoc => ({
 })
 const invoice = (over: Partial<NormalizedInvoice>): NormalizedInvoice => ({
   id: 'i', org_id: 'o1', lead_id: 'l', token: 'tok',
-  type: 'final', lifecycle: 'issued', delivery: 'sent', accounting: 'not_connected', dispute: 'none',
+  type: 'final', lifecycle: 'sent', delivery: 'sent', accounting: 'not_connected', dispute: 'none',
   line_items: [{ description: 'Bar service', quantity: 1, unit_price: 1500 }],
   payments: [], due_date: '2026-08-12', ...over,
 })

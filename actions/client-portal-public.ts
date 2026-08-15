@@ -63,9 +63,8 @@ export async function getClientPortal(token: string): Promise<ClientPortal | nul
 
   const invoices: ClientPortalInvoice[] = invSnap.docs
     .map((d) => normalizeInvoice(d.data()))
-    // Show only finalized invoices to clients — hide drafts (never issued) and the
-    // internal 'approved' state (queued to be issued but not yet client-facing).
-    .filter((i) => i.lifecycle !== 'draft' && i.lifecycle !== 'approved')
+    // Show only finalized invoices to clients — hide drafts (never sent).
+    .filter((i) => i.lifecycle !== 'draft')
     .map((i) => ({
       lifecycle: i.lifecycle,
       total: invoiceAmountDue(i),

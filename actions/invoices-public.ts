@@ -97,13 +97,13 @@ async function resolveParties(invoice: {
   return out
 }
 
-// PUBLIC (token = authorization). Only issued invoices are ever exposed.
+// PUBLIC (token = authorization). Only sent invoices are ever exposed.
 export async function getPublicInvoice(token: string): Promise<PublicInvoice | null> {
   const doc = await findInvoiceByToken(token)
   if (!doc) return null
   const raw = doc.data() as { org_id?: string; lead_id?: string; customer_id?: string }
   const invoice = normalizeInvoice(doc.data())
-  if (invoice.lifecycle !== 'issued') return null
+  if (invoice.lifecycle !== 'sent') return null
   const parties = await resolveParties(raw)
   const subtotal = linesSubtotal(invoice.line_items)
   const discount_amount = invoiceDiscountAmount(subtotal, invoice.discount)

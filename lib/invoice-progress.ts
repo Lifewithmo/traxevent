@@ -26,7 +26,7 @@ export function previouslyBilled(
 ): number {
   return round2(
     invoices
-      .filter((i) => i.lifecycle === 'issued' && i.source?.id === sourceId)
+      .filter((i) => i.lifecycle === 'sent' && i.source?.id === sourceId)
       .reduce((sum, i) => sum + invoiceAmountDue(i), 0),
   )
 }
