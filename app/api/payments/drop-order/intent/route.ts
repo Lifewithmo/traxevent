@@ -71,7 +71,11 @@ export async function POST(req: Request) {
   } catch (err: unknown) {
     // Release the hold — otherwise the buyer's items stay reserved 15 minutes
     // for a payment that can never happen.
-    await deletePendingOrderCore(org.id, order.id)
+    try {
+      await deletePendingOrderCore(org.id, order.id)
+    } catch {
+      // best-effort — the 502 below must always be returned
+    }
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Failed to create payment' },
       { status: 502 },

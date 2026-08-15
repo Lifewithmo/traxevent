@@ -78,6 +78,8 @@ describe('POST /api/payments/drop-order/intent', () => {
     checkRateLimitSpy.mockResolvedValue({ allowed: false })
     expect((await POST(makeRequest(BODY))).status).toBe(429)
     expect(createPendingSpy).not.toHaveBeenCalled()
+    expect(getOrgByHandleSpy).not.toHaveBeenCalled()
+    expect(getDropCoreSpy).not.toHaveBeenCalled()
   })
 
   it('cleans up the pending hold when PI creation fails', async () => {
@@ -85,5 +87,13 @@ describe('POST /api/payments/drop-order/intent', () => {
     const res = await POST(makeRequest(BODY))
     expect(res.status).toBe(502)
     expect(deletePendingSpy).toHaveBeenCalledWith('org-1', 'o1')
+  })
+
+  it('still returns 502 with the PI error when the cleanup delete itself fails', async () => {
+    piCreateSpy.mockRejectedValue(new Error('stripe down'))
+    deletePendingSpy.mockRejectedValueOnce(new Error('firestore down'))
+    const res = await POST(makeRequest(BODY))
+    expect(res.status).toBe(502)
+    expect(await res.json()).toEqual({ error: 'stripe down' })
   })
 })
