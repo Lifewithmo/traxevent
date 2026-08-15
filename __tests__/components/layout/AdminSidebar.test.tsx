@@ -432,3 +432,65 @@ describe('AdminSidebar — open section follows client-side navigation', () => {
     expect(screen.getByRole('link', { name: 'All events' })).toBeInTheDocument()
   })
 })
+
+// Below md the rail becomes an off-canvas drawer: a fixed 224px column left ~63px
+// of content at 375px, which made every admin page unusable on a phone. jsdom has
+// no viewport, so these pin the mechanism (classes + open/close state) rather than
+// measured geometry — the width itself is checked in the browser.
+describe('AdminSidebar — mobile drawer', () => {
+  function renderNav() {
+    window.localStorage.removeItem('tx-sidebar-collapsed')
+    return render(<AdminSidebar orgSlug="acme" enabledModules={['calendar', 'clients']} catalogLabel="Packages" />)
+  }
+
+  it('takes no layout width below md — only the drawer trigger is in flow', () => {
+    const { container } = renderNav()
+    const aside = container.querySelector('aside')!
+    // Out of flow on mobile so `main` gets the full viewport…
+    expect(aside.className).toMatch(/max-md:fixed/)
+    // …and the in-flow rail width is scoped to md and up.
+    expect(aside.className).toMatch(/md:w-56/)
+    expect(aside.className).not.toMatch(/(?<!md:)\bw-56\b/)
+    expect(screen.getByRole('button', { name: 'Open navigation' })).toBeInTheDocument()
+  })
+
+  it('starts closed, opens on the trigger, and closes on the close button', () => {
+    const { container } = renderNav()
+    const aside = container.querySelector('aside')!
+    const trigger = screen.getByRole('button', { name: 'Open navigation' })
+
+    expect(aside.className).toMatch(/max-md:-translate-x-full/)
+    expect(trigger).toHaveAttribute('aria-expanded', 'false')
+
+    fireEvent.click(trigger)
+    expect(container.querySelector('aside')!.className).toMatch(/max-md:translate-x-0/)
+    expect(screen.getByRole('button', { name: 'Open navigation' })).toHaveAttribute('aria-expanded', 'true')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close navigation' }))
+    expect(container.querySelector('aside')!.className).toMatch(/max-md:-translate-x-full/)
+  })
+
+  it('closes on Escape', () => {
+    const { container } = renderNav()
+    fireEvent.click(screen.getByRole('button', { name: 'Open navigation' }))
+    expect(container.querySelector('aside')!.className).toMatch(/max-md:translate-x-0/)
+
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(container.querySelector('aside')!.className).toMatch(/max-md:-translate-x-full/)
+  })
+
+  it('the trigger controls the drawer it labels', () => {
+    const { container } = renderNav()
+    const trigger = screen.getByRole('button', { name: 'Open navigation' })
+    expect(trigger).toHaveAttribute('aria-controls', 'admin-nav')
+    expect(container.querySelector('aside')!.id).toBe('admin-nav')
+  })
+
+  it('keeps the wordmark in the drawer even when the desktop rail is collapsed', () => {
+    renderNav()
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse navigation' }))
+    // "T" is the rail treatment (hidden below md); the drawer keeps the full name.
+    const wordmarks = screen.getAllByText('TraxEvent')
+    expect(wordmarks.some((n) => n.className.includes('md:hidden'))).toBe(true)
+  })
+})

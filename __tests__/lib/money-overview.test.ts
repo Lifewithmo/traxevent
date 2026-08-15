@@ -8,13 +8,13 @@ function inv(over: Partial<NormalizedInvoice> & { id: string }): NormalizedInvoi
   return {
     line_items: [{ description: 'Service', quantity: 1, unit_price: 100 }],
     payments: [],
-    lifecycle: 'issued',
+    lifecycle: 'sent',
     ...over,
   } as NormalizedInvoice
 }
 
 describe('buildMoneyOverview', () => {
-  it('sums the unpaid balance of issued invoices as outstanding', () => {
+  it('sums the unpaid balance of sent invoices as outstanding', () => {
     const o = buildMoneyOverview([inv({ id: 'a' }), inv({ id: 'b' })], NOW)
     expect(o.outstanding).toBe(200)
   })
@@ -27,9 +27,9 @@ describe('buildMoneyOverview', () => {
     expect(o.outstanding).toBe(60)
   })
 
-  it('excludes draft, voided, and replaced invoices from outstanding', () => {
+  it('excludes draft and void invoices from outstanding', () => {
     const o = buildMoneyOverview(
-      [inv({ id: 'a', lifecycle: 'draft' }), inv({ id: 'b', lifecycle: 'voided' }), inv({ id: 'c', lifecycle: 'replaced' })],
+      [inv({ id: 'a', lifecycle: 'draft' }), inv({ id: 'b', lifecycle: 'void' })],
       NOW,
     )
     expect(o.outstanding).toBe(0)

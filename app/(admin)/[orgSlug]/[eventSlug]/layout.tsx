@@ -18,7 +18,9 @@ export default async function EventLayout({
   const enabledModules = resolveEnabledModules(org.industry_pack_id)
 
   return (
-    <div className="flex min-h-screen">
+    // Same shell rule as the org layout: below md the sidebar is a bar plus an
+    // off-canvas drawer, so the shell stacks and `main` gets the full viewport.
+    <div className="flex min-h-screen max-md:flex-col">
       <AdminSidebar
         orgSlug={orgSlug}
         eventSlug={eventSlug}

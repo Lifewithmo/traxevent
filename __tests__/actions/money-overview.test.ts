@@ -22,7 +22,7 @@ describe('getMoneyOverview', () => {
 
   it('returns a rollup of the org invoices', async () => {
     listAllInvoices.mockResolvedValue([
-      { id: 'a', lifecycle: 'issued', line_items: [{ description: 'x', quantity: 1, unit_price: 250 }], payments: [] },
+      { id: 'a', lifecycle: 'sent', line_items: [{ description: 'x', quantity: 1, unit_price: 250 }], payments: [] },
     ] as unknown as NormalizedInvoice[])
     const o = await getMoneyOverview('org1')
     expect(o.outstanding).toBe(250)

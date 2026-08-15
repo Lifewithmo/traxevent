@@ -1,5 +1,5 @@
 import { adminDb } from '@/lib/firebase-admin'
-import { listInvoicesCore, generateFromProposalCore, recordPaymentCore, issueInvoiceCore } from '@/lib/crm/invoices'
+import { listInvoicesCore, generateFromProposalCore, recordPaymentCore, markInvoiceSentCore } from '@/lib/crm/invoices'
 import type { Proposal } from '@/lib/types'
 
 /**
@@ -34,12 +34,12 @@ export async function reconcileProposalDeposit(
   if (proposal.org_id !== orgId || proposal.lead_id !== leadId) return
 
   const existing = await listInvoicesCore(orgId, leadId)
-  // Exclude terminal lifecycles: a voided/replaced deposit invoice must never
-  // be matched here — matching it would resurrect it (lifecycle flipped back
-  // to 'issued' below, before recordPaymentCore's own voided/replaced guard
-  // even runs) instead of falling through to create a fresh deposit invoice.
+  // Exclude the terminal lifecycle: a voided deposit invoice must never be
+  // matched here — matching it would resurrect it (lifecycle flipped back to
+  // 'sent' below, before recordPaymentCore's own void guard even runs)
+  // instead of falling through to create a fresh deposit invoice.
   const depositInv = existing.find(
-    (i) => i.type === 'deposit' && i.source?.id === proposalId && i.lifecycle !== 'voided' && i.lifecycle !== 'replaced',
+    (i) => i.type === 'deposit' && i.source?.id === proposalId && i.lifecycle !== 'void',
   )
 
   if (depositInv) {
@@ -48,8 +48,8 @@ export async function reconcileProposalDeposit(
     // above keys on payments.length, so if a prior attempt failed partway
     // through, a retry must still be able to re-do the lifecycle update and
     // record the payment as the final, defining step of "reconciled."
-    if (depositInv.lifecycle === 'draft' || depositInv.lifecycle === 'approved') {
-      await issueInvoiceCore(orgId, depositInv.id, { issuedAt: payment.paid_at })
+    if (depositInv.lifecycle === 'draft') {
+      await markInvoiceSentCore(orgId, depositInv.id, { sentAt: payment.paid_at })
     }
     await recordPaymentCore(orgId, depositInv.id, {
       amount: payment.amount,
@@ -60,7 +60,7 @@ export async function reconcileProposalDeposit(
   }
 
   const created = await generateFromProposalCore(orgId, leadId, proposal, existing, { type: 'deposit' })
-  await issueInvoiceCore(orgId, created.id, { issuedAt: payment.paid_at })
+  await markInvoiceSentCore(orgId, created.id, { sentAt: payment.paid_at })
   await recordPaymentCore(orgId, created.id, {
     amount: payment.amount,
     method: 'card',

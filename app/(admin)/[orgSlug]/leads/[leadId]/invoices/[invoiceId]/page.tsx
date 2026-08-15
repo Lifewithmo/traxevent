@@ -24,6 +24,8 @@ export default async function InvoiceEditorPage({ params }: { params: Promise<{ 
       invoice={invoice}
       orgTipsEnabled={org.tips_enabled}
       customerName={customer?.name}
+      customerEmail={customer?.email}
+      branding={org.branding}
     />
   )
 }

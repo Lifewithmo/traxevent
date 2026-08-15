@@ -8,7 +8,7 @@ import { buildBrewtraxSeed } from '@/scripts/seed/brewtrax-data'
 import type { Org, OrgMember, Lead, Task, Event, ItineraryItem, Proposal } from '@/lib/types'
 import { generateAccessToken } from '@/lib/tokens'
 import { buildEventSlug } from '@/lib/slug'
-import { createInvoiceCore, issueInvoiceCore, recordPaymentCore } from '@/lib/crm/invoices'
+import { createInvoiceCore, markInvoiceSentCore, recordPaymentCore } from '@/lib/crm/invoices'
 import { createResourceCore } from '@/lib/ops/resources'
 import { createWorkPackageCore } from '@/lib/ops/work-packages'
 import { instantiateOpsPlanCore, completeChecklistStepCore, toggleDeadlineCore } from '@/lib/ops/event-ops'
@@ -230,7 +230,7 @@ async function main(): Promise<void> {
     if (!customerId) throw new Error(`Invoice ${inv.key} references unknown customer ${inv.customerKey}`)
 
     const created = await createInvoiceCore(args.orgId, leadId, { ...inv.input, customer_id: customerId })
-    if (inv.issue) await issueInvoiceCore(args.orgId, created.id, { issuedAt: inv.issue.issuedAt })
+    if (inv.issue) await markInvoiceSentCore(args.orgId, created.id, { sentAt: inv.issue.issuedAt })
     for (const payment of inv.payments) {
       await recordPaymentCore(args.orgId, created.id, payment)
     }

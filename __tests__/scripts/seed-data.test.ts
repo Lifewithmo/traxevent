@@ -156,7 +156,7 @@ describe('buildBrewtraxSeed — invoices', () => {
             line_items: inv.input.line_items ?? [],
             payments: inv.payments.map((p) => ({ amount: p.amount, recorded_at: TODAY.toISOString() })),
           })
-          return deriveAging({ dueDate: inv.input.due_date, balance, lifecycle: 'issued' }, TODAY)
+          return deriveAging({ dueDate: inv.input.due_date, balance, lifecycle: 'sent' }, TODAY)
         }),
     )
     expect(buckets).toContain('current')   // paid in full

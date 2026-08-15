@@ -15,7 +15,7 @@
 - NEVER re-export a type from a `'use server'` module — it breaks `next build` (tsc passes). Declare input types locally in `actions/invoices.ts`. See AGENTS.md and the NOTE at the top of that file.
 - Run vitest from the primary checkout as: `npm test -- --exclude '**/.claude/**'` (the `.claude/` tree otherwise pollutes the run).
 - A branch is not green until `npx next build` passes — tsc alone is insufficient.
-- Design principle (standing user feedback): pages follow human task-flow, not schema order. No stacked-card ("block") layouts; the editor and public page are document-shaped.
+- Design principle (standing user feedback): pages follow human task-flow, not schema order. No stacked-card ("block") layouts; the editor and public page are document-shaped. **Any task that writes JSX must read `.claude/skills/screen-composition/SKILL.md` first and run its review checklist before marking the task done** — the principle above is the slogan; the checklist is what it means in practice.
 - Firestore rejects `undefined` values (`ignoreUndefinedProperties` is off). Use `FieldValue.delete()` for cleared fields; spread-conditionals (`...(x ? { x } : {})`) for optional writes.
 - Money is dollars (`number`), formatted `$${n.toFixed(2)}`.
 - All commits stay in this repo (Lifewithmo/traxevent).
@@ -896,6 +896,27 @@ it('sent invoice is read-only until Edit invoice is clicked, then CTA becomes Se
 
 it('sent invoice shows version history disclosure with one entry per send', ...)
   // sentInvoice fixture with versions: [v1, v2] → expanding 'History' lists 2 entries
+
+// --- composition invariants (screen-composition checklist) ---
+
+it('renders Balance exactly once on the page', ...)
+  // getAllByText(/^Balance/i) has length 1 — guards against the Payments section
+  // re-introducing its old "Balance due" summary line
+
+it('renders Amount paid exactly once on the page', ...)
+
+it('gives Balance visual dominance over the supporting totals lines', ...)
+  // the Balance value node carries text-2xl; no other value node on the document does
+
+it('shows an interpretation line under Balance for each payment state', ...)
+  // balance 0 → /paid in full/i; partial → /\$\d+ of \$\d+ paid/i;
+  // past due + balance > 0 → /overdue/i; draft → /not sent yet/i
+
+it('renders an empty-state line instead of an empty table when there are no line items', ...)
+  // lineItems: [] → getByText(/no line items yet/i); table body has no rows
+
+it('omits the History disclosure entirely when there are no versions', ...)
+  // sentInvoice with versions: [] → queryByText(/history/i) is null
 ```
 
 Run: `npx vitest run __tests__/components/InvoiceEditorClient.test.tsx` — FAIL (new structure doesn't exist yet).
@@ -907,25 +928,79 @@ Rewrite `components/admin/InvoiceEditorClient.tsx`. Keep: all money math, `toNum
 Structure (task-flow order: who → what → math → send):
 
 ```tsx
-<div className="mx-auto max-w-3xl p-6">
-  {/* Action bar (no-print): back link · status badge · [Edit invoice | Save] · [Send invoice / Send update] · overflow (Void / Delete / Copy link) */}
-  {/* Document surface: bg-white rounded-lg shadow-sm px-10 py-12 — mirrors InvoiceViewClient */}
-    {/* Header: branding.logo_url + branding.display_name/address (left);
-        "Invoice" + (number ?? '№ assigned when sent') + due-date input-in-place (right) */}
-    {/* Bill to: customerName + customerEmail */}
-    {/* Line items table: Description | Qty | Unit price | Subtotal | taxable checkbox | trash IconButton
-        <Button size="sm" variant="ghost" aria-label="Remove line" onClick={() => removeRow(i)}><Trash2 className="h-4 w-4" /></Button>
-        Below the rows: [Add from catalog] [Add blank line]  ← bottom-anchored */}
-    {/* Totals block (right-aligned, reading order):
-        Subtotal $X
-        Discount [type select][value][reason input] −$X   (reason only when discount set)
-        Tax [rate % input] +$X
-        credits… −$X
-        Total $X / Amount paid $X / Balance $X */}
-    {/* Notes textarea, styled as document footer text */}
-  {/* Below the document (subordinate, not co-equal): Payments section (existing markup, de-carded) + History disclosure */}
+{/* Wide screens: document + subordinate side rail. Narrow: single column, rail below. */}
+<div className="mx-auto max-w-3xl p-6 xl:max-w-6xl xl:grid xl:grid-cols-[minmax(0,1fr)_320px] xl:gap-8">
+  <div>
+    {/* Action bar (no-print): back link · status badge · [Edit invoice | Save] · [Send invoice / Send update] · overflow (Void / Delete / Copy link) */}
+    {/* Document surface: bg-card rounded-lg shadow-sm px-10 py-12 max-md:px-5 max-md:py-8 — mirrors InvoiceViewClient */}
+      {/* Header: branding.logo_url + branding.display_name/address (left);
+          "Invoice" + (number ?? '№ assigned when sent') + due-date input-in-place (right).
+          Stacks to one column under md. */}
+      {/* Bill to: customerName + customerEmail */}
+      {/* Line items: <table> at md+ — Description | Qty | Unit price | Subtotal | taxable | trash IconButton
+          <Button size="sm" variant="ghost" aria-label="Remove line" onClick={() => removeRow(i)}><Trash2 className="h-4 w-4" /></Button>
+          Under md the table collapses to stacked row cards (see Responsive below).
+          Below the rows: [Add from catalog] [Add blank line]  ← bottom-anchored
+          Zero rows: single muted line "No line items yet — add one below." (never an empty table body) */}
+      {/* Totals block (right-aligned, reading order). Supporting lines are quiet;
+          Balance is the focal element — see Hierarchy below:
+          Subtotal $X
+          Discount [type select][value][reason input] −$X   (reason only when discount set)
+          Tax [rate % input] +$X
+          credits… −$X
+          Total $X
+          Amount paid $X
+          ─────────────
+          Balance $X            ← text-2xl font-semibold tabular-nums
+                                  + one interpretation line beneath (see Hierarchy) */}
+      {/* Notes textarea, styled as document footer text */}
+  </div>
+
+  {/* Side rail at xl, below the document under xl. Subordinate, not co-equal:
+      no Card wrapper, smaller type, muted headings.
+      Payments (list + record form — WITHOUT its old "Amount paid"/"Balance due"
+      summary lines, which now live only in the Totals block) + History disclosure */}
+  <aside className="mt-8 xl:mt-0">…</aside>
 </div>
 ```
+
+**Hierarchy (checklist item 2 — the deciding value is focal):**
+
+Balance is the number the operator opened the page for. It is the only figure on
+the screen with visual dominance:
+
+- `Subtotal`, `Discount`, `Tax`, `credits`, `Amount paid` → `text-sm text-muted-foreground`, label and value same weight. These are inputs to the math, not the answer.
+- `Total` → `text-sm font-medium text-foreground`.
+- `Balance` → `text-2xl font-semibold tabular-nums`, separated by a rule, with an interpretation line directly beneath it (checklist item 5 — no bare numbers):
+  - `balance <= 0` → `Paid in full` (muted)
+  - `paid > 0 && balance > 0` → `$X of $Y paid` (muted)
+  - `balance > 0 && past due` → `N days overdue` (`text-destructive`)
+  - `balance > 0 && draft` → `Not sent yet` (muted)
+- Nothing else on the document uses `text-2xl` or heavier than `font-semibold`.
+
+**No duplicate values (checklist item 4):** `Amount paid` and `Balance` render in
+the Totals block **only**. When de-carding the Payments section, delete its
+existing `Amount paid` / `Balance due` summary rows ([current lines 459–466])
+rather than carrying them over — the rail keeps the payment *list* and the record
+form, nothing else.
+
+**Responsive (checklist item 8):**
+
+| Width | Layout |
+|---|---|
+| `< md` (768) | Single column. Document padding drops to `px-5 py-8`. Line items stop being a table: each row renders as a stacked block — description full width, then `Qty · Unit price · Subtotal` on one line, taxable + delete on the next. Totals full width. |
+| `md`–`xl` | Document at `max-w-3xl`, line items as a real table, rail below the document. |
+| `≥ xl` (1280) | Two columns: document + 320px side rail. |
+
+The 6-column line-items table must never render below `md`. Verify at 375px
+before calling Task 6 done.
+
+**Empty / sparse states:**
+
+- Zero line items → muted "No line items yet — add one below.", not an empty `<tbody>`.
+- Zero payments → keep the existing "No payments recorded yet."
+- Zero versions → omit the History disclosure entirely (do not render an empty `<details>`).
+- Draft with no number → `№ assigned when sent` (already specified).
 
 Key behaviors:
 
@@ -933,7 +1008,7 @@ Key behaviors:
 - **Send**: both CTAs open `SendInvoiceDialog` (`defaultTo={customerEmail ?? ''}`, `isUpdate={invoice.lifecycle === 'sent'}`). Its `onSend` calls `sendInvoice(orgId, invoice.id, { to, message, updates: currentFormState })` where `currentFormState` is the same cleaned payload `handleSave` builds (blank rows filtered, `undefined` for cleared discount/tax) — so unsaved edits ride along with the send. On success: if `emailDelivered === false`, set a persistent warning notice "Invoice sent — email delivery failed. Use Send update to retry."; always `router.refresh()`.
 - **Catalog picker**: `onPick` appends `{ description, quantity: 1, unit_price, taxable: true, ...(source ? { source } : {}) }` to `lineItems`.
 - **Discount reason**: extend the discount state handling — reason input appears when `discount` is set, stored as `discount.reason` (trimmed; empty → omit).
-- **History**: `<details>` disclosure listing `invoice.versions ?? []` — each entry: `Sent {date} — {n} items, ${total}` (compute total with `invoiceAmountDue(version)`).
+- **History**: when `(invoice.versions ?? []).length > 0`, a `<details>` disclosure in the side rail listing each entry as `Sent {date} — {n} items, ${total}` (compute total with `invoiceAmountDue(version)`). When there are no versions, render nothing.
 - **Void/Delete**: move into a small overflow area of the action bar (keep `confirm()` guards). Void only when sent; Delete only when draft.
 
 `SendInvoiceDialog.tsx`: `'use client'`; Dialog with To (required, type email), Message (optional textarea), primary button `{isUpdate ? 'Send update' : 'Send invoice'}`, disabled while sending or when To is blank; renders `onSend` rejection messages inline.
@@ -975,6 +1050,16 @@ Expected: clean. (Watch specifically for the `'use server'` type re-export failu
 - [ ] **Step 3: Browser walkthrough**
 
 Via the dev preview (preview_start with the launch.json dev server): create a draft invoice on a lead → add a line from the catalog picker (including the create-in-place path) → set a discount with a reason → confirm the totals block math → Send (dialog pre-filled) → confirm the number appears and status flips to Sent → Edit invoice → change a line → Send update → confirm a second History entry → open the public `/invoices/[token]` page → verify document rendering and print preview. Screenshot the editor and public page as proof.
+
+- [ ] **Step 3b: Responsive + composition check**
+
+`resize_window` to 375px and re-open the editor: the line-items table must have
+collapsed to stacked rows (no horizontal scroll, no clipped columns), the totals
+block must be full width, and Balance must still be the visually dominant figure.
+Repeat at 1280px to confirm the side rail appears. Then walk the
+`.claude/skills/screen-composition/SKILL.md` review checklist against the editor
+and the public page — every box ticked, or fixed before this task closes.
+Screenshot 375px and 1280px as proof.
 
 - [ ] **Step 4: Email delivery note**
 

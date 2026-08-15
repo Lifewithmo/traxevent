@@ -2,11 +2,10 @@ import type {
   InvoiceLifecycle, InvoicePaymentStatus, InvoiceAgingBucket, InvoiceType,
 } from '@/lib/types'
 
-export const INVOICE_LIFECYCLES: InvoiceLifecycle[] = ['draft', 'approved', 'issued', 'voided', 'replaced', 'closed']
+export const INVOICE_LIFECYCLES: InvoiceLifecycle[] = ['draft', 'sent', 'void']
 
 export const INVOICE_LIFECYCLE_LABELS: Record<InvoiceLifecycle, string> = {
-  draft: 'Draft', approved: 'Approved', issued: 'Issued',
-  voided: 'Voided', replaced: 'Replaced', closed: 'Closed',
+  draft: 'Draft', sent: 'Sent', void: 'Void',
 }
 
 export const INVOICE_TYPE_LABELS: Record<InvoiceType, string> = {
@@ -25,7 +24,7 @@ export function derivePaymentStatus(
   now: Date,
 ): InvoicePaymentStatus {
   const { total, applied, lifecycle, dueDate } = input
-  if (lifecycle === 'voided' || lifecycle === 'replaced') return 'void'
+  if (lifecycle === 'void') return 'void'
   if (total > 0 && applied > total) return 'overpaid'
   if (total > 0 && applied >= total) return 'paid'
   if (applied > 0) return 'partial'

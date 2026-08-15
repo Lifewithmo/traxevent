@@ -139,7 +139,7 @@ describe('getClientPortal', () => {
     })
   })
 
-  it('includes only finalized invoices (hides draft and approved) with { lifecycle, total, balance, token, title?, number? }', async () => {
+  it('includes only finalized invoices (hides draft) with { lifecycle, total, balance, token, title?, number? }', async () => {
     mockLead(fullLead())
     invoicesSpy.mockResolvedValue({
       docs: [
@@ -151,7 +151,7 @@ describe('getClientPortal', () => {
             token: 'itok',
             title: 'Deposit',
             number: 'INV-001',
-            lifecycle: 'issued',
+            lifecycle: 'sent',
             line_items: [{ description: 'DJ', quantity: 1, unit_price: 1000 }],
             payments: [{ amount: 400, recorded_at: 'x' }],
             notes: 'secret',
@@ -170,24 +170,12 @@ describe('getClientPortal', () => {
             created_at: 'x',
           }),
         },
-        {
-          data: () => ({
-            id: 'i3',
-            org_id: 'org-1',
-            lead_id: 'lead-1',
-            token: 'approveditok',
-            lifecycle: 'approved',
-            line_items: [{ description: 'Z', quantity: 1, unit_price: 500 }],
-            payments: [],
-            created_at: 'x',
-          }),
-        },
       ],
     })
     const result = await getClientPortal('tok_client')
     expect(result?.invoices).toHaveLength(1)
     expect(result?.invoices[0]).toEqual({
-      lifecycle: 'issued',
+      lifecycle: 'sent',
       total: 1000,
       balance: 600,
       token: 'itok',

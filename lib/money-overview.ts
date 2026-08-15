@@ -25,9 +25,11 @@ const EMPTY_AGING: Record<InvoiceAgingBucket, number> = {
 
 const OVERDUE_BUCKETS: InvoiceAgingBucket[] = ['d1_30', 'd31_60', 'd61_90', 'd90_plus']
 
-// Only these lifecycles represent money the org is actually owed.
+// `sent` is the only lifecycle where money is actually owed: a draft has not been
+// asked for yet and a void was withdrawn. (The pre-send vocabulary — approved /
+// issued / closed / replaced — was retired with the draft/sent/void lifecycle.)
 function isCollectable(inv: NormalizedInvoice): boolean {
-  return inv.lifecycle === 'issued' || inv.lifecycle === 'approved'
+  return inv.lifecycle === 'sent'
 }
 
 function round2(n: number): number {

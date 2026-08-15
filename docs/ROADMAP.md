@@ -1,6 +1,6 @@
 # TraxEvent — Product Roadmap
 
-Rollup of where the build stands and what's next. Last updated: 2026-08-13.
+Rollup of where the build stands and what's next. Last updated: 2026-08-15.
 
 The original vision/architecture spec is
 [2026-06-02-product-roadmap-design.md](superpowers/specs/2026-06-02-product-roadmap-design.md)
@@ -110,6 +110,20 @@ EventTrax pivot (neutralization, multi-brand, ops core). Detailed designs live i
   Follow-ups: keyboard-move focus retention, StageChip roving focus, legacy
   pipeline test consolidation.
 
+- **Invoice experience redesign** (branch `feat/invoice-redesign`, built
+  2026-08-15) — three-state lifecycle (draft/sent/void) with a version
+  history trail, send-time auto-numbering plus org numbering settings,
+  document-first editor (catalog line-item picker with create-in-place, send
+  dialog), printable public invoice document at `/invoices/[token]`, and a
+  transactional invoice email
+  (spec: `superpowers/sdd/2026-08-15-invoice-experience-redesign`). Built and
+  green (full suite + `next build` clean). Authenticated walkthrough passed
+  against the emulator 2026-08-15 — login, numbering floor, catalog picker,
+  send with number assignment + version history, public page at desktop and
+  375px, edit → send update; PR still to open. Production email delivery for
+  this flow (and the still-unverified PR #66 intake path) remains to be
+  confirmed post-deploy.
+
 ## In flight
 
 - **Proposal templates** (branch `claude/proposal-templates`) — org-owned
@@ -153,6 +167,12 @@ in PR #70; queue the next increment here.)*
 
 ## Open decisions & small threads
 
+- Monetization decided 2026-08-15: subscription-only — drop orders carry no
+  platform application fee (spec:
+  `superpowers/specs/2026-08-15-drops-online-ordering-design.md`). Open thread:
+  the legacy hardcoded 1% `application_fee_amount` on registration payments and
+  proposal deposits predates this — retire it (and the billing-page copy) or keep
+  it deliberately.
 - Deposit-invoice numbering: reconciled deposit invoices are `issued` but
   unnumbered — assign numbers vs document the exemption (accounting call).
 - Parked `git stash` of pre-redesign proposals WIP — likely stale; keep or drop.

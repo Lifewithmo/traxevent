@@ -5,7 +5,7 @@ import { assertOrgMember, assertOrgAdmin } from '@/lib/auth/assert'
 import { invoiceAmountDue } from '@/lib/invoices'
 import { normalizeInvoice } from '@/lib/invoice-normalize'
 import { previouslyBilled, assertWithinScope, acceptedProposalTotal } from '@/lib/invoice-progress'
-import { assertEditable } from '@/lib/invoice-lock'
+import { assertEditable, assertSendEditable } from '@/lib/invoice-lock'
 import { getProposal } from '@/actions/proposals'
 import { getLead } from '@/actions/leads'
 import { adminDb } from '@/lib/firebase-admin'
@@ -14,13 +14,18 @@ import { getOpsPlanCore } from '@/lib/ops/event-ops'
 import { getWorkPackagesByIdsCore } from '@/lib/ops/work-packages'
 import {
   invoicesRef,
+  invoiceCounterRef,
   listInvoicesCore,
   createInvoiceCore,
   generateFromProposalCore,
   recordPaymentCore,
-  issueInvoiceCore,
+  markInvoiceSentCore,
+  assignNextInvoiceNumber,
+  invoiceVersionSnapshot,
 } from '@/lib/crm/invoices'
-import type { Event, Invoice, InvoiceLineItem, InvoiceType, InvoiceDiscount, NormalizedInvoice } from '@/lib/types'
+import { sendInvoiceEmail } from '@/lib/email'
+import { getVerifiedSendingDomain } from '@/actions/domains'
+import type { Event, Invoice, InvoiceLineItem, InvoiceType, InvoiceDiscount, NormalizedInvoice, Org } from '@/lib/types'
 
 // NOTE: this is a 'use server' module — every export must be an async function.
 // CreateInvoiceInput/InvoiceUpdate/RecordPaymentInput (types) are therefore NOT
@@ -146,38 +151,142 @@ export async function updateInvoice(orgId: string, invoiceId: string, updates: I
   await ref.update({ ...cleaned, updated_at: new Date().toISOString() })
 }
 
-export async function approveInvoice(orgId: string, invoiceId: string): Promise<void> {
-  await assertOrgAdmin(orgId)
-  const ref = invoicesRef(orgId).doc(invoiceId)
-  const snap = await ref.get()
-  if (!snap.exists) throw new Error('Invoice not found')
-  const inv = normalizeInvoice(snap.data()!)
-  if (inv.lifecycle !== 'draft') throw new Error('Only a draft can be approved')
-  await ref.update({ lifecycle: 'approved', updated_at: new Date().toISOString() })
+export interface SendInvoiceInput {
+  to: string
+  message?: string
+  updates?: InvoiceUpdate
 }
 
-export async function issueInvoice(orgId: string, invoiceId: string): Promise<{ number: string }> {
-  await assertOrgAdmin(orgId)
-  const ref = invoicesRef(orgId).doc(invoiceId)
+/**
+ * The proposal-scope guardrail for a send. `inv` must be the post-updates invoice, so the
+ * amount asserted is what the customer is about to be billed.
+ *
+ * The invoice being sent is filtered out of the sibling list on purpose: on a resend it is
+ * already `sent`, so previouslyBilled would count its CURRENT amount as prior billing and
+ * then add the new amount on top — a plain resend of an at-scope invoice would fail, and a
+ * raise would be measured against the wrong baseline. Excluding it makes `billed` mean
+ * "what the OTHER sent invoices claim", which is the comparison the invariant wants. On a
+ * first send the draft is not `sent`, so the filter is a no-op there.
+ *
+ * Not exported: this module is 'use server', where every export must be an async server
+ * action — an internal helper must stay internal.
+ */
+async function assertSendWithinScope(orgId: string, invoiceId: string, inv: NormalizedInvoice): Promise<void> {
+  if (inv.source?.type !== 'proposal' || !inv.source.id || inv.type === 'quick') return
+  const proposal = await getProposal(orgId, inv.source.id)
+  if (!proposal) return
+  const approved = acceptedProposalTotal(proposal)
+  const existing = await listInvoices(orgId, inv.lead_id)
+  const billed = previouslyBilled(existing.filter((i) => i.id !== invoiceId), inv.source.id)
+  assertWithinScope(invoiceAmountDue(inv), billed, approved)
+}
 
-  // Enforce the scope invariant at issue time, mirroring generateFromProposal's
-  // in-memory check. This must happen with plain (non-transaction) reads —
-  // Firestore transactions cannot run queries — so it's done before we ever
-  // delegate to issueInvoiceCore's transaction below.
+/**
+ * The one send motion (spec §6): apply any pending edits, assign the number on first
+ * send, snapshot the content-as-sent into versions[], email the customer, and record
+ * delivery. Email failure never rolls back the send — numbers must be unique, not
+ * gapless — it surfaces as { emailDelivered: false } + delivery: 'bounced'.
+ */
+export async function sendInvoice(
+  orgId: string,
+  invoiceId: string,
+  input: SendInvoiceInput,
+): Promise<{ number: string; emailDelivered: boolean }> {
+  const member = await assertOrgAdmin(orgId)
+  if (!input.to.trim()) throw new Error('Recipient email is required')
+  const ref = invoicesRef(orgId).doc(invoiceId)
   const preSnap = await ref.get()
   if (!preSnap.exists) throw new Error('Invoice not found')
-  const preInv = normalizeInvoice(preSnap.data()!)
-  if (preInv.source?.type === 'proposal' && preInv.source.id && preInv.type !== 'quick') {
-    const proposal = await getProposal(orgId, preInv.source.id)
-    if (proposal) {
-      const approved = acceptedProposalTotal(proposal)
-      const existing = await listInvoices(orgId, preInv.lead_id)
-      const billed = previouslyBilled(existing, preInv.source.id)
-      assertWithinScope(invoiceAmountDue(preInv), billed, approved)
+  let inv = normalizeInvoice(preSnap.data()!)
+  if (inv.lifecycle === 'void') throw new Error('Cannot send a void invoice')
+
+  if (input.updates) {
+    // Send update is the ONLY write path onto a sent invoice, so this payload has to be
+    // whitelisted the way updateInvoice's is: without it any org admin could pass
+    // `number` (or type/source/credits) here and rewrite the counter-assigned number,
+    // breaking the invariant that two invoices can never share one.
+    assertSendEditable(Object.keys(input.updates))
+    const cleaned: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(input.updates)) {
+      cleaned[k] = v === undefined ? FieldValue.delete() : v
     }
+    await ref.update({ ...cleaned, updated_at: new Date().toISOString() })
+    inv = normalizeInvoice((await ref.get()).data()!)
   }
 
-  return issueInvoiceCore(orgId, invoiceId)
+  // Scope invariant, verbatim from the retired issueInvoice: plain reads only —
+  // Firestore transactions cannot run queries. Checked on EVERY send, not just the
+  // first: a sent proposal-derived invoice is still editable through Send update, so
+  // skipping the resend would let a $500 deposit be re-sent as $5000 against a $1000
+  // proposal. `inv` is post-updates here, so the amount checked is the new one.
+  await assertSendWithinScope(orgId, invoiceId, inv)
+
+  const isUpdate = inv.lifecycle === 'sent'
+  let number: string
+  if (!isUpdate) {
+    const res = await markInvoiceSentCore(orgId, invoiceId)
+    number = res.number
+  } else {
+    let resentNumber = inv.number ?? ''
+    const now = new Date().toISOString()
+    // Resend: read-append-write must be one transaction. A bare ref.update() built from
+    // an earlier read would let two concurrent resends (double-click, two admins) both
+    // read the same versions[] and clobber each other's appended snapshot. Re-read inside
+    // the transaction and snapshot that transaction-read content, not the outer `inv`.
+    await adminDb.runTransaction(async (tx) => {
+      const snap = await tx.get(ref)
+      if (!snap.exists) throw new Error('Invoice not found')
+      const txInv = normalizeInvoice(snap.data()!)
+      // Recheck inside the transaction: voidInvoice is a plain update outside it,
+      // so an invoice voided since the pre-read would otherwise still be emailed.
+      if (txInv.lifecycle === 'void') throw new Error('Cannot send a void invoice')
+      // Legacy pre-lifecycle docs (`status: 'sent'`) reach the resend branch having never
+      // burned a counter value, so they carry no number. Backfill one — the same
+      // transactional bump as the first send, minus the lifecycle transition — or every
+      // resend mails a blank invoice number and the editor keeps showing the draft's
+      // "№ assigned when sent" placeholder on an invoice that is demonstrably sent.
+      const backfilled = txInv.number ? undefined : await assignNextInvoiceNumber(tx, orgId)
+      resentNumber = txInv.number ?? backfilled ?? ''
+      tx.update(ref, {
+        versions: [...(txInv.versions ?? []), invoiceVersionSnapshot(txInv, now)],
+        ...(backfilled ? { number: backfilled } : {}),
+        sent_at: now,
+        updated_at: now,
+      })
+    })
+    number = resentNumber
+  }
+
+  const orgSnap = await adminDb.collection('orgs').doc(orgId).get()
+  const org = orgSnap.data() as Org | undefined
+  let fromDomain: string | undefined
+  try {
+    fromDomain = await getVerifiedSendingDomain(orgId)
+  } catch { /* fall back to platform sender */ }
+
+  let emailDelivered = true
+  try {
+    await sendInvoiceEmail({
+      to: input.to.trim(),
+      orgName: org?.branding?.display_name ?? org?.name ?? 'Your vendor',
+      invoiceNumber: number,
+      total: invoiceAmountDue(inv),
+      dueDate: inv.due_date,
+      message: input.message,
+      token: inv.token,
+      isUpdate,
+      fromDisplayName: org?.branding?.display_name ?? org?.name,
+      fromDomain,
+      replyTo: member.email,
+    })
+  } catch {
+    emailDelivered = false
+  }
+  // Outside the try on purpose: this catch classifies EMAIL failure, so a Firestore
+  // error on the status write must not be reported as a bounce — that would tell the
+  // operator to resend an invoice the customer already received.
+  await ref.update({ delivery: emailDelivered ? 'sent' : 'bounced' })
+  return { number, emailDelivered }
 }
 
 export async function voidInvoice(orgId: string, invoiceId: string, reason?: string): Promise<void> {
@@ -186,42 +295,16 @@ export async function voidInvoice(orgId: string, invoiceId: string, reason?: str
   const snap = await ref.get()
   if (!snap.exists) throw new Error('Invoice not found')
   const inv = normalizeInvoice(snap.data()!)
-  if (inv.lifecycle !== 'issued') {
-    if (inv.lifecycle === 'draft' || inv.lifecycle === 'approved') {
-      throw new Error('Only an issued invoice can be voided — delete the draft instead')
-    }
-    throw new Error(`Invoice is already ${inv.lifecycle} and cannot be voided`)
+  if (inv.lifecycle !== 'sent') {
+    if (inv.lifecycle === 'draft') throw new Error('Only a sent invoice can be voided — delete the draft instead')
+    throw new Error('Invoice is already void')
   }
   const now = new Date().toISOString()
   await ref.update({
-    lifecycle: 'voided',
+    lifecycle: 'void',
     updated_at: now,
     ...(reason?.trim() ? { void_reason: reason.trim() } : {}),
   })
-}
-
-export async function replaceInvoice(orgId: string, invoiceId: string): Promise<Invoice> {
-  await assertOrgAdmin(orgId)
-  const ref = invoicesRef(orgId).doc(invoiceId)
-  const snap = await ref.get()
-  if (!snap.exists) throw new Error('Invoice not found')
-  const original = normalizeInvoice(snap.data()!)
-  if (original.lifecycle !== 'issued') {
-    throw new Error('Only an issued invoice can be replaced')
-  }
-  const draft = await createInvoice(orgId, original.lead_id, {
-    type: original.type,
-    line_items: original.line_items,
-    title: original.title,
-    due_date: original.due_date,
-    notes: original.notes,
-  })
-  const now = new Date().toISOString()
-  await invoicesRef(orgId)
-    .doc(draft.id)
-    .update({ replaces_id: invoiceId, ...(original.source ? { source: original.source } : {}) })
-  await ref.update({ lifecycle: 'replaced', replaced_by_id: draft.id, updated_at: now })
-  return { ...draft, replaces_id: invoiceId }
 }
 
 export interface RecordPaymentInput {
@@ -242,8 +325,38 @@ export async function deleteInvoice(orgId: string, invoiceId: string): Promise<v
   const snap = await ref.get()
   if (!snap.exists) return
   const inv = normalizeInvoice(snap.data()!)
-  if (inv.lifecycle !== 'draft' && inv.lifecycle !== 'approved') {
-    throw new Error('Cannot delete an issued invoice — void it instead')
-  }
+  if (inv.lifecycle !== 'draft') throw new Error('Cannot delete a sent invoice — void it instead')
   await ref.delete()
+}
+
+export async function getInvoiceNumbering(orgId: string): Promise<{ prefix?: string; next_number: number }> {
+  await assertOrgAdmin(orgId)
+  const snap = await invoiceCounterRef(orgId).get()
+  const data = snap.exists ? (snap.data() as { seq: number; prefix?: string }) : undefined
+  return { ...(data?.prefix ? { prefix: data.prefix } : {}), next_number: (data?.seq ?? 1000) + 1 }
+}
+
+export async function updateInvoiceNumbering(
+  orgId: string,
+  input: { prefix?: string; next_number?: number },
+): Promise<void> {
+  await assertOrgAdmin(orgId)
+  await adminDb.runTransaction(async (tx) => {
+    const ref = invoiceCounterRef(orgId)
+    const snap = await tx.get(ref)
+    const seq = snap.exists ? (snap.data() as { seq: number }).seq : 1000
+    const payload: Record<string, unknown> = {}
+    if (input.next_number != null) {
+      if (!Number.isInteger(input.next_number) || input.next_number <= seq) {
+        throw new Error(`Next number must be greater than ${seq} (already used)`)
+      }
+      payload.seq = input.next_number - 1
+    }
+    if (input.prefix !== undefined) {
+      const trimmed = input.prefix.trim()
+      if (trimmed) payload.prefix = trimmed
+      else payload.prefix = FieldValue.delete()
+    }
+    if (Object.keys(payload).length > 0) tx.set(ref, payload, { merge: true })
+  })
 }
