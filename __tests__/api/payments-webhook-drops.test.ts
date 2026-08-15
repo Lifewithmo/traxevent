@@ -124,7 +124,7 @@ describe('payments webhook — drop orders', () => {
       data: { object: { id: 'ch_1', payment_intent: 'pi_1', amount_refunded: 1100, refunds: { data: [{ id: 're_1' }] } } },
     })
     expect((await POST(makeRequest())).status).toBe(200)
-    expect(piRetrieveSpy).toHaveBeenCalledWith('pi_1', { stripeAccount: 'acct_1' })
+    expect(piRetrieveSpy).toHaveBeenCalledWith('pi_1', {}, { stripeAccount: 'acct_1' })
     expect(markRefundedSpy).toHaveBeenCalledWith('org-1', 'o1', expect.objectContaining({ refund_id: 're_1', amount: 11 }))
   })
 

@@ -271,14 +271,9 @@ export async function POST(req: Request) {
         // Charge metadata is NOT copied from the PI — retrieve the PI on the
         // connected account to learn whether this refund belongs to a drop
         // order (covers refunds issued from the org's own Stripe dashboard).
-        // Stripe's TS params type for `retrieve` doesn't declare `stripeAccount`
-        // even though the SDK detects and honors it at runtime (same as the
-        // documented `create(params, { stripeAccount })` pattern used above) —
-        // cast purely to satisfy the type checker, not to change the call shape.
-        const pi = await stripe.paymentIntents.retrieve(
-          piId,
-          { stripeAccount: account } as unknown as Stripe.PaymentIntentRetrieveParams
-        )
+        // Per-request options like `stripeAccount` are the THIRD argument
+        // (params is the second) — this is the sanctioned, type-safe form.
+        const pi = await stripe.paymentIntents.retrieve(piId, {}, { stripeAccount: account })
         if (pi.metadata?.purpose === 'drop_order' && pi.metadata.order_id && pi.metadata.org_id) {
           await markRefundedCore(pi.metadata.org_id, pi.metadata.order_id, {
             refund_id: charge.refunds?.data?.[0]?.id ?? 'unknown',
