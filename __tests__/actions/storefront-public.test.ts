@@ -57,6 +57,7 @@ describe('getPublicDrop', () => {
     expect(out).not.toHaveProperty('order_seq')
     expect(out).not.toHaveProperty('channels')
     expect(JSON.stringify(out)).not.toContain('"stock"')
+    expect(Object.keys(out!.pickup.windows[0]).sort()).toEqual(['day', 'end', 'id', 'start'])
   })
 
   it('returns null for unknown handle, unknown drop, and draft/archived drops', async () => {
@@ -88,6 +89,7 @@ describe('getPublicOrder', () => {
     expect(json).not.toContain('org-1')
     expect(json).not.toContain('"token"')
     expect(json).not.toContain('jane@example.com')   // buyer_name only
+    expect(Object.keys(out!.lines[0]).sort()).toEqual(['name', 'price', 'product_id', 'qty'])
   })
 
   it('returns null for unknown tokens', async () => {
