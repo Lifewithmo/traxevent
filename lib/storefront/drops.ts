@@ -97,7 +97,8 @@ export async function updateDraftDropCore(orgId: string, dropId: string, input: 
   if (!existing) throw new Error('Drop not found')
   if (existing.status !== 'draft') throw new Error('Only draft drops can be edited')
   const fields = await buildDropFields(orgId, input)
-  const drop: Drop = { ...existing, ...fields, updated_at: new Date().toISOString() }
+  const { note: _note, tax_rate: _taxRate, ...base } = existing
+  const drop: Drop = { ...base, ...fields, updated_at: new Date().toISOString() }
   await dropsRef(orgId).doc(dropId).set(drop)
   return drop
 }

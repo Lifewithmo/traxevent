@@ -26,7 +26,7 @@ vi.mock('@/lib/firebase-admin', () => {
 
 vi.mock('@/lib/storefront/products', () => ({ listProductsCore: productsListSpy }))
 
-import { createDropCore, publishDropCore, closeDropCore, adjustStockCore } from '@/lib/storefront/drops'
+import { createDropCore, updateDraftDropCore, publishDropCore, closeDropCore, adjustStockCore } from '@/lib/storefront/drops'
 
 const PRODUCTS = [
   { id: 'p1', name: 'Vanilla Latte', price: 5.5, active: true, description: 'smooth', photo_url: 'https://x/p1.jpg', created_at: 'x' },
@@ -88,5 +88,32 @@ describe('drops core', () => {
     await adjustStockCore('org-1', 'd1', 'p1', 25)
     const written = dropUpdateSpy.mock.calls.at(-1)![0]
     expect(written.items).toEqual([{ product_id: 'p1', name: 'x', price: 5, stock: 25 }])
+  })
+
+  it('updateDraftDropCore clears note/tax_rate when input omits them', async () => {
+    dropGetSpy.mockResolvedValue({
+      exists: true,
+      data: () => ({
+        ...INPUT,
+        id: 'd1',
+        status: 'draft',
+        note: 'old note',
+        tax_rate: 8.5,
+        items: [{ product_id: 'p1', name: 'x', price: 5 }],
+      }),
+    })
+    const updated = await updateDraftDropCore('org-1', 'd1', INPUT)
+    expect(updated.status).toBe('draft')
+    const written = dropSetSpy.mock.calls.at(-1)![0]
+    expect(written).not.toHaveProperty('note')
+    expect(written).not.toHaveProperty('tax_rate')
+  })
+
+  it('updateDraftDropCore rejects non-draft drops', async () => {
+    dropGetSpy.mockResolvedValue({
+      exists: true,
+      data: () => ({ ...INPUT, id: 'd1', status: 'scheduled', items: [{ product_id: 'p1', name: 'x', price: 5 }] }),
+    })
+    await expect(updateDraftDropCore('org-1', 'd1', INPUT)).rejects.toThrow('Only draft drops can be edited')
   })
 })
