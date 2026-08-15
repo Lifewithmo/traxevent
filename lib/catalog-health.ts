@@ -36,5 +36,7 @@ export function findExpiringDocs(docs: ComplianceDoc[], now: string, withinDays 
 export interface CatalogOverview {
   vendorCount: number
   formCount: number
+  complianceCount: number
+  packageCount: number
   expiring: ExpiringDoc[]
 }

@@ -19,7 +19,7 @@ export default async function CatalogPage({ params }: { params: Promise<{ orgSlu
     { href: `/${orgSlug}/compliance`, label: 'Compliance' },
   ]
 
-  const empty = o.vendorCount === 0 && o.formCount === 0 && o.expiring.length === 0
+  const empty = o.vendorCount === 0 && o.formCount === 0 && o.complianceCount === 0 && o.packageCount === 0
 
   return (
     <div className="p-6">

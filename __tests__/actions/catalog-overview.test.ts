@@ -3,11 +3,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 const listAllVendors = vi.fn()
 const listComplianceDocs = vi.fn()
 const listFormTemplates = vi.fn()
+const listWorkPackages = vi.fn()
 const assertOrgMember = vi.fn()
 
 vi.mock('@/actions/vendors', () => ({ listAllVendors: (...a: unknown[]) => listAllVendors(...a) }))
 vi.mock('@/actions/compliance', () => ({ listComplianceDocs: (...a: unknown[]) => listComplianceDocs(...a) }))
 vi.mock('@/actions/forms', () => ({ listFormTemplates: (...a: unknown[]) => listFormTemplates(...a) }))
+vi.mock('@/actions/work-packages', () => ({ listWorkPackages: (...a: unknown[]) => listWorkPackages(...a) }))
 vi.mock('@/lib/auth/assert', () => ({ assertOrgMember: (...a: unknown[]) => assertOrgMember(...a) }))
 
 import { getCatalogOverview } from '@/actions/catalog-overview'
@@ -17,6 +19,7 @@ describe('getCatalogOverview', () => {
     listAllVendors.mockReset().mockResolvedValue([])
     listComplianceDocs.mockReset().mockResolvedValue([])
     listFormTemplates.mockReset().mockResolvedValue([])
+    listWorkPackages.mockReset().mockResolvedValue([])
     assertOrgMember.mockReset().mockResolvedValue(undefined)
   })
 
@@ -38,5 +41,18 @@ describe('getCatalogOverview', () => {
     listComplianceDocs.mockResolvedValue([{ id: 'd1', name: 'Liability insurance', expires_on: soon, created_at: '2026-01-01' }])
     const o = await getCatalogOverview('org1')
     expect(o.expiring.map((d) => d.id)).toEqual(['d1'])
+  })
+
+  it('counts all compliance docs and packages, distinct from the expiring subset', async () => {
+    const farOut = new Date(Date.now() + 200 * 86_400_000).toISOString().slice(0, 10)
+    listComplianceDocs.mockResolvedValue([
+      { id: 'd1', name: 'W-9', expires_on: farOut, created_at: '2026-01-01' },
+      { id: 'd2', name: 'COI', expires_on: farOut, created_at: '2026-01-01' },
+    ])
+    listWorkPackages.mockResolvedValue([{ id: 'p1' }])
+    const o = await getCatalogOverview('org1')
+    expect(o.complianceCount).toBe(2)
+    expect(o.packageCount).toBe(1)
+    expect(o.expiring).toEqual([])
   })
 })
