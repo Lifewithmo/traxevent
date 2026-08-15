@@ -26,8 +26,41 @@ const ORG_PAGE_SLUGS = new Set([
   'members', 'forms', 'permissions', 'billing', 'email-domain', 'event-types',
   'departments', 'reports', 'registrants', 'today', 'leads', 'clients', 'proposals',
   'invoices', 'vendors', 'calendar', 'new-event', 'packages', 'compliance',
-  'money', 'catalog', 'settings',
+  'money', 'catalog', 'settings', 'branding', 'public-profile', 'proposal-templates',
 ])
+
+// Which parent section owns a given org page — so a hard load of /acme/invoices
+// opens Money with the current page's row already visible.
+const SECTION_FOR_SLUG: Record<string, string> = {
+  leads: 'pipeline',
+  proposals: 'pipeline',
+  money: 'money',
+  invoices: 'money',
+  reports: 'money',
+  catalog: 'catalog',
+  packages: 'catalog',
+  vendors: 'catalog',
+  forms: 'catalog',
+  compliance: 'catalog',
+  settings: 'settings',
+  members: 'settings',
+  permissions: 'settings',
+  billing: 'settings',
+  branding: 'settings',
+  'proposal-templates': 'settings',
+  'public-profile': 'settings',
+  'email-domain': 'settings',
+  'event-types': 'settings',
+  departments: 'settings',
+}
+
+// Events is deliberately absent: /{orgSlug} is the all-events page itself, and
+// inside a job the section is force-open regardless of this seed.
+function activeSection(pathname: string, orgSlug: string): string | null {
+  const seg = pathname.split('/').filter(Boolean)
+  if (seg[0] !== orgSlug || seg.length < 2) return null
+  return SECTION_FOR_SLUG[seg[1]] ?? null
+}
 
 const SIDEBAR_COLLAPSED_KEY = 'tx-sidebar-collapsed'
 
@@ -138,8 +171,11 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
   const settingsActive = SETTINGS_SLUGS.some(
     (s) => pathname === `/${orgSlug}/${s}` || pathname.startsWith(`/${orgSlug}/${s}/`)
   )
-  // Exactly one section is open at a time.
-  const [openSection, setOpenSection] = useState<string | null>(settingsActive ? 'settings' : null)
+  // Exactly one section is open at a time, seeded to whichever section owns the
+  // current page so a hard load shows the current row without a click.
+  const [openSection, setOpenSection] = useState<string | null>(() =>
+    settingsActive ? 'settings' : activeSection(pathname, orgSlug)
+  )
   const [collapsed, setCollapsed] = useState(false)
 
   function toggleSection(key: string) {
@@ -254,19 +290,22 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
   }))
 
   // At 52px there is nothing to expand, so the rail is flat icon links to each
-  // section's landing page.
+  // section's landing page. Gating here must match the expanded nav's exactly,
+  // or the rail offers a destination the expanded sidebar does not.
   const railLinks: NavLink[] = [
     ...allQuickLinks,
-    ...(has('leads')
-      ? [{ href: `/${orgSlug}/leads`, label: 'Pipeline', icon: 'pipeline' as NavIconName, active: isActive(pathname, `/${orgSlug}/leads`) }]
+    ...(pipelineChildren.length > 0
+      ? [{ href: `/${orgSlug}/leads`, label: 'Pipeline', icon: 'pipeline' as NavIconName, active: pipelineActive }]
       : []),
     ...(has('events')
       ? [{ href: `/${orgSlug}`, label: 'Events', icon: 'events' as NavIconName, active: pathname === `/${orgSlug}` }]
       : []),
-    ...(has('invoices')
+    ...(has('invoices') && moneyChildren.length > 0
       ? [{ href: `/${orgSlug}/money`, label: 'Money', icon: 'invoices' as NavIconName, active: moneyActive }]
       : []),
-    { href: `/${orgSlug}/catalog`, label: 'Catalog', icon: 'packages' as NavIconName, active: catalogActive },
+    ...(catalogChildren.length > 0
+      ? [{ href: `/${orgSlug}/catalog`, label: 'Catalog', icon: 'packages' as NavIconName, active: catalogActive }]
+      : []),
     {
       href: `/${orgSlug}/settings`,
       label: 'Settings',
@@ -347,7 +386,11 @@ export function AdminSidebar({ orgSlug, eventSlug, terminology, allowedEventPage
             </SidebarSection>
           )}
 
-          {has('events') && (
+          {/* Inside a job the section renders regardless of the events module:
+              the [eventSlug] routes are not module-gated, and several packs
+              (caterer, florist, photographer) omit 'events' entirely. Without
+              this the operator would have no job nav at all. */}
+          {(has('events') || Boolean(eventSlug)) && (
             <SidebarSection
               href={`/${orgSlug}`}
               label="Events"

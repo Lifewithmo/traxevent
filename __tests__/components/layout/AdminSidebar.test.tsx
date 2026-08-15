@@ -7,8 +7,10 @@ import type { ModuleId } from '@/lib/industry-packs'
 // Org-level nav renders when the path segment after orgSlug is a known org page
 // (or absent). Individual tests below don't assert active-link state, so a
 // single default is fine for both the event-nav and workspace-nav describes.
+const nav = vi.hoisted(() => ({ pathname: '/acme' }))
+
 vi.mock('next/navigation', () => ({
-  usePathname: () => '/acme',
+  usePathname: () => nav.pathname,
   useRouter: () => ({ push: vi.fn() }),
 }))
 
@@ -21,6 +23,7 @@ vi.mock('@/lib/firebase', () => ({
 // in this file start from the expanded sidebar.
 beforeEach(() => {
   window.localStorage.clear()
+  nav.pathname = '/acme'
 })
 
 describe('AdminSidebar — terminology-driven labels', () => {
@@ -207,6 +210,44 @@ describe('AdminSidebar — Option C IA', () => {
     // job nav renders inside the open Events section
     expect(screen.getByRole('link', { name: 'Dashboard' })).toHaveAttribute('href', '/acme/hendricks/dashboard')
     expect(screen.getByRole('link', { name: 'All events' })).toHaveAttribute('href', '/acme')
+  })
+
+  it('keeps the job nav for packs whose modules omit "events"', () => {
+    // caterer/florist/photographer packs have no 'events' module, but the
+    // [eventSlug] routes are not module-gated — the job nav must still render.
+    const modules: ModuleId[] = ['leads', 'clients', 'proposals', 'invoices']
+    render(<AdminSidebar orgSlug="acme" eventSlug="gala" enabledModules={modules} />)
+    expect(screen.getByRole('link', { name: 'Dashboard' })).toHaveAttribute('href', '/acme/gala/dashboard')
+    expect(screen.getByRole('link', { name: 'All events' })).toHaveAttribute('href', '/acme')
+  })
+
+  it('renders on settings pages that are not in the top-level slug list', () => {
+    nav.pathname = '/acme/branding'
+    render(<AdminSidebar orgSlug="acme" />)
+    expect(screen.getByRole('link', { name: 'Settings' })).toHaveAttribute('href', '/acme/settings')
+    expect(screen.getByRole('link', { name: 'Branding' })).toHaveAttribute('href', '/acme/branding')
+  })
+
+  it('opens the section that owns the current page with no click', () => {
+    nav.pathname = '/acme/invoices'
+    render(<AdminSidebar orgSlug="acme" />)
+    expect(screen.getByRole('link', { name: 'Invoices' })).toHaveAttribute('href', '/acme/invoices')
+  })
+
+  it('opens Catalog on a catalog child page with no click', () => {
+    nav.pathname = '/acme/vendors'
+    render(<AdminSidebar orgSlug="acme" />)
+    expect(screen.getByRole('link', { name: 'Vendors' })).toHaveAttribute('href', '/acme/vendors')
+  })
+
+  it('gates the collapsed rail exactly like the expanded nav', () => {
+    // No catalog modules: neither the expanded section nor the rail icon.
+    render(<AdminSidebar orgSlug="acme" enabledModules={['leads', 'clients']} />)
+    expect(screen.queryByRole('link', { name: 'Catalog' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse navigation' }))
+    expect(screen.queryByLabelText('Catalog')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Money')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Pipeline')).toBeInTheDocument()
   })
 
   it('hides the Money section when the invoices module is off', () => {
