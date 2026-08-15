@@ -311,3 +311,92 @@ export async function sendInvoiceEmail(params: InvoiceEmailParams): Promise<void
     `,
   }))
 }
+
+export interface OrderConfirmationParams {
+  to: string
+  buyerName: string
+  orgDisplayName: string
+  dropTitle: string
+  orderNumber: number
+  pickupLabel: string
+  lines: Array<{ name: string; qty: number; price: number }>
+  total: number
+  orderUrl: string
+  fromDomain?: string
+}
+
+// Best-effort order receipt — the webhook wraps this in try/catch; a send
+// failure must never fail the confirmed order write.
+export async function sendOrderConfirmation(params: OrderConfirmationParams): Promise<void> {
+  const from = buildFromAddress({ displayName: params.orgDisplayName, domain: params.fromDomain })
+  const rowsHtml = params.lines
+    .map(
+      (l) => `
+        <tr>
+          <td style="padding:6px 12px 6px 0;color:#1a1a1a;font-size:14px">${l.qty} × ${escapeHtml(l.name)}</td>
+          <td style="padding:6px 0;color:#64748B;font-size:14px;text-align:right">$${(l.price * l.qty).toFixed(2)}</td>
+        </tr>`
+    )
+    .join('')
+
+  assertDelivered(await getResend().emails.send({
+    from,
+    to: params.to,
+    subject: `Order #${params.orderNumber} confirmed — ${params.dropTitle}`,
+    html: `
+      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
+        <h1 style="color:#1a1a1a;margin-bottom:8px">You're all set, ${escapeHtml(params.buyerName)}</h1>
+        <p style="color:#4b5563;font-size:16px;margin-bottom:4px">Pickup number <strong>#${params.orderNumber}</strong></p>
+        <p style="color:#4b5563;font-size:14px;margin-bottom:16px">${escapeHtml(params.pickupLabel)}</p>
+        <table style="border-collapse:collapse;width:100%;margin-bottom:8px">${rowsHtml}</table>
+        <p style="color:#1a1a1a;font-size:16px;font-weight:600;margin-bottom:24px">Total $${params.total.toFixed(2)}</p>
+        <a href="${params.orderUrl}"
+           style="display:inline-block;background:#1a1a1a;color:#fff;padding:12px 24px;
+                  border-radius:6px;text-decoration:none;font-weight:600">
+          View your order
+        </a>
+      </div>
+    `,
+  }))
+}
+
+export interface DropAnnouncementParams {
+  to: string
+  orgDisplayName: string
+  dropTitle: string
+  opensLabel: string
+  dropUrl: string
+  unsubscribeUrl: string
+  fromDomain?: string
+}
+
+// Returns a resend.batch.send payload — publishDrop batches these in chunks
+// of 100 (actions/communicate.ts pattern). No send call here, so the
+// delivery-failure detection used by the other senders in this module does
+// not apply — the caller is responsible for inspecting the batch response.
+export function buildDropAnnouncementEmail(params: DropAnnouncementParams): {
+  from: string; to: string; subject: string; html: string
+} {
+  const from = buildFromAddress({ displayName: params.orgDisplayName, domain: params.fromDomain })
+  return {
+    from,
+    to: params.to,
+    subject: `${params.dropTitle} — orders open ${params.opensLabel}`,
+    html: `
+      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
+        <h1 style="color:#1a1a1a;margin-bottom:8px">${escapeHtml(params.dropTitle)}</h1>
+        <p style="color:#4b5563;font-size:16px;margin-bottom:24px">
+          ${escapeHtml(params.orgDisplayName)} just scheduled a new drop. Orders open ${escapeHtml(params.opensLabel)}.
+        </p>
+        <a href="${params.dropUrl}"
+           style="display:inline-block;background:#1a1a1a;color:#fff;padding:12px 24px;
+                  border-radius:6px;text-decoration:none;font-weight:600">
+          See the menu
+        </a>
+        <p style="margin-top:32px;font-size:12px;color:#9ca3af">
+          <a href="${params.unsubscribeUrl}" style="color:#9ca3af">Unsubscribe</a> from drop reminders.
+        </p>
+      </div>
+    `,
+  }
+}

@@ -20,6 +20,8 @@ import {
   sendProposalSignedConfirmation,
   sendIntakeNotification,
   sendInvoiceEmail,
+  sendOrderConfirmation,
+  buildDropAnnouncementEmail,
   escapeHtml,
 } from '@/lib/email'
 
@@ -205,6 +207,79 @@ describe('sendInvoiceEmail', () => {
   })
 })
 
+describe('sendOrderConfirmation', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('sends from the org display name, includes pickup number/lines/total, links the status page, escapes HTML', async () => {
+    await sendOrderConfirmation({
+      to: 'jane@example.com',
+      buyerName: 'Jane <script>',
+      orgDisplayName: 'Love & Co',
+      dropTitle: 'Weekend Drop',
+      orderNumber: 8,
+      pickupLabel: 'Sat, Aug 22 · 08:00–11:00 · SW Boise',
+      lines: [{ name: 'Vanilla <b>Latte</b>', qty: 2, price: 5.5 }],
+      total: 11,
+      orderUrl: 'https://traxevent.com/orders/tok123',
+    })
+    const call = emailsSendSpy.mock.calls[0][0]
+    expect(call.to).toBe('jane@example.com')
+    expect(call.from).toBe('"Love & Co" <noreply@traxevent.com>')
+    expect(call.subject).toContain('#8')
+    expect(call.html).toContain('https://traxevent.com/orders/tok123')
+    expect(call.html).toContain('Vanilla &lt;b&gt;Latte&lt;/b&gt;')
+    expect(call.html).not.toContain('<script>')
+    expect(call.html).toContain('$11.00')
+  })
+
+  // Same delivery-failure detection as every other sender in this module — the
+  // Resend SDK resolves (not rejects) on a 422/403/429/5xx, so sendOrderConfirmation
+  // must route through assertDelivered like its siblings.
+  it('throws when Resend resolves with an error instead of delivering', async () => {
+    emailsSendSpy.mockResolvedValueOnce({
+      data: null,
+      error: { name: 'validation_error', message: 'Invalid `to` field.' },
+    })
+    await expect(
+      sendOrderConfirmation({
+        to: 'bogus', buyerName: 'Jane', orgDisplayName: 'Love & Co', dropTitle: 'Weekend Drop',
+        orderNumber: 8, pickupLabel: 'Sat', lines: [], total: 0, orderUrl: 'https://traxevent.com/orders/t',
+      }),
+    ).rejects.toThrow(/invalid `to` field/i)
+  })
+})
+
+describe('buildDropAnnouncementEmail', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('returns a batchable payload with drop + unsubscribe links', () => {
+    const p = buildDropAnnouncementEmail({
+      to: 'fan@example.com',
+      orgDisplayName: 'Love Brew',
+      dropTitle: 'Weekend Drop',
+      opensLabel: 'Sat, Aug 22 at 8:00 AM',
+      dropUrl: 'https://traxevent.com/p/lovebrew/drops/d1',
+      unsubscribeUrl: 'https://traxevent.com/unsubscribe/tok456',
+    })
+    expect(p.to).toBe('fan@example.com')
+    expect(p.subject).toContain('Weekend Drop')
+    expect(p.html).toContain('https://traxevent.com/p/lovebrew/drops/d1')
+    expect(p.html).toContain('https://traxevent.com/unsubscribe/tok456')
+  })
+
+  it('does not call the Resend send API — it only builds a payload for batch.send', () => {
+    buildDropAnnouncementEmail({
+      to: 'fan@example.com',
+      orgDisplayName: 'Love Brew',
+      dropTitle: 'Weekend Drop',
+      opensLabel: 'Sat, Aug 22 at 8:00 AM',
+      dropUrl: 'https://traxevent.com/p/lovebrew/drops/d1',
+      unsubscribeUrl: 'https://traxevent.com/unsubscribe/tok456',
+    })
+    expect(emailsSendSpy).not.toHaveBeenCalled()
+  })
+})
+
 // Every sender in this module must detect a resolved-with-error send, not just the
 // invoice one. The Resend SDK resolves on 422/403/429/5xx and on a dropped connection,
 // so a sender that ignores `error` reports success for a mail that never left.
@@ -235,6 +310,10 @@ describe('delivery detection across every sender', () => {
     })],
     ['sendInvoiceEmail', () => sendInvoiceEmail({
       to: 'j@e.com', orgName: 'Org', invoiceNumber: '1', total: 1, token: 't', isUpdate: false,
+    })],
+    ['sendOrderConfirmation', () => sendOrderConfirmation({
+      to: 'j@e.com', buyerName: 'Jane', orgDisplayName: 'Org', dropTitle: 'Drop',
+      orderNumber: 1, pickupLabel: 'Sat', lines: [], total: 0, orderUrl: 'https://traxevent.com/orders/t',
     })],
   ]
 
