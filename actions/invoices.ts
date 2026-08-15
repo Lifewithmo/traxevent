@@ -287,3 +287,39 @@ export async function deleteInvoice(orgId: string, invoiceId: string): Promise<v
   if (inv.lifecycle !== 'draft') throw new Error('Cannot delete a sent invoice — void it instead')
   await ref.delete()
 }
+
+function invoiceCounterRef(orgId: string) {
+  return adminDb.collection('orgs').doc(orgId).collection('counters').doc('invoice_number')
+}
+
+export async function getInvoiceNumbering(orgId: string): Promise<{ prefix?: string; next_number: number }> {
+  await assertOrgAdmin(orgId)
+  const snap = await invoiceCounterRef(orgId).get()
+  const data = snap.exists ? (snap.data() as { seq: number; prefix?: string }) : undefined
+  return { ...(data?.prefix ? { prefix: data.prefix } : {}), next_number: (data?.seq ?? 1000) + 1 }
+}
+
+export async function updateInvoiceNumbering(
+  orgId: string,
+  input: { prefix?: string; next_number?: number },
+): Promise<void> {
+  await assertOrgAdmin(orgId)
+  await adminDb.runTransaction(async (tx) => {
+    const ref = invoiceCounterRef(orgId)
+    const snap = await tx.get(ref)
+    const seq = snap.exists ? (snap.data() as { seq: number }).seq : 1000
+    const payload: Record<string, unknown> = {}
+    if (input.next_number != null) {
+      if (!Number.isInteger(input.next_number) || input.next_number <= seq) {
+        throw new Error(`Next number must be greater than ${seq} (already used)`)
+      }
+      payload.seq = input.next_number - 1
+    }
+    if (input.prefix !== undefined) {
+      const trimmed = input.prefix.trim()
+      if (trimmed) payload.prefix = trimmed
+      else payload.prefix = FieldValue.delete()
+    }
+    if (Object.keys(payload).length > 0) tx.set(ref, payload, { merge: true })
+  })
+}

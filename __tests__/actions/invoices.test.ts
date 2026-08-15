@@ -8,6 +8,7 @@ const listInvoicesSpy = vi.hoisted(() => vi.fn())
 const listAllInvoicesSpy = vi.hoisted(() => vi.fn())
 const getProposalSpy = vi.hoisted(() => vi.fn())
 const counterGetSpy = vi.hoisted(() => vi.fn())
+const counterSetSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const txSetSpy = vi.hoisted(() => vi.fn())
 const txUpdateSpy = vi.hoisted(() => vi.fn())
 const getLeadSpy = vi.hoisted(() => vi.fn())
@@ -40,6 +41,7 @@ vi.mock('@/lib/firebase-admin', () => {
   const countersCol = {
     doc: vi.fn().mockImplementation(() => ({
       get: counterGetSpy,
+      set: counterSetSpy,
     })),
   }
   const leadsCol = {
@@ -106,6 +108,8 @@ import {
   recordPayment,
   deleteInvoice,
   generateFromProposal,
+  getInvoiceNumbering,
+  updateInvoiceNumbering,
 } from '@/actions/invoices'
 import { markInvoiceSentCore } from '@/lib/crm/invoices'
 import { invoiceAmountDue } from '@/lib/invoices'
@@ -775,5 +779,35 @@ describe('sendInvoice', () => {
     const res = await sendInvoice('org1', 'inv1', { to: 'c@e.com' })
     expect(res.emailDelivered).toBe(false)
     expect(invoiceDocUpdateSpy).toHaveBeenCalledWith(expect.objectContaining({ delivery: 'bounced' }))
+  })
+})
+
+describe('invoice numbering settings', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('returns defaults when no counter exists', async () => {
+    counterGetSpy.mockResolvedValue({ exists: false })
+    expect(await getInvoiceNumbering('org1')).toEqual({ next_number: 1001 })
+  })
+
+  it('returns stored prefix and next number', async () => {
+    counterGetSpy.mockResolvedValue({ exists: true, data: () => ({ seq: 1041, prefix: 'BRW-' }) })
+    expect(await getInvoiceNumbering('org1')).toEqual({ prefix: 'BRW-', next_number: 1042 })
+  })
+
+  it('rejects a next number at or below the floor', async () => {
+    counterGetSpy.mockResolvedValue({ exists: true, data: () => ({ seq: 1041 }) })
+    await expect(updateInvoiceNumbering('org1', { next_number: 1041 })).rejects.toThrow(/greater than 1041/)
+  })
+
+  it('stores next_number - 1 as seq and trims the prefix', async () => {
+    counterGetSpy.mockResolvedValue({ exists: true, data: () => ({ seq: 1041 }) })
+    await updateInvoiceNumbering('org1', { next_number: 2000, prefix: ' INV- ' })
+    // updateInvoiceNumbering writes via adminDb.runTransaction, whose mock threads
+    // tx.set through the shared txSetSpy (not the counters doc's own counterSetSpy) —
+    // see the runTransaction mock above.
+    expect(txSetSpy).toHaveBeenCalledWith(expect.anything(), { seq: 1999, prefix: 'INV-' }, { merge: true })
   })
 })
