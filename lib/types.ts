@@ -110,9 +110,9 @@ export interface Event {
   slug: string
   year: number
   status: 'draft' | 'active' | 'archived'
-  registration_type: EventRegistrationType
+  registration_type?: EventRegistrationType   // optional since occasions R1; roster paths fall back to 'individual'
   event_type_id: string              // drives terminology + UI config
-  features: {
+  features?: {                                // optional since occasions R1; never written on create anymore (zero readers)
     accommodations: boolean
     teams: boolean
     budget: boolean
@@ -135,6 +135,12 @@ export interface Event {
   itinerary_published?: boolean
   event_type_terminology?: Terminology
   department_id?: string | null   // optional grouping; null/undefined = unassigned
+  // ── occasion fields (spec 2026-08-15 selling-occasions §3.1) ──
+  kind?: EventKind                   // ABSENT = 'client_job'; read ONLY via kindOf()
+  location?: EventLocation           // market days require it; client jobs may use it
+  hours?: EventHours                 // 'HH:mm' working hours, display + future register header
+  booth_fee?: number                 // dollars; market-day cost, joins closeout margin (inc 2)
+  series_id?: string                 // set on series-generated days
 }
 
 export interface EventKeyContact {
@@ -142,6 +148,33 @@ export interface EventKeyContact {
   role: string
   phone?: string
   email?: string
+}
+
+// ── Selling occasions (spec 2026-08-15) ──────────────────────────────
+
+export type EventKind = 'client_job' | 'market_day'
+export interface EventLocation { name: string; address?: string }
+export interface EventHours { start: string; end: string }   // 'HH:mm'
+
+export interface SeriesRecurrence {
+  freq: 'weekly'
+  weekday: number                    // 0–6 (Sun–Sat)
+  from: string                       // YYYY-MM-DD, first candidate day
+  until: string                      // YYYY-MM-DD inclusive, season end
+}
+
+export interface EventSeries {
+  id: string
+  name: string                       // "Boise Farmers Market"
+  kind: 'market_day'                 // v1: market-day series only
+  location: EventLocation
+  hours: EventHours
+  recurrence: SeriesRecurrence
+  booth_fee?: number                 // default copied onto each generated day
+  event_type_id?: string
+  active: boolean                    // false = season ended early
+  created_at: string
+  updated_at?: string
 }
 
 // Shape of our Firebase Auth JWT custom claims

@@ -100,7 +100,7 @@ export default function EventSettingsPage() {
         status,
         event_type_id: eventTypeId,
         department_id: departmentId || null,
-        registration_type: selectedType ? selectedType.registrationUnit : event.registration_type,
+        registration_type: selectedType ? selectedType.registrationUnit : (event.registration_type ?? 'individual'),
         event_type_terminology: selectedType
           ? (selectedType.is_custom ? selectedType.terminology : null)
           : undefined,

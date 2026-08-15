@@ -21,7 +21,7 @@ export default async function ReportsPage({
       orgId={orgId}
       eventId={eventId}
       eventName={event.name}
-      registrationType={event.registration_type}
+      registrationType={event.registration_type ?? 'individual'}
       data={data}
       formSubmissions={formSubmissions}
     />
