@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 
 const markPickedUpSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const cancelOrderSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
@@ -49,8 +49,15 @@ describe('OrdersBoardClient', () => {
   it('cancel asks for confirmation before refunding', async () => {
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
     render(<OrdersBoardClient orgId="org-1" orgSlug="acme" drop={DROP} orders={ORDERS} isAdmin />)
-    fireEvent.click(screen.getByRole('button', { name: /cancel & refund/i }))
+    const card1 = screen.getByTestId('order-o1')
+    fireEvent.click(within(card1).getByRole('button', { name: /cancel & refund/i }))
     await waitFor(() => expect(cancelOrderSpy).toHaveBeenCalledWith('org-1', 'o1'))
     confirmSpy.mockRestore()
+  })
+
+  it('also allows canceling an already picked-up order (post-handoff correction)', () => {
+    render(<OrdersBoardClient orgId="org-1" orgSlug="acme" drop={DROP} orders={ORDERS} isAdmin />)
+    const card2 = screen.getByTestId('order-o2')
+    expect(within(card2).getByRole('button', { name: /cancel & refund/i })).toBeInTheDocument()
   })
 })

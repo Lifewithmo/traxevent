@@ -97,7 +97,7 @@ export function OrdersBoardClient({
               </h2>
               <div className="grid gap-2">
                 {windowOrders.map((o) => (
-                  <div key={o.id}
+                  <div key={o.id} data-testid={`order-${o.id}`}
                     className={`rounded-xl border bg-white p-4 ${o.status === 'picked_up' ? 'opacity-50' : ''} ${o.status === 'refunded' ? 'opacity-50 line-through' : ''}`}>
                     <div className="flex items-center justify-between">
                       <p className="text-lg font-bold">#{o.number} <span className="font-normal">{o.buyer.name}</span></p>
@@ -113,7 +113,7 @@ export function OrdersBoardClient({
                           Picked up
                         </Button>
                       )}
-                      {isAdmin && o.status === 'confirmed' && (
+                      {isAdmin && (o.status === 'confirmed' || o.status === 'picked_up') && (
                         <Button variant="outline" disabled={busyId === o.id}
                           onClick={() => {
                             if (window.confirm(`Refund order #${o.number} (${money(o.total)}) to ${o.buyer.name}?`)) {
