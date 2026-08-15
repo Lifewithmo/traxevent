@@ -170,4 +170,29 @@ describe('sendInvoiceEmail', () => {
     })
     expect(emailsSendSpy.mock.calls.at(-1)![0].subject).toMatch(/updated/i)
   })
+
+  // The Resend SDK RESOLVES on API failure ({ data: null, error }) rather than
+  // rejecting — 422, 403, 429, 5xx and dropped connections all land here. Without
+  // an explicit check the caller reports a delivered email that never went out,
+  // which silently defeats sendInvoice's delivery-failure branch.
+  it('throws when Resend resolves with an error instead of delivering', async () => {
+    emailsSendSpy.mockResolvedValueOnce({
+      data: null,
+      error: { name: 'validation_error', message: 'Invalid `to` field.' },
+    })
+    await expect(
+      sendInvoiceEmail({
+        to: 'bogus', orgName: 'BrewTrax', invoiceNumber: '1042', total: 5, token: 't', isUpdate: false,
+      }),
+    ).rejects.toThrow(/invalid `to` field/i)
+  })
+
+  it('falls back to the error name when Resend supplies no message', async () => {
+    emailsSendSpy.mockResolvedValueOnce({ data: null, error: { name: 'application_error' } })
+    await expect(
+      sendInvoiceEmail({
+        to: 'c@e.com', orgName: 'BrewTrax', invoiceNumber: '1042', total: 5, token: 't', isUpdate: false,
+      }),
+    ).rejects.toThrow(/application_error/)
+  })
 })

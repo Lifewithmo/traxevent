@@ -322,10 +322,15 @@ describe('InvoiceEditorClient — composition invariants', () => {
       payments: [{ amount: 40, recorded_at: '2026-08-02T00:00:00.000Z' }],
     })
 
-  it('renders Balance exactly once on the page', () => {
+  it('renders Balance exactly once on the page, with the right figure', () => {
     render(<InvoiceEditorClient orgId="org1" orgSlug="s" leadId="l" invoice={withPayment()} />)
     expect(screen.getAllByTestId('breakdown-balance')).toHaveLength(1)
     expect(screen.queryByText(/balance due/i)).not.toBeInTheDocument()
+    // Counting the node is not enough — pin the value, or the math could regress
+    // while every invariant above still passes. 100 total − 40 paid = 60.
+    expect(screen.getByTestId('breakdown-balance')).toHaveTextContent('$60.00')
+    expect(screen.getByTestId('breakdown-paid')).toHaveTextContent('$40.00')
+    expect(screen.getByTestId('breakdown-total')).toHaveTextContent('$100.00')
   })
 
   it('renders Amount paid exactly once on the page', () => {

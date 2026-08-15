@@ -402,11 +402,11 @@ export function InvoiceEditorClient({
                   <div
                     key={i}
                     data-testid="line-item-row"
-                    className="grid items-center gap-2 border-b py-2 max-md:grid-cols-6 max-md:py-3 md:grid-cols-[minmax(0,1fr)_4rem_7rem_7rem_5rem_2.5rem]"
+                    className="grid items-center gap-2 border-b py-2 max-md:grid-cols-2 max-md:py-3 md:grid-cols-[minmax(0,1fr)_4rem_7rem_7rem_5rem_2.5rem]"
                   >
                     {/* Labels are visible on mobile and collapse to sr-only at md+,
                         where the table header carries them instead. */}
-                    <div className="space-y-1 max-md:col-span-6">
+                    <div className="space-y-1 max-md:col-span-2">
                       <Label htmlFor={`line-desc-${i}`} className="text-xs text-muted-foreground md:sr-only">
                         Description
                       </Label>
@@ -445,10 +445,14 @@ export function InvoiceEditorClient({
                         className="h-8 md:text-right"
                       />
                     </div>
-                    <p className="text-sm tabular-nums max-md:col-span-2 max-md:before:mr-1 max-md:before:text-xs max-md:before:text-muted-foreground max-md:before:content-['Subtotal'] md:text-right">
-                      {money(lineItemSubtotal(item))}
+                    {/* A real label, not a ::before — a generated string plus a margin
+                        gives the browser no wrap opportunity, so "Subtotal$1250.00"
+                        becomes one unbreakable token and overflows the cell. */}
+                    <p className="flex items-baseline gap-1 text-sm tabular-nums md:justify-end">
+                      <span className="text-xs text-muted-foreground md:sr-only">Subtotal</span>
+                      <span>{money(lineItemSubtotal(item))}</span>
                     </p>
-                    <div className="flex items-center gap-1.5 max-md:col-span-4 md:justify-center">
+                    <div className="flex items-center gap-1.5 md:justify-center">
                       <input
                         id={`taxable-${i}`}
                         type="checkbox"

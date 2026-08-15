@@ -58,4 +58,37 @@ describe('InvoiceViewClient', () => {
     render(<InvoiceViewClient invoice={inv({ balance: 100 })} />)
     expect(screen.queryByText('Paid')).not.toBeInTheDocument()
   })
+
+  // --- composition invariants (screen-composition checklist) ---
+
+  it('renders the balance figure exactly once, with the right value', () => {
+    render(<InvoiceViewClient invoice={inv({ amount_paid: 40, balance: 60 })} />)
+    expect(screen.getAllByTestId('public-balance')).toHaveLength(1)
+    expect(screen.getAllByText(/^Balance due$/i)).toHaveLength(1)
+    // The old layout repeated it as "Balance due: $60.00" beneath the totals block.
+    expect(screen.queryByText(/Balance due:/i)).not.toBeInTheDocument()
+    // Counting the node proves it is not duplicated; this proves it is correct.
+    expect(screen.getByTestId('public-balance')).toHaveTextContent('$60.00')
+  })
+
+  it('gives the balance visual dominance over the supporting totals lines', () => {
+    const { container } = render(<InvoiceViewClient invoice={inv({ balance: 60 })} />)
+    expect(screen.getByTestId('public-balance').className).toMatch(/text-2xl/)
+    expect(container.querySelectorAll('.text-2xl')).toHaveLength(1)
+  })
+
+  it('reads "Paid in full" when nothing is owed', () => {
+    render(<InvoiceViewClient invoice={inv({ amount_paid: 100, balance: 0 })} />)
+    expect(screen.getByTestId('public-balance-note')).toHaveTextContent(/paid in full/i)
+  })
+
+  it('reads as overdue when the due date has passed and a balance remains', () => {
+    render(<InvoiceViewClient invoice={inv({ balance: 100, due_date: '2020-01-01' })} />)
+    expect(screen.getByTestId('public-balance-note')).toHaveTextContent(/overdue/i)
+  })
+
+  it('shows the due date when it is still ahead', () => {
+    render(<InvoiceViewClient invoice={inv({ balance: 100, due_date: '2099-01-01' })} />)
+    expect(screen.getByTestId('public-balance-note')).toHaveTextContent(/due 2099-01-01/i)
+  })
 })

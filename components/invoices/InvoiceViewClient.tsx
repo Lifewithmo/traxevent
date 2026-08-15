@@ -13,10 +13,32 @@ function money(n: number): string {
   return `$${n.toFixed(2)}`
 }
 
+// Whole days past the due date; negative when still ahead of it.
+function daysPastDue(dueDate: string, now: Date): number {
+  const due = new Date(`${dueDate}T00:00:00`)
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  return Math.round((today.getTime() - due.getTime()) / 86_400_000)
+}
+
+// Customer-facing reading of the balance — the same "so what" the operator gets
+// in the editor, worded for the person who owes the money.
+function publicBalanceNote(invoice: PublicInvoice, now: Date): string {
+  if (invoice.balance <= 0) return 'Paid in full — thank you.'
+  if (invoice.due_date) {
+    const d = daysPastDue(invoice.due_date, now)
+    if (d > 0) return `${d} day${d === 1 ? '' : 's'} overdue`
+    if (d === 0) return 'Due today'
+    return `Due ${invoice.due_date}`
+  }
+  if (invoice.amount_paid > 0) return `${money(invoice.amount_paid)} of ${money(invoice.total)} paid`
+  return 'Awaiting payment'
+}
+
 export function InvoiceViewClient({ invoice }: { invoice: PublicInvoice }) {
   const total = invoice.total
   const heading = invoice.number ? `Invoice #${invoice.number}` : 'Invoice'
   const isPaid = invoice.balance <= 0
+  const balanceNote = publicBalanceNote(invoice, new Date())
 
   return (
     <main className="min-h-screen bg-muted/30 py-10 print:bg-white print:py-0">
@@ -38,7 +60,9 @@ export function InvoiceViewClient({ invoice }: { invoice: PublicInvoice }) {
             )}
           </div>
           <div className="text-right">
-            <h1 className="text-2xl font-bold tracking-tight">{heading}</h1>
+            {/* Document identity, not the focal figure — the balance below is
+                the largest thing on the page, and stays that way. */}
+            <h1 className="text-xl font-bold tracking-tight">{heading}</h1>
             {invoice.title && <p className="mt-1 text-sm text-muted-foreground">{invoice.title}</p>}
             {isPaid ? (
               <span className="mt-2 inline-block rounded-full bg-emerald-100 px-3 py-0.5 text-xs font-semibold text-emerald-800">
@@ -120,18 +144,22 @@ export function InvoiceViewClient({ invoice }: { invoice: PublicInvoice }) {
               <dt className="text-muted-foreground">Amount paid</dt>
               <dd className="font-medium">{money(invoice.amount_paid)}</dd>
             </div>
-            <div className="flex justify-between border-t pt-2">
-              <dt className="font-semibold">Balance due</dt>
-              <dd className="font-semibold">{money(invoice.balance)}</dd>
+            {/* The one figure the customer opened this for — rendered once,
+                with its interpretation, matching the editor's totals block. */}
+            <div className="flex items-baseline justify-between border-t pt-3">
+              <dt className="text-sm font-medium">Balance due</dt>
+              <dd className="text-2xl font-semibold tabular-nums tracking-[-.02em]" data-testid="public-balance">
+                {money(invoice.balance)}
+              </dd>
             </div>
+            <p
+              data-testid="public-balance-note"
+              className={`text-right text-xs ${isPaid ? 'text-emerald-700' : 'text-muted-foreground'}`}
+            >
+              {balanceNote}
+            </p>
           </dl>
         </div>
-
-        {isPaid ? (
-          <p className="mt-4 text-right text-sm font-medium text-emerald-700">Paid in full — thank you.</p>
-        ) : (
-          <p className="mt-4 text-right text-lg font-semibold">Balance due: {money(invoice.balance)}</p>
-        )}
 
         {/* Notes */}
         {invoice.notes && (

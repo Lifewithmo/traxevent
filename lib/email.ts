@@ -263,6 +263,18 @@ export interface InvoiceEmailParams {
   replyTo?: string
 }
 
+/**
+ * The Resend SDK does not reject on API failure — a 422, 403, 429, 5xx, or even a
+ * dropped connection all RESOLVE as `{ data: null, error }`. Callers that need to
+ * know whether delivery actually happened must inspect `error` themselves; simply
+ * awaiting the send reports success for every failure mode.
+ */
+function assertDelivered(result: { error: { message?: string; name?: string } | null }): void {
+  if (result.error) {
+    throw new Error(result.error.message ?? result.error.name ?? 'Email delivery failed')
+  }
+}
+
 export async function sendInvoiceEmail(params: InvoiceEmailParams): Promise<void> {
   const from = buildFromAddress({ displayName: params.fromDisplayName, domain: params.fromDomain })
   const invoiceUrl = `${PUBLIC_BASE_URL}/invoices/${params.token}`
@@ -270,7 +282,7 @@ export async function sendInvoiceEmail(params: InvoiceEmailParams): Promise<void
     ? `Updated invoice ${params.invoiceNumber} from ${params.orgName}`
     : `Invoice ${params.invoiceNumber} from ${params.orgName}`
 
-  await getResend().emails.send({
+  assertDelivered(await getResend().emails.send({
     from,
     to: params.to,
     ...(params.replyTo ? { replyTo: params.replyTo } : {}),
@@ -289,5 +301,5 @@ export async function sendInvoiceEmail(params: InvoiceEmailParams): Promise<void
         </a>
       </div>
     `,
-  })
+  }))
 }
