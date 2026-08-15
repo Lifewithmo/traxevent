@@ -40,7 +40,7 @@ const SECTION_FOR_SLUG: Record<string, string> = {
   reports: 'money',
   catalog: 'catalog',
   packages: 'catalog',
-  drops: 'catalog',
+  drops: 'events',
   vendors: 'catalog',
   forms: 'catalog',
   compliance: 'catalog',
@@ -361,7 +361,6 @@ export function AdminSidebar({ orgSlug, eventSlug, eventKind, terminology, allow
 
   const catalogChildren: NavLink[] = [
     ...(has('catalog') ? [{ slug: 'packages', label: catalogLabel ?? 'Packages', icon: 'packages' as NavIconName }] : []),
-    ...(has('storefront' as ModuleId) ? [{ slug: 'drops', label: storefrontLabel ?? 'Online orders', icon: 'packages' as NavIconName }] : []),
     ...(has('vendors') ? [{ slug: 'vendors', label: 'Vendors', icon: 'vendors' as NavIconName }] : []),
     ...(has('forms') ? [{ slug: 'forms', label: 'Forms', icon: 'forms' as NavIconName }] : []),
     ...(has('compliance') ? [{ slug: 'compliance', label: 'Compliance', icon: 'compliance' as NavIconName }] : []),
@@ -373,7 +372,7 @@ export function AdminSidebar({ orgSlug, eventSlug, eventKind, terminology, allow
   }))
 
   const allEventsActive = pathname === `/${orgSlug}`
-  const newEventActive = isActive(pathname, `/${orgSlug}/new-event`)
+  const newEventActive = isActive(pathname, `/${orgSlug}/new`)
   const eventsActive = allEventsActive || newEventActive || Boolean(eventSlug)
 
   const pipelineActive = pipelineChildren.some((l) => l.active)
@@ -569,15 +568,27 @@ export function AdminSidebar({ orgSlug, eventSlug, eventKind, terminology, allow
                       className="flex items-center gap-2 pl-[26px] pr-3 py-2 rounded-md text-sm text-[color:var(--sidebar-muted)] hover:bg-[color:var(--sidebar-accent)] hover:text-[color:var(--sidebar-accent-foreground)]"
                     >
                       <span className="truncate flex-1">{e.name}</span>
+                      {e.kind === 'market_day' && (
+                        <span className="text-[9px] uppercase tracking-wide rounded bg-[color:var(--sidebar-accent)] px-1 shrink-0">Market</span>
+                      )}
                       <span className={`text-[10px] shrink-0 ${e.isToday ? 'font-semibold' : ''}`}>{e.label}</span>
                     </Link>
                   ))}
+                  {has('storefront' as ModuleId) && (
+                    <NavItem
+                      href={`/${orgSlug}/drops`}
+                      label={storefrontLabel ?? 'Online orders'}
+                      icon="packages"
+                      active={isActive(pathname, `/${orgSlug}/drops`)}
+                      indent
+                    />
+                  )}
                   <NavItem href={`/${orgSlug}`} label="All events" icon="events" active={allEventsActive} indent />
                   <NavItem
-                    href={`/${orgSlug}/new-event`}
-                    label="+ New event"
+                    href={`/${orgSlug}/new`}
+                    label="+ New"
                     icon="events"
-                    active={newEventActive}
+                    active={isActive(pathname, `/${orgSlug}/new`) && !isActive(pathname, `/${orgSlug}/new-event`)}
                     indent
                   />
                 </>

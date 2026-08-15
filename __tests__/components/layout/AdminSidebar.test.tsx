@@ -111,12 +111,14 @@ describe('AdminSidebar — workspace nav (no eventSlug)', () => {
   })
 
   it('shows the storefront link with the pack label when the module is enabled', () => {
-    render(<AdminSidebar orgSlug="acme" enabledModules={['storefront']} catalogLabel="Menu Packages" storefrontLabel="Drops" />)
-    fireEvent.click(screen.getByRole('button', { name: /expand catalog/i }))
+    // Drops lives under Events now (see "AdminSidebar — Option C IA" describe),
+    // so the storefront module also needs 'events' enabled for the row to render.
+    render(<AdminSidebar orgSlug="acme" enabledModules={['events', 'storefront']} catalogLabel="Menu Packages" storefrontLabel="Drops" />)
+    fireEvent.click(screen.getByRole('button', { name: /expand events/i }))
     expect(screen.getByRole('link', { name: 'Drops' })).toHaveAttribute('href', '/acme/drops')
   })
 
-  it('places the storefront link directly after Packages in the Catalog section', () => {
+  it('Catalog section no longer carries a storefront row', () => {
     renderNav(['catalog', 'storefront', 'vendors', 'forms', 'compliance'])
     const catalog = screen.getByRole('button', { name: /expand catalog/i }).closest('div')!.parentElement!
     fireEvent.click(screen.getByRole('button', { name: /expand catalog/i }))
@@ -124,7 +126,7 @@ describe('AdminSidebar — workspace nav (no eventSlug)', () => {
       .getAllByRole('link')
       .map((l) => l.textContent)
       .filter((l) => l !== 'Catalog')
-    expect(labels).toEqual(['Packages', 'Online orders', 'Vendors', 'Forms', 'Compliance'])
+    expect(labels).toEqual(['Packages', 'Vendors', 'Forms', 'Compliance'])
   })
 
   it('renders an icon with every workspace nav item', () => {
@@ -163,8 +165,8 @@ describe('AdminSidebar — workspace nav (no eventSlug)', () => {
 
 describe('AdminSidebar — Option C IA', () => {
   const events = [
-    { id: 'e1', name: 'Hendricks wedding', slug: 'hendricks', label: 'Today', isToday: true },
-    { id: 'e2', name: 'Boise chamber mixer', slug: 'boise', label: 'Aug 20', isToday: false },
+    { id: 'e1', name: 'Hendricks wedding', slug: 'hendricks', label: 'Today', isToday: true, kind: 'client_job' as const },
+    { id: 'e2', name: 'Boise chamber mixer', slug: 'boise', label: 'Aug 20', isToday: false, kind: 'client_job' as const },
   ]
 
   it('renders the top trio in order: Today, Calendar, Clients', () => {
@@ -307,6 +309,31 @@ describe('AdminSidebar — Option C IA', () => {
     render(<AdminSidebar orgSlug="acme" enabledModules={modules} />)
     expect(screen.queryByRole('link', { name: 'Money' })).not.toBeInTheDocument()
   })
+
+  it('tags market-day rows and moves Drops under Events', () => {
+    const events = [
+      { id: 'm1', name: 'Boise Farmers Market', slug: 'bfm', label: 'Aug 22', isToday: false, kind: 'market_day' as const },
+      { id: 'c1', name: 'Hendricks wedding', slug: 'hendricks', label: 'Aug 23', isToday: false, kind: 'client_job' as const },
+    ]
+    render(<AdminSidebar orgSlug="acme" upcomingEvents={events} enabledModules={['events', 'storefront'] as ModuleId[]} storefrontLabel="Drops" />)
+    fireEvent.click(screen.getByRole('button', { name: /expand events/i }))
+    const marketRow = screen.getByRole('link', { name: /Boise Farmers Market/ })
+    expect(within(marketRow).getByText('Market')).toBeInTheDocument()
+    const clientRow = screen.getByRole('link', { name: /Hendricks wedding/ })
+    expect(within(clientRow).queryByText('Market')).not.toBeInTheDocument()
+    // Drops lives under Events now…
+    expect(screen.getByRole('link', { name: 'Drops' })).toHaveAttribute('href', '/acme/drops')
+    // …and + New points at the chooser
+    expect(screen.getByRole('link', { name: '+ New' })).toHaveAttribute('href', '/acme/new')
+  })
+
+  it('keeps Drops out of Catalog', () => {
+    render(<AdminSidebar orgSlug="acme" enabledModules={['events', 'storefront', 'catalog'] as ModuleId[]} storefrontLabel="Drops" catalogLabel="Menu Packages" />)
+    fireEvent.click(screen.getByRole('button', { name: /expand catalog/i }))
+    // Menu Packages renders; Drops does not appear among Catalog children.
+    expect(screen.getByRole('link', { name: 'Menu Packages' })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Drops' })).not.toBeInTheDocument()
+  })
 })
 
 // Active state is expressed purely through classes: a child row gets the
@@ -340,10 +367,10 @@ describe('AdminSidebar — active state', () => {
     expect(icon.className.split(/\s+/)).toContain('bg-[color:var(--sidebar-accent)]')
   })
 
-  it('opens Events and highlights "+ New event" on /new-event', () => {
-    nav.pathname = '/acme/new-event'
+  it('opens Events and highlights "+ New" on /new', () => {
+    nav.pathname = '/acme/new'
     render(<AdminSidebar orgSlug="acme" />)
-    expect(rowActive('+ New event')).toBe(true)
+    expect(rowActive('+ New')).toBe(true)
     expect(rowActive('All events')).toBe(false)
     expect(sectionActive('Events')).toBe(true)
   })
@@ -353,7 +380,7 @@ describe('AdminSidebar — active state', () => {
     render(<AdminSidebar orgSlug="acme" />)
     fireEvent.click(screen.getByRole('button', { name: /expand events/i }))
     expect(rowActive('All events')).toBe(true)
-    expect(rowActive('+ New event')).toBe(false)
+    expect(rowActive('+ New')).toBe(false)
   })
 
   it('highlights exactly one row on /leads/tasks', () => {

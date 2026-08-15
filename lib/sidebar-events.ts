@@ -1,4 +1,5 @@
-import type { Event } from '@/lib/types'
+import { kindOf } from '@/lib/occasions/kind'
+import type { Event, EventKind } from '@/lib/types'
 
 export interface SidebarEventRow {
   id: string
@@ -6,6 +7,7 @@ export interface SidebarEventRow {
   slug: string
   label: string      // 'Today' when the event starts today, else 'Aug 20'
   isToday: boolean
+  kind: EventKind
 }
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
@@ -32,6 +34,6 @@ export function selectUpcomingEvents(events: Event[], now: string, limit = 5): S
     .map((e) => {
       const start = e.event_start.slice(0, 10)
       const isToday = start === today
-      return { id: e.id, name: e.name, slug: e.slug, label: isToday ? 'Today' : shortDate(start), isToday }
+      return { id: e.id, name: e.name, slug: e.slug, label: isToday ? 'Today' : shortDate(start), isToday, kind: kindOf(e) }
     })
 }
