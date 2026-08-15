@@ -5,6 +5,10 @@ import { notFound } from 'next/navigation'
 import { getOrgByHandle } from '@/lib/public-profile-server'
 import { getBrand, DEFAULT_BRAND_ID } from '@/lib/brands'
 import { readableTextOn } from '@/lib/branding'
+import { listDropsCore } from '@/lib/storefront/drops'
+import { dropPhase } from '@/lib/storefront/drop-logic'
+import { resolveEnabledModules } from '@/lib/industry-packs'
+import { SubscribeCard } from '@/components/storefront/SubscribeCard'
 
 export async function generateMetadata({
   params,
@@ -42,6 +46,19 @@ export default async function PublicProfilePage({
   const accentText = readableTextOn(accent)
   const brand = getBrand(org.brand_id)
   const socials = Object.entries(profile.socials ?? {})
+
+  const storefrontOn = resolveEnabledModules(org.industry_pack_id).includes('storefront')
+  let nextDrop: { id: string; title: string; phase: string; opens_at: string } | null = null
+  if (storefrontOn) {
+    const now = new Date().toISOString()
+    const candidates = (await listDropsCore(org.id))
+      .filter((d) => d.status === 'scheduled')
+      .map((d) => ({ d, phase: dropPhase(d, now) }))
+      .filter(({ phase }) => phase === 'open' || phase === 'upcoming')
+      .sort((a, b) => a.d.opens_at.localeCompare(b.d.opens_at))
+    const hit = candidates.find(({ phase }) => phase === 'open') ?? candidates[0]
+    if (hit) nextDrop = { id: hit.d.id, title: hit.d.title, phase: hit.phase, opens_at: hit.d.opens_at }
+  }
 
   return (
     <div className="mx-auto flex min-h-screen max-w-md flex-col px-4 py-10">
@@ -102,6 +119,21 @@ export default async function PublicProfilePage({
           </a>
         ))}
       </main>
+
+      {storefrontOn && (
+        <section className="mt-8 flex flex-col gap-3">
+          {nextDrop && (
+            <a
+              href={`/p/${handle}/drops/${nextDrop.id}`}
+              className="rounded-2xl border px-4 py-3 text-center font-semibold"
+              style={{ backgroundColor: accent, borderColor: accent, color: accentText }}
+            >
+              {nextDrop.phase === 'open' ? `Order now — ${nextDrop.title}` : `Next drop: ${nextDrop.title}`}
+            </a>
+          )}
+          <SubscribeCard handle={handle} />
+        </section>
+      )}
 
       <footer className="mt-auto pt-10 text-center text-xs text-gray-400">
         <a
