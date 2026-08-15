@@ -4,9 +4,13 @@ import { FieldValue } from 'firebase-admin/firestore'
 import { stripe } from '@/lib/stripe'
 import { headers } from 'next/headers'
 import { adminDb } from '@/lib/firebase-admin'
-import { sendRegistrationConfirmation, sendProposalSignedConfirmation } from '@/lib/email'
+import { sendRegistrationConfirmation, sendProposalSignedConfirmation, sendOrderConfirmation } from '@/lib/email'
 import { getVerifiedSendingDomain } from '@/actions/domains'
 import { reconcileProposalDeposit } from '@/lib/crm/deposit-reconcile'
+import { confirmOrderCore, markRefundedCore, ordersRef } from '@/lib/storefront/orders'
+import { getDropCore } from '@/lib/storefront/drops'
+import { findOrCreateCustomerCore } from '@/lib/crm/customers'
+import { logActivity } from '@/lib/activity'
 import type { Proposal } from '@/lib/types'
 
 export async function POST(req: Request) {
@@ -25,6 +29,66 @@ export async function POST(req: Request) {
 
   if (event.type === 'payment_intent.succeeded') {
     const pi = event.data.object as Stripe.PaymentIntent
+
+    if (pi.metadata?.purpose === 'drop_order') {
+      const orderId = pi.metadata.order_id
+      const orgId = pi.metadata.org_id
+      if (!orderId || !orgId) return new Response('ok')
+
+      // Durable write first: transactional confirm + pickup-number assignment.
+      // Everything after is best-effort and must not trigger Stripe retries.
+      const { order, confirmedNow } = await confirmOrderCore(orgId, orderId, {
+        intent_id: pi.id,
+        paid_at: new Date(pi.created * 1000).toISOString(),
+      })
+      if (!confirmedNow) return new Response('ok')
+
+      try {
+        const { customer } = await findOrCreateCustomerCore(orgId, {
+          name: order.buyer.name,
+          email: order.buyer.email,
+          ...(order.buyer.phone ? { phone: order.buyer.phone } : {}),
+        })
+        await ordersRef(orgId).doc(orderId).update({ customer_id: customer.id, updated_at: new Date().toISOString() })
+
+        const drop = await getDropCore(orgId, order.drop_id)
+        await logActivity(orgId, {
+          parent_type: 'customer',
+          parent_id: customer.id,
+          kind: 'order',
+          summary: `Order #${order.number} — ${drop?.title ?? 'drop'} ($${order.total.toFixed(2)})`,
+        })
+
+        const window = drop?.pickup.windows.find((w) => w.id === order.pickup_window_id)
+        const pickupLabel = [
+          window ? `${window.day} ${order.pickup_slot ?? `${window.start}–${window.end}`}` : '',
+          drop?.pickup.location_name ?? '',
+        ].filter(Boolean).join(' · ')
+        let fromDomain: string | undefined
+        try {
+          fromDomain = await getVerifiedSendingDomain(orgId)
+        } catch {
+          // domain lookup failure should not block the email
+        }
+        const orgSnap = await adminDb.collection('orgs').doc(orgId).get()
+        const orgData = orgSnap.exists ? (orgSnap.data() as { name?: string; branding?: { display_name?: string } }) : {}
+        await sendOrderConfirmation({
+          to: order.buyer.email,
+          buyerName: order.buyer.name,
+          orgDisplayName: orgData.branding?.display_name || orgData.name || 'Your order',
+          dropTitle: drop?.title ?? 'Drop',
+          orderNumber: order.number!,
+          pickupLabel,
+          lines: order.lines.map((l) => ({ name: l.name, qty: l.qty, price: l.price })),
+          total: order.total,
+          orderUrl: `${process.env.NEXT_PUBLIC_BASE_URL ?? 'https://traxevent.com'}/orders/${order.token}`,
+          ...(fromDomain ? { fromDomain } : {}),
+        })
+      } catch {
+        // CRM/email are best-effort — the order is already confirmed
+      }
+      return new Response('ok')
+    }
 
     if (pi.metadata?.purpose === 'proposal_deposit') {
       const proposalId = pi.metadata.proposal_id
@@ -196,6 +260,37 @@ export async function POST(req: Request) {
         // Email failure should not cause Stripe to retry the webhook
       }
     }
+  }
+
+  if (event.type === 'charge.refunded') {
+    const charge = event.data.object as Stripe.Charge
+    const piId = typeof charge.payment_intent === 'string' ? charge.payment_intent : charge.payment_intent?.id
+    const account = event.account   // connected-account events carry the acct id
+    if (piId && account) {
+      try {
+        // Charge metadata is NOT copied from the PI — retrieve the PI on the
+        // connected account to learn whether this refund belongs to a drop
+        // order (covers refunds issued from the org's own Stripe dashboard).
+        // Stripe's TS params type for `retrieve` doesn't declare `stripeAccount`
+        // even though the SDK detects and honors it at runtime (same as the
+        // documented `create(params, { stripeAccount })` pattern used above) —
+        // cast purely to satisfy the type checker, not to change the call shape.
+        const pi = await stripe.paymentIntents.retrieve(
+          piId,
+          { stripeAccount: account } as unknown as Stripe.PaymentIntentRetrieveParams
+        )
+        if (pi.metadata?.purpose === 'drop_order' && pi.metadata.order_id && pi.metadata.org_id) {
+          await markRefundedCore(pi.metadata.org_id, pi.metadata.order_id, {
+            refund_id: charge.refunds?.data?.[0]?.id ?? 'unknown',
+            amount: (charge.amount_refunded ?? 0) / 100,
+            refunded_at: new Date().toISOString(),
+          })
+        }
+      } catch {
+        // best-effort reconciliation — cancelOrder already wrote the primary record
+      }
+    }
+    return new Response('ok')
   }
 
   return new Response('ok')
