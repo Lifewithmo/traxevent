@@ -14,6 +14,9 @@ vi.mock('@/actions/proposals', () => ({
 vi.mock('@/actions/proposal-images', () => ({
   uploadProposalImage: vi.fn().mockResolvedValue({ url: 'https://storage/x.png' }),
 }))
+vi.mock('@/actions/proposal-templates', () => ({
+  createProposalTemplate: vi.fn().mockResolvedValue({ id: 't-new' }),
+}))
 vi.mock('@/actions/proposal-ai', () => ({
   generateProposalDraft: vi.fn(),
 }))

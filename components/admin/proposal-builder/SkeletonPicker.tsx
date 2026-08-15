@@ -1,13 +1,16 @@
 'use client'
 
-// Full-screen skeleton picker for "New proposal" (spec §3): three themed
-// thumbnail cards + Blank. Picking creates the proposal with the CRM-
-// autofilled title, scaffolds the skeleton's placeholder blocks (intro
-// pre-addressed to the lead contact), and enters the builder.
+// Full-screen picker for "New proposal" (spec §3 + templates spec
+// 2026-08-13 §7): the org's own templates first (when any exist), then the
+// built-in skeletons. Picking creates the proposal with the CRM-autofilled
+// title, applies the template content or scaffolds the skeleton's
+// placeholder blocks, and enters the builder.
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createProposal, updateProposalDraft } from '@/actions/proposals'
+import { createProposalFromTemplate } from '@/actions/proposal-templates'
 import { PROPOSAL_SKELETONS, type SkeletonKey } from '@/lib/proposals/skeletons'
+import type { ProposalTemplate } from '@/lib/types'
 
 // Miniature "thumbnail" strokes suggesting each skeleton's shape.
 const THUMBS: Record<SkeletonKey, string[]> = {
@@ -42,16 +45,30 @@ export function SkeletonPicker({
   leadId,
   title,
   contactName,
+  templates = [],
 }: {
   orgId: string
   orgSlug: string
   leadId: string
   title: string
   contactName?: string
+  templates?: ProposalTemplate[]
 }) {
   const router = useRouter()
-  const [creating, setCreating] = useState<SkeletonKey | null>(null)
+  const [creating, setCreating] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+
+  async function pickTemplate(t: ProposalTemplate) {
+    setCreating(`tpl:${t.id}`)
+    setError(null)
+    try {
+      const created = await createProposalFromTemplate(orgId, leadId, t.id, { title })
+      router.push(`/${orgSlug}/leads/${leadId}/proposals/${created.id}`)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to create proposal')
+      setCreating(null)
+    }
+  }
 
   async function pick(key: SkeletonKey) {
     setCreating(key)
@@ -80,6 +97,42 @@ export function SkeletonPicker({
       <div aria-live="polite" aria-atomic="true">
         {error && <p className="mb-4 text-sm text-destructive">{error}</p>}
       </div>
+      {templates.length > 0 && (
+        <section className="mb-8">
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+            Your templates
+          </h2>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {templates.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                disabled={creating !== null}
+                onClick={() => pickTemplate(t)}
+                className="flex flex-col rounded-lg border border-gray-200 p-4 text-left transition hover:border-gray-400 hover:shadow-sm disabled:opacity-50"
+              >
+                <span className="font-medium">
+                  {creating === `tpl:${t.id}` ? 'Creating…' : t.name}
+                </span>
+                <span className="mt-1 text-xs text-muted-foreground">
+                  {t.description ||
+                    [
+                      `${t.line_items.length} line item${t.line_items.length === 1 ? '' : 's'}`,
+                      t.packages?.length ? `${t.packages.length} packages` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
+                </span>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+      {templates.length > 0 && (
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+          Start fresh
+        </h2>
+      )}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {PROPOSAL_SKELETONS.map((s) => (
           <button
@@ -100,6 +153,13 @@ export function SkeletonPicker({
           </button>
         ))}
       </div>
+      <p className="mt-6 text-sm text-muted-foreground">
+        Reuse your best work — manage reusable documents under{' '}
+        <a href={`/${orgSlug}/proposal-templates`} className="underline underline-offset-4">
+          Settings → Proposal templates
+        </a>
+        .
+      </p>
     </main>
   )
 }

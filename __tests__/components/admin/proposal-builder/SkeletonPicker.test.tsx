@@ -13,6 +13,10 @@ vi.mock('@/actions/proposals', () => ({
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push }),
 }))
+const createProposalFromTemplate = vi.fn()
+vi.mock('@/actions/proposal-templates', () => ({
+  createProposalFromTemplate: (...a: unknown[]) => createProposalFromTemplate(...a),
+}))
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -61,6 +65,35 @@ describe('SkeletonPicker', () => {
     fireEvent.click(screen.getByRole('button', { name: /blank/i }))
     await waitFor(() => expect(push).toHaveBeenCalled())
     expect(updateProposalDraft).not.toHaveBeenCalled()
+  })
+
+  it('shows no templates section when the org has none', () => {
+    mount()
+    expect(screen.queryByText(/your templates/i)).toBeNull()
+    expect(screen.queryByText(/start fresh/i)).toBeNull()
+  })
+
+  it('lists org templates first and creates from the picked one', async () => {
+    createProposalFromTemplate.mockResolvedValueOnce({ id: 'from-tpl' })
+    render(
+      <SkeletonPicker
+        orgId="o1"
+        orgSlug="acme"
+        leadId="l1"
+        title="BrewTrax — Miller wedding"
+        templates={[
+          { id: 't1', org_id: 'o1', name: 'Standard wedding', line_items: [], created_at: 'x' },
+        ]}
+      />,
+    )
+    expect(screen.getByText(/your templates/i)).toBeInTheDocument()
+    expect(screen.getByText(/start fresh/i)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /standard wedding/i }))
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/acme/leads/l1/proposals/from-tpl'))
+    expect(createProposalFromTemplate).toHaveBeenCalledWith('o1', 'l1', 't1', {
+      title: 'BrewTrax — Miller wedding',
+    })
+    expect(createProposal).not.toHaveBeenCalled()
   })
 
   it('surfaces a create failure and re-enables the picker', async () => {

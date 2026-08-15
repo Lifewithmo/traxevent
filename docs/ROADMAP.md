@@ -81,6 +81,14 @@ EventTrax pivot (neutralization, multi-brand, ops core). Detailed designs live i
   (increments 2–5 queued: recipes/yields, vendor price books, proposal
   `catalog_ref`, one-door AI intake).
 
+- **Pipeline KPI header** (PR #77, merged 2026-08-13) — first-principles
+  header on the pipeline page: booked this month (vs same month last year),
+  booked ahead next 90 days, needs-action count, booked-revenue-by-month
+  backlog bar (`lib/pipeline-stats.ts`); extended by PRs #80/#81 (Open
+  pipeline tile, 12-month window, kit skin). Ride-along capture for future
+  Reports: `Lead.source` (`intake`/`manual`), structured `stage` on
+  stage-change activity events.
+
 - **Pipeline & sidebar mock parity** (PR #80, merged 2026-08-13) — production
   catches up to the design-system pipeline mock: sidebar IA (Operations =
   Vendors/Menu Packages/Forms/Compliance; Events folds into Quick Links; first
@@ -104,13 +112,12 @@ EventTrax pivot (neutralization, multi-brand, ops core). Detailed designs live i
 
 ## In flight
 
-- **Pipeline KPI header** (branch `claude/pipeline-kpi-header`) — first-principles
-  header on the pipeline page: booked this month (vs same month last year),
-  booked ahead next 90 days, needs-action count, and a booked-revenue-by-month
-  backlog bar (`lib/pipeline-stats.ts`). Ride-along capture for future Reports:
-  `Lead.source` (`intake`/`manual`) stamped at creation, structured `stage` on
-  stage-change activity events
-  (plan: `superpowers/plans/2026-08-12-pipeline-kpi-header.md`).
+- **Proposal templates** (branch `claude/proposal-templates`) — org-owned
+  full-document templates: pick one on New proposal (above the built-in
+  skeletons), manage under Settings → Proposal templates, edit in a builder
+  variant, "Save as template" from any proposal. Snapshot semantics; catalog
+  linkage arrives with the queued ops "proposal refs" increment
+  (spec: `superpowers/specs/2026-08-13-proposal-templates-design.md`).
 
 ## Next (approved queue)
 

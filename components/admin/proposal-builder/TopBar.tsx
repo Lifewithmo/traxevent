@@ -42,6 +42,7 @@ export function TopBar({
   onCopyLink,
   onVoid,
   onDelete,
+  onSaveAsTemplate,
   busy = false,
 }: {
   orgSlug: string
@@ -63,6 +64,7 @@ export function TopBar({
   onCopyLink?: () => void
   onVoid?: () => void
   onDelete?: () => void
+  onSaveAsTemplate?: () => void
   busy?: boolean
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
@@ -160,6 +162,22 @@ export function TopBar({
               >
                 Open print view
               </Button>
+              {onSaveAsTemplate && (
+                <Button
+                  type="button"
+                  role="menuitem"
+                  size="sm"
+                  variant="ghost"
+                  className="w-full justify-start"
+                  disabled={busy}
+                  onClick={() => {
+                    onSaveAsTemplate()
+                    setMenuOpen(false)
+                  }}
+                >
+                  Save as template
+                </Button>
+              )}
               <Button
                 type="button"
                 role="menuitem"
