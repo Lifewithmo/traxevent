@@ -42,10 +42,28 @@ function toNumber(v: string): number {
   return Number.isNaN(n) ? 0 : n
 }
 
-// A row is "fully blank" when it has no description and no positive numbers.
+// A row is "fully blank" when nothing meaningful has been typed into it: no
+// description and no price. Quantity is deliberately not part of the test —
+// `addRow` seeds it to 1, so requiring `quantity === 0` here meant a freshly
+// added, untouched row was never filtered and shipped to the customer as an
+// empty line.
 function isBlankRow(item: InvoiceLineItem): boolean {
-  return item.description.trim() === '' && !(item.quantity > 0) && !(item.unit_price > 0)
+  return item.description.trim() === '' && !(item.unit_price > 0)
 }
+
+// The discount as it should be persisted: dropped entirely when it carries no
+// value, and with `reason` OMITTED (not blanked) when the operator clears it.
+// The key has to be absent rather than undefined — `discount` is written as a
+// whole map, and a nested `undefined` is what Firestore rejects.
+function cleanDiscount(discount?: InvoiceDiscount): InvoiceDiscount | undefined {
+  if (!discount || !(discount.value > 0)) return undefined
+  const reason = discount.reason?.trim()
+  return reason
+    ? { type: discount.type, value: discount.value, reason }
+    : { type: discount.type, value: discount.value }
+}
+
+const DELIVERY_FAILED_WARNING = 'Invoice sent — email delivery failed. Use Send update to retry.'
 
 // Whole days past the due date; negative when still ahead of it.
 function daysPastDue(dueDate: string, now: Date): number {
@@ -98,7 +116,11 @@ export function InvoiceEditorClient({
   const [recording, setRecording] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
-  const [warning, setWarning] = useState<string | null>(null)
+  // Seeded from the persisted delivery status, not just this session's send —
+  // a bounced invoice must still show the cue after a reload.
+  const [warning, setWarning] = useState<string | null>(
+    invoice.delivery === 'bounced' ? DELIVERY_FAILED_WARNING : null,
+  )
   const [copied, setCopied] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [sendOpen, setSendOpen] = useState(false)
@@ -147,7 +169,7 @@ export function InvoiceEditorClient({
         due_date: dueDate || undefined,
         notes: notes.trim() || undefined,
         line_items: cleaned,
-        discount: discount && discount.value > 0 ? discount : undefined,
+        discount: cleanDiscount(discount),
         tax_rate: taxRateNum && taxRateNum > 0 ? taxRateNum : undefined,
       },
     }
@@ -167,14 +189,18 @@ export function InvoiceEditorClient({
   }
 
   async function handleSend({ to, message }: { to: string; message?: string }) {
-    setError(null); setNotice(null); setWarning(null)
+    setError(null); setNotice(null)
     const { cleaned, payload } = currentUpdates()
+    // Deliberately not clearing `warning` here: if this retry itself throws, the
+    // standing "email delivery failed" cue must survive, or a failed retry leaves
+    // the operator with nothing but the dialog's inline error.
     const result = await sendInvoice(orgId, invoice.id, { to, message, updates: payload })
     setLineItems(cleaned)
     setEditing(false)
     if (result && result.emailDelivered === false) {
-      setWarning('Invoice sent — email delivery failed. Use Send update to retry.')
+      setWarning(DELIVERY_FAILED_WARNING)
     } else {
+      setWarning(null)
       setNotice(showLink ? 'Update sent.' : 'Invoice sent.')
     }
     router.refresh()
@@ -266,7 +292,10 @@ export function InvoiceEditorClient({
             {!isVoid && !editing && (
               <Button variant="outline" size="sm" onClick={() => setEditing(true)}>Edit invoice</Button>
             )}
-            {!isVoid && editing && (
+            {/* Drafts only. A sent invoice is locked server-side against every
+                financial field this payload carries, so a Save here could only
+                ever fail — its edits go out through Send update instead. */}
+            {isDraft && (
               <Button variant="outline" size="sm" onClick={handleSave} disabled={busy}>
                 {saving ? 'Saving…' : 'Save'}
               </Button>

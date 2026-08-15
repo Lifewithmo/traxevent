@@ -6,14 +6,20 @@ import type { NormalizedInvoice, InvoiceVersion } from '@/lib/types'
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }))
 
-type SendInput = { to: string; message?: string; updates?: { line_items?: unknown[]; discount?: unknown } }
+type Discount = { type: string; value: number; reason?: string }
+type UpdatePayload = {
+  title?: string; due_date?: string; notes?: string
+  line_items?: unknown[]; discount?: Discount; tax_rate?: number
+}
+type SendInput = { to: string; message?: string; updates?: UpdatePayload }
 const sendInvoiceMock = vi.fn(
   async (_orgId: string, _invoiceId: string, _input: SendInput) => ({ number: 'BRW-1042', emailDelivered: true }),
 )
+const updateInvoiceMock = vi.fn(async (_orgId: string, _invoiceId: string, _updates: UpdatePayload) => {})
 vi.mock('@/actions/invoices', () => ({
-  updateInvoice: vi.fn(), voidInvoice: vi.fn(),
-  recordPayment: vi.fn(), deleteInvoice: vi.fn(),
+  voidInvoice: vi.fn(), recordPayment: vi.fn(), deleteInvoice: vi.fn(),
   sendInvoice: (...args: Parameters<typeof sendInvoiceMock>) => sendInvoiceMock(...args),
+  updateInvoice: (...args: Parameters<typeof updateInvoiceMock>) => updateInvoiceMock(...args),
 }))
 // The catalog picker loads work packages on open; keep it inert here (Task 5 owns its behavior).
 vi.mock('@/actions/work-packages', () => ({
@@ -121,12 +127,129 @@ describe('InvoiceEditorClient — document', () => {
     expect(await screen.findByText(/email delivery failed/i)).toBeInTheDocument()
   })
 
+  it('shows the delivery-failure warning from the persisted status, with no send this session', () => {
+    sendInvoiceMock.mockClear()
+    render(
+      <InvoiceEditorClient orgId="org1" orgSlug="s" leadId="l"
+        invoice={sentInvoice({ delivery: 'bounced', line_items: [{ description: 'x', quantity: 1, unit_price: 10 }] })} />,
+    )
+    expect(screen.getByText(/email delivery failed/i)).toBeInTheDocument()
+    expect(sendInvoiceMock).not.toHaveBeenCalled()
+  })
+
+  it('keeps the standing delivery warning when a retry send throws', async () => {
+    const user = userEvent.setup()
+    sendInvoiceMock.mockClear()
+    sendInvoiceMock.mockRejectedValueOnce(new Error('Recipient email is required'))
+    render(
+      <InvoiceEditorClient orgId="org1" orgSlug="s" leadId="l" customerEmail="c@e.com"
+        invoice={sentInvoice({ delivery: 'bounced', line_items: [{ description: 'x', quantity: 1, unit_price: 10 }] })} />,
+    )
+    await user.click(screen.getByRole('button', { name: /send update/i }))
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: /send update/i }))
+
+    expect(await within(dialog).findByText(/recipient email is required/i)).toBeInTheDocument()
+    expect(screen.getByText(/email delivery failed/i)).toBeInTheDocument()
+  })
+
+  it('clears the delivery warning once a send succeeds', async () => {
+    const user = userEvent.setup()
+    sendInvoiceMock.mockClear()
+    render(
+      <InvoiceEditorClient orgId="org1" orgSlug="s" leadId="l" customerEmail="c@e.com"
+        invoice={sentInvoice({ delivery: 'bounced', line_items: [{ description: 'x', quantity: 1, unit_price: 10 }] })} />,
+    )
+    await user.click(screen.getByRole('button', { name: /send update/i }))
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: /send update/i }))
+
+    expect(await screen.findByText(/update sent/i)).toBeInTheDocument()
+    expect(screen.queryByText(/email delivery failed/i)).not.toBeInTheDocument()
+  })
+
   it('offers Add from catalog and Add blank line while editable', async () => {
     const user = userEvent.setup()
     render(<InvoiceEditorClient orgId="org1" orgSlug="s" leadId="l" invoice={draftInvoice({ line_items: [] })} />)
     expect(screen.getByRole('button', { name: /add from catalog/i })).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: /add blank line/i }))
     expect(screen.getAllByTestId('line-item-row')).toHaveLength(1)
+  })
+
+  it('Save on a draft calls updateInvoice with the cleaned payload', async () => {
+    const user = userEvent.setup()
+    updateInvoiceMock.mockClear()
+    render(
+      <InvoiceEditorClient orgId="org1" orgSlug="s" leadId="l"
+        invoice={draftInvoice({ line_items: [{ description: 'Service', quantity: 1, unit_price: 1000 }] })} />,
+    )
+    // An added-but-untouched row must never reach Firestore, even though
+    // addRow seeds its quantity to 1.
+    await user.click(screen.getByRole('button', { name: /add blank line/i }))
+    await user.click(screen.getByRole('button', { name: /^Save$/ }))
+
+    expect(updateInvoiceMock).toHaveBeenCalledTimes(1)
+    const [orgId, invoiceId, payload] = updateInvoiceMock.mock.calls[0]
+    expect(orgId).toBe('org1')
+    expect(invoiceId).toBe('inv1')
+    expect(payload.line_items).toEqual([{ description: 'Service', quantity: 1, unit_price: 1000 }])
+    expect(payload.discount).toBeUndefined()
+    expect(payload.tax_rate).toBeUndefined()
+  })
+
+  it('keeps a partially filled row — only description-and-price-less rows are dropped', async () => {
+    const user = userEvent.setup()
+    updateInvoiceMock.mockClear()
+    render(<InvoiceEditorClient orgId="org1" orgSlug="s" leadId="l" invoice={draftInvoice({ line_items: [] })} />)
+
+    await user.click(screen.getByRole('button', { name: /add blank line/i }))
+    await user.type(screen.getByLabelText('Description'), 'Setup fee')
+    await user.click(screen.getByRole('button', { name: /^Save$/ }))
+
+    expect(updateInvoiceMock.mock.calls[0][2].line_items)
+      .toEqual([{ description: 'Setup fee', quantity: 1, unit_price: 0 }])
+  })
+
+  it('offers no Save on a sent invoice, even in edit mode — sent edits go out via Send update', async () => {
+    const user = userEvent.setup()
+    render(
+      <InvoiceEditorClient orgId="org1" orgSlug="s" leadId="l"
+        invoice={sentInvoice({ line_items: [{ description: 'x', quantity: 1, unit_price: 10 }] })} />,
+    )
+    expect(screen.queryByRole('button', { name: /^Save$/ })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /edit invoice/i }))
+    // updateInvoice would throw InvoiceLockedError on every financial key this
+    // payload carries, so the button must not exist to be pressed.
+    expect(screen.queryByRole('button', { name: /^Save$/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /send update/i })).toBeInTheDocument()
+  })
+
+  it('trims the discount reason and omits the key entirely when it is blank', async () => {
+    const user = userEvent.setup()
+    updateInvoiceMock.mockClear()
+    render(
+      <InvoiceEditorClient orgId="org1" orgSlug="s" leadId="l"
+        invoice={draftInvoice({
+          discount: { type: 'percent', value: 10, reason: 'Loyalty' },
+          line_items: [{ description: 'Service', quantity: 1, unit_price: 1000 }],
+        })} />,
+    )
+
+    await user.clear(screen.getByLabelText(/reason/i))
+    await user.type(screen.getByLabelText(/reason/i), '   Repeat client  ')
+    await user.click(screen.getByRole('button', { name: /^Save$/ }))
+    expect(updateInvoiceMock.mock.calls[0][2].discount).toEqual({ type: 'percent', value: 10, reason: 'Repeat client' })
+
+    // Whitespace-only is the same as cleared: the key goes away rather than
+    // persisting '' and rendering "Discount — " on the customer's document.
+    updateInvoiceMock.mockClear()
+    await user.clear(screen.getByLabelText(/reason/i))
+    await user.type(screen.getByLabelText(/reason/i), '   ')
+    await user.click(screen.getByRole('button', { name: /^Save$/ }))
+    const saved = updateInvoiceMock.mock.calls[0][2].discount
+    expect(saved).toEqual({ type: 'percent', value: 10 })
+    // A nested `undefined` is what Firestore rejects — the key must be absent.
+    expect(Object.keys(saved ?? {})).not.toContain('reason')
   })
 
   it('sent invoice is read-only until Edit invoice is clicked, then CTA becomes Send update', async () => {
