@@ -65,6 +65,9 @@ export async function updateEvent(
     | 'department_id'
     | 'headcount'
     | 'key_contacts'
+    | 'location'
+    | 'hours'
+    | 'booth_fee'
   >> & { event_type_terminology?: Terminology | null }
 ): Promise<void> {
   await assertOrgAdmin(orgId)
@@ -130,10 +133,13 @@ export async function duplicateEvent(
     slug,
     year: input.year,
     status: 'draft',
-    registration_type: source.registration_type,
+    ...(source.registration_type ? { registration_type: source.registration_type } : {}),
     event_type_id: source.event_type_id,
     ...(source.event_type_terminology ? { event_type_terminology: source.event_type_terminology } : {}),
-    features: source.features,
+    ...(source.kind ? { kind: source.kind } : {}),
+    ...(source.location ? { location: source.location } : {}),
+    ...(source.hours ? { hours: source.hours } : {}),
+    ...(source.booth_fee !== undefined ? { booth_fee: source.booth_fee } : {}),
     event_start: input.event_start,
     event_end: input.event_end,
     ...(source.capacity != null ? { capacity: source.capacity } : {}),
