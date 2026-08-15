@@ -53,4 +53,29 @@ describe('DropStorefront', () => {
     fireEvent.click(screen.getByRole('button', { name: /check out/i }))
     expect(screen.getByTestId('checkout')).toBeInTheDocument()
   })
+
+  it('recomputes the selected tip percent against the current subtotal as the cart changes', () => {
+    render(<DropStorefront drop={{ ...DROP, tips_enabled: true }} />)
+    fireEvent.click(screen.getByRole('button', { name: /add vanilla latte/i })) // subtotal $5.50
+    fireEvent.click(screen.getByRole('button', { name: '20%' }))
+    // 20% of $5.50 = $1.10 -> total $6.60
+    expect(screen.getByTestId('total')).toHaveTextContent('$6.60')
+    fireEvent.click(screen.getByRole('button', { name: /add vanilla latte/i })) // subtotal $11.00
+    // tip percent stays selected but recomputes against the new subtotal:
+    // 20% of $11.00 = $2.20 -> total $13.20
+    expect(screen.getByTestId('total')).toHaveTextContent('$13.20')
+  })
+
+  it('hides the quantity and tip controls once checkout starts', () => {
+    render(<DropStorefront drop={{ ...DROP, tips_enabled: true }} />)
+    fireEvent.click(screen.getByRole('button', { name: /add vanilla latte/i }))
+    fireEvent.click(screen.getByRole('button', { name: '20%' }))
+    fireEvent.change(screen.getByLabelText(/^name$/i), { target: { value: 'Jane Buyer' } })
+    fireEvent.change(screen.getByLabelText(/^email$/i), { target: { value: 'jane@example.com' } })
+    fireEvent.click(screen.getByRole('button', { name: /check out/i }))
+    expect(screen.getByTestId('checkout')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /add vanilla latte/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /remove vanilla latte/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '20%' })).not.toBeInTheDocument()
+  })
 })

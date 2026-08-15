@@ -35,12 +35,15 @@ export function DropStorefront({ drop }: { drop: PublicDrop }) {
   const [buyer, setBuyer] = useState({ name: '', email: '', phone: '' })
   const [windowId, setWindowId] = useState(drop.pickup.windows[0]?.id ?? '')
   const [slot, setSlot] = useState('')
-  const [tip, setTip] = useState(0)
+  const [tipPct, setTipPct] = useState(0)
 
   const itemById = useMemo(() => new Map(drop.items.map((i) => [i.product_id, i])), [drop.items])
   const cartLines = Object.entries(cart).filter(([, qty]) => qty > 0)
   const subtotal = cartLines.reduce((s, [id, qty]) => s + (itemById.get(id)?.price ?? 0) * qty, 0)
   const tax = drop.tax_rate ? Math.round(subtotal * drop.tax_rate) / 100 : 0
+  // Derived from the subtotal every render (not a dollar snapshot) so it
+  // stays correct if the cart changes while a tip percent is selected.
+  const tip = Math.round(subtotal * tipPct * 100) / 100
   const total = Math.round((subtotal + tax + tip) * 100) / 100
   const selectedWindow = drop.pickup.windows.find((w) => w.id === windowId)
   const needsSlot = !!selectedWindow?.slot_minutes
@@ -93,7 +96,7 @@ export function DropStorefront({ drop }: { drop: PublicDrop }) {
               <p className="text-sm text-gray-600">{money(item.price)}</p>
               {item.description && <p className="mt-0.5 text-xs text-gray-500">{item.description}</p>}
             </div>
-            {drop.phase === 'open' && !item.sold_out ? (
+            {drop.phase === 'open' && !item.sold_out && step === 'menu' ? (
               <div className="flex flex-none items-center gap-2">
                 {(cart[item.product_id] ?? 0) > 0 && (
                   <>
@@ -121,13 +124,13 @@ export function DropStorefront({ drop }: { drop: PublicDrop }) {
               <span>Tax</span><span>{money(tax)}</span>
             </div>
           )}
-          {drop.tips_enabled && (
+          {drop.tips_enabled && step === 'menu' && (
             <div className="mt-2 flex items-center gap-2 text-sm">
               <span className="text-gray-600">Tip</span>
               {[0, 0.1, 0.15, 0.2].map((pct) => (
                 <button key={pct} type="button"
-                  className={`rounded-full border px-3 py-1 text-xs ${tip === Math.round(subtotal * pct * 100) / 100 ? 'border-gray-900 font-semibold' : 'border-gray-300'}`}
-                  onClick={() => setTip(Math.round(subtotal * pct * 100) / 100)}>
+                  className={`rounded-full border px-3 py-1 text-xs ${tipPct === pct ? 'border-gray-900 font-semibold' : 'border-gray-300'}`}
+                  onClick={() => setTipPct(pct)}>
                   {pct === 0 ? 'None' : `${pct * 100}%`}
                 </button>
               ))}
