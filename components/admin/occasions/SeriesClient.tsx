@@ -13,7 +13,7 @@ import type { Event, EventSeries } from '@/lib/types'
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
 export function SeriesClient({
-  orgId, orgSlug, series, days: initialDays, isAdmin,
+  orgId, orgSlug, series, days, isAdmin,
 }: {
   orgId: string
   orgSlug: string
@@ -22,7 +22,7 @@ export function SeriesClient({
   isAdmin: boolean
 }) {
   const router = useRouter()
-  const [days, setDays] = useState(initialDays)
+  const [skippedIds, setSkippedIds] = useState<Set<string>>(new Set())
   const [editing, setEditing] = useState(false)
   const [name, setName] = useState(series.name)
   const [locationName, setLocationName] = useState(series.location.name)
@@ -35,14 +35,16 @@ export function SeriesClient({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  async function run(fn: () => Promise<unknown>) {
+  async function run(fn: () => Promise<unknown>): Promise<boolean> {
     setBusy(true)
     setError(null)
     try {
       await fn()
       router.refresh()
+      return true
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong')
+      return false
     } finally {
       setBusy(false)
     }
@@ -50,10 +52,25 @@ export function SeriesClient({
 
   async function handleSkip(day: Event) {
     if (!window.confirm(`Skip ${day.event_start}? The day is archived and stays skipped.`)) return
-    await run(async () => {
-      await updateEvent(orgId, day.id, { status: 'archived' })
-      setDays((prev) => prev.map((d) => (d.id === day.id ? { ...d, status: 'archived' } : d)))
-    })
+    const ok = await run(() => updateEvent(orgId, day.id, { status: 'archived' }))
+    if (ok) setSkippedIds((prev) => new Set(prev).add(day.id))
+  }
+
+  async function handleSave() {
+    const ok = await run(() =>
+      updateSeries(orgId, series.id, {
+        name,
+        location: { name: locationName, ...(address.trim() ? { address } : {}) },
+        hours: { start, end },
+        booth_fee: fee !== '' ? Number(fee) : null,
+      }, { propagate })
+    )
+    if (ok) setEditing(false)
+  }
+
+  async function handleExtend() {
+    const ok = await run(() => extendSeries(orgId, series.id, extendUntil))
+    if (ok) setExtendUntil('')
   }
 
   return (
@@ -69,7 +86,7 @@ export function SeriesClient({
           </p>
         </div>
         {isAdmin && !editing && (
-          <Button variant="outline" onClick={() => setEditing(true)}>Edit series</Button>
+          <Button variant="outline" disabled={busy} onClick={() => setEditing(true)}>Edit series</Button>
         )}
       </div>
 
@@ -100,19 +117,7 @@ export function SeriesClient({
             Apply to remaining days
           </label>
           <div className="mt-2 flex gap-2">
-            <Button
-              disabled={busy}
-              onClick={() =>
-                run(() =>
-                  updateSeries(orgId, series.id, {
-                    name,
-                    location: { name: locationName, ...(address.trim() ? { address } : {}) },
-                    hours: { start, end },
-                    booth_fee: fee !== '' ? Number(fee) : null,
-                  }, { propagate })
-                ).then(() => setEditing(false))
-              }
-            >
+            <Button disabled={busy} onClick={handleSave}>
               Save
             </Button>
             <Button variant="outline" onClick={() => setEditing(false)} disabled={busy}>Cancel</Button>
@@ -121,19 +126,22 @@ export function SeriesClient({
       )}
 
       <div className="mt-6 grid gap-2">
-        {days.map((d) => (
-          <div key={d.id} data-testid={`day-${d.id}`} className={`flex items-center gap-3 rounded-xl border bg-white p-3 ${d.status === 'archived' ? 'opacity-60' : ''}`}>
-            <Link href={`/${orgSlug}/${d.slug}/dashboard`} className="min-w-0 flex-1">
-              <span className="font-medium">{d.event_start}</span>
-              <span className="ml-2 text-sm text-muted-foreground">
-                {d.status === 'archived' ? 'Skipped' : d.status === 'active' ? 'On' : d.status}
-              </span>
-            </Link>
-            {isAdmin && d.status !== 'archived' && (
-              <Button variant="outline" size="sm" disabled={busy} onClick={() => handleSkip(d)}>Skip</Button>
-            )}
-          </div>
-        ))}
+        {days.map((d) => {
+          const status = skippedIds.has(d.id) ? 'archived' : d.status
+          return (
+            <div key={d.id} data-testid={`day-${d.id}`} className={`flex items-center gap-3 rounded-xl border bg-white p-3 ${status === 'archived' ? 'opacity-60' : ''}`}>
+              <Link href={`/${orgSlug}/${d.slug}/dashboard`} className="min-w-0 flex-1">
+                <span className="font-medium">{d.event_start}</span>
+                <span className="ml-2 text-sm text-muted-foreground">
+                  {status === 'archived' ? 'Skipped' : status === 'active' ? 'On' : status}
+                </span>
+              </Link>
+              {isAdmin && status !== 'archived' && (
+                <Button variant="outline" size="sm" disabled={busy} onClick={() => handleSkip(d)}>Skip</Button>
+              )}
+            </div>
+          )
+        })}
       </div>
 
       {isAdmin && series.active && (
@@ -142,7 +150,7 @@ export function SeriesClient({
             <Label htmlFor="s-extend">Extend through</Label>
             <Input id="s-extend" type="date" value={extendUntil} onChange={(e) => setExtendUntil(e.target.value)} />
           </div>
-          <Button variant="outline" disabled={busy || !extendUntil} onClick={() => run(() => extendSeries(orgId, series.id, extendUntil))}>
+          <Button variant="outline" disabled={busy || !extendUntil} onClick={handleExtend}>
             Extend
           </Button>
           <Button
