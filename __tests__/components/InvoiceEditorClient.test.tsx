@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, within } from '@testing-library/react'
+import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { InvoiceEditorClient } from '@/components/admin/InvoiceEditorClient'
 import type { NormalizedInvoice, InvoiceVersion } from '@/lib/types'
@@ -536,6 +536,51 @@ describe('InvoiceEditorClient — kit surfaces', () => {
 
     expect(voidInvoiceMock).toHaveBeenCalledWith('org1', 'inv1')
     expect(await screen.findByText(/invoice voided/i)).toBeInTheDocument()
+  })
+
+  // The in-flight verb used to sit on the action bar itself. Moving Void into the
+  // overflow moved its label behind a closed menu, so the toolbar looked idle for
+  // the whole request — the one moment the operator most needs to be told to wait.
+  it('shows the void in flight on the closed toolbar, not only inside the menu', async () => {
+    const user = userEvent.setup()
+    voidInvoiceMock.mockClear()
+    let release: () => void = () => {}
+    voidInvoiceMock.mockImplementationOnce(() => new Promise<void>((res) => { release = res }))
+    render(
+      <InvoiceEditorClient orgId="org1" orgSlug="s" leadId="l"
+        invoice={sentInvoice({ line_items: [{ description: 'x', quantity: 1, unit_price: 100 }] })} />,
+    )
+    await user.click(screen.getByRole('button', { name: 'More actions' }))
+    await user.click(await screen.findByRole('menuitem', { name: /void invoice/i }))
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: /void invoice/i }))
+
+    // Menu is closed at this point, so this label can only be the toolbar's.
+    expect(await screen.findByText('Voiding…')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'More actions' })).toBeDisabled()
+
+    release()
+    expect(await screen.findByText(/invoice voided/i)).toBeInTheDocument()
+    expect(screen.queryByText('Voiding…')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'More actions' })).not.toBeDisabled()
+  })
+
+  // The kit brick guards this, but the call site must not depend on that alone:
+  // handleVoid is re-entrant through any path that can fire it twice.
+  it('voids once even if the confirmed action is fired twice', async () => {
+    const user = userEvent.setup()
+    voidInvoiceMock.mockClear()
+    render(
+      <InvoiceEditorClient orgId="org1" orgSlug="s" leadId="l"
+        invoice={sentInvoice({ line_items: [{ description: 'x', quantity: 1, unit_price: 100 }] })} />,
+    )
+    await user.click(screen.getByRole('button', { name: 'More actions' }))
+    await user.click(await screen.findByRole('menuitem', { name: /void invoice/i }))
+    const dialog = await screen.findByRole('dialog')
+    const confirm = within(dialog).getByRole('button', { name: /void invoice/i })
+    await act(async () => { confirm.click(); confirm.click() })
+
+    expect(voidInvoiceMock).toHaveBeenCalledTimes(1)
   })
 })
 

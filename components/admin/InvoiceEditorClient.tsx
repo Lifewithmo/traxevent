@@ -135,6 +135,10 @@ export function InvoiceEditorClient({
   const [confirmVoid, setConfirmVoid] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const payAmountRef = useRef<HTMLInputElement>(null)
+  // Belt and braces behind <ConfirmDialog>'s own guard. A state flag cannot do
+  // this job: two activations inside one commit window share the same closure, so
+  // both would read the pre-click value. A ref flips synchronously.
+  const destructiveInFlight = useRef(false)
 
   const [payAmount, setPayAmount] = useState('')
   const [payMethod, setPayMethod] = useState('')
@@ -233,6 +237,8 @@ export function InvoiceEditorClient({
   // Both destructive paths are gated by <ConfirmDialog> at the bottom of the
   // tree, not by window.confirm — these run only after the operator committed.
   async function handleVoid() {
+    if (destructiveInFlight.current) return
+    destructiveInFlight.current = true
     setVoiding(true); setError(null); setNotice(null)
     try {
       await voidInvoice(orgId, invoice.id)
@@ -240,17 +246,23 @@ export function InvoiceEditorClient({
       router.refresh()
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to void')
-    } finally { setVoiding(false) }
+    } finally { setVoiding(false); destructiveInFlight.current = false }
   }
 
   async function handleDelete() {
+    if (destructiveInFlight.current) return
+    destructiveInFlight.current = true
     setDeleting(true); setError(null); setNotice(null)
     try {
       await deleteInvoice(orgId, invoice.id)
+      // The guard is deliberately left armed on success: the route is changing and
+      // this tree is unmounting, so a second delete could only race a record that
+      // is already gone and setState on a component on its way out.
       router.push(`/${orgSlug}/leads/${leadId}`)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to delete')
       setDeleting(false)
+      destructiveInFlight.current = false
     }
   }
 
@@ -318,6 +330,10 @@ export function InvoiceEditorClient({
   // neither of them available (a voided invoice can be neither voided nor deleted).
   const canVoid = !isDraft && !isVoid
   const canDelete = isDraft
+  // Moving Void/Delete into the overflow moved their in-flight labels in there
+  // with them, so the toolbar read as completely idle for the whole request.
+  // This is the always-visible half of that cue; the trigger is locked shut below.
+  const destructiveBusyLabel = voiding ? 'Voiding…' : deleting ? 'Deleting…' : null
 
   // Shared by the empty state and the below-the-table controls so an empty
   // invoice offers exactly one of each button, not two.
@@ -334,7 +350,15 @@ export function InvoiceEditorClient({
   const heading = invoice.number ?? '№ assigned when sent'
 
   return (
-    <div className="mx-auto max-w-3xl p-6 lg:grid lg:max-w-6xl lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-8">
+    // The rail cannot open at `lg`. Tailwind breakpoints are viewport-based but
+    // `main` is not: at a 1024px viewport the md:w-56 sidebar leaves main 800px,
+    // so p-6 → 752, minus a 320px rail and its gap → a 400px document column, of
+    // which px-10 takes 80 — against a line-item table whose fixed tracks and gaps
+    // need 448px before the description column gets a single pixel. Even a 260px
+    // rail only reaches 388. 1200px is the first viewport where the two-column
+    // layout leaves the description room (116px), so that is where it opens; below
+    // it the document widens instead, which is what closed the dead gutter.
+    <div className="mx-auto max-w-3xl p-6 lg:max-w-5xl xl:max-w-6xl min-[1200px]:grid min-[1200px]:grid-cols-[minmax(0,1fr)_260px] min-[1200px]:gap-6 xl:grid-cols-[minmax(0,1fr)_320px] xl:gap-8">
       <div>
         {/* Action bar — primary action lives with the document, destructive actions are subordinate */}
         <div className="mb-4 flex flex-wrap items-center gap-2 no-print">
@@ -364,9 +388,15 @@ export function InvoiceEditorClient({
             {showLink && (
               <Button variant="ghost" size="sm" onClick={handleCopy}>{copied ? 'Copied!' : 'Copy link'}</Button>
             )}
+            {destructiveBusyLabel && (
+              <span className="text-xs text-muted-foreground">{destructiveBusyLabel}</span>
+            )}
             {(canVoid || canDelete) && (
               <Menu>
-                <MenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label="More actions" />}>
+                <MenuTrigger
+                  disabled={busy}
+                  render={<Button variant="ghost" size="icon-sm" aria-label="More actions" />}
+                >
                   <MoreHorizontal />
                 </MenuTrigger>
                 <MenuContent>
@@ -687,7 +717,7 @@ export function InvoiceEditorClient({
       </div>
 
       {/* Subordinate rail: payments and history. No cards, quieter type. */}
-      <aside className="mt-8 no-print lg:mt-0">
+      <aside className="mt-8 no-print min-[1200px]:mt-0">
         <section>
           <h2 className="font-mono text-[10px] font-bold tracking-[0.1em] text-muted-foreground uppercase">Payments</h2>
 
