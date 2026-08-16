@@ -21,7 +21,7 @@ const tabLinkVariants = cva(
 
 function TabLinks({
   tabs, active, ariaLabel, className,
-}: { tabs: TabLink[]; active: string; ariaLabel: string; className?: string }): React.ReactElement {
+}: { tabs: TabLink[]; active: string; ariaLabel: string; className?: string }) {
   return (
     <nav
       data-slot="tab-links"

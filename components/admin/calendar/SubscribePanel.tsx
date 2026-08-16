@@ -80,7 +80,9 @@ export function SubscribePanel({ url }: { url: string }) {
         {['Microsoft Outlook', 'Google Calendar'].map((name) => (
           <div key={name} className="mt-1.5 flex items-center justify-between rounded border border-border/60 px-2.5 py-1.5 opacity-50">
             <span className="text-xs">{name}</span>
-            <Button variant="outline" size="xs" disabled>
+            {/* The row is already muted to 50%; the Button's own disabled:opacity-50
+                would compound to 25% and make it fainter than the label beside it. */}
+            <Button variant="outline" size="xs" disabled className="disabled:opacity-100">
               Connect
             </Button>
           </div>

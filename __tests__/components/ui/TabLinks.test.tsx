@@ -28,4 +28,19 @@ describe('TabLinks', () => {
     render(<TabLinks tabs={TABS} active="all" ariaLabel="Calendar filter" />)
     expect(screen.getByRole('navigation', { name: 'Calendar filter' })).toBeInTheDocument()
   })
+
+  // CalendarKindFilter relies on this to place the pill (`mx-5 mt-3`); every
+  // other consumer will too. Merged, not replacing the pill's own chrome.
+  it('merges className onto the nav without dropping its own layout classes', () => {
+    render(<TabLinks tabs={TABS} active="all" ariaLabel="Calendar filter" className="mx-5 mt-3" />)
+    const nav = screen.getByRole('navigation', { name: 'Calendar filter' })
+    expect(nav).toHaveClass('mx-5', 'mt-3')
+    expect(nav).toHaveClass('inline-flex', 'border', 'bg-muted')
+  })
+
+  it('conveys selection with more than colour', () => {
+    render(<TabLinks tabs={TABS} active="pipeline" ariaLabel="Calendar filter" />)
+    expect(screen.getByRole('link', { name: 'Pipeline only' })).toHaveClass('font-semibold')
+    expect(screen.getByRole('link', { name: 'Everything' })).not.toHaveClass('font-semibold')
+  })
 })
