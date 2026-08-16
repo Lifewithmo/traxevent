@@ -5,6 +5,7 @@ import { listResources } from '@/actions/resources'
 import { listWorkPackages } from '@/actions/work-packages'
 import { getTemplatesForOrg, listChecklistTemplatesCore } from '@/lib/ops/checklist-templates'
 import { getIndustryPack, catalogLabel } from '@/lib/industry-packs'
+import { computeCatalogCosting } from '@/lib/ops/catalog-costing'
 import { CatalogClient } from '@/components/admin/ops/CatalogClient'
 
 export default async function PackagesPage({
@@ -20,6 +21,8 @@ export default async function PackagesPage({
     getTemplatesForOrg(orgId, org.industry_pack_id),
     listChecklistTemplatesCore(orgId),
   ])
+  // Derived from data already fetched above — no extra round trip.
+  const costing = computeCatalogCosting(packages, resources)
   return (
     <CatalogClient
       orgId={orgId}
@@ -29,6 +32,7 @@ export default async function PackagesPage({
       packages={packages}
       templates={templates}
       ownTemplateIds={own.map((t) => t.id)}
+      costing={costing}
     />
   )
 }
