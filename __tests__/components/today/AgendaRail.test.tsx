@@ -17,14 +17,22 @@ describe('AgendaRail', () => {
     expect(screen.getByText('multi-day')).toBeInTheDocument()
   })
 
-  it('renders every window day, empty ones included, plus the calendar link', () => {
+  it('renders only the window days that have items, plus the calendar link', () => {
     render(<AgendaRail orgSlug="acme" agenda={agenda} />)
-    expect(screen.getAllByText('Nothing booked')).toHaveLength(6)
+    // Only 2026-08-07 (Fall Gala) has an item; the other 6 window days should render no row at all.
+    expect(screen.getByRole('link', { name: 'Fall Gala' })).toBeInTheDocument()
+    expect(screen.getAllByText('multi-day')).toHaveLength(1)
+    expect(screen.queryByText('Nothing booked')).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Open the Events calendar' })).toHaveAttribute('href', '/acme/calendar')
   })
 
   it('shows the quiet empty state when nothing is booked today', () => {
     render(<AgendaRail orgSlug="acme" agenda={{ ...agenda, today: [] }} />)
     expect(screen.getByText('Nothing booked today.')).toBeInTheDocument()
+  })
+
+  it('shows a single empty state when the whole week is empty', () => {
+    render(<AgendaRail orgSlug="acme" agenda={{ ...agenda, upcoming: [] }} />)
+    expect(screen.getByText('Nothing on the books this week')).toBeInTheDocument()
   })
 })

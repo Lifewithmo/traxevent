@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 
 const refresh = vi.fn()
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh, push: vi.fn() }) }))
@@ -29,12 +30,14 @@ describe('TodayQueue', () => {
     expect(screen.getByText('No next step · 1')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Acme' })).toHaveAttribute('href', '/acme/leads/l1')
     expect(screen.getByText(/Send quote · due 2026-08-01/)).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: 'Acme' })).toBeInTheDocument()
   })
 
   it('marks a task done from the row menu and refreshes', async () => {
+    const user = userEvent.setup()
     render(<TodayQueue orgId="o1" orgSlug="acme" data={data} />)
-    fireEvent.click(screen.getAllByRole('button', { name: 'Row actions' })[0])
-    fireEvent.click(screen.getByRole('button', { name: 'Mark done' }))
+    await user.click(screen.getAllByRole('button', { name: 'Row actions' })[0])
+    await user.click(await screen.findByRole('menuitem', { name: 'Mark done' }))
     await waitFor(() => expect(completeTask).toHaveBeenCalledWith('o1', 'l1', 't1'))
     await waitFor(() => expect(refresh).toHaveBeenCalled())
   })
@@ -48,5 +51,16 @@ describe('TodayQueue', () => {
       />
     )
     expect(screen.getByText('Nothing needs a move today.')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'View pipeline' })).toHaveAttribute('href', '/acme/leads')
+  })
+
+  it('keeps the menu open and shows an error when the action rejects', async () => {
+    vi.mocked(completeTask).mockRejectedValueOnce(new Error('Network error'))
+    const user = userEvent.setup()
+    render(<TodayQueue orgId="o1" orgSlug="acme" data={data} />)
+    await user.click(screen.getAllByRole('button', { name: 'Row actions' })[0])
+    await user.click(await screen.findByRole('menuitem', { name: 'Mark done' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Network error')
+    expect(screen.getByRole('menuitem', { name: 'Mark done' })).toBeInTheDocument()
   })
 })
