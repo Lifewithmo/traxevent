@@ -1,6 +1,5 @@
-import type { Proposal, Invoice, Vendor, LeadStage, Task } from '@/lib/types'
+import type { Proposal, LeadStage } from '@/lib/types'
 import type { OppHealth } from '@/lib/opportunity-health'
-import { invoiceBalance } from '@/lib/invoices'
 
 /** Up to two uppercase initials from a display name. */
 export function initials(name: string): string {
@@ -129,48 +128,4 @@ export function convertBlockReason(i: {
     return { ready: false, message: `Blocked: no signed proposal yet. Signed acceptance carries the accepted package${guests} into Events.` }
   }
   return { ready: false, message: 'Ready — mark the deal won to convert.' }
-}
-
-export interface AttachmentChip {
-  kind: 'task' | 'proposal' | 'invoice' | 'vendor'
-  label: string
-  count: number
-  hint?: string
-  danger?: boolean
-}
-
-export function attachmentChips(i: {
-  tasks: Task[]
-  proposals: Proposal[]
-  invoices: Invoice[]
-  vendors: Vendor[]
-  today: string
-}): AttachmentChip[] {
-  const openTasks = i.tasks.filter((t) => !t.done)
-  const overdue = openTasks.filter((t) => t.due_date && t.due_date < i.today).length
-  const dated = openTasks.filter((t) => t.due_date).sort((a, b) => a.due_date!.localeCompare(b.due_date!))
-  const shortDue = (ymd: string) => {
-    const [, m, d] = ymd.split('-').map(Number)
-    return `${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][m - 1]} ${d}`
-  }
-  const tasksChip: AttachmentChip = {
-    kind: 'task', label: 'Tasks', count: openTasks.length,
-    ...(overdue
-      ? { hint: `${overdue} overdue`, danger: true }
-      : dated.length ? { hint: `next due ${shortDue(dated[0].due_date!)}` } : {}),
-  }
-
-  const accepted = i.proposals.filter((p) => p.status === 'accepted').length
-  // Invoices moved to a lifecycle + balance model (Invoice.status was removed).
-  // "Outstanding" = not void and still carrying a positive balance.
-  const isDead = (v: Invoice) => v.lifecycle === 'void'
-  const outstanding = i.invoices.filter((v) => !isDead(v) && invoiceBalance(v) > 0).length
-  const anyLiveInvoice = i.invoices.some((v) => !isDead(v))
-  const confirmed = i.vendors.filter((v) => v.status === 'confirmed').length
-  return [
-    tasksChip,
-    { kind: 'proposal', label: 'Proposals', count: i.proposals.length, hint: accepted ? `${accepted} accepted` : undefined },
-    { kind: 'invoice', label: 'Invoices', count: i.invoices.length, hint: outstanding ? `${outstanding} unpaid` : (anyLiveInvoice ? 'paid' : undefined), danger: outstanding > 0 ? true : undefined },
-    { kind: 'vendor', label: 'Vendors', count: i.vendors.length, hint: confirmed ? `${confirmed} confirmed` : undefined },
-  ]
 }

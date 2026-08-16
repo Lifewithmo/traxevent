@@ -15,6 +15,9 @@ describe('MarkLostDialog', () => {
     markLeadLost.mockResolvedValue(undefined)
   })
 
+  // The trigger and the confirm button share the accessible name "Mark lost";
+  // this runs BEFORE the dialog exists, so the query is unambiguous. Every
+  // assertion afterwards is scoped with within(dialog).
   function openDialog() {
     fireEvent.click(screen.getByRole('button', { name: 'Mark lost' }))
     return screen.getByRole('dialog', { name: 'Mark lost' })
@@ -58,19 +61,31 @@ describe('MarkLostDialog', () => {
     render(<MarkLostDialog orgId="o1" leadId="l1" onDone={() => {}} />)
     const trigger = screen.getByRole('button', { name: 'Mark lost' })
     // userEvent (unlike fireEvent) focuses the element on click, matching real
-    // browser behavior — needed for the hook's activeElement capture to see it.
+    // browser behavior — needed for focus restoration to have a target.
     await userEvent.click(trigger)
     expect(screen.getByRole('dialog', { name: 'Mark lost' })).toBeInTheDocument()
     fireEvent.keyDown(document, { key: 'Escape' })
     expect(screen.queryByRole('dialog', { name: 'Mark lost' })).not.toBeInTheDocument()
-    expect(trigger).toHaveFocus()
+    // Focus restoration lands after the popup unmounts, not in the same tick.
+    await waitFor(() => expect(trigger).toHaveFocus())
   })
 
-  it('closes on an outside pointerdown', () => {
+  it('closes on a press outside the panel', () => {
     render(<MarkLostDialog orgId="o1" leadId="l1" onDone={() => {}} />)
     openDialog()
     expect(screen.getByRole('dialog', { name: 'Mark lost' })).toBeInTheDocument()
-    fireEvent.pointerDown(document.body)
+    // The modal backdrop covers everything outside the panel, so "outside" is
+    // a press on it — a bare pointerdown on <body> never reaches the dialog.
+    fireEvent.click(document.querySelector('[data-slot="dialog-overlay"]')!)
     expect(screen.queryByRole('dialog', { name: 'Mark lost' })).not.toBeInTheDocument()
+  })
+
+  it('can be driven as a controlled dialog with no trigger of its own', () => {
+    const onOpenChange = vi.fn()
+    render(<MarkLostDialog orgId="o1" leadId="l1" onDone={() => {}} open onOpenChange={onOpenChange} />)
+    const dialog = screen.getByRole('dialog', { name: 'Mark lost' })
+    expect(within(dialog).getByRole('button', { name: 'Over budget' })).toBeInTheDocument()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(onOpenChange).toHaveBeenCalledWith(false)
   })
 })
