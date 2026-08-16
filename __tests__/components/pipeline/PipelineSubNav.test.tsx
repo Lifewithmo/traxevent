@@ -5,18 +5,25 @@ import { PipelineTasksList } from '@/components/admin/pipeline/PipelineTasksList
 import type { Lead, Task } from '@/lib/types'
 
 describe('PipelineSubNav', () => {
-  it('links the three sections with their counts and marks the active one', () => {
-    render(<PipelineSubNav orgSlug="acme" active="calendar" openCount={10} dueTodayCount={1} />)
+  it('links the two sections with their counts and marks the active one', () => {
+    render(<PipelineSubNav orgSlug="acme" active="tasks" openCount={10} dueTodayCount={1} />)
     expect(screen.getByRole('link', { name: /Opportunities/ })).toHaveAttribute('href', '/acme/leads')
     expect(screen.getByText('10')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Calendar' })).toHaveAttribute('aria-current', 'page')
     expect(screen.getByRole('link', { name: /Tasks/ })).toHaveAttribute('href', '/acme/leads/tasks')
+    expect(screen.getByRole('link', { name: /Tasks/ })).toHaveAttribute('aria-current', 'page')
     expect(screen.getByText('1 due today')).toBeInTheDocument()
   })
 
   it('omits the due-today badge when nothing is due', () => {
     render(<PipelineSubNav orgSlug="acme" active="opportunities" openCount={3} dueTodayCount={0} />)
     expect(screen.queryByText(/due today/)).not.toBeInTheDocument()
+  })
+
+  it('renders only Opportunities and Tasks', () => {
+    render(<PipelineSubNav orgSlug="acme" active="opportunities" />)
+    expect(screen.getByRole('link', { name: /Opportunities/ })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Tasks/ })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Calendar' })).not.toBeInTheDocument()
   })
 })
 

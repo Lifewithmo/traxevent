@@ -1,14 +1,15 @@
 import { createEventCore, listEventsByLeadCore } from '@/lib/events'
 import { leadsRef } from '@/lib/crm/leads'
-import type { Event, EventRegistrationType, Lead } from '@/lib/types'
+import type { Event, EventRegistrationType, EventKind, Lead } from '@/lib/types'
 import type { Terminology } from '@/lib/event-types'
 
 export interface ConvertToWorkInput {
   name: string
   date: string                        // YYYY-MM-DD; sets event_start AND event_end
   event_type_id: string
-  registration_type: EventRegistrationType
+  registration_type?: EventRegistrationType
   event_type_terminology?: Terminology
+  kind?: EventKind
   headcount?: number
 }
 
@@ -64,9 +65,10 @@ export async function convertOpportunityToWorkCore(
   return createEventCore(orgId, {
     name: input.name.trim(),
     year: Number(date.slice(0, 4)),
-    registration_type: input.registration_type,
+    ...(input.registration_type ? { registration_type: input.registration_type } : {}),
     event_type_id: input.event_type_id,
     ...(input.event_type_terminology ? { event_type_terminology: input.event_type_terminology } : {}),
+    ...(input.kind ? { kind: input.kind } : {}),
     event_start: date,
     event_end: date,
     ...(input.headcount !== undefined ? { headcount: input.headcount } : {}),

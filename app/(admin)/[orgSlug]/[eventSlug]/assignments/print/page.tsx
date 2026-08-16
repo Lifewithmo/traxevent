@@ -50,7 +50,7 @@ export default async function AssignmentsPrintPage({
     getAdminFamilies(orgId, eventId),
   ])
   const terminology = resolveTerminology(event.event_type_id, event.event_type_terminology)
-  const registrationUnit = event.registration_type
+  const registrationUnit = event.registration_type ?? 'individual'
 
   // Group assigned families by slot
   const familiesBySlot = new Map<string, typeof families>()

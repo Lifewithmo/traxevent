@@ -1,9 +1,9 @@
-import type { ComplianceDoc, Event, Lead, NormalizedInvoice, Task } from '@/lib/types'
+import type { ComplianceDoc, Drop, Event, Lead, NormalizedInvoice, Task } from '@/lib/types'
 import { invoiceBalance } from '@/lib/invoices'
 import { OPEN_STAGES, opportunityTitle } from '@/lib/leads'
 import { addDays } from '@/lib/opportunity-detail'
 
-export type CalendarKind = 'event' | 'lead' | 'task' | 'follow_up' | 'compliance' | 'invoice_due'
+export type CalendarKind = 'event' | 'lead' | 'task' | 'follow_up' | 'compliance' | 'invoice_due' | 'drop'
 
 export interface CalendarItem {
   id: string
@@ -30,6 +30,7 @@ export const CALENDAR_KIND_LABELS: Record<CalendarKind, string> = {
   follow_up: 'Follow-up',
   compliance: 'Compliance',
   invoice_due: 'Invoice due',
+  drop: 'Drop pickup',
 }
 
 export const CALENDAR_KINDS = Object.keys(CALENDAR_KIND_LABELS) as CalendarKind[]
@@ -103,6 +104,7 @@ export interface CalendarFeedSources {
   tasksByLeadId: Record<string, Task[]>
   complianceDocs: ComplianceDoc[]
   invoices: NormalizedInvoice[]
+  drops: Drop[]
 }
 
 /**
@@ -122,7 +124,12 @@ export function buildCalendarFeed(orgSlug: string, s: CalendarFeedSources): Cale
     items.push({
       id: e.id, title: e.name, date: e.event_start.slice(0, 10), kind: 'event',
       href: `/${orgSlug}/${e.slug}/dashboard`,
-      detail: e.headcount ? `${e.headcount} guests` : undefined,
+      detail: e.headcount
+        ? `${e.headcount} guests`
+        // inline kindOf: lib/calendar stays dependency-light
+        : (e.kind ?? 'client_job') === 'market_day' && e.location
+          ? e.location.name
+          : undefined,
       headcount: e.headcount,
     })
   }
@@ -180,6 +187,22 @@ export function buildCalendarFeed(orgSlug: string, s: CalendarFeedSources): Cale
       kind: 'invoice_due', href: `/${orgSlug}/leads/${inv.lead_id}`,
       amount: balance, detail: lead ? opportunityTitle(lead) : undefined,
     })
+  }
+
+  // drop — one entry per distinct pickup day of live (scheduled/closed) drops
+  for (const d of s.drops) {
+    if (d.status !== 'scheduled' && d.status !== 'closed') continue
+    const days = [...new Set(d.pickup.windows.map((w) => w.day))]
+    for (const day of days) {
+      items.push({
+        id: `${d.id}:${day}`,
+        title: `Drop pickup: ${d.title}`,
+        date: day,
+        kind: 'drop',
+        href: `/${orgSlug}/drop-orders/${d.id}`,
+        detail: d.pickup.location_name,
+      })
+    }
   }
 
   return items.sort((a, b) => a.date.localeCompare(b.date))

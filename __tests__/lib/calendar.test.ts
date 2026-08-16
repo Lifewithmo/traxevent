@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildCalendar, calendarRangeItems } from '@/lib/calendar'
+import { buildCalendar, calendarRangeItems, filterFeed, PIPELINE_KINDS, type CalendarItem } from '@/lib/calendar'
 import type { Event, Lead, Task } from '@/lib/types'
 
 function event(overrides: Partial<Event>): Event {
@@ -122,5 +122,30 @@ describe('calendarRangeItems', () => {
       [{ lead: scheduled, tasks: [task({ done: true, due_date: '2026-08-10' }), task({ id: 't2' })] }],
       '2026-08-09', '2026-08-18')
     expect(items.map((i) => `${i.kind}:${i.id}`)).toEqual(['event:e2'])
+  })
+})
+
+describe('filterFeed with PIPELINE_KINDS', () => {
+  const item = (over: Partial<CalendarItem>): CalendarItem => ({
+    id: 'x1', title: 'X', date: '2026-08-12', kind: 'lead', href: '/demo/leads/x1', ...over,
+  } as CalendarItem)
+
+  it('keeps lead, task, and follow_up items', () => {
+    const feed: CalendarItem[] = [
+      item({ id: 'l1', kind: 'lead' }),
+      item({ id: 't1', kind: 'task' }),
+      item({ id: 'f1', kind: 'follow_up' }),
+    ]
+    expect(filterFeed(feed, PIPELINE_KINDS).map((i) => i.id)).toEqual(['l1', 't1', 'f1'])
+  })
+
+  it('drops event, compliance, and invoice_due items', () => {
+    const feed: CalendarItem[] = [
+      item({ id: 'e1', kind: 'event' }),
+      item({ id: 'c1', kind: 'compliance' }),
+      item({ id: 'i1', kind: 'invoice_due' }),
+      item({ id: 'l1', kind: 'lead' }),
+    ]
+    expect(filterFeed(feed, PIPELINE_KINDS).map((i) => i.id)).toEqual(['l1'])
   })
 })

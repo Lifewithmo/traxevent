@@ -3,6 +3,7 @@ import type { EventTypeId } from '@/lib/event-types'
 export type ModuleId =
   | 'leads' | 'clients' | 'proposals' | 'invoices'
   | 'events' | 'registrants' | 'vendors' | 'calendar' | 'reports' | 'forms'
+  | 'storefront'
   // Forward-declared for later phases; no nav renders these yet.
   | 'catalog' | 'compliance' | 'inventory' | 'deliverables' | 'routing' | 'pos'
   | 'attendee-roster'
@@ -40,7 +41,7 @@ const BUILT_IN_PACKS: IndustryPack[] = [
     name: 'Coffee Cart',
     description: 'Mobile beverage vendor booking private events.',
     eventTypeId: 'coffee-service',
-    modules: ['leads', 'clients', 'proposals', 'invoices', 'events', 'vendors', 'calendar', 'reports', 'forms', 'catalog', 'compliance', 'inventory'],
+    modules: ['leads', 'clients', 'proposals', 'invoices', 'events', 'vendors', 'calendar', 'reports', 'forms', 'storefront', 'catalog', 'compliance', 'inventory'],
     catalogKind: 'menu',
     publicMode: false,
   },
@@ -99,4 +100,9 @@ export function catalogLabel(pack: IndustryPack): string {
     case 'rental-stock': return 'Rental Packages'
     default: return 'Packages'
   }
+}
+
+/** Vertical-skinned label for the storefront module (spec 2026-08-15 §6). */
+export function storefrontLabel(pack: IndustryPack): string {
+  return pack.catalogKind === 'menu' ? 'Drops' : 'Online orders'
 }

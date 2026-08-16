@@ -124,6 +124,27 @@ EventTrax pivot (neutralization, multi-brand, ops core). Detailed designs live i
   this flow (and the still-unverified PR #66 intake path) remains to be
   confirmed post-deploy.
 
+- **Drops & online ordering** (PR #88, merged 2026-08-15, live in production) —
+  products catalog → drops with email announcements and public checkout on
+  Stripe Connect (no per-order platform fee), orders board, subscriber
+  management, calendar drop kind. Spec:
+  `superpowers/specs/2026-08-15-drops-online-ordering-design.md`. Firestore
+  indexes deployed; sandbox webhooks (payments incl. `charge.refunded` +
+  billing) created 2026-08-15. Still owed: authenticated walk, side-by-side
+  pilot drop vs Hot Plate, Stripe live-mode chain before real money.
+
+- **Occasions core** (PR #89, merged 2026-08-15, live in production) — market
+  days as a second Event kind alongside client jobs: up-front weekly series
+  generation (per-span cap), series page (skip/edit+propagate/extend/end),
+  Events-section nav rework ("+ New" chooser at `/new`, Drops absorbed from
+  Catalog, Market tags), market-day overview + settings, R1 registration
+  slimming (registration_type/features optional, features never written,
+  roster inputs gated on `attendee-roster` — no stored data changed)
+  (spec: `superpowers/specs/2026-08-15-selling-occasions-pos-design.md`).
+  Next increments: counter register → tabs + publicMode "Find us" +
+  drop↔market pickup linkage → registration retirement R2. Manual browser
+  walkthrough of the occasion flows still owed.
+
 ## In flight
 
 - **Proposal templates** (branch `claude/proposal-templates`) — org-owned

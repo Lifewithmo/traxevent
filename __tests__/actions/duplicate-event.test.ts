@@ -55,6 +55,7 @@ const sourceEvent = {
   id: 'src', name: 'Annual Gathering 2025', slug: 'annual-gathering-2025', year: 2025, status: 'active',
   registration_type: 'family', event_type_id: 'event',
   features: { accommodations: true, teams: true, budget: true, itinerary: true, communicate: true },
+  kind: 'market_day' as const, location: { name: 'Capitol Blvd' }, hours: { start: '08:00', end: '13:00' }, booth_fee: 45, series_id: 'series-1',
   event_start: '2025-07-10', event_end: '2025-07-13', capacity: 100, payment_amount: 150,
   from_display_name: 'Annual Gathering', reply_to_email: 'd@x.org', created_at: '2025-01-01',
 }
@@ -111,5 +112,18 @@ describe('duplicateEvent', () => {
       name: 'Annual Gathering', year: 2026, event_start: '2026-07-10', event_end: '2026-07-13',
     })
     expect(event.slug).toBe('annual-gathering-2026-2')
+  })
+
+  it('duplicate no longer copies features and carries occasion fields when present', async () => {
+    const event = await duplicateEvent('org-1', 'src', {
+      name: 'Copy', year: 2026, event_start: '2026-06-06', event_end: '2026-06-06',
+    })
+    const written = newEventSetSpy.mock.calls.at(-1)![0]
+    expect(written).not.toHaveProperty('features')
+    expect(written).not.toHaveProperty('series_id')      // duplicates are standalone
+    expect(written.kind).toBe('market_day')
+    expect(written.location).toEqual({ name: 'Capitol Blvd' })
+    expect(written.hours).toEqual({ start: '08:00', end: '13:00' })
+    expect(written.booth_fee).toBe(45)
   })
 })

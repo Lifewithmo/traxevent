@@ -10,6 +10,7 @@ export function isValidHandle(value: string): boolean {
 export const RESERVED_HANDLES = new Set([
   'admin', 'api', 'app', 'www', 'p', 'bio', 'inquire', 'proposals',
   'invoices', 'contracts', 'client', 'brand', 'traxevent', 'brewtrax',
+  'orders', 'unsubscribe', 'drops', 'products', 'drop-orders',
 ])
 
 export function parseHandle(value: unknown): string {

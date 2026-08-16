@@ -25,7 +25,7 @@ export default async function CheckinPage({
   ])
 
   const terminology = resolveTerminology(event.event_type_id, event.event_type_terminology)
-  const guardianMode = event.registration_type === 'child'
+  const guardianMode = (event.registration_type ?? 'individual') === 'child'
 
   return (
     <CheckinClient

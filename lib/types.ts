@@ -110,9 +110,9 @@ export interface Event {
   slug: string
   year: number
   status: 'draft' | 'active' | 'archived'
-  registration_type: EventRegistrationType
+  registration_type?: EventRegistrationType   // optional since occasions R1; roster paths fall back to 'individual'
   event_type_id: string              // drives terminology + UI config
-  features: {
+  features?: {                                // optional since occasions R1; never written on create anymore (zero readers)
     accommodations: boolean
     teams: boolean
     budget: boolean
@@ -135,6 +135,12 @@ export interface Event {
   itinerary_published?: boolean
   event_type_terminology?: Terminology
   department_id?: string | null   // optional grouping; null/undefined = unassigned
+  // ── occasion fields (spec 2026-08-15 selling-occasions §3.1) ──
+  kind?: EventKind                   // ABSENT = 'client_job'; read ONLY via kindOf()
+  location?: EventLocation           // market days require it; client jobs may use it
+  hours?: EventHours                 // 'HH:mm' working hours, display + future register header
+  booth_fee?: number                 // dollars; market-day cost, joins closeout margin (inc 2)
+  series_id?: string                 // set on series-generated days
 }
 
 export interface EventKeyContact {
@@ -142,6 +148,33 @@ export interface EventKeyContact {
   role: string
   phone?: string
   email?: string
+}
+
+// ── Selling occasions (spec 2026-08-15) ──────────────────────────────
+
+export type EventKind = 'client_job' | 'market_day'
+export interface EventLocation { name: string; address?: string }
+export interface EventHours { start: string; end: string }   // 'HH:mm'
+
+export interface SeriesRecurrence {
+  freq: 'weekly'
+  weekday: number                    // 0–6 (Sun–Sat)
+  from: string                       // YYYY-MM-DD, first candidate day
+  until: string                      // YYYY-MM-DD inclusive, season end
+}
+
+export interface EventSeries {
+  id: string
+  name: string                       // "Boise Farmers Market"
+  kind: 'market_day'                 // v1: market-day series only
+  location: EventLocation
+  hours: EventHours
+  recurrence: SeriesRecurrence
+  booth_fee?: number                 // default copied onto each generated day
+  event_type_id?: string
+  active: boolean                    // false = season ended early
+  created_at: string
+  updated_at?: string
 }
 
 // Shape of our Firebase Auth JWT custom claims
@@ -473,6 +506,7 @@ export interface Customer {
   tags?: string[]
   notes?: string
   last_touch_at?: string   // ISO; stamped by logActivity, mirrors Lead.last_touch_at
+  marketing?: CustomerMarketing
   created_at: string
   updated_at?: string
 }
@@ -727,7 +761,7 @@ export interface ActivityEvent {
   id: string
   parent_type: 'customer' | 'opportunity'
   parent_id: string
-  kind: 'stage' | 'task' | 'note' | 'email' | 'form' | 'created' | 'waiting' | 'converted' | 'lost' | 'nudge'
+  kind: 'stage' | 'task' | 'note' | 'email' | 'form' | 'created' | 'waiting' | 'converted' | 'lost' | 'nudge' | 'order'
   summary: string
   stage?: LeadStage   // structured stage for kind:'stage' events; summary string is display-only
   created_at: string
@@ -748,6 +782,115 @@ export interface Vendor {
   notes?: string
   created_at: string
   updated_at?: string
+}
+
+// ── Drops & online ordering (spec 2026-08-15) ─────────────────────────
+
+export interface Product {
+  id: string
+  name: string
+  description?: string
+  price: number                      // dollars
+  photo_url?: string                 // tokenized Firebase Storage URL
+  active: boolean                    // false = archived, hidden from new drops
+  catalog_ref?: { kind: 'work_package' | 'resource'; id: string }  // dormant seam (spec §3.1)
+  created_at: string
+  updated_at?: string
+}
+
+export interface DropPickupWindow {
+  id: string
+  day: string                        // YYYY-MM-DD (in the drop's timezone)
+  start: string                      // HH:mm
+  end: string                        // HH:mm
+  slot_minutes?: number              // set = buyer picks a slot within the window
+}
+
+export interface DropPickup {
+  location_name: string
+  address?: string                   // display-only
+  windows: DropPickupWindow[]
+}
+
+// Item snapshot taken from Product at drop creation — in-flight drops are
+// immune to product edits (same snapshot philosophy as proposal templates).
+export interface DropItem {
+  product_id: string
+  name: string
+  price: number
+  description?: string
+  photo_url?: string
+  stock?: number                     // undefined = unlimited
+}
+
+// Stored status records operator intent; whether sales are open is DERIVED
+// (dropPhase in lib/storefront/drop-logic.ts) — 'open' is never stored.
+export type DropStatus = 'draft' | 'scheduled' | 'closed' | 'archived'
+export type DropPhase = 'draft' | 'upcoming' | 'open' | 'ended' | 'archived'
+export type DropChannel = 'email' | 'sms' | 'instagram' | 'facebook' | 'tiktok'
+
+export interface Drop {
+  id: string
+  title: string
+  note?: string                      // thank-you blurb on the public page
+  status: DropStatus
+  opens_at: string                   // UTC instant, ISO (normalized via toISOString)
+  closes_at: string                  // UTC instant, ISO
+  timezone: string                   // IANA, captured from the editor's browser
+  pickup: DropPickup
+  items: DropItem[]
+  tax_rate?: number                  // flat percent, manual (house convention)
+  channels: DropChannel[]            // announcement fan-out; v1 acts on 'email'
+  announced_at?: string              // set when the announcement email went out
+  order_seq?: number                 // per-drop pickup-number counter (transactional)
+  created_at: string
+  updated_at?: string
+}
+
+export type OrderChannel = 'drop' | 'counter' | 'tab'   // counter/tab reserved, unbuilt
+export type OrderStatus = 'pending' | 'confirmed' | 'picked_up' | 'canceled' | 'refunded'
+
+export interface OrderLine {
+  product_id: string
+  name: string                       // snapshot
+  price: number                      // snapshot, dollars
+  qty: number
+}
+
+export interface OrderBuyer { name: string; email: string; phone?: string }
+export interface OrderPayment { intent_id: string; paid_at: string }
+export interface OrderRefund { refund_id: string; amount: number; refunded_at: string; note?: string }
+
+export interface Order {
+  id: string
+  org_id: string                     // denormalized for collectionGroup token lookup
+  channel: OrderChannel
+  drop_id: string
+  status: OrderStatus
+  expires_at?: string                // pending-hold expiry; expired pending orders release stock
+  number?: number                    // per-drop pickup number, assigned on confirm
+  customer_id?: string               // linked by the webhook via findOrCreateCustomerCore
+  buyer: OrderBuyer
+  lines: OrderLine[]
+  pickup_window_id: string
+  pickup_slot?: string               // HH:mm, when the window has slot_minutes
+  subtotal: number
+  tax_rate?: number
+  tax: number
+  tip?: number                       // 100% to the operator; excluded from nothing — it's in total
+  total: number
+  payment?: OrderPayment
+  refund?: OrderRefund
+  token: string                      // public status-page token (48 hex)
+  created_at: string
+  updated_at?: string
+}
+
+export interface CustomerMarketing {
+  subscribed: boolean
+  subscribed_at: string
+  source: 'drop_page' | 'profile'
+  unsubscribe_token: string          // 48 hex; /unsubscribe/[token]
 }
 
 // ── Operations core (spec 2026-08-05 §3) ─────────────────────────────

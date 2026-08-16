@@ -2,7 +2,7 @@ import { adminDb } from '@/lib/firebase-admin'
 import { buildEventSlug } from '@/lib/slug'
 import { DEFAULT_EVENT_TYPE_ID } from '@/lib/event-types'
 import type { Terminology } from '@/lib/event-types'
-import type { Event, EventRegistrationType } from '@/lib/types'
+import type { Event, EventRegistrationType, EventKind, EventLocation, EventHours } from '@/lib/types'
 
 export function eventsRef(orgId: string) {
   return adminDb.collection('orgs').doc(orgId).collection('events')
@@ -11,7 +11,7 @@ export function eventsRef(orgId: string) {
 export interface CreateEventCoreInput {
   name: string
   year: number
-  registration_type: EventRegistrationType
+  registration_type?: EventRegistrationType   // optional since occasions R1
   event_type_id?: string
   event_type_terminology?: Terminology
   event_start: string
@@ -19,6 +19,12 @@ export interface CreateEventCoreInput {
   department_id?: string | null
   headcount?: number
   lead_id?: string
+  kind?: EventKind
+  location?: EventLocation
+  hours?: EventHours
+  booth_fee?: number
+  series_id?: string
+  status?: 'draft' | 'active'                 // series days are born active (spec §3.2)
 }
 
 /**
@@ -48,20 +54,18 @@ export async function createEventCore(orgId: string, input: CreateEventCoreInput
     name: input.name,
     slug,
     year: input.year,
-    status: 'draft',
-    registration_type: input.registration_type,
+    status: input.status ?? 'draft',
+    ...(input.registration_type ? { registration_type: input.registration_type } : {}),
     event_type_id: input.event_type_id ?? DEFAULT_EVENT_TYPE_ID,
     ...(input.event_type_terminology ? { event_type_terminology: input.event_type_terminology } : {}),
     ...(input.department_id ? { department_id: input.department_id } : {}),
     ...(input.headcount !== undefined ? { headcount: input.headcount } : {}),
     ...(input.lead_id ? { lead_id: input.lead_id } : {}),
-    features: {
-      accommodations: true,
-      teams: true,
-      budget: true,
-      itinerary: true,
-      communicate: true,
-    },
+    ...(input.kind ? { kind: input.kind } : {}),
+    ...(input.location ? { location: input.location } : {}),
+    ...(input.hours ? { hours: input.hours } : {}),
+    ...(input.booth_fee !== undefined ? { booth_fee: input.booth_fee } : {}),
+    ...(input.series_id ? { series_id: input.series_id } : {}),
     event_start: input.event_start,
     event_end: input.event_end,
     created_at: new Date().toISOString(),

@@ -115,4 +115,15 @@ describe('convertOpportunityToWorkCore', () => {
       'Headcount must be a positive number'
     )
   })
+
+  it('passes kind through to the created event', async () => {
+    await convertOpportunityToWorkCore('o1', 'l1', {
+      name: 'Market stall', date: '2026-06-06',
+      event_type_id: 'coffee-service', kind: 'market_day',
+    })
+    expect(createEventCore).toHaveBeenCalledWith('o1', expect.objectContaining({ kind: 'market_day' }))
+    // registration_type omitted → not forwarded
+    const arg = createEventCore.mock.calls[0][1]
+    expect(arg).not.toHaveProperty('registration_type')
+  })
 })

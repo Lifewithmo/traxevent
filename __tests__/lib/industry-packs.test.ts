@@ -6,6 +6,7 @@ import {
   resolveEnabledModules,
   DEFAULT_INDUSTRY_PACK_ID,
   catalogLabel,
+  storefrontLabel,
 } from '@/lib/industry-packs'
 
 const ALL_MODULES = [
@@ -95,5 +96,18 @@ describe('forms module', () => {
     for (const pack of getAllIndustryPacks()) {
       expect(pack.modules).toContain('forms')
     }
+  })
+})
+
+describe('storefront module (drops)', () => {
+  it('coffee-cart pack enables storefront', () => {
+    expect(isModuleEnabled(getIndustryPack('coffee-cart'), 'storefront')).toBe(true)
+  })
+  it('general pack does not enable storefront yet', () => {
+    expect(isModuleEnabled(getIndustryPack('general'), 'storefront')).toBe(false)
+  })
+  it('labels are vertical-skinned', () => {
+    expect(storefrontLabel(getIndustryPack('coffee-cart'))).toBe('Drops')
+    expect(storefrontLabel(getIndustryPack('general'))).toBe('Online orders')
   })
 })

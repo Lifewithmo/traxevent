@@ -1,6 +1,24 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { buildCalendarFeed, feedInRange, filterFeed, weekRange, weekDays, type CalendarFeedSources } from '@/lib/calendar'
-import type { ComplianceDoc, Event, Lead, NormalizedInvoice, Task } from '@/lib/types'
+import type { ComplianceDoc, Drop, Event, Lead, NormalizedInvoice, Task } from '@/lib/types'
+
+const listEventsCoreSpy = vi.hoisted(() => vi.fn().mockResolvedValue([]))
+const listLeadsCoreSpy = vi.hoisted(() => vi.fn().mockResolvedValue([]))
+const listComplianceDocsCoreSpy = vi.hoisted(() => vi.fn().mockResolvedValue([]))
+const listAllInvoicesCoreSpy = vi.hoisted(() => vi.fn().mockResolvedValue([]))
+const listTasksCoreSpy = vi.hoisted(() => vi.fn().mockResolvedValue([]))
+const listDropsCoreSpy = vi.hoisted(() => vi.fn().mockResolvedValue([]))
+
+vi.mock('@/lib/events', () => ({ listEventsCore: listEventsCoreSpy }))
+vi.mock('@/lib/crm/leads', () => ({ listLeadsCore: listLeadsCoreSpy }))
+vi.mock('@/lib/ops/compliance', () => ({ listComplianceDocsCore: listComplianceDocsCoreSpy }))
+vi.mock('@/lib/crm/invoices', () => ({ listAllInvoicesCore: listAllInvoicesCoreSpy }))
+vi.mock('@/lib/crm/tasks', () => ({ listTasksCore: listTasksCoreSpy }))
+vi.mock('@/lib/storefront/drops', () => ({ listDropsCore: listDropsCoreSpy }))
+
+// Imported after the mocks above so assembleCalendarFeed's transitive core
+// imports resolve to the spies instead of reaching firebase-admin for real.
+import { assembleCalendarFeed } from '@/lib/calendar-feed'
 
 const event = (over: Partial<Event>): Event => ({
   id: 'e', name: 'Gala', slug: 'gala', year: 2026, status: 'active',
@@ -24,8 +42,21 @@ const invoice = (over: Partial<NormalizedInvoice>): NormalizedInvoice => ({
   line_items: [{ description: 'Bar service', quantity: 1, unit_price: 1500 }],
   payments: [], due_date: '2026-08-12', created_at: '2026-08-01T00:00:00.000Z', ...over,
 })
+const drop = (over: Partial<Drop>): Drop => ({
+  id: 'd1', title: 'Weekend Drop', status: 'scheduled',
+  opens_at: '2026-08-20T15:00:00.000Z', closes_at: '2026-08-21T15:00:00.000Z', timezone: 'UTC',
+  pickup: {
+    location_name: 'SW Boise',
+    windows: [
+      { id: 'w1', day: '2026-08-22', start: '08:00', end: '11:00' },
+      { id: 'w2', day: '2026-08-23', start: '08:00', end: '10:00' },
+      { id: 'w3', day: '2026-08-22', start: '15:00', end: '17:00' }, // same day → deduped
+    ],
+  },
+  items: [], channels: [], created_at: 'x', ...over,
+})
 
-const empty: CalendarFeedSources = { events: [], leads: [], tasksByLeadId: {}, complianceDocs: [], invoices: [] }
+const empty: CalendarFeedSources = { events: [], leads: [], tasksByLeadId: {}, complianceDocs: [], invoices: [], drops: [] }
 
 describe('buildCalendarFeed', () => {
   it('produces all six kinds, date-sorted', () => {
@@ -37,6 +68,7 @@ describe('buildCalendarFeed', () => {
       tasksByLeadId: { l2: [task({ id: 't1', lead_id: 'l2', due_date: '2026-08-11' })] },
       complianceDocs: [doc({ expires_on: '2026-08-10' })],
       invoices: [invoice({})],
+      drops: [],
     })
     expect(items.map((i) => i.kind)).toEqual(['compliance', 'task', 'invoice_due', 'follow_up', 'event', 'lead'])
   })
@@ -55,6 +87,7 @@ describe('buildCalendarFeed', () => {
       tasksByLeadId: { l: [task({ id: 'done', due_date: '2026-08-12', done: true }), task({ id: 'undated' })] },
       complianceDocs: [doc({})], // no expiry
       invoices: [invoice({ lifecycle: 'draft' })],
+      drops: [],
     })
     expect(items).toHaveLength(0)
   })
@@ -97,6 +130,31 @@ describe('buildCalendarFeed', () => {
     expect(items.find((i) => i.id === 'won')!.detail).toBe('won · not scheduled')
     expect(items.every((i) => i.tentative)).toBe(true)
   })
+
+  it('market-day events carry their location as the detail line', () => {
+    const items = buildCalendarFeed('acme', {
+      ...empty,
+      events: [event({
+        id: 'm1', slug: 'bfm', name: 'Boise Farmers Market',
+        kind: 'market_day', location: { name: 'Capitol Blvd' }, event_start: '2026-08-22', event_end: '2026-08-22',
+      })],
+    })
+    const row = items.find((i) => i.id === 'm1')!
+    expect(row.kind).toBe('event')
+    expect(row.detail).toBe('Capitol Blvd')
+  })
+
+  it('emits one drop item per pickup-window day for scheduled drops, skipping drafts/archived', () => {
+    const items = buildCalendarFeed('acme', { ...empty, drops: [drop({})] })
+    const dropItems = items.filter((i) => i.kind === 'drop')
+    expect(dropItems).toHaveLength(2)
+    expect(dropItems[0]).toMatchObject({
+      date: '2026-08-22', title: 'Drop pickup: Weekend Drop',
+      href: '/acme/drop-orders/d1', detail: 'SW Boise',
+    })
+    const draftItems = buildCalendarFeed('acme', { ...empty, drops: [drop({ status: 'draft' })] })
+    expect(draftItems.filter((i) => i.kind === 'drop')).toHaveLength(0)
+  })
 })
 
 describe('week helpers', () => {
@@ -121,5 +179,14 @@ describe('week helpers', () => {
     })
     expect(filterFeed(items, ['event']).map((i) => i.kind)).toEqual(['event'])
     expect(feedInRange(items, '2026-08-10', '2026-08-16')).toHaveLength(1)
+  })
+})
+
+describe('assembleCalendarFeed', () => {
+  it('fetches drops and passes them through into the feed', async () => {
+    listDropsCoreSpy.mockResolvedValueOnce([drop({})])
+    const items = await assembleCalendarFeed('org-1', 'acme')
+    expect(listDropsCoreSpy).toHaveBeenCalledWith('org-1')
+    expect(items.filter((i) => i.kind === 'drop')).toHaveLength(2)
   })
 })
