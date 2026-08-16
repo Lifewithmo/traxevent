@@ -4,7 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { addDays } from '@/lib/opportunity-detail'
 import { feedInRange, weekDays, type CalendarItem } from '@/lib/calendar'
-import { attentionCount, needsAttention, weekRollup } from '@/lib/calendar-week'
+import { needsAttention, weekRollup } from '@/lib/calendar-week'
 import { CalendarAttentionRail } from '@/components/admin/calendar/CalendarAttentionRail'
 import { CalendarKpiBand } from '@/components/admin/calendar/CalendarKpiBand'
 import { SubscribePanel } from '@/components/admin/calendar/SubscribePanel'
@@ -191,9 +191,11 @@ export function CalendarWeekClient({
           </div>
         </div>
 
-        <CalendarKpiBand rollup={rollup} attentionTotal={attentionCount(attention)} />
-
+        {/* The panel is the Subscribe button's disclosure — it stays adjacent to
+            its trigger rather than being pushed below the figures. */}
         {subscribing && <SubscribePanel url={subscribeUrl} />}
+
+        <CalendarKpiBand rollup={rollup} attention={attention} />
 
         {view === 'week' ? (
           <section aria-label="Week grid">
@@ -256,14 +258,17 @@ export function CalendarWeekClient({
               </>
             )}
 
-            <div className="flex flex-wrap items-center gap-4 px-5 py-2.5 text-[11px] text-muted-foreground">
-              {LEGEND.map((l) => (
-                <span key={l.label} className="flex items-center gap-1.5">
-                  <span className={l.swatch} />
-                  {l.label}
-                </span>
-              ))}
-            </div>
+            {/* Nothing to key when the week is empty. */}
+            {weekItems.length > 0 && (
+              <div className="flex flex-wrap items-center gap-4 px-5 py-2.5 text-[11px] text-muted-foreground">
+                {LEGEND.map((l) => (
+                  <span key={l.label} className="flex items-center gap-1.5">
+                    <span className={l.swatch} />
+                    {l.label}
+                  </span>
+                ))}
+              </div>
+            )}
           </section>
         ) : (
           <div className="px-5 py-4">

@@ -34,7 +34,8 @@ describe('CalendarWeekClient — week view', () => {
   it('summarises the week on the KPI band rather than a prose line', () => {
     render(<CalendarWeekClient {...props} />)
     expect(within(tile('Events')).getByText('1')).toBeInTheDocument()
-    expect(within(tile('Events')).getByText('1 tentative')).toBeInTheDocument()
+    // the hold is additive to the booked event, not a subset of it
+    expect(within(tile('Events')).getByText('+1 tentative hold')).toBeInTheDocument()
     expect(within(tile('Guests')).getByText('165')).toBeInTheDocument()
     expect(within(tile('Guests')).getByText('across 1 event')).toBeInTheDocument()
     expect(within(tile('Due this week')).getByText('$1,567.5')).toBeInTheDocument()
