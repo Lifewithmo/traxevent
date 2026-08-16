@@ -26,28 +26,26 @@ export function TodayClient({ orgId, orgSlug, data, agenda }: TodayClientProps) 
   })
 
   return (
-    <div className="flex min-h-screen flex-col md:flex-row">
+    <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col md:flex-row">
       <div className="min-w-0 flex-1">
-        <div className="max-w-3xl">
-          <div className="flex items-baseline justify-between gap-3 border-b border-border px-5 py-3">
-            <div className="flex items-baseline gap-3">
-              <h1 className="text-base font-semibold">{heading}</h1>
-              <p className="text-xs text-muted-foreground">
-                {moves} {moves === 1 ? 'move' : 'moves'}
-                {eventsToday > 0 && (
-                  <>
-                    {' · '}
-                    <span className="font-semibold text-emerald-700 dark:text-emerald-400">
-                      {eventsToday} {eventsToday === 1 ? 'event' : 'events'} today
-                    </span>
-                  </>
-                )}
-              </p>
-            </div>
+        <div className="flex items-baseline justify-between gap-3 border-b border-border px-5 py-3">
+          <div className="flex items-baseline gap-3">
+            <h1 className="text-base font-semibold">{heading}</h1>
+            <p className="text-xs text-muted-foreground">
+              {moves} {moves === 1 ? 'move' : 'moves'}
+              {eventsToday > 0 && (
+                <>
+                  {' · '}
+                  <span className="font-semibold text-emerald-700 dark:text-emerald-400">
+                    {eventsToday} {eventsToday === 1 ? 'event' : 'events'} today
+                  </span>
+                </>
+              )}
+            </p>
           </div>
-          <TodayKpiBand tiles={data.tiles} eventsToday={eventsToday} />
-          <TodayQueue orgId={orgId} orgSlug={orgSlug} data={data} />
         </div>
+        <TodayKpiBand tiles={data.tiles} eventsToday={eventsToday} />
+        <TodayQueue orgId={orgId} orgSlug={orgSlug} data={data} />
       </div>
       <AgendaRail orgSlug={orgSlug} agenda={agenda} />
     </div>

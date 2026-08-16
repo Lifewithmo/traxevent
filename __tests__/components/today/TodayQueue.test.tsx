@@ -51,5 +51,16 @@ describe('TodayQueue', () => {
       />
     )
     expect(screen.getByText('Nothing needs a move today.')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'View pipeline' })).toHaveAttribute('href', '/acme/leads')
+  })
+
+  it('keeps the menu open and shows an error when the action rejects', async () => {
+    vi.mocked(completeTask).mockRejectedValueOnce(new Error('Network error'))
+    const user = userEvent.setup()
+    render(<TodayQueue orgId="o1" orgSlug="acme" data={data} />)
+    await user.click(screen.getAllByRole('button', { name: 'Row actions' })[0])
+    await user.click(await screen.findByRole('menuitem', { name: 'Mark done' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Network error')
+    expect(screen.getByRole('menuitem', { name: 'Mark done' })).toBeInTheDocument()
   })
 })

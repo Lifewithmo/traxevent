@@ -29,11 +29,13 @@ describe('TodayKpiBand', () => {
     const { rerender } = render(
       <TodayKpiBand tiles={{ tasksDue: 0, needsAttention: 4, openPipelineValue: 0 }} />
     )
-    expect(screen.getByText('4')).toHaveClass('text-destructive')
+    expect(screen.getByText('Needs attention').closest('[data-slot="stat-tile"]')).toHaveClass(
+      'border-[var(--status-alert-bg)]'
+    )
 
     rerender(<TodayKpiBand tiles={{ tasksDue: 0, needsAttention: 0, openPipelineValue: 0 }} />)
     expect(screen.getByText('Needs attention').closest('[data-slot="stat-tile"]')).not.toHaveClass(
-      'text-destructive'
+      'border-[var(--status-alert-bg)]'
     )
   })
 })
