@@ -37,4 +37,9 @@ describe('TodayClient', () => {
     expect(screen.getByText('On the cart today')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Gala' })).toBeInTheDocument()
   })
+
+  it('renders the KPI band', () => {
+    render(<TodayClient orgId="o1" orgSlug="acme" data={data} agenda={agenda} />)
+    expect(screen.getByText('Open pipeline')).toBeInTheDocument()
+  })
 })

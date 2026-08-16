@@ -1,6 +1,7 @@
 'use client'
 
 import { TodayQueue } from '@/components/admin/today/TodayQueue'
+import { TodayKpiBand } from '@/components/admin/today/TodayKpiBand'
 import { AgendaRail } from '@/components/admin/today/AgendaRail'
 import { buildMoves, moveCount, type Agenda } from '@/lib/today-moves'
 import { todayYmd } from '@/lib/opportunity-detail'
@@ -25,25 +26,28 @@ export function TodayClient({ orgId, orgSlug, data, agenda }: TodayClientProps) 
   })
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex min-h-screen flex-col md:flex-row">
       <div className="min-w-0 flex-1">
-        <div className="flex items-baseline justify-between gap-3 border-b border-border px-5 py-3">
-          <div className="flex items-baseline gap-3">
-            <h1 className="text-base font-semibold">{heading}</h1>
-            <p className="text-xs text-muted-foreground">
-              {moves} {moves === 1 ? 'move' : 'moves'}
-              {eventsToday > 0 && (
-                <>
-                  {' · '}
-                  <span className="font-semibold text-emerald-700 dark:text-emerald-400">
-                    {eventsToday} {eventsToday === 1 ? 'event' : 'events'} today
-                  </span>
-                </>
-              )}
-            </p>
+        <div className="max-w-3xl">
+          <div className="flex items-baseline justify-between gap-3 border-b border-border px-5 py-3">
+            <div className="flex items-baseline gap-3">
+              <h1 className="text-base font-semibold">{heading}</h1>
+              <p className="text-xs text-muted-foreground">
+                {moves} {moves === 1 ? 'move' : 'moves'}
+                {eventsToday > 0 && (
+                  <>
+                    {' · '}
+                    <span className="font-semibold text-emerald-700 dark:text-emerald-400">
+                      {eventsToday} {eventsToday === 1 ? 'event' : 'events'} today
+                    </span>
+                  </>
+                )}
+              </p>
+            </div>
           </div>
+          <TodayKpiBand tiles={data.tiles} eventsToday={eventsToday} />
+          <TodayQueue orgId={orgId} orgSlug={orgSlug} data={data} />
         </div>
-        <TodayQueue orgId={orgId} orgSlug={orgSlug} data={data} />
       </div>
       <AgendaRail orgSlug={orgSlug} agenda={agenda} />
     </div>
