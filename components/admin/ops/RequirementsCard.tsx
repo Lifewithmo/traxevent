@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -69,26 +68,34 @@ export function RequirementsCard({ orgId, eventId, plan, packages, onPlanChange 
     }
   }
 
+  // Unset fields open the same edit form the Edit button does — the card has an
+  // edit affordance, so no bare em-dashes in view mode.
+  const addField = (label: string) => (
+    <button type="button" onClick={handleEdit} className="text-sm text-[var(--link)] hover:underline">
+      + Add {label}
+    </button>
+  )
+
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle className="text-base">Requirements</CardTitle>
+    <section className="overflow-hidden rounded-xl border border-border bg-card shadow-xs">
+      <header className="flex items-center justify-between border-b border-border px-3 py-2">
+        <h4 className="text-[13px] font-semibold">Requirements</h4>
         {!editing && <Button variant="outline" size="sm" onClick={handleEdit}>Edit</Button>}
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {error && <p className="text-sm text-red-600">{error}</p>}
+      </header>
+      <div className="space-y-3 p-3">
+        {error && <p className="text-sm text-destructive">{error}</p>}
         {!editing ? (
           <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
-            <dt className="text-gray-500">Packages</dt>
+            <dt className="text-muted-foreground">Packages</dt>
             <dd>{planPackages.map((n) => <span key={n} className="mr-1">{n}</span>)}</dd>
-            <dt className="text-gray-500">Guests</dt>
+            <dt className="text-muted-foreground">Guests</dt>
             <dd className="font-medium">{req.guests}</dd>
-            <dt className="text-gray-500">Service window</dt>
-            <dd>{req.service_start ? `${req.service_start} → ${req.service_end ?? '?'}` : '—'}</dd>
-            <dt className="text-gray-500">Site needs</dt>
-            <dd>{(req.site_needs ?? []).length > 0 ? req.site_needs!.map((n) => <Badge key={n} variant="secondary" className="mr-1">{n}</Badge>) : '—'}</dd>
-            <dt className="text-gray-500">Notes</dt>
-            <dd>{req.notes || '—'}</dd>
+            <dt className="text-muted-foreground">Service window</dt>
+            <dd>{req.service_start ? `${req.service_start} → ${req.service_end ?? '?'}` : addField('service window')}</dd>
+            <dt className="text-muted-foreground">Site needs</dt>
+            <dd>{(req.site_needs ?? []).length > 0 ? req.site_needs!.map((n) => <Badge key={n} variant="secondary" className="mr-1">{n}</Badge>) : addField('site needs')}</dd>
+            <dt className="text-muted-foreground">Notes</dt>
+            <dd>{req.notes || addField('notes')}</dd>
           </dl>
         ) : (
           <div className="space-y-3">
@@ -119,7 +126,7 @@ export function RequirementsCard({ orgId, eventId, plan, packages, onPlanChange 
               <Label htmlFor="req-notes">Notes</Label>
               <Input id="req-notes" value={notes} onChange={(e) => setNotes(e.target.value)} />
             </div>
-            <p className="text-xs text-gray-500">Changing guests re-derives the shopping list (checked items carry over) and flags the plan for review.</p>
+            <p className="text-xs text-muted-foreground">Changing guests re-derives the shopping list (checked items carry over) and flags the plan for review.</p>
             <div className="flex gap-2">
               <Button size="sm" onClick={handleSave} disabled={saving || !guests || !Number.isFinite(Number(guests)) || Number(guests) <= 0}>Save</Button>
               <Button size="sm" variant="outline" onClick={() => setEditing(false)}>Cancel</Button>
@@ -128,8 +135,8 @@ export function RequirementsCard({ orgId, eventId, plan, packages, onPlanChange 
         )}
 
         <details>
-          <summary className="text-sm text-gray-500 cursor-pointer">Change log ({plan.change_log.length})</summary>
-          <ul className="mt-2 text-xs text-gray-600 space-y-1">
+          <summary className="cursor-pointer text-sm text-muted-foreground">Change log ({plan.change_log.length})</summary>
+          <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
             {plan.change_log.slice().reverse().map((c, i) => (
               <li key={i}>
                 {c.at.slice(0, 16).replace('T', ' ')} — {c.field}: {c.from ?? '—'} → {c.to ?? '—'} ({c.by})
@@ -138,7 +145,7 @@ export function RequirementsCard({ orgId, eventId, plan, packages, onPlanChange 
             {plan.change_log.length === 0 && <li>No changes yet.</li>}
           </ul>
         </details>
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   )
 }

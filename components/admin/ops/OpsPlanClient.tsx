@@ -26,53 +26,63 @@ export interface OpsPlanClientProps {
   complianceWarnings: { name: string; expires_on: string }[]
 }
 
+// Renders under the shared event spine (sticky header + tabs), which owns the
+// event name — no page-level h1 here.
 export function OpsPlanClient(props: OpsPlanClientProps) {
   const [plan, setPlan] = useState<OpsPlan | null>(props.plan)
 
   if (!plan) {
     return (
-      <div className="p-6 max-w-3xl">
-        <h1 className="text-2xl font-bold mb-1">Event Ops — {props.eventName}</h1>
-        {props.isAdmin ? (
-          <OpsSetup
-            orgId={props.orgId}
-            eventId={props.eventId}
-            packages={props.packages}
-            eventStart={props.eventStart}
-            industryPackId={props.industryPackId}
-            defaultGuests={props.eventHeadcount}
-            onCreated={setPlan}
-          />
-        ) : (
-          <p className="mt-4 text-gray-600">
-            This event isn&apos;t set up for ops yet. An admin creates the ops plan by picking packages and a guest count.
-          </p>
-        )}
+      <div className="p-5">
+        <div className="max-w-2xl">
+          {props.isAdmin ? (
+            <OpsSetup
+              orgId={props.orgId}
+              eventId={props.eventId}
+              orgSlug={props.orgSlug}
+              packages={props.packages}
+              eventStart={props.eventStart}
+              industryPackId={props.industryPackId}
+              defaultGuests={props.eventHeadcount}
+              onCreated={setPlan}
+            />
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              This event isn&apos;t set up for ops yet. An admin creates the ops plan by picking packages and a guest count.
+            </p>
+          )}
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="p-6 max-w-4xl space-y-6">
-      <ReadinessHeader
-        plan={plan}
-        eventName={props.eventName}
-        eventStart={props.eventStart}
-        orgId={props.orgId}
-        eventId={props.eventId}
-        orgSlug={props.orgSlug}
-        eventSlug={props.eventSlug}
-        complianceWarnings={props.complianceWarnings}
-        onPlanChange={setPlan}
-      />
-      <RequirementsCard
-        orgId={props.orgId} eventId={props.eventId}
-        plan={plan} packages={props.packages} onPlanChange={setPlan}
-      />
-      <DeadlinesCard orgId={props.orgId} eventId={props.eventId} plan={plan} industryPackId={props.industryPackId} onPlanChange={setPlan} />
-      <ListsCard orgId={props.orgId} eventId={props.eventId} plan={plan} orgSlug={props.orgSlug} eventSlug={props.eventSlug} onPlanChange={setPlan} />
-      <ChecklistsCard orgId={props.orgId} eventId={props.eventId} plan={plan} onPlanChange={setPlan} />
-      <IssuesCard orgId={props.orgId} eventId={props.eventId} issues={props.issues} />
+    <div className="p-5">
+      <div className="grid gap-4 lg:grid-cols-5">
+        <div className="space-y-4 lg:col-span-3">
+          <RequirementsCard
+            orgId={props.orgId} eventId={props.eventId}
+            plan={plan} packages={props.packages} onPlanChange={setPlan}
+          />
+          <DeadlinesCard orgId={props.orgId} eventId={props.eventId} plan={plan} industryPackId={props.industryPackId} onPlanChange={setPlan} />
+          <ChecklistsCard orgId={props.orgId} eventId={props.eventId} plan={plan} onPlanChange={setPlan} />
+          <ListsCard orgId={props.orgId} eventId={props.eventId} plan={plan} orgSlug={props.orgSlug} eventSlug={props.eventSlug} onPlanChange={setPlan} />
+        </div>
+        <aside className="space-y-4 max-lg:order-first lg:col-span-2">
+          <ReadinessHeader
+            plan={plan}
+            eventName={props.eventName}
+            eventStart={props.eventStart}
+            orgId={props.orgId}
+            eventId={props.eventId}
+            orgSlug={props.orgSlug}
+            eventSlug={props.eventSlug}
+            complianceWarnings={props.complianceWarnings}
+            onPlanChange={setPlan}
+          />
+          <IssuesCard orgId={props.orgId} eventId={props.eventId} issues={props.issues} />
+        </aside>
+      </div>
     </div>
   )
 }

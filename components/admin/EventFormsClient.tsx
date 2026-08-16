@@ -1,9 +1,12 @@
 'use client'
 
 import { useState } from 'react'
-import { Card, CardContent } from '@/components/ui/card'
+import Link from 'next/link'
+import { useParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { EmptyState } from '@/components/ui/empty-state'
+import { StatusPill } from '@/components/ui/status-pill'
 import { assignFormToEvent, removeFormAssignment } from '@/actions/forms'
 import type { FormTemplate, EventFormAssignment } from '@/lib/types'
 
@@ -30,6 +33,7 @@ export function EventFormsClient({
   signedCounts,
   activeRegistrantCount,
 }: EventFormsClientProps) {
+  const { orgSlug } = useParams<{ orgSlug: string }>()
   const [assignments, setAssignments] = useState<EventFormAssignment[]>(initialAssignments)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -64,93 +68,108 @@ export function EventFormsClient({
   }
 
   return (
-    <div className="p-6 max-w-2xl space-y-6">
-      <h1 className="text-2xl font-bold">Forms</h1>
-
+    <div className="p-5 space-y-6">
       <div aria-live="polite" aria-atomic="true">
         {error && <p className="text-sm text-destructive">{error}</p>}
       </div>
 
       {/* Assigned forms */}
-      <section>
-        <h2 className="text-base font-semibold mb-3">Assigned to this event</h2>
-        {assignments.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            No forms assigned yet. Add one from the list below.
-          </p>
-        ) : (
-          <div className="space-y-2">
-            {assignments.map((a) => {
+      <section className="space-y-3">
+        <h2 className="text-base font-semibold">Assigned to this event</h2>
+        <div className="rounded-xl border border-border bg-card">
+          {assignments.length === 0 ? (
+            <EmptyState
+              title="No forms assigned yet."
+              description="Add one from the list below."
+            />
+          ) : (
+            assignments.map((a) => {
               const signedCount = signedCounts[a.id] ?? 0
+              const complete = activeRegistrantCount > 0 && signedCount >= activeRegistrantCount
+              const pct =
+                activeRegistrantCount > 0
+                  ? Math.min(100, (signedCount / activeRegistrantCount) * 100)
+                  : 0
               return (
-                <Card key={a.id}>
-                  <CardContent className="py-3">
-                    <div className="flex items-center justify-between">
-                      <div className="space-y-1">
-                        <p className="font-medium">{a.template_name}</p>
-                        <div className="flex gap-2 items-center">
-                          <Badge variant="secondary">
-                            {AUDIENCE_LABELS[a.audience] ?? a.audience}
-                          </Badge>
-                          <span className="text-xs text-muted-foreground">
-                            {signedCount} / {activeRegistrantCount} signed
-                          </span>
-                        </div>
+                <div
+                  key={a.id}
+                  className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border px-4 py-3 first:border-t-0"
+                >
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <p className="truncate text-sm font-medium">{a.template_name}</p>
+                    <Badge variant="secondary">
+                      {AUDIENCE_LABELS[a.audience] ?? a.audience}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {complete && <StatusPill tone="confirmed">Complete</StatusPill>}
+                    <div className="flex flex-col items-end gap-1">
+                      <span className="text-xs tabular-nums text-muted-foreground">
+                        {signedCount}/{activeRegistrantCount} signed
+                      </span>
+                      <div className="h-1 w-24 overflow-hidden rounded-full bg-muted">
+                        <div
+                          className="h-full rounded-full bg-primary"
+                          style={{ width: `${pct}%` }}
+                        />
                       </div>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleRemove(a.id)}
-                        disabled={saving}
-                      >
-                        Remove
-                      </Button>
                     </div>
-                  </CardContent>
-                </Card>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleRemove(a.id)}
+                      disabled={saving}
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                </div>
               )
-            })}
-          </div>
-        )}
+            })
+          )}
+        </div>
       </section>
 
       {/* Available templates */}
       {unassigned.length > 0 && (
-        <section>
-          <h2 className="text-base font-semibold mb-3">Available templates</h2>
-          <div className="space-y-2">
+        <section className="space-y-3">
+          <h2 className="text-base font-semibold">Available templates</h2>
+          <div className="rounded-xl border border-border bg-card">
             {unassigned.map((t) => (
-              <Card key={t.id}>
-                <CardContent className="py-3">
-                  <div className="flex items-center justify-between">
-                    <div className="space-y-1">
-                      <p className="font-medium">{t.name}</p>
-                      <div className="flex gap-2">
-                        <Badge variant="outline">{t.fields.length} field{t.fields.length !== 1 ? 's' : ''}</Badge>
-                        <Badge variant="secondary">
-                          {AUDIENCE_LABELS[t.audience] ?? t.audience}
-                        </Badge>
-                      </div>
-                    </div>
-                    <Button size="sm" onClick={() => handleAssign(t)} disabled={saving}>
-                      Assign
-                    </Button>
+              <div
+                key={t.id}
+                className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border px-4 py-3 first:border-t-0"
+              >
+                <div className="min-w-0 flex-1 space-y-1">
+                  <p className="truncate text-sm font-medium">{t.name}</p>
+                  <div className="flex flex-wrap gap-2">
+                    <Badge variant="outline">{t.fields.length} field{t.fields.length !== 1 ? 's' : ''}</Badge>
+                    <Badge variant="secondary">
+                      {AUDIENCE_LABELS[t.audience] ?? t.audience}
+                    </Badge>
                   </div>
-                </CardContent>
-              </Card>
+                </div>
+                <Button size="sm" onClick={() => handleAssign(t)} disabled={saving}>
+                  Assign
+                </Button>
+              </div>
             ))}
           </div>
         </section>
       )}
 
       {templates.length === 0 && (
-        <p className="text-sm text-muted-foreground">
-          No form templates found for your org.{' '}
-          <a href="../forms" className="text-primary underline">
-            Create templates
-          </a>{' '}
-          at the org level first.
-        </p>
+        <div className="rounded-xl border border-border bg-card">
+          <EmptyState
+            title="No form templates found for your org."
+            description="Create templates at the org level first."
+            action={
+              <Button variant="outline" size="sm" nativeButton={false} render={<Link href={`/${orgSlug}/forms`} />}>
+                Create templates
+              </Button>
+            }
+          />
+        </div>
       )}
     </div>
   )

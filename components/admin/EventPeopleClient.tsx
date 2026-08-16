@@ -1,11 +1,22 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
+import { Avatar } from '@/components/ui/avatar'
+import { EmptyState } from '@/components/ui/empty-state'
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { addEventPerson, updateEventPersonPermissions, removeEventPerson } from '@/actions/people'
 import { EVENT_PAGES, type EventPerson, type EventPersonKind, type PermissionTemplate, type EventPage } from '@/lib/types'
 
@@ -16,8 +27,7 @@ interface EventPeopleClientProps {
   templates: PermissionTemplate[]
 }
 
-const selectClass =
-  'w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50'
+const selectClass = 'h-8 rounded-lg border border-input bg-transparent px-2 text-sm'
 
 function PersonCard({
   person,
@@ -30,7 +40,7 @@ function PersonCard({
   person: EventPerson
   templates: PermissionTemplate[]
   saving: boolean
-  onRemove: (personId: string) => void
+  onRemove: (person: EventPerson) => void
   onApplyTemplate: (person: EventPerson, tid: string) => void
   onTogglePage: (person: EventPerson, page: EventPage) => void
 }) {
@@ -38,14 +48,17 @@ function PersonCard({
     <Card>
       <CardContent className="py-3 space-y-3">
         <div className="flex items-start justify-between">
-          <div className="space-y-0.5">
-            <div className="flex items-center gap-2">
-              <p className="font-medium">{person.name}</p>
-              {person.role && <Badge variant="secondary">{person.role}</Badge>}
+          <div className="flex items-center gap-2.5">
+            <Avatar name={person.name} size="sm" />
+            <div className="space-y-0.5">
+              <div className="flex items-center gap-2">
+                <p className="font-medium">{person.name}</p>
+                {person.role && <Badge variant="secondary">{person.role}</Badge>}
+              </div>
+              <p className="text-xs text-muted-foreground">{person.email}</p>
             </div>
-            <p className="text-xs text-muted-foreground">{person.email}</p>
           </div>
-          <Button size="sm" variant="outline" onClick={() => onRemove(person.id)} disabled={saving}>
+          <Button size="sm" variant="outline" onClick={() => onRemove(person)} disabled={saving}>
             Remove
           </Button>
         </div>
@@ -65,7 +78,7 @@ function PersonCard({
               ))}
             </select>
           </div>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid gap-2 sm:grid-cols-3">
             {EVENT_PAGES.map((page) => {
               const id = `${person.id}-${page}`
               return (
@@ -98,6 +111,11 @@ export function EventPeopleClient({
   const [adding, setAdding] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [removeTarget, setRemoveTarget] = useState<EventPerson | null>(null)
+
+  // Last non-null target — keeps the dialog description stable while the close animation plays.
+  const lastRemoveTarget = useRef(removeTarget)
+  if (removeTarget !== null) lastRemoveTarget.current = removeTarget
 
   const [kind, setKind] = useState<EventPersonKind>('volunteer')
   const [name, setName] = useState('')
@@ -141,7 +159,7 @@ export function EventPeopleClient({
   }
 
   async function handleRemove(personId: string) {
-    if (!confirm('Remove this person from the event?')) return
+    setRemoveTarget(null)
     setSaving(true)
     setError(null)
     try {
@@ -190,9 +208,9 @@ export function EventPeopleClient({
   const volunteers = people.filter((p) => p.kind === 'volunteer')
 
   return (
-    <div className="p-6 max-w-3xl space-y-6">
+    <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">People</h1>
+        <h2 className="text-sm font-semibold">People ({people.length})</h2>
         {!adding && <Button onClick={() => { setAdding(true); setError(null) }}>Add person</Button>}
       </div>
 
@@ -206,10 +224,10 @@ export function EventPeopleClient({
             <CardTitle className="text-base">Add staff or volunteer</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1">
                 <Label htmlFor="kind">Type</Label>
-                <select id="kind" className={selectClass} value={kind} onChange={(e) => setKind(e.target.value as EventPersonKind)}>
+                <select id="kind" className={selectClass + ' w-full'} value={kind} onChange={(e) => setKind(e.target.value as EventPersonKind)}>
                   <option value="volunteer">Volunteer</option>
                   <option value="staff">Staff</option>
                 </select>
@@ -219,7 +237,7 @@ export function EventPeopleClient({
                 <Input id="role" value={role} onChange={(e) => setRole(e.target.value)} placeholder="e.g. Cabin Leader" />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1">
                 <Label htmlFor="name">Name</Label>
                 <Input id="name" value={name} onChange={(e) => setName(e.target.value)} />
@@ -244,7 +262,7 @@ export function EventPeopleClient({
                   ))}
                 </select>
               </div>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid gap-2 sm:grid-cols-3">
                 {EVENT_PAGES.map((page) => {
                   const id = `add-${page}`
                   return (
@@ -273,9 +291,12 @@ export function EventPeopleClient({
       )}
 
       <section className="space-y-2">
-        <h2 className="text-base font-semibold">Staff ({staff.length})</h2>
+        <h3 className="text-sm font-medium text-muted-foreground">Staff ({staff.length})</h3>
         {staff.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No staff assigned to this event yet.</p>
+          <EmptyState
+            title="No staff assigned to this event yet."
+            description="Add one with the Add person button above."
+          />
         ) : (
           staff.map((p) => (
             <PersonCard
@@ -283,7 +304,7 @@ export function EventPeopleClient({
               person={p}
               templates={templates}
               saving={saving}
-              onRemove={handleRemove}
+              onRemove={setRemoveTarget}
               onApplyTemplate={handleApplyTemplateToPerson}
               onTogglePage={handleTogglePersonPage}
             />
@@ -292,9 +313,12 @@ export function EventPeopleClient({
       </section>
 
       <section className="space-y-2">
-        <h2 className="text-base font-semibold">Volunteers ({volunteers.length})</h2>
+        <h3 className="text-sm font-medium text-muted-foreground">Volunteers ({volunteers.length})</h3>
         {volunteers.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No volunteers assigned to this event yet.</p>
+          <EmptyState
+            title="No volunteers assigned to this event yet."
+            description="Add one with the Add person button above."
+          />
         ) : (
           volunteers.map((p) => (
             <PersonCard
@@ -302,13 +326,36 @@ export function EventPeopleClient({
               person={p}
               templates={templates}
               saving={saving}
-              onRemove={handleRemove}
+              onRemove={setRemoveTarget}
               onApplyTemplate={handleApplyTemplateToPerson}
               onTogglePage={handleTogglePersonPage}
             />
           ))
         )}
       </section>
+
+      <Dialog open={removeTarget !== null} onOpenChange={(open) => { if (!open) setRemoveTarget(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Remove this person from the event?</DialogTitle>
+            <DialogDescription>
+              {lastRemoveTarget.current
+                ? `${lastRemoveTarget.current.name} will be removed from this event's roster and lose page access.`
+                : ''}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>
+            <Button
+              variant="destructive"
+              disabled={saving}
+              onClick={() => { if (removeTarget) handleRemove(removeTarget.id) }}
+            >
+              Remove
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

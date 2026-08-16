@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { getEventType, DEFAULT_EVENT_TYPE_ID } from '@/lib/event-types'
+import { buildEventNav } from '@/lib/event-nav'
 import { endSession } from '@/lib/auth/establish-session'
 import { NavIcon, type NavIconName } from '@/components/layout/NavIcons'
 import { SidebarSection } from '@/components/layout/SidebarSection'
@@ -75,36 +76,7 @@ const CREATE_SLUGS = ['new', 'new-event', 'new-market-day', 'new-series']
 
 const SIDEBAR_COLLAPSED_KEY = 'tx-sidebar-collapsed'
 
-function getEventNav(terminology: Terminology) {
-  return [
-    { key: 'dashboard', label: 'Dashboard' },
-    { key: 'ops', label: 'Event Ops' },
-    { key: 'families', label: terminology.registrantPlural },
-    { key: 'assignments', label: terminology.assignmentPlural },
-    { key: 'teams', label: 'Teams' },
-    { key: 'budget', label: 'Budget' },
-    { key: 'itinerary', label: 'Itinerary' },
-    { key: 'communicate', label: 'Communicate' },
-    { key: 'forms', label: 'Forms' },
-    { key: 'people', label: 'People' },
-    { key: 'checkin', label: 'Check-in' },
-    { key: 'reports', label: 'Reports' },
-    { key: 'settings', label: 'Settings' },
-  ]
-}
-
 const DEFAULT_TERMINOLOGY: Terminology = getEventType(DEFAULT_EVENT_TYPE_ID).terminology
-
-// Per-event nav items that belong to the optional attendee-roster module.
-const ROSTER_KEYS = new Set(['families', 'assignments', 'checkin'])
-
-// Market days get an explicit, minimal nav — none of the client-job pages
-// (Ops, roster, Teams, Budget, etc.) apply. Register + Closeout join this
-// list with the counter-register increment.
-const MARKET_DAY_NAV = [
-  { key: 'dashboard', label: 'Overview' },
-  { key: 'settings', label: 'Settings' },
-]
 
 // The single source of truth for Settings' children. The parent's active state
 // is derived from these (see settingsActive) rather than from a second hand-kept
@@ -418,19 +390,14 @@ export function AdminSidebar({ orgSlug, eventSlug, eventKind, terminology, allow
     },
   ]
 
-  const eventNav = getEventNav(t)
-  const visibleEventNav =
-    eventKind === 'market_day'
-      ? MARKET_DAY_NAV
-      : eventNav
-          .filter(
-            (n) =>
-              !allowedEventPages ||
-              n.key === 'dashboard' ||
-              n.key === 'settings' ||
-              allowedEventPages.includes(n.key as EventPage)
-          )
-          .filter((n) => !ROSTER_KEYS.has(n.key) || has('attendee-roster'))
+  // Shared with the event spine's tab row (lib/event-nav.ts) — one model,
+  // so the sidebar and the tabs can never disagree about gating or labels.
+  const visibleEventNav = buildEventNav({
+    kind: eventKind,
+    terminology: t,
+    allowedPages: allowedEventPages,
+    enabledModules,
+  })
 
   async function handleSignOut() {
     await endSession()
