@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, within, fireEvent } from '@testing-library/react'
 import { CalendarWeekClient } from '@/components/admin/calendar/CalendarWeekClient'
 import type { CalendarItem } from '@/lib/calendar'
 
@@ -21,27 +21,65 @@ const props = {
   subscribeUrl: 'https://app.example/ics/acme/tok123',
 }
 
+/** The grid and the rail both list some of the same items — always scope. */
+const grid = () => within(screen.getByRole('region', { name: 'Week grid' }))
+const rail = () => within(screen.getByRole('complementary'))
+// "Needs attention" is both a KPI tile label and the rail heading — scope to the band.
+const tile = (label: string) => {
+  const band = document.body.querySelector('[data-slot="kpi-band"]') as HTMLElement
+  return within(band).getByText(label).closest('[data-slot="stat-tile"]') as HTMLElement
+}
+
 describe('CalendarWeekClient — week view', () => {
-  it('summarises the week: events, guests, blockers', () => {
+  it('summarises the week on the KPI band rather than a prose line', () => {
     render(<CalendarWeekClient {...props} />)
-    expect(screen.getByText('1 event · 165 guests · 1 blocker')).toBeInTheDocument()
+    expect(within(tile('Events')).getByText('1')).toBeInTheDocument()
+    expect(within(tile('Events')).getByText('1 tentative')).toBeInTheDocument()
+    expect(within(tile('Guests')).getByText('165')).toBeInTheDocument()
+    expect(within(tile('Guests')).getByText('across 1 event')).toBeInTheDocument()
+    expect(within(tile('Due this week')).getByText('$1,567.5')).toBeInTheDocument()
+    expect(within(tile('Due this week')).getByText('nothing overdue')).toBeInTheDocument()
+    // blocker + past-due task + invoice + tentative hold across the whole feed
+    expect(within(tile('Needs attention')).getByText('4')).toBeInTheDocument()
+    expect(within(tile('Needs attention')).getByText('1 blocking')).toBeInTheDocument()
+    // the old duplicated prose summary is gone
+    expect(screen.queryByText('1 event · 165 guests · 1 blocker')).not.toBeInTheDocument()
+  })
+
+  it('renders the KPI band in the agenda view too', () => {
+    render(<CalendarWeekClient {...props} view="agenda" />)
+    expect(screen.getByText('Due this week')).toBeInTheDocument()
+    expect(within(tile('Needs attention')).getByText('4')).toBeInTheDocument()
   })
 
   it('splits time from owed: events and holds in the top band, the rest below', () => {
     render(<CalendarWeekClient {...props} />)
-    expect(screen.getByRole('link', { name: /^Mission Co-op/ })).toHaveAttribute('href', '/acme/mission/dashboard')
-    expect(screen.getByText('165 guests')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /Farmers market stall/ })).toBeInTheDocument()
-    expect(screen.getByText(/tentative · not booked/)).toBeInTheDocument()
-    expect(screen.getByText('Owed')).toBeInTheDocument()
-    expect(screen.getByText('Confirm power access')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /Send Mission Co-op invoice/ })).toBeInTheDocument()
-    expect(screen.getByText(/\$1,567.5/)).toBeInTheDocument()
+    const g = grid()
+    expect(g.getByRole('link', { name: /^Mission Co-op/ })).toHaveAttribute('href', '/acme/mission/dashboard')
+    expect(g.getByText('165 guests')).toBeInTheDocument()
+    expect(g.getByRole('link', { name: /Farmers market stall/ })).toBeInTheDocument()
+    expect(g.getByText(/tentative · not booked/)).toBeInTheDocument()
+    expect(g.getByText('Owed')).toBeInTheDocument()
+    expect(g.getByText('Confirm power access')).toBeInTheDocument()
+    expect(g.getByRole('link', { name: /Send Mission Co-op invoice/ })).toBeInTheDocument()
+    expect(g.getByText(/\$1,567\.5/)).toBeInTheDocument()
   })
 
   it('keeps out-of-week items off the grid', () => {
     render(<CalendarWeekClient {...props} />)
-    expect(screen.queryByText('Next month')).not.toBeInTheDocument()
+    expect(grid().queryByText('Next month')).not.toBeInTheDocument()
+  })
+
+  it('lists the blocker and the invoice on the attention rail', () => {
+    render(<CalendarWeekClient {...props} />)
+    const r = rail()
+    expect(r.getByRole('heading', { name: 'Blocking a booked event' })).toBeInTheDocument()
+    expect(r.getByRole('link', { name: /Fire extinguisher tag expires/ })).toHaveAttribute('href', '/acme/compliance')
+    expect(r.getByRole('heading', { name: 'Money owed' })).toBeInTheDocument()
+    expect(r.getByRole('link', { name: /Send Mission Co-op invoice/ })).toHaveAttribute('href', '/acme/leads/l3')
+    // scans the whole feed, not just the shown week — the past-due task is here
+    expect(r.getByRole('heading', { name: 'Past due' })).toBeInTheDocument()
+    expect(r.getByRole('link', { name: /Confirm power access/ })).toBeInTheDocument()
   })
 
   it('week navigation links move by seven days from the shown week', () => {
@@ -51,12 +89,37 @@ describe('CalendarWeekClient — week view', () => {
     expect(screen.getByRole('link', { name: 'Next week' })).toHaveAttribute('href', '/acme/calendar?week=2026-08-17')
   })
 
+  it('drives the view switch off the URL through the shared tab group', () => {
+    render(<CalendarWeekClient {...props} />)
+    const tabs = within(screen.getByRole('navigation', { name: 'Calendar view' }))
+    expect(tabs.getByRole('link', { name: 'Week' })).toHaveAttribute('href', '/acme/calendar?week=2026-08-10&view=week')
+    expect(tabs.getByRole('link', { name: 'Agenda' })).toHaveAttribute('href', '/acme/calendar?week=2026-08-10&view=agenda')
+    expect(tabs.getByRole('link', { name: 'Week' })).toHaveAttribute('aria-current', 'page')
+    expect(tabs.getByRole('link', { name: 'Agenda' })).not.toHaveAttribute('aria-current')
+  })
+
   it('opens the subscribe panel on demand', () => {
     render(<CalendarWeekClient {...props} />)
     expect(screen.queryByText('Calendar sync')).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Subscribe in Outlook / Google' }))
     expect(screen.getByText('Calendar sync')).toBeInTheDocument()
     expect(screen.getByText('https://app.example/ics/acme/tok123')).toBeInTheDocument()
+  })
+
+  it('offers one way out when the shown week is empty, keeping the day headers', () => {
+    render(<CalendarWeekClient {...props} items={[]} />)
+    const g = grid()
+    expect(g.getByText('Nothing on the calendar this week')).toBeInTheDocument()
+    expect(g.getByText('Booked events, holds, tasks and invoice due dates all land here.')).toBeInTheDocument()
+    expect(g.getByRole('link', { name: 'Open the pipeline' })).toHaveAttribute('href', '/acme/leads')
+    expect(g.queryByText('Owed')).not.toBeInTheDocument()
+    // an empty week is still a week — the day headers stay
+    expect(g.getByText(/Mon/)).toBeInTheDocument()
+  })
+
+  it('renders the footnote under the left column', () => {
+    render(<CalendarWeekClient {...props} footnote={<p>3 open opportunities have no date yet</p>} />)
+    expect(screen.getByText('3 open opportunities have no date yet')).toBeInTheDocument()
   })
 })
 
@@ -66,5 +129,12 @@ describe('CalendarWeekClient — agenda view', () => {
     expect(screen.getByText('August 2026')).toBeInTheDocument()
     expect(screen.getByText('September 2026')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Next month' })).toBeInTheDocument()
+  })
+
+  it('shows the same empty state and CTA when nothing is scheduled', () => {
+    render(<CalendarWeekClient {...props} items={[]} view="agenda" />)
+    expect(screen.queryByText('Nothing scheduled yet.')).not.toBeInTheDocument()
+    expect(screen.getByText('Nothing on the calendar this week')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Open the pipeline' })).toHaveAttribute('href', '/acme/leads')
   })
 })

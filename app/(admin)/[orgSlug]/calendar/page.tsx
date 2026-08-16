@@ -39,7 +39,7 @@ export default async function CalendarPage({
     : 0
 
   return (
-    <div>
+    <div className="mx-auto w-full max-w-7xl">
       <CalendarKindFilter orgSlug={orgSlug} active={pipelineOnly ? 'pipeline' : 'all'} week={week} view={view} />
       <CalendarWeekClient
         orgSlug={orgSlug}
