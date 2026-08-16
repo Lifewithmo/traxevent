@@ -115,6 +115,33 @@ describe('LeadInvoicesClient — status pills', () => {
     expect(balance).toHaveTextContent('$500.00')
     expect(balance).toHaveClass('text-destructive')
   })
+
+  it('excludes drafts, which have never been asked for', () => {
+    render(
+      <LeadInvoicesClient
+        {...base}
+        invoices={[invoice({ id: 'i-sent' }), invoice({ id: 'i-draft', lifecycle: 'draft' })]}
+        acceptedProposals={[]}
+      />
+    )
+    // The draft's $500 is not money owed until the client has been billed.
+    expect(screen.getByText('Open balance').nextElementSibling).toHaveTextContent('$500.00')
+  })
+
+  it('never lets an overpaid invoice net against what another one owes', () => {
+    render(
+      <LeadInvoicesClient
+        {...base}
+        invoices={[
+          invoice({ id: 'i-owed' }),
+          invoice({ id: 'i-over', payments: [{ amount: 520, recorded_at: '2026-01-05T00:00:00.000Z' }] }),
+        ]}
+        acceptedProposals={[]}
+      />
+    )
+    // i-over's balance is -$20; the customer still owes the full $500 on i-owed.
+    expect(screen.getByText('Open balance').nextElementSibling).toHaveTextContent('$500.00')
+  })
 })
 
 describe('LeadInvoicesClient — per-row client link', () => {
@@ -130,6 +157,13 @@ describe('LeadInvoicesClient — per-row client link', () => {
     expect(screen.queryByRole('button', { name: /copy client link/i })).not.toBeInTheDocument()
   })
 
+  it('keeps the copy button out of the row link', () => {
+    render(<LeadInvoicesClient {...base} invoices={[invoice({ id: 'i-sent' })]} acceptedProposals={[]} />)
+    // An interactive control inside <a> is invalid HTML; the row action must be
+    // the link's sibling, not its descendant.
+    expect(screen.getByRole('button', { name: /copy client link/i }).closest('a')).toBeNull()
+  })
+
   it('copies the public URL and confirms', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined)
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
@@ -141,6 +175,18 @@ describe('LeadInvoicesClient — per-row client link', () => {
 })
 
 describe('LeadInvoicesClient — empty state', () => {
+  it('offers exactly one create affordance in each state', () => {
+    const { unmount } = render(<LeadInvoicesClient {...base} acceptedProposals={[]} />)
+    // Empty: the empty-state CTA is the only one — no duplicate header button.
+    expect(screen.getAllByRole('button', { name: /invoice/i })).toHaveLength(1)
+    expect(screen.getByRole('button', { name: /^create invoice$/i })).toBeInTheDocument()
+    unmount()
+
+    render(<LeadInvoicesClient {...base} invoices={[invoice({ id: 'i-sent' })]} acceptedProposals={[]} />)
+    expect(screen.getByRole('button', { name: /\+ new invoice/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^create invoice$/i })).not.toBeInTheDocument()
+  })
+
   it('creates an invoice from the empty-state CTA', async () => {
     createInvoice.mockClear()
     createInvoice.mockResolvedValue({ id: 'inv-1' })

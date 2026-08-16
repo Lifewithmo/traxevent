@@ -82,10 +82,14 @@ export function LeadInvoicesClient({ orgId, orgSlug, leadId, invoices, acceptedP
     return { inv, balance, pill: invoicePill({ lifecycle: inv.lifecycle, payment, aging }) }
   })
 
-  // Void invoices were withdrawn, so their balance is not owed (mirrors
-  // `isCollectable` in lib/money-overview.ts and the AR rollup's own filter).
+  // `sent` is the only lifecycle where money is actually owed: a draft has not
+  // been asked for yet and a void was withdrawn. And an overpaid invoice carries
+  // a NEGATIVE balance, which must not net against what other invoices owe.
+  // Both halves mirror `isCollectable` in lib/money-overview.ts and the
+  // `lifecycle === 'sent'` + `balance > 0` pair in `customerAR` (lib/crm/ar-rollup.ts),
+  // which feeds the identical footer on the client rail.
   const openBalance = round2(
-    priced.reduce((sum, p) => (p.inv.lifecycle === 'void' ? sum : sum + p.balance), 0),
+    priced.reduce((sum, p) => (p.inv.lifecycle === 'sent' && p.balance > 0 ? sum + p.balance : sum), 0),
   )
   const anyOverdue = priced.some((p) => p.pill.tone === 'alert')
 
@@ -93,30 +97,20 @@ export function LeadInvoicesClient({ orgId, orgSlug, leadId, invoices, acceptedP
     id: inv.id,
     title: inv.number ? `Invoice ${inv.number}` : inv.title || 'Invoice',
     subtitle: inv.due_date ? `Due ${inv.due_date}` : undefined,
-    badge: (
-      <span className="flex items-center gap-1.5">
-        <StatusPill tone={pill.tone}>{pill.label}</StatusPill>
-        {/* A draft has never been handed to the client, so there is no link to
-            share yet — same guard the pre-kit row carried. */}
-        {inv.lifecycle !== 'draft' ? (
-          <Button
-            variant="ghost"
-            size="xs"
-            onClick={(e) => {
-              // The whole row is a <Link>; keep the copy click from navigating.
-              e.preventDefault()
-              e.stopPropagation()
-              void handleCopy(inv.token)
-            }}
-          >
-            {copied === inv.token ? <Check aria-hidden="true" /> : <Link2 aria-hidden="true" />}
-            {/* Visually collapses to the icon on a phone, but stays in the
-                accessibility tree so the button keeps its name at every width. */}
-            <span className="max-sm:sr-only">{copied === inv.token ? 'Copied!' : 'Copy client link'}</span>
-          </Button>
-        ) : null}
-      </span>
-    ),
+    badge: <StatusPill tone={pill.tone}>{pill.label}</StatusPill>,
+    // A draft has never been handed to the client, so there is no link to share
+    // yet — same guard the pre-kit row carried. The card renders `actions`
+    // outside the row's anchor, so this button is a sibling of the link rather
+    // than an interactive descendant of it — no click interception needed.
+    actions:
+      inv.lifecycle !== 'draft' ? (
+        <Button variant="ghost" size="xs" onClick={() => void handleCopy(inv.token)}>
+          {copied === inv.token ? <Check aria-hidden="true" /> : <Link2 aria-hidden="true" />}
+          {/* Visually collapses to the icon on a phone, but stays in the
+              accessibility tree so the button keeps its name at every width. */}
+          <span className="max-sm:sr-only">{copied === inv.token ? 'Copied!' : 'Copy client link'}</span>
+        </Button>
+      ) : undefined,
     amount: money2(balance),
     amountTone: pill.tone === 'alert' ? 'alert' : pill.tone === 'confirmed' ? 'money' : 'default',
     href: `/${orgSlug}/leads/${leadId}/invoices/${inv.id}`,
@@ -193,7 +187,9 @@ export function LeadInvoicesClient({ orgId, orgSlug, leadId, invoices, acceptedP
         // than hiding the rest behind the card's inert "View all" line.
         previewLimit={Math.max(rows.length, 1)}
         newLabel={creating ? 'Creating…' : '+ New invoice'}
-        onNew={handleCreate}
+        // Exactly one create affordance per state: the empty state owns the CTA
+        // when there is nothing to list, the header owns it once rows exist.
+        onNew={rows.length > 0 ? handleCreate : undefined}
         emptyTitle="No invoices yet"
         emptyCtaLabel={creating ? 'Creating…' : 'Create invoice'}
         onEmptyCta={handleCreate}
