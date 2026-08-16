@@ -193,6 +193,14 @@ a pattern whose regime doesn't match the surface's.**
 - **No "competent, not great" escape hatch on a flagship surface.** Failing gate
   2 (idea) or 3 (human context) **blocks merge** — it is not a label. This is
   the escape valve our own research reached for; it is closed.
+- **Verify the secondary claims, not just the headline output.** A feasibility
+  verdict, a "lightest path," an effort estimate (S/M/L), or a "buildable now /
+  no migration" assertion is a *hypothesis* until an independent skeptic has
+  tried to **refute** it against the real code/stack and **priced the
+  alternatives** — not a finding. The scope decision rests on these derived
+  claims as much as on the primary design, so they get the same adversarial
+  verification and measurement the design bar gets. A single agent's assertion
+  relayed as fact is the second-order throttle-down.
 - **No schema-order block-stack layouts, ever** (Cooper goal-directed + Nielsen
   #8). Build from the operator's goal, not the Firestore field list.
 - **No module "shipped" without the authenticated browser walkthrough** (ISO
