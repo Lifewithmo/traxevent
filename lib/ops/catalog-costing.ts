@@ -17,12 +17,27 @@
 // fine for a catalog listing shown with no operator in the loop — a $0
 // "materials" figure would read as "this package costs nothing to fulfill."
 // So this module detects "uncosted" explicitly (no consumable lines, no
-// costed ingredient among them, or no capacity to price against) and returns
+// costable ingredient among them, or no capacity to price against) and returns
 // `costed: false` instead of a number. Callers MUST render costed:false as an
 // em dash, never "$0.00", and must never label any of this output "cost" or
 // "margin".
-import type { OpsResource, WorkPackage } from '@/lib/types'
+//
+// The same reasoning applies WITHIN a package, line by line. A line is priced
+// only when its resource exists, carries a `unit_cost`, AND carries the `unit`
+// that cost is denominated in. Every other consumable line is EXCLUDED from
+// the arithmetic and named in `gaps`:
+//   - dangling `resource_id` / no `unit_cost` — the engine would silently
+//     contribute $0 and the figure would read as complete;
+//   - `unit_cost` with no `unit` — the engine's legacy branch multiplies the
+//     raw line quantity by the cost without converting, so the SAME physical
+//     quantity typed as 0.5 lb vs 8 oz produces different dollars. An
+//     arbitrarily-scaled number is worse than no number.
+// A package is only costed against a positive `max_guests`; 0 or negative
+// capacity yields `no-capacity`, never a $0 or negative figure.
+import type { OpsResource, WorkPackage, WorkPackageLine } from '@/lib/types'
 import { computeCloseoutSummary } from '@/lib/ops/derive'
+
+type ConsumableLine = Extract<WorkPackageLine, { kind: 'consumable' }>
 
 export type UncostedReason = 'no-capacity' | 'no-costed-ingredient' | 'no-consumables'
 
@@ -32,26 +47,41 @@ export interface PackageCosting {
   costed: boolean          // false => caller renders an em dash, NEVER "$0.00"
   basis?: number           // guests used (p.max_guests); undefined when not costed
   materials: number        // CONSUMABLES ONLY — excludes labor and equipment
-  gaps: string[]           // resource names with a unit_cost but no conversion path
+  /** Ingredients EXCLUDED from this figure — `materials` understates by whatever
+   *  they cost. Union of lines that could not be priced (dangling resource, no
+   *  unit_cost, or a unit_cost with no unit) and costed lines with no conversion
+   *  path. Resource name, or the raw resource_id when the resource is missing. */
+  gaps: string[]
   reason?: UncostedReason  // why costed === false
 }
 
 export function computeCatalogCosting(packages: WorkPackage[], resources: OpsResource[]): PackageCosting[] {
   const byId = new Map(resources.map((r) => [r.id, r]))
   return packages.map((p): PackageCosting => {
-    const consumableLines = p.lines.filter((l) => l.kind === 'consumable')
+    const consumableLines = p.lines.filter((l): l is ConsumableLine => l.kind === 'consumable')
     if (consumableLines.length === 0) {
       return { id: p.id, price: p.price, costed: false, materials: 0, gaps: [], reason: 'no-consumables' }
     }
-    const hasCostedIngredient = consumableLines.some((l) => byId.get(l.resource_id)?.unit_cost !== undefined)
-    if (!hasCostedIngredient) {
+    // A line is priceable only with resource + unit_cost + the unit that cost is
+    // denominated in. Everything else is excluded from the math AND named, so a
+    // partial figure can never masquerade as a complete one.
+    const costable: ConsumableLine[] = []
+    const excluded: string[] = []
+    for (const line of consumableLines) {
+      const res = byId.get(line.resource_id)
+      if (res && res.unit_cost !== undefined && res.unit !== undefined) costable.push(line)
+      else excluded.push(res?.name ?? line.resource_id)
+    }
+    if (costable.length === 0) {
       return { id: p.id, price: p.price, costed: false, materials: 0, gaps: [], reason: 'no-costed-ingredient' }
     }
-    if (p.max_guests === undefined) {
+    // 0 or negative capacity scales every per-guest contribution to $0 (or below) —
+    // the same "reads as free" trap as an uncosted package, by another door.
+    if (p.max_guests === undefined || p.max_guests <= 0) {
       return { id: p.id, price: p.price, costed: false, materials: 0, gaps: [], reason: 'no-capacity' }
     }
     const summary = computeCloseoutSummary({
-      packages: [p],
+      packages: [{ ...p, lines: costable }],
       resources,
       guests: p.max_guests,
       actual_consumables: [],
@@ -63,7 +93,7 @@ export function computeCatalogCosting(packages: WorkPackage[], resources: OpsRes
       costed: true,
       basis: p.max_guests,
       materials: summary.planned_consumable_cost,
-      gaps: summary.cost_gaps ?? [],
+      gaps: [...new Set([...excluded, ...(summary.cost_gaps ?? [])])],
     }
   })
 }
