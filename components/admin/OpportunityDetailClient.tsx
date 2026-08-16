@@ -150,7 +150,7 @@ export function OpportunityDetailClient({ orgId, orgSlug, lead, customer, tasks,
         {/* Right: the working column */}
         <aside className="space-y-4 lg:col-span-2">
           <DatesPanel orgId={orgId} orgSlug={orgSlug} lead={lead} today={today} initialItems={calendarItems} />
-          <ActivityTimeline orgId={orgId} leadId={lead.id} activity={activity} />
+          <ActivityTimeline orgId={orgId} parentType="opportunity" parentId={lead.id} activity={activity} />
         </aside>
       </div>
     </div>
