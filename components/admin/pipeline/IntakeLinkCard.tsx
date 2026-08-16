@@ -1,8 +1,15 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 
 // @/actions/intake is imported lazily (below) rather than statically: its module
 // graph pulls in firebase-admin, which throws at import time without server env
@@ -52,38 +59,45 @@ export function IntakeLinkCard({ orgId, open, onClose }: IntakeLinkCardProps) {
     }
   }
 
+  // `display:contents` wrapper: the dialog body itself lives in a portal on
+  // <body>, so this keeps a single `[data-intake-card]` marker in the caller's
+  // own tree (both Pipeline surfaces assert exactly one) at zero layout cost.
   return (
-    <Card data-intake-card>
-      <CardHeader>
-        <CardTitle className="text-base">Intake link</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <div aria-live="polite" aria-atomic="true">
-          {error && <p className="text-sm text-destructive">{error}</p>}
-        </div>
-        <p className="text-sm text-muted-foreground">
-          Share this link anywhere — your website, social bio, or a QR code. Inquiries land in
-          your pipeline and you&apos;ll get an email.
-        </p>
-        {url ? (
-          <p className="break-all rounded-md border bg-muted px-3 py-2 font-mono text-xs">{url}</p>
-        ) : (
-          !error && <p className="text-sm text-muted-foreground">Loading…</p>
-        )}
-        {confirming ? (
-          <div className="space-y-2">
-            <p className="text-sm">The current link will stop working. Anyone holding it gets a 404.</p>
-            <div className="flex gap-2">
-              <Button variant="destructive" onClick={handleRegenerate} disabled={busy}>
-                {busy ? 'Regenerating…' : 'Yes, regenerate'}
-              </Button>
-              <Button variant="outline" onClick={() => setConfirming(false)} disabled={busy}>
-                Cancel
-              </Button>
-            </div>
+    <div data-intake-card className="contents">
+      <Dialog open onOpenChange={(next) => !next && onClose()}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Intake link</DialogTitle>
+            <DialogDescription>
+              Share this link anywhere — your website, social bio, or a QR code. Inquiries land in
+              your pipeline and you&apos;ll get an email.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div aria-live="polite" aria-atomic="true">
+            {error && <p className="text-sm text-destructive">{error}</p>}
           </div>
-        ) : (
-          <div className="flex flex-wrap gap-2">
+
+          {url ? (
+            <p className="break-all rounded-md border border-border bg-muted px-3 py-2 font-mono text-xs">
+              {url}
+            </p>
+          ) : (
+            !error && <p className="text-sm text-muted-foreground">Loading…</p>
+          )}
+
+          <DialogFooter className="flex-wrap">
+            <Button
+              variant="outline"
+              disabled={!token}
+              onClick={() => setConfirming(true)}
+              className="sm:mr-auto"
+            >
+              Regenerate
+            </Button>
+            <Button variant="outline" disabled={!url} onClick={() => url && window.open(url, '_blank')}>
+              Open
+            </Button>
             <Button
               disabled={!url}
               onClick={async () => {
@@ -94,18 +108,59 @@ export function IntakeLinkCard({ orgId, open, onClose }: IntakeLinkCardProps) {
             >
               {copied ? 'Copied' : 'Copy link'}
             </Button>
-            <Button variant="outline" disabled={!url} onClick={() => url && window.open(url, '_blank')}>
-              Open
-            </Button>
-            <Button variant="outline" disabled={!token} onClick={() => setConfirming(true)}>
-              Regenerate
-            </Button>
-            <Button variant="outline" onClick={onClose}>
-              Close
-            </Button>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+          </DialogFooter>
+
+          {/*
+            The confirm dialog is NESTED inside the outer one on purpose. Base UI
+            links dialogs only through React context (`useRenderDialogRoot` reads
+            `parentContext` from the enclosing `DialogRootContext`), so two roots
+            rendered as SIBLINGS never register with each other: both compute
+            `isTopmost === true`, both pass `escapeKey: true` to `useDismiss`, and
+            both register their own document keydown listener — one Escape closes
+            BOTH. Nested, the outer's `ownNestedOpenDialogs` is 1, so its
+            escapeKey/outsidePress correctly stand down while the confirm is up.
+          */}
+          <Dialog
+            open={confirming}
+            onOpenChange={(next) => {
+              if (busy) return
+              setConfirming(next)
+              // The failure belongs to the confirm step; dropping it here stops a
+              // stale error trailing back into the outer dialog.
+              if (!next) setError(null)
+            }}
+          >
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Regenerate the intake link?</DialogTitle>
+                <DialogDescription>
+                  The current link will stop working. Anyone holding it gets a 404.
+                </DialogDescription>
+              </DialogHeader>
+
+              {/*
+                A failed regenerate has to report INSIDE this dialog. The outer
+                dialog's copy of the error is both occluded by this popup's own
+                `fixed inset-0` backdrop and stamped `aria-hidden`/`inert` by this
+                dialog's FloatingFocusManager (`markOthers`) — so rendering it only
+                out there is neither visible nor announced.
+              */}
+              <div aria-live="assertive" aria-atomic="true">
+                {error && <p className="text-sm text-destructive">{error}</p>}
+              </div>
+
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setConfirming(false)} disabled={busy}>
+                  Cancel
+                </Button>
+                <Button variant="destructive" onClick={handleRegenerate} disabled={busy}>
+                  {busy ? 'Regenerating…' : 'Yes, regenerate'}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </DialogContent>
+      </Dialog>
+    </div>
   )
 }

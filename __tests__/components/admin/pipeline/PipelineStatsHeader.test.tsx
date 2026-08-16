@@ -55,4 +55,29 @@ describe('PipelineStatsHeader', () => {
     expect(note.className).toContain('text-destructive')
     expect(note.className).not.toContain('text-muted-foreground')
   })
+
+  it('lays the four figures out in the shared kit KPI band', () => {
+    const { container } = render(<PipelineStatsHeader stats={stats} />)
+    expect(container.querySelectorAll('[data-slot="kpi-band"]')).toHaveLength(1)
+    expect(container.querySelectorAll('[data-slot="stat-tile"]')).toHaveLength(4)
+  })
+
+  it('paints every money figure with the money token', () => {
+    render(<PipelineStatsHeader stats={stats} />)
+    for (const figure of ['$6,300', '$18,450', '$16,350']) {
+      expect(screen.getByText(figure).className).toContain('var(--money-green)')
+    }
+  })
+
+  it('paints the needs-action figure in alert tone while work is waiting', () => {
+    render(<PipelineStatsHeader stats={stats} />)
+    expect(screen.getByText('2').className).toContain('text-destructive')
+    expect(screen.getByText('stale or unopened').className).toContain('text-destructive')
+  })
+
+  it('drops the alert tone once the queue is clear', () => {
+    render(<PipelineStatsHeader stats={{ ...stats, needsActionCount: 0 }} />)
+    expect(screen.getByText('0').className).not.toContain('text-destructive')
+    expect(screen.getByText('all caught up').className).toContain('text-muted-foreground')
+  })
 })

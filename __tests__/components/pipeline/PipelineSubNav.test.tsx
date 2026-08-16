@@ -11,12 +11,23 @@ describe('PipelineSubNav', () => {
     expect(screen.getByText('10')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /Tasks/ })).toHaveAttribute('href', '/acme/leads/tasks')
     expect(screen.getByRole('link', { name: /Tasks/ })).toHaveAttribute('aria-current', 'page')
-    expect(screen.getByText('1 due today')).toBeInTheDocument()
+    expect(screen.getByText('1 owed')).toBeInTheDocument()
   })
 
-  it('omits the due-today badge when nothing is due', () => {
+  it('omits the owed badge when nothing is owed', () => {
     render(<PipelineSubNav orgSlug="acme" active="opportunities" openCount={3} dueTodayCount={0} />)
-    expect(screen.queryByText(/due today/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/owed/)).not.toBeInTheDocument()
+  })
+
+  // The count fed in is `due_date <= today` — overdue INCLUDED (leads/page.tsx
+  // and leads/tasks/page.tsx both compute it that way). Calling it "due today"
+  // put the tab in direct contradiction with the tasks page's own "Due today"
+  // tile, which counts `=== today`: 4 overdue + 1 due today showed a tab reading
+  // "5 due today" above a tile reading "Due today 1".
+  it('labels the owed count honestly instead of claiming it is all due today', () => {
+    render(<PipelineSubNav orgSlug="acme" active="tasks" openCount={9} dueTodayCount={5} />)
+    expect(screen.getByText('5 owed')).toBeInTheDocument()
+    expect(screen.queryByText(/due today/i)).not.toBeInTheDocument()
   })
 
   it('renders only Opportunities and Tasks', () => {
@@ -24,6 +35,20 @@ describe('PipelineSubNav', () => {
     expect(screen.getByRole('link', { name: /Opportunities/ })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /Tasks/ })).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Calendar' })).not.toBeInTheDocument()
+  })
+
+  // Both PipelineListClient and PipelineBoardView createPortal into this node.
+  // Two of them (or none) makes their buttons vanish with no error at all.
+  it('exposes exactly one portal target for the page actions', () => {
+    const { container } = render(<PipelineSubNav orgSlug="acme" active="opportunities" openCount={3} />)
+    expect(container.querySelectorAll('#tx-pipeline-actions')).toHaveLength(1)
+  })
+
+  it('lets the tab row and the action slot wrap instead of overflowing', () => {
+    const { container } = render(<PipelineSubNav orgSlug="acme" active="opportunities" openCount={3} />)
+    const row = container.querySelector('#tx-pipeline-actions')!.parentElement!
+    expect(row.className).toContain('flex-wrap')
+    expect(container.querySelector('#tx-pipeline-actions')!.className).toContain('w-full')
   })
 })
 
@@ -60,8 +85,10 @@ describe('PipelineTasksList', () => {
     expect(screen.getByRole('link', { name: 'Overdue task' })).toHaveAttribute('href', '/acme/leads/l')
   })
 
-  it('shows an empty state when the pipeline owes nothing', () => {
-    render(<PipelineTasksList orgSlug="acme" today={today} rows={[]} />)
-    expect(screen.getByText('No open tasks across the pipeline.')).toBeInTheDocument()
+  it('shows a kit empty state with one way forward when the pipeline owes nothing', () => {
+    const { container } = render(<PipelineTasksList orgSlug="acme" today={today} rows={[]} />)
+    expect(container.querySelectorAll('[data-slot="empty-state"]')).toHaveLength(1)
+    expect(screen.getByText('No open tasks across the pipeline')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /opportunit/i })).toHaveAttribute('href', '/acme/leads')
   })
 })

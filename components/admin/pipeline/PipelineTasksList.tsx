@@ -1,4 +1,7 @@
 import Link from 'next/link'
+import { CheckCheck } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { EmptyState } from '@/components/ui/empty-state'
 import { opportunityTitle } from '@/lib/leads'
 import type { Lead, Task } from '@/lib/types'
 
@@ -37,8 +40,22 @@ export function PipelineTasksList({ orgSlug, today, rows }: PipelineTasksListPro
     rows: open.filter((r) => bucketOf(r.task, today) === bucket).sort(byDue),
   })).filter((b) => b.rows.length > 0)
 
+  // R4: an empty queue is a place to leave, not a sentence to read — the one CTA
+  // sends the operator back to the opportunities that actually owe work.
   if (blocks.length === 0) {
-    return <p className="px-5 py-6 text-sm text-muted-foreground">No open tasks across the pipeline.</p>
+    return (
+      <EmptyState
+        className="py-12"
+        icon={<CheckCheck className="size-4" />}
+        title="No open tasks across the pipeline"
+        description="Tasks you add on an opportunity land here, bucketed by when they are owed."
+        action={
+          <Button variant="outline" size="sm" render={<Link href={`/${orgSlug}/leads`} />}>
+            Go to opportunities
+          </Button>
+        }
+      />
+    )
   }
 
   return (

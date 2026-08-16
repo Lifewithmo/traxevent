@@ -1,6 +1,9 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { KpiBand } from '@/components/ui/kpi-band'
+import { PipelineStatTile } from '@/components/admin/pipeline/PipelineStatTile'
+import { money } from '@/lib/pipeline-presentation'
 import type { BacklogMonth } from '@/lib/pipeline-stats'
 
 export interface PipelineHeaderStats {
@@ -13,8 +16,6 @@ export interface PipelineHeaderStats {
   todayYm: string
 }
 
-const money = (n: number) => `$${n.toLocaleString()}`
-
 // Year-over-year is only meaningful once last year's month has data;
 // fall back to the plain won-count line until then.
 function yoyLine(now: number, lastYear: number): { text: string; destructive: boolean } | null {
@@ -25,45 +26,6 @@ function yoyLine(now: number, lastYear: number): { text: string; destructive: bo
     text: `${pct > 0 ? 'up' : 'down'} ${Math.abs(pct)}% vs this month last year`,
     destructive: pct < 0,
   }
-}
-
-function KpiLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <p
-      className="font-mono text-[11px] font-semibold uppercase tracking-[.04em]"
-      style={{ color: 'color-mix(in oklab, var(--muted-foreground) 70%, var(--foreground))' }}
-    >
-      {children}
-    </p>
-  )
-}
-
-function Kpi({
-  label,
-  value,
-  note,
-  destructive,
-  first,
-}: {
-  label: string
-  value: string
-  note: string
-  destructive?: boolean
-  first?: boolean
-}) {
-  return (
-    <div className={first ? 'pl-0' : 'border-l pl-5'} style={first ? undefined : { borderColor: 'var(--border)' }}>
-      <KpiLabel>{label}</KpiLabel>
-      <p
-        className={`text-[22px] font-semibold leading-tight tabular-nums tracking-[-.02em]${
-          destructive ? ' text-destructive' : ''
-        }`}
-      >
-        {value}
-      </p>
-      <p className={`text-xs ${destructive ? 'text-destructive' : 'text-muted-foreground'}`}>{note}</p>
-    </div>
-  )
 }
 
 function Backlog({ backlog, todayYm }: { backlog: BacklogMonth[]; todayYm: string }) {
@@ -155,36 +117,40 @@ export function PipelineStatsHeader({ stats }: { stats: PipelineHeaderStats }) {
     stats
   const yoy = yoyLine(bookedThisMonth.value, bookedLastYearSameMonth.value)
 
+  const needsAction = needsActionCount > 0
+
+  // The outer split (figures | 12-month backlog) has no kit equivalent — KpiBand
+  // is the figure row only, so it lives inside the left column here.
   return (
-    <div
-      className="grid grid-cols-[minmax(0,1fr)_minmax(280px,420px)] gap-6 max-[1180px]:grid-cols-1"
-      style={{ borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)', padding: '16px 0' }}
-    >
-      <div className="grid grid-cols-4 gap-x-5 gap-y-4 max-[1000px]:grid-cols-2">
-        <Kpi
-          first
+    <div className="grid grid-cols-[minmax(0,1fr)_minmax(280px,420px)] gap-6 border-y border-border py-4 max-[1180px]:grid-cols-1">
+      <KpiBand>
+        <PipelineStatTile
           label="Booked this month"
           value={money(bookedThisMonth.value)}
+          tone="money"
           note={yoy ? yoy.text : `${bookedThisMonth.count} won`}
-          destructive={yoy?.destructive}
+          noteTone={yoy?.destructive ? 'alert' : 'default'}
         />
-        <Kpi
+        <PipelineStatTile
           label="Booked ahead · next 90 days"
           value={money(bookedNext90.value)}
+          tone="money"
           note={`${bookedNext90.count} event${bookedNext90.count === 1 ? '' : 's'} on the calendar`}
         />
-        <Kpi
+        <PipelineStatTile
           label="Open pipeline"
           value={money(openPipeline.value)}
+          tone="money"
           note={`${openPipeline.count} opportunit${openPipeline.count === 1 ? 'y' : 'ies'}`}
         />
-        <Kpi
+        <PipelineStatTile
           label="Needs action"
           value={String(needsActionCount)}
-          note={needsActionCount > 0 ? 'stale or unopened' : 'all caught up'}
-          destructive={needsActionCount > 0}
+          tone={needsAction ? 'alert' : 'default'}
+          note={needsAction ? 'stale or unopened' : 'all caught up'}
+          noteTone={needsAction ? 'alert' : 'default'}
         />
-      </div>
+      </KpiBand>
       <Backlog backlog={backlog} todayYm={todayYm} />
     </div>
   )
