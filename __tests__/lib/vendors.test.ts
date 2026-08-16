@@ -127,6 +127,26 @@ describe('buildVendorLedger', () => {
     expect(ledger.tiles.estimated).toBe(0.3)
   })
 
+  it('keeps the band internally consistent when costs carry sub-cent precision', () => {
+    // The three tiles render side by side, so committed + toConfirmValue must
+    // equal estimated exactly — independently rounding each raw sum does not.
+    const ledger = buildVendorLedger([row('A', 'confirmed', 1.005), row('B', 'potential', 1.005)])
+    expect(ledger.tiles.estimated).toBe(ledger.tiles.committed + ledger.tiles.toConfirmValue)
+  })
+
+  it('omits both other groups when only one status is present', () => {
+    const ledger = buildVendorLedger([row('A', 'declined', 999)])
+    expect(ledger.groups.map((g) => g.key)).toEqual(['declined'])
+  })
+
+  it('does not mutate or reorder the caller-supplied array', () => {
+    const rows = [row('B', 'confirmed', 10), row('A', 'confirmed', 90), row('C', 'potential', 50)]
+    const before = rows.map((r) => r.name)
+    buildVendorLedger(rows)
+    expect(rows.map((r) => r.name)).toEqual(before)
+    expect(rows).toHaveLength(3)
+  })
+
   it('keeps the joined client name on each row', () => {
     const ledger = buildVendorLedger([row('A', 'confirmed', 10, 'Northside Brewing')])
     expect(ledger.groups[0].rows[0].clientName).toBe('Northside Brewing')

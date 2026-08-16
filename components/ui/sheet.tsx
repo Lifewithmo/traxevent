@@ -39,8 +39,9 @@ function SheetOverlay({ className, ...props }: SheetPrimitive.Backdrop.Props) {
 function SheetContent({
   className,
   children,
+  showCloseButton = true,
   ...props
-}: SheetPrimitive.Popup.Props) {
+}: SheetPrimitive.Popup.Props & { showCloseButton?: boolean }) {
   return (
     <SheetPortal>
       <SheetOverlay />
@@ -53,39 +54,35 @@ function SheetContent({
         {...props}
       >
         {children}
+        {showCloseButton && (
+          // Lives on the popup, not on SheetHeader, so a Sheet composed without a
+          // header still has a visible dismiss control — same guarantee DialogContent
+          // gives. Mouse/touch users otherwise have only Escape or a backdrop click.
+          <SheetPrimitive.Close
+            data-slot="sheet-close"
+            render={<Button variant="ghost" size="icon-sm" />}
+            className="absolute top-3.5 right-4"
+          >
+            <XIcon />
+            <span className="sr-only">Close</span>
+          </SheetPrimitive.Close>
+        )}
       </SheetPrimitive.Popup>
     </SheetPortal>
   )
 }
 
-function SheetHeader({
-  className,
-  children,
-  showCloseButton = true,
-  ...props
-}: React.ComponentProps<"div"> & {
-  showCloseButton?: boolean
-}) {
+function SheetHeader({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="sheet-header"
+      // pr-12 keeps the title clear of SheetContent's absolutely-positioned close button.
       className={cn(
-        "flex shrink-0 items-start justify-between gap-4 border-b border-border p-4",
+        "flex shrink-0 flex-col gap-2 border-b border-border p-4 pr-12",
         className
       )}
       {...props}
-    >
-      <div className="flex min-w-0 flex-col gap-2">{children}</div>
-      {showCloseButton && (
-        <SheetPrimitive.Close
-          data-slot="sheet-close"
-          render={<Button variant="ghost" size="icon-sm" />}
-        >
-          <XIcon />
-          <span className="sr-only">Close</span>
-        </SheetPrimitive.Close>
-      )}
-    </div>
+    />
   )
 }
 

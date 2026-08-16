@@ -74,6 +74,8 @@ function sumCost(rows: VendorLedgerRow[]): number {
 
 export function buildVendorLedger(rows: VendorLedgerRow[]): VendorLedger {
   const potential = rows.filter((r) => r.status === 'potential')
+  const committed = confirmedVendorCost(rows)
+  const toConfirmValue = sumCost(potential)
 
   const groups = VENDOR_GROUP_ORDER.map((key) => {
     // Biggest money first; name breaks ties so the order never shuffles between renders.
@@ -85,10 +87,13 @@ export function buildVendorLedger(rows: VendorLedgerRow[]): VendorLedger {
 
   return {
     tiles: {
-      committed: confirmedVendorCost(rows),
-      estimated: totalVendorCost(rows),
+      committed,
+      // Summed from the two figures beside it, not from raw costs: the band shows
+      // all three at once, and independently rounding each raw sum lets them
+      // disagree by a cent on sub-cent costs (round2(a) + round2(b) !== round2(a+b)).
+      estimated: round2(committed + toConfirmValue),
       toConfirmCount: potential.length,
-      toConfirmValue: sumCost(potential),
+      toConfirmValue,
     },
     groups,
     total: rows.length,
