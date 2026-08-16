@@ -761,7 +761,7 @@ export interface ActivityEvent {
   id: string
   parent_type: 'customer' | 'opportunity'
   parent_id: string
-  kind: 'stage' | 'task' | 'note' | 'email' | 'form' | 'created' | 'waiting' | 'converted' | 'lost' | 'nudge' | 'order'
+  kind: 'stage' | 'task' | 'note' | 'email' | 'form' | 'created' | 'waiting' | 'converted' | 'lost' | 'nudge' | 'order' | 'proposal' | 'invoice' | 'deposit'
   summary: string
   stage?: LeadStage   // structured stage for kind:'stage' events; summary string is display-only
   created_at: string

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { StickyNote, ArrowRightLeft, CheckSquare, Mail, FileText, Sparkles, Clock, Briefcase, XCircle, BellRing, ShoppingCart } from 'lucide-react'
+import { StickyNote, ArrowRightLeft, CheckSquare, Mail, FileText, Sparkles, Clock, Briefcase, XCircle, BellRing, ShoppingCart, Send, Receipt, PiggyBank } from 'lucide-react'
 import { createNote } from '@/actions/notes'
 import { formatRelativeTime } from '@/lib/opportunity-detail'
 import type { ActivityEvent } from '@/lib/types'
@@ -27,6 +27,9 @@ const KIND_ICON = {
   lost: XCircle,
   nudge: BellRing,
   order: ShoppingCart,
+  proposal: Send,
+  invoice: Receipt,
+  deposit: PiggyBank,
 } as const
 
 export function ActivityTimeline({ orgId, leadId, activity }: ActivityTimelineProps) {
