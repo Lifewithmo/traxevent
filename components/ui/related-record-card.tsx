@@ -47,7 +47,7 @@ function RelatedRecordCard({
   emptyTitle, emptyCtaLabel, onEmptyCta, emptyCtaDisabled, footer, className,
 }: {
   title: string; count: number; rows: RelatedRow[]; previewLimit?: number
-  newLabel?: string; onNew?: () => void; emptyTitle: string; emptyCtaLabel: string
+  newLabel?: string; onNew?: () => void; emptyTitle: string; emptyCtaLabel?: string
   onEmptyCta?: () => void; footer?: React.ReactNode; className?: string
   /** Both default to enabled, so a caller that tracks no in-flight state is
    *  unaffected. A create handler that mints a fresh id per call has no
@@ -66,7 +66,16 @@ function RelatedRecordCard({
         {onNew ? <Button variant="ghost" size="xs" onClick={onNew} disabled={newDisabled}>{newLabel}</Button> : null}
       </header>
       {rows.length === 0 ? (
-        <EmptyState title={emptyTitle} action={<Button variant="outline" size="sm" onClick={onEmptyCta} disabled={emptyCtaDisabled}>{emptyCtaLabel}</Button>} />
+        <EmptyState
+          title={emptyTitle}
+          action={
+            // No handler means there is nothing for the button to do; render
+            // none rather than an inert control the reader will click.
+            onEmptyCta && emptyCtaLabel
+              ? <Button variant="outline" size="sm" onClick={onEmptyCta} disabled={emptyCtaDisabled}>{emptyCtaLabel}</Button>
+              : undefined
+          }
+        />
       ) : (
         <div>
           {shown.map((r) => <Row key={r.id} row={r} />)}

@@ -20,6 +20,9 @@ export default async function PackagesPage({
     getTemplatesForOrg(orgId, org.industry_pack_id),
     listChecklistTemplatesCore(orgId),
   ])
+  // Costing is NOT computed here: the shell owns these four datasets in client
+  // state so in-session writes propagate, and a costing snapshot taken against
+  // the server copy would be stale the moment anything changed.
   return (
     <CatalogClient
       orgId={orgId}
