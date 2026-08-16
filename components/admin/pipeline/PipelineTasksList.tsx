@@ -3,6 +3,7 @@ import { CheckCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { opportunityTitle } from '@/lib/leads'
+import { shortDate } from '@/lib/pipeline-presentation'
 import type { Lead, Task } from '@/lib/types'
 
 interface PipelineTasksListProps {
@@ -13,11 +14,16 @@ interface PipelineTasksListProps {
 
 type Bucket = 'overdue' | 'due_today' | 'upcoming' | 'no_date'
 
+/**
+ * Labels match the KPI band's four tiles on leads/tasks/page.tsx one-for-one,
+ * INCLUDING "Unscheduled" (this map said "No date" while the tile above it said
+ * "Unscheduled" — same set of tasks, two names).
+ */
 const BUCKET_META: Record<Bucket, { label: string; tone: 'urgent' | 'normal' }> = {
   overdue: { label: 'Overdue', tone: 'urgent' },
   due_today: { label: 'Due today', tone: 'normal' },
   upcoming: { label: 'Upcoming', tone: 'normal' },
-  no_date: { label: 'No date', tone: 'normal' },
+  no_date: { label: 'Unscheduled', tone: 'normal' },
 }
 
 const BUCKET_ORDER: Bucket[] = ['overdue', 'due_today', 'upcoming', 'no_date']
@@ -70,7 +76,14 @@ export function PipelineTasksList({ orgSlug, today, rows }: PipelineTasksListPro
                 : 'border-border bg-muted text-muted-foreground',
             ].join(' ')}
           >
-            {block.label} · {block.rows.length}
+            {/*
+              LABEL ONLY. The KPI band ~60px above this on leads/tasks/page.tsx
+              is the figure surface and already states all four of these counts;
+              repeating them here printed the same four numbers twice on one
+              screen. The header's job is to say which bucket the rows below
+              belong to.
+            */}
+            {block.label}
           </div>
           {block.rows.map(({ lead, task }) => (
             <div
@@ -87,8 +100,11 @@ export function PipelineTasksList({ orgSlug, today, rows }: PipelineTasksListPro
                 <p className="mt-0.5 truncate text-xs text-muted-foreground">{opportunityTitle(lead)}</p>
               </div>
               {task.due_date && (
+                // `shortDate`, not `slice(5)`: "08-14" was a THIRD date format
+                // in a module whose list, board, KPI band, facts grid and dates
+                // panel all render `Aug 14, 2026`.
                 <span className={`shrink-0 font-mono text-xs ${block.bucket === 'overdue' ? 'text-destructive' : 'text-muted-foreground'}`}>
-                  {task.due_date.slice(5)}
+                  {shortDate(task.due_date)}
                 </span>
               )}
             </div>

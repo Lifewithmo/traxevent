@@ -1,3 +1,4 @@
+import { shortDate } from '@/lib/pipeline-presentation'
 import type { Proposal, LeadStage } from '@/lib/types'
 import type { OppHealth } from '@/lib/opportunity-health'
 
@@ -75,11 +76,18 @@ export interface BannerInput {
   lastTouchDays?: number
 }
 
+/**
+ * ONE date format for the module. These strings land in NextActionBanner,
+ * directly above the tasks card — which renders `shortDate`, as do the KPI
+ * band, FactsGrid, DatesPanel, the pipeline list and the board. The banner was
+ * the last surface still emitting a raw `YYYY-MM-DD`, so the opportunity page
+ * read "Overdue · was due 2026-08-14" one card above "Aug 14, 2026".
+ */
 function dueLabel(dueYmd: string, today: string): string {
   const s = dueStatus(dueYmd, today)
-  if (s === 'overdue') return `Overdue · was due ${dueYmd}`
+  if (s === 'overdue') return `Overdue · was due ${shortDate(dueYmd)}`
   if (s === 'today') return 'Due today'
-  return `Due ${dueYmd}`
+  return `Due ${shortDate(dueYmd)}`
 }
 
 export function bannerContent(health: OppHealth, o: BannerInput): BannerContent {
@@ -94,7 +102,9 @@ export function bannerContent(health: OppHealth, o: BannerInput): BannerContent 
       return {
         tone: 'waiting',
         heading: 'Waiting',
-        detail: [o.waitingReason, o.waitingFollowUp ? `follow up ${o.waitingFollowUp}` : null]
+        // Same `shortDate` the pipeline list's waiting sentence already uses for
+        // this very field (lib/pipeline-view.ts:88).
+        detail: [o.waitingReason, o.waitingFollowUp ? `follow up ${shortDate(o.waitingFollowUp)}` : null]
           .filter(Boolean)
           .join(' · ') || 'Waiting on a reply',
       }

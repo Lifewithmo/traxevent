@@ -49,6 +49,35 @@ describe('bannerContent', () => {
     expect(b.heading).toBe('Waiting')
     expect(b.detail).toContain('Client reviewing')
   })
+
+  /*
+    ONE DATE FORMAT. These three strings render in NextActionBanner, directly
+    above a tasks card that uses `shortDate` — as do the KPI band, FactsGrid,
+    DatesPanel, the pipeline list and the board. The banner was the last surface
+    emitting a raw `YYYY-MM-DD`, so the page read "Overdue · was due 2026-08-14"
+    one card above "Aug 14, 2026" for the same date.
+  */
+  describe('date format', () => {
+    const iso = /\d{4}-\d{2}-\d{2}/
+
+    it('formats an overdue due date, never the raw ymd', () => {
+      const b = bannerContent('active', { nextTitle: 'Send quote', dueYmd: '2026-08-01', todayYmd: '2026-08-05', stageLabel: 'Proposal' })
+      expect(b.detail).toBe('Overdue · was due Aug 1, 2026')
+      expect(b.detail).not.toMatch(iso)
+    })
+
+    it('formats an upcoming due date, never the raw ymd', () => {
+      const b = bannerContent('active', { nextTitle: 'Send quote', dueYmd: '2026-08-30', todayYmd: '2026-08-05', stageLabel: 'Proposal' })
+      expect(b.detail).toBe('Due Aug 30, 2026')
+      expect(b.detail).not.toMatch(iso)
+    })
+
+    it('formats the waiting follow-up date, never the raw ymd', () => {
+      const b = bannerContent('waiting', { waitingReason: 'Client reviewing', waitingFollowUp: '2026-08-10', todayYmd: '2026-08-05', stageLabel: 'Proposal' })
+      expect(b.detail).toBe('Client reviewing · follow up Aug 10, 2026')
+      expect(b.detail).not.toMatch(iso)
+    })
+  })
   it('needs attention prompts a next step', () => {
     const b = bannerContent('needs_attention', { todayYmd: '2026-08-05', stageLabel: 'Inquiry' })
     expect(b.tone).toBe('attention')

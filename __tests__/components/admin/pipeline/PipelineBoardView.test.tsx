@@ -285,6 +285,99 @@ describe('PipelineBoardView', () => {
     })
 
     /*
+      THE SAME DEFECT, ONE CARD. `pending` is keyed by lead id, so two
+      overlapping moves of the SAME card share an entry — and the first call's
+      `finally` used to `pending.delete(id)` unconditionally, un-marking a move
+      that had not resolved yet. Drag A Inquiry→Consultation, drag A again to
+      Proposal before the first write settles, settle the first, land its stale
+      payload: the card renders in Consultation while its Proposal write is
+      still running. The `finally` must only clear ITS OWN ticket.
+    */
+    it('keeps the SECOND move of one card when the first move\'s stale payload lands', async () => {
+      const settle: Array<() => void> = []
+      setLeadStage.mockImplementation(() => new Promise<void>((res) => { settle.push(() => res()) }))
+
+      const oneInInquiry: PipelineGroups = {
+        needs_attention: [], waiting: [],
+        active: [{ lead: lead({ id: 'A', name: 'Alder Co', estimated_value: 100 }), health: 'active', statusLine: 'A line' }],
+      }
+      const { rerender } = render(<PipelineBoardView {...baseProps} groups={oneInInquiry} />)
+
+      // (1) A: Inquiry → Consultation. Write #1 does NOT resolve yet.
+      const dt1 = dataTransfer()
+      fireEvent.dragStart(screen.getByRole('article', { name: /Alder Co/ }), { dataTransfer: dt1 })
+      fireEvent.drop(dropzone('consultation'), { dataTransfer: dt1 })
+      expect(stageOf(/Alder Co/)).toBe('consultation')
+
+      // (2) The operator drags the SAME card on to Proposal. Write #2 opens.
+      const dt2 = dataTransfer()
+      fireEvent.dragStart(screen.getByRole('article', { name: /Alder Co/ }), { dataTransfer: dt2 })
+      fireEvent.drop(dropzone('proposal'), { dataTransfer: dt2 })
+      expect(stageOf(/Alder Co/)).toBe('proposal')
+      expect(setLeadStage).toHaveBeenNthCalledWith(1, 'o1', 'A', 'consultation')
+      expect(setLeadStage).toHaveBeenNthCalledWith(2, 'o1', 'A', 'proposal')
+
+      // (3) Write #1 settles and fires its refresh. Its `finally` must NOT
+      //     clear the pending mark that write #2 owns.
+      await act(async () => { settle[0]() })
+      expect(refresh).toHaveBeenCalled()
+
+      // (4) …and #1's payload lands, computed when the card was in Consultation.
+      rerender(<PipelineBoardView {...baseProps} groups={{
+        needs_attention: [], waiting: [],
+        active: [{
+          lead: lead({ id: 'A', name: 'Alder Co', stage: 'consultation', estimated_value: 100 }),
+          health: 'active', statusLine: 'A reconciled',
+        }],
+      }} />)
+
+      // The card stays where the operator last put it, and the fresh sentence
+      // still lands — only the STAGE is held back.
+      expect(stageOf(/Alder Co/)).toBe('proposal')
+      expect(screen.getByText('A reconciled')).toBeInTheDocument()
+
+      await act(async () => { settle[1]() })
+      expect(stageOf(/Alder Co/)).toBe('proposal')
+    })
+
+    /*
+      The other half of a same-card overlap: the OLDER write is refused after a
+      newer one has already repainted the card. Rewinding to the stage the older
+      call started from would drag the card backwards while the newer write is
+      still running.
+    */
+    it('does not rewind a card when a superseded move of it is rejected', async () => {
+      const settle: Array<() => void> = []
+      const reject: Array<(e: Error) => void> = []
+      setLeadStage.mockImplementation(() => new Promise<void>((res, rej) => {
+        settle.push(() => res())
+        reject.push(rej)
+      }))
+
+      const oneInInquiry: PipelineGroups = {
+        needs_attention: [], waiting: [],
+        active: [{ lead: lead({ id: 'A', name: 'Alder Co' }), health: 'active', statusLine: 'A line' }],
+      }
+      render(<PipelineBoardView {...baseProps} groups={oneInInquiry} />)
+
+      const dt1 = dataTransfer()
+      fireEvent.dragStart(screen.getByRole('article', { name: /Alder Co/ }), { dataTransfer: dt1 })
+      fireEvent.drop(dropzone('consultation'), { dataTransfer: dt1 })
+      const dt2 = dataTransfer()
+      fireEvent.dragStart(screen.getByRole('article', { name: /Alder Co/ }), { dataTransfer: dt2 })
+      fireEvent.drop(dropzone('proposal'), { dataTransfer: dt2 })
+
+      // Write #1 is refused AFTER #2 has already painted Proposal.
+      await act(async () => { reject[0](new Error('Permission denied')) })
+      await waitFor(() => expect(screen.getByText('Permission denied')).toBeInTheDocument())
+      expect(stageOf(/Alder Co/)).toBe('proposal')
+
+      // #2 succeeds; the card is exactly where the operator left it.
+      await act(async () => { settle[1]() })
+      expect(stageOf(/Alder Co/)).toBe('proposal')
+    })
+
+    /*
       Rollback used to restore a whole-array snapshot taken before the optimistic
       update, so a rejection on card B also reverted everything that had landed
       since — including card A's successful move and its refreshed sentence,

@@ -79,8 +79,17 @@ export function PipelineListClient({
   const [creating, setCreating] = useState(false)
   const [intakeOpen, setIntakeOpen] = useState(false)
   const [nudging, setNudging] = useState<string | null>(null)
-  const [moving, setMoving] = useState<string | null>(null)
+  /*
+    The lead ids whose `setLeadStage` write is in flight — a LIST, not one slot.
+    A single slot could only ever describe one row: start row B while row A is
+    still writing and A's "Moving…" label vanished and its button re-enabled
+    mid-write, then A's `finally` cleared B's mark too.
+  */
+  const [moving, setMoving] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
+  // Not an error: the one case the guard below refuses. Rendered in the same
+  // live region so a refused click is never silent.
+  const [notice, setNotice] = useState<string | null>(null)
   const [actionsSlot, setActionsSlot] = useState<HTMLElement | null>(null)
 
   useEffect(() => {
@@ -107,12 +116,25 @@ export function PipelineListClient({
     while waiting. `setLeadStage` writes an activity-log entry on EVERY call
     (actions/leads.ts:106-116), so a double click stamped two identical
     "Stage -> closed_won" entries on the timeline and fired `?convert=1` twice.
+
+    The guard is PER ROW, matching the per-row `disabled` on the advance button.
+    A global one (`if (moving) return`) disagreed with the UI it was paired
+    with: row B's button stayed enabled and its stage menu still opened while
+    row A was writing, and clicking either did nothing at all — no call, no
+    error, no label, nothing in the live region. Other rows now genuinely work;
+    the one refusal left — a second stage change on the SAME row, reachable
+    through the row's stage menu, which the kit's StageChip cannot be disabled
+    from the outside — says so out loud.
   */
   async function handleStageChange(row: PipelineRow, newStage: LeadStage) {
     if (newStage === row.lead.stage) return
-    if (moving) return
+    if (moving.includes(row.lead.id)) {
+      setNotice(`${opportunityTitle(row.lead)} is still moving — wait for that change to land.`)
+      return
+    }
     setError(null)
-    setMoving(row.lead.id)
+    setNotice(null)
+    setMoving((m) => [...m, row.lead.id])
     try {
       await setLeadStage(orgId, row.lead.id, newStage)
       if (newStage === 'closed_won') {
@@ -123,7 +145,10 @@ export function PipelineListClient({
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to move opportunity')
     } finally {
-      setMoving(null)
+      // Clearing this is what re-arms the row: without it the advance button is
+      // stuck reading "Moving…" and disabled forever after a rejected move.
+      setMoving((m) => m.filter((id) => id !== row.lead.id))
+      setNotice(null)
     }
   }
 
@@ -132,6 +157,7 @@ export function PipelineListClient({
     const title = opportunityTitle(lead)
     const next = nextStage(lead.stage)
     const needsAttention = row.health === 'needs_attention'
+    const isMoving = moving.includes(lead.id)
     return (
       <div
         key={lead.id}
@@ -176,8 +202,9 @@ export function PipelineListClient({
             <span className={MONEY_CLASS}>{money(lead.estimated_value)}</span>
           ) : (
             // R6: an unset figure offers the next action, never an em-dash. No
-            // `?focus=value` query — the opportunity page honours only
-            // `convert`/`focus=task`, and a query it ignores would be a control
+            // `?focus=value` query — the opportunity page honours `convert`,
+            // `focus=task` and `focus=lost` (OpportunityDetailClient.tsx:202,
+            // 208) and nothing else, so a query it ignores would be a control
             // that silently does nothing. The rail's inline "+ Add" facts are
             // one click away on arrival.
             <Link
@@ -210,9 +237,9 @@ export function PipelineListClient({
               size="sm"
               variant="outline"
               onClick={() => handleStageChange(row, next)}
-              disabled={moving === lead.id}
+              disabled={isMoving}
             >
-              {moving === lead.id ? 'Moving…' : `Move to ${LEAD_STAGE_LABELS[next]}`}
+              {isMoving ? 'Moving…' : `Move to ${LEAD_STAGE_LABELS[next]}`}
             </Button>
           )}
         </div>
@@ -299,6 +326,7 @@ export function PipelineListClient({
 
       <div aria-live="polite" aria-atomic="true">
         {error && <p className="text-sm text-destructive">{error}</p>}
+        {notice && <p className="text-sm text-muted-foreground">{notice}</p>}
       </div>
 
       {/*

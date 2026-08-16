@@ -91,11 +91,12 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
  * `2026-08-30` -> `Aug 30, 2026`. String-parsed, never `new Date(ymd)`, so a
  * calendar date can't slip a day in a negative-offset timezone.
  *
- * FORMAT DIVERGENCE — this emits the YEAR; the private `shortDue` helper inside
- * attachmentChips (lib/opportunity-detail.ts:152-155) emits `Aug 30` without
- * one. Both can appear on the opportunity page, so do NOT place the two strings
- * adjacent (a tile note beside a chip hint) — one dated "Aug 30, 2026" next to
- * one dated "Aug 30" reads as two different dates. Pick one per region.
+ * THE Sales Pipeline date format — the list, the board, the tasks queue, the
+ * KPI band, FactsGrid, DatesPanel and NextActionBanner's due/follow-up labels
+ * all route through here. Do not hand-roll another one: the module has already
+ * shipped `2026-08-14` and `08-14` beside this string and both read as a
+ * different date at a glance. (The `shortDue` helper this note used to warn
+ * about is gone — there is no second format left in the module.)
  *
  * Unparseable input (an ISO timestamp, free text, an out-of-range month) is
  * returned UNCHANGED rather than rendered as "undefined NaN, NaN" — an ugly

@@ -42,8 +42,19 @@ function Backlog({ backlog, todayYm }: { backlog: BacklogMonth[]; todayYm: strin
   }
 
   const max = Math.max(1, ...backlog.map((m) => m.booked + m.open))
-  const totalBooked = backlog.reduce((s, m) => s + m.booked, 0)
-  const ahead = backlog
+  /*
+    NAMING, and it is load-bearing. Both of these are EVENT-DATE rollups over
+    the chart's rolling window, and neither is the "Booked this month" tile
+    beside them — that one is won deals by CLOSED_AT month (wonValueInMonth,
+    lib/pipeline-stats.ts:27). A won deal with no event date, or one dated
+    outside the window, belongs to the tile and to neither of these, which is
+    how the collapsed line came to read "$0 booked" next to "BOOKED THIS MONTH
+    $22,000". So the summary below says "won on the calendar" and "from this
+    month on" — it never says "booked", and it never says "ahead" either, which
+    is the "Booked ahead · next 90 days" tile's word for a THIRD window.
+  */
+  const wonOnCalendar = backlog.reduce((s, m) => s + m.booked, 0)
+  const datedFromThisMonth = backlog
     .filter((m) => m.ym >= todayYm)
     .reduce((s, m) => s + m.booked + m.open, 0)
 
@@ -66,7 +77,9 @@ function Backlog({ backlog, todayYm }: { backlog: BacklogMonth[]; todayYm: strin
           Revenue by month
         </button>
         <p className="text-xs text-muted-foreground">
-          {open ? 'rolling 12 months · solid booked · light open' : `${money(totalBooked)} booked · ${money(ahead)} ahead`}
+          {open
+            ? 'rolling 12 months · solid won · light open'
+            : `${money(wonOnCalendar)} won on the calendar · ${money(datedFromThisMonth)} from this month on`}
         </p>
       </div>
       {open && (
@@ -91,7 +104,7 @@ function Backlog({ backlog, todayYm }: { backlog: BacklogMonth[]; todayYm: strin
                       <div
                         className="w-full"
                         style={{ height: `${(m.booked / max) * 100}%`, background: 'var(--primary)' }}
-                        title={`${m.label} booked ${money(m.booked)}`}
+                        title={`${m.label} won ${money(m.booked)}`}
                       />
                     </>
                   )}

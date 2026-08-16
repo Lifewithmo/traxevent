@@ -44,6 +44,14 @@ function flatten(groups: PipelineGroups): PipelineRow[] {
 }
 
 /**
+ * One in-flight `setLeadStage` call. The OBJECT IDENTITY is the per-call token:
+ * the map holds the newest call's ticket for a lead, so an older call that
+ * settles later can tell — by identity, not by lead id — that it no longer owns
+ * the card. See the `finally` in handleStageChange.
+ */
+interface PendingMove { stage: LeadStage }
+
+/**
  * Re-apply every move whose server write is still in flight on top of a fresh
  * server payload.
  *
@@ -55,16 +63,16 @@ function flatten(groups: PipelineGroups): PipelineRow[] {
  * write is still running. B's write then lands, its refresh corrects it, and the
  * card visibly teleports back and forth.
  */
-function applyPending(base: PipelineRow[], pending: Map<string, LeadStage>): PipelineRow[] {
+function applyPending(base: PipelineRow[], pending: Map<string, PendingMove>): PipelineRow[] {
   if (pending.size === 0) return base
   const out: PipelineRow[] = []
   for (const row of base) {
-    const stage = pending.get(row.lead.id)
-    if (stage === undefined) { out.push(row); continue }
+    const move = pending.get(row.lead.id)
+    if (move === undefined) { out.push(row); continue }
     // A pending Closed Won removed the card optimistically; a server payload
     // that still lists it must not put it back on the board.
-    if (stage === 'closed_won') continue
-    out.push({ ...row, lead: { ...row.lead, stage } })
+    if (move.stage === 'closed_won') continue
+    out.push({ ...row, lead: { ...row.lead, stage: move.stage } })
   }
   return out
 }
@@ -82,9 +90,11 @@ export function PipelineBoardView({
   const [actionsSlot, setActionsSlot] = useState<HTMLElement | null>(null)
 
   /**
-   * Lead id → the stage its still-unresolved `setLeadStage` call is moving it
-   * to. Written beside every optimistic update, cleared in that call's
-   * `finally`.
+   * Lead id → the NEWEST still-unresolved `setLeadStage` call for that lead.
+   * Written beside every optimistic update, cleared in that call's `finally`
+   * — but only if that call is still the entry's owner (identity check), or a
+   * card dragged twice in a row loses its second move's pending mark the
+   * instant the FIRST write settles, and the stale payload snaps it back.
    *
    * A `useState` initialiser rather than `useRef`, and deliberately so: the
    * props→state sync below has to read this DURING RENDER, and this repo's
@@ -94,7 +104,7 @@ export function PipelineBoardView({
    * setter is never called, so it is a stable mutable container and never a
    * render input; only a `handleStageChange` in flight ever writes to it.
    */
-  const [pending] = useState(() => new Map<string, LeadStage>())
+  const [pending] = useState(() => new Map<string, PendingMove>())
 
   /*
     DELIBERATE BEHAVIOUR CHANGE. `rows` used to be seeded from props exactly
@@ -130,7 +140,16 @@ export function PipelineBoardView({
     // Where the card sat before the optimistic removal, so a rejected Closed Won
     // can be put back exactly where the operator left it.
     const prevIndex = rows.findIndex((r) => r.lead.id === row.lead.id)
-    pending.set(row.lead.id, newStage)
+    /*
+      THIS call's ticket. The map is keyed by lead id, so a card dragged twice
+      before the first write resolves has two calls competing for one entry: the
+      first one's `finally` used to clear it unconditionally, un-marking a move
+      that was still in flight, and the first call's stale refresh payload then
+      snapped the card back to the column the SECOND drag had already left. The
+      identity comparisons below are what keep the newest call the owner.
+    */
+    const ticket: PendingMove = { stage: newStage }
+    pending.set(row.lead.id, ticket)
     setRows((p) => newStage === 'closed_won'
       ? p.filter((r) => r.lead.id !== row.lead.id)
       : p.map((r) => (r.lead.id === row.lead.id ? { ...r, lead: { ...r.lead, stage: newStage } } : r)))
@@ -153,20 +172,28 @@ export function PipelineBoardView({
         unrecoverably, because `syncedFrom` already equalled that payload, so the
         sync block would never re-apply it.
       */
-      setRows((p) => {
-        if (newStage !== 'closed_won') {
-          return p.map((r) => (
-            r.lead.id === row.lead.id ? { ...r, lead: { ...r.lead, stage: row.lead.stage } } : r
-          ))
-        }
-        if (p.some((r) => r.lead.id === row.lead.id)) return p
-        const next = [...p]
-        next.splice(prevIndex < 0 ? next.length : Math.min(prevIndex, next.length), 0, row)
-        return next
-      })
+      // …and only while this call still OWNS the card. A newer move of the same
+      // card has already painted its own optimistic stage; rewinding to the one
+      // this call started from would drag the card backwards under the
+      // operator's hands while that newer write is still running.
+      if (pending.get(row.lead.id) === ticket) {
+        setRows((p) => {
+          if (newStage !== 'closed_won') {
+            return p.map((r) => (
+              r.lead.id === row.lead.id ? { ...r, lead: { ...r.lead, stage: row.lead.stage } } : r
+            ))
+          }
+          if (p.some((r) => r.lead.id === row.lead.id)) return p
+          const next = [...p]
+          next.splice(prevIndex < 0 ? next.length : Math.min(prevIndex, next.length), 0, row)
+          return next
+        })
+      }
       setError(err instanceof Error ? err.message : 'Failed to move opportunity')
     } finally {
-      pending.delete(row.lead.id)
+      // Identity, not lead id: a second move of the SAME card replaced this
+      // entry, and that move is still in flight.
+      if (pending.get(row.lead.id) === ticket) pending.delete(row.lead.id)
     }
   }
 

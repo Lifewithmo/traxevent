@@ -122,8 +122,15 @@ describe('PipelineListClient', () => {
     click. `setLeadStage` writes an activity-log entry on EVERY call
     (actions/leads.ts:106-116), so a double click stamped two identical
     "Stage -> closed_won" entries on the timeline and fired `?convert=1` twice.
+
+    THE `disabled` ATTRIBUTE ONLY. This asserts the button's own state and the
+    happy path; it does NOT prove the handler guard, because React/jsdom never
+    dispatch a click on a disabled <button> to the handler. (An earlier version
+    claimed it did — deleting the guard left it green.) The guard is pinned by
+    'refuses a second stage change on a row whose move is in flight…' below,
+    which goes in through the stage MENU, a control that stays enabled.
   */
-  it('shows a pending label and refuses a second click while the advance is in flight', async () => {
+  it('shows a pending label and disables the advance button while the move is in flight', async () => {
     let settle: () => void = () => {}
     setLeadStage.mockImplementation(() => new Promise<void>((res) => { settle = () => res() }))
 
@@ -135,12 +142,86 @@ describe('PipelineListClient', () => {
     expect(moving).toBeDisabled()
     expect(screen.queryByRole('button', { name: 'Move to Closed Won' })).toBeNull()
 
-    // Even dispatched straight past the disabled attribute, the handler bails.
-    fireEvent.click(moving)
+    await act(async () => { settle() })
+    expect(setLeadStage).toHaveBeenCalledTimes(1)
+    expect(push).toHaveBeenCalledTimes(1)
+    expect(push).toHaveBeenCalledWith('/demo/leads/l1?convert=1')
+  })
+
+  /*
+    THE GUARD, through a route that is genuinely live during the move. The kit
+    StageChip takes no `disabled` prop and components/ui is not ours to change,
+    so the row's stage menu stays fully operable while its advance button reads
+    "Moving…" — which makes it the only honest way to reach `handleStageChange`
+    a second time, and the reason the guard has to exist at all.
+  */
+  it('refuses a second stage change on a row whose move is in flight, and says so', async () => {
+    setLeadStage.mockImplementation(() => new Promise<void>(() => {}))
+
+    render(<PipelineListClient {...baseProps} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Move to Closed Won' }))
     expect(setLeadStage).toHaveBeenCalledTimes(1)
 
-    await act(async () => { settle() })
-    expect(push).toHaveBeenCalledTimes(1)
+    // The stage menu is NOT disabled — it opens mid-move.
+    fireEvent.click(screen.getByRole('button', { name: /Stage: Proposal/ }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Consultation' }))
+
+    expect(setLeadStage).toHaveBeenCalledTimes(1)
+    // …and the refusal is not silent: it lands in the live region.
+    expect(screen.getByText('Halcyon Studios is still moving — wait for that change to land.'))
+      .toBeInTheDocument()
+  })
+
+  /*
+    The guard used to be GLOBAL (`if (moving) return`) while the disabled state
+    was per row, so row B's button was enabled, its menu opened, and clicking
+    either did nothing whatsoever while row A was writing — no call, no error,
+    no label, nothing announced.
+  */
+  it('lets a different row advance normally while another row is still writing', async () => {
+    const settle: Record<string, () => void> = {}
+    setLeadStage.mockImplementation((_org: string, id: string) =>
+      new Promise<void>((res) => { settle[id] = () => res() }))
+
+    render(<PipelineListClient {...baseProps} groups={{
+      ...emptyGroups,
+      active: [
+        { lead: lead({ id: 'A', name: 'Alder Co', stage: 'proposal' }), health: 'active', statusLine: 'A line' },
+        { lead: lead({ id: 'B', name: 'Birch Co', stage: 'inquiry' }), health: 'active', statusLine: 'B line' },
+      ],
+    }} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Move to Closed Won' }))
+    // B's own control is still live, and it WORKS.
+    const bAdvance = screen.getByRole('button', { name: 'Move to Consultation' })
+    expect(bAdvance).toBeEnabled()
+    fireEvent.click(bAdvance)
+
+    expect(setLeadStage).toHaveBeenCalledTimes(2)
+    expect(setLeadStage).toHaveBeenNthCalledWith(2, 'o1', 'B', 'consultation')
+    // Both rows report their own state; one slot of `moving` could not.
+    expect(screen.getAllByRole('button', { name: 'Moving…' })).toHaveLength(2)
+
+    await act(async () => { settle.A(); settle.B() })
+  })
+
+  /*
+    The error path's `finally` clear. Without it a refused move leaves the row
+    permanently stuck at a disabled "Moving…" and the operator cannot retry
+    without a full page load.
+  */
+  it('re-arms the row after a rejected move so it can be retried', async () => {
+    setLeadStage.mockRejectedValueOnce(new Error('Permission denied'))
+
+    render(<PipelineListClient {...baseProps} />)
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Move to Closed Won' })) })
+
+    expect(screen.getByText('Permission denied')).toBeInTheDocument()
+    const retry = screen.getByRole('button', { name: 'Move to Closed Won' })
+    expect(retry).toBeEnabled()
+
+    await act(async () => { fireEvent.click(retry) })
+    expect(setLeadStage).toHaveBeenCalledTimes(2)
     expect(push).toHaveBeenCalledWith('/demo/leads/l1?convert=1')
   })
 

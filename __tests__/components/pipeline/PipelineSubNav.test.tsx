@@ -61,28 +61,58 @@ const task = (over: Partial<Task>): Task => ({
 
 describe('PipelineTasksList', () => {
   const today = '2026-08-12'
+  const l = lead({ title: 'Wedding' })
+  const fourBuckets = [
+    { lead: l, task: task({ id: 'later', title: 'Later task', due_date: '2026-08-20' }) },
+    { lead: l, task: task({ id: 'later2', title: 'Even later task', due_date: '2026-08-24' }) },
+    { lead: l, task: task({ id: 'over', title: 'Overdue task', due_date: '2026-08-01' }) },
+    { lead: l, task: task({ id: 'now', title: 'Today task', due_date: '2026-08-12' }) },
+    { lead: l, task: task({ id: 'undated', title: 'Someday task' }) },
+    { lead: l, task: task({ id: 'done', title: 'Done task', due_date: '2026-08-12', done: true }) },
+  ]
 
   it('buckets open tasks by when they are owed, overdue first', () => {
-    const l = lead({ title: 'Wedding' })
-    render(
-      <PipelineTasksList
-        orgSlug="acme"
-        today={today}
-        rows={[
-          { lead: l, task: task({ id: 'later', title: 'Later task', due_date: '2026-08-20' }) },
-          { lead: l, task: task({ id: 'over', title: 'Overdue task', due_date: '2026-08-01' }) },
-          { lead: l, task: task({ id: 'now', title: 'Today task', due_date: '2026-08-12' }) },
-          { lead: l, task: task({ id: 'undated', title: 'Someday task' }) },
-          { lead: l, task: task({ id: 'done', title: 'Done task', due_date: '2026-08-12', done: true }) },
-        ]}
-      />
-    )
-    expect(screen.getByText('Overdue · 1')).toBeInTheDocument()
-    expect(screen.getByText('Due today · 1')).toBeInTheDocument()
-    expect(screen.getByText('Upcoming · 1')).toBeInTheDocument()
-    expect(screen.getByText('No date · 1')).toBeInTheDocument()
+    render(<PipelineTasksList orgSlug="acme" today={today} rows={fourBuckets} />)
+    expect(screen.getByText('Overdue')).toBeInTheDocument()
+    expect(screen.getByText('Due today')).toBeInTheDocument()
+    expect(screen.getByText('Upcoming')).toBeInTheDocument()
     expect(screen.queryByText('Done task')).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Overdue task' })).toHaveAttribute('href', '/acme/leads/l')
+  })
+
+  /*
+    DUPLICATE FIGURE. leads/tasks/page.tsx:46-69 renders a KPI band of exactly
+    these four counts ~60px above this list, so printing them again as "Overdue
+    · 1" group headers put the same four numbers on one screen twice. The band
+    is the figure surface; the header names the bucket and nothing else.
+  */
+  it('carries the bucket label without restating the count the KPI band already shows', () => {
+    const { container } = render(<PipelineTasksList orgSlug="acme" today={today} rows={fourBuckets} />)
+    const headers = Array.from(container.querySelectorAll('div.font-mono.uppercase'))
+    expect(headers.map((h) => h.textContent)).toEqual(['Overdue', 'Due today', 'Upcoming', 'Unscheduled'])
+    // Not "Upcoming · 2", and no stray digit anywhere in a header.
+    for (const h of headers) expect(h.textContent).not.toMatch(/\d/)
+  })
+
+  // The band above calls this bucket "Unscheduled"; the list said "No date" for
+  // the identical set of tasks.
+  it('names the undated bucket the same thing the KPI tile does', () => {
+    render(<PipelineTasksList orgSlug="acme" today={today} rows={fourBuckets} />)
+    expect(screen.getByText('Unscheduled')).toBeInTheDocument()
+    expect(screen.queryByText(/No date/)).toBeNull()
+  })
+
+  /*
+    THIRD DATE FORMAT. `due_date.slice(5)` rendered "08-14" in a module whose
+    list, board, KPI band, FactsGrid, DatesPanel and NextActionBanner all read
+    `Aug 14, 2026`.
+  */
+  it('renders a due date in the module’s one date format', () => {
+    const { container } = render(<PipelineTasksList orgSlug="acme" today={today} rows={fourBuckets} />)
+    expect(screen.getByText('Aug 1, 2026')).toBeInTheDocument()
+    expect(screen.getByText('Aug 20, 2026')).toBeInTheDocument()
+    expect(container.textContent).not.toContain('08-20')
+    expect(container.textContent).not.toMatch(/\d{4}-\d{2}-\d{2}/)
   })
 
   it('shows a kit empty state with one way forward when the pipeline owes nothing', () => {

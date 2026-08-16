@@ -38,10 +38,41 @@ describe('PipelineStatsHeader', () => {
 
   it('starts with the chart collapsed showing the summary, expands to the legend', () => {
     render(<PipelineStatsHeader stats={stats} />)
-    expect(screen.getByText(/booked · .* ahead/)).toBeInTheDocument()
+    expect(screen.getByText('$1,000 won on the calendar · $1,500 from this month on')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /Revenue by month/i }))
-    expect(screen.getByText('rolling 12 months · solid booked · light open')).toBeInTheDocument()
+    expect(screen.getByText('rolling 12 months · solid won · light open')).toBeInTheDocument()
     expect(localStorage.getItem('tx-backlog-open')).toBe('1')
+  })
+
+  /*
+    TWO FIGURES, ONE WORD. The "Booked this month" tile is won deals by
+    CLOSED_AT month (wonValueInMonth); the chart summary beside it sums won
+    deals by EVENT_DATE over the rolling window (buildBacklogRows). A won deal
+    with no event date belongs to the first and to neither of the second's
+    totals — which is how the shipped header came to read "BOOKED THIS MONTH
+    $22,000" beside "$0 booked". They may legitimately disagree; they may not
+    both be called "booked".
+  */
+  it('never labels the chart summary "booked" — that word belongs to the closed_at tiles', () => {
+    const noEventDates = {
+      ...stats,
+      bookedThisMonth: { count: 1, value: 22000 },
+      bookedLastYearSameMonth: { count: 0, value: 0 },
+      backlog: stats.backlog.map((m) => ({ ...m, booked: 0, open: 0 })),
+    }
+    render(<PipelineStatsHeader stats={noEventDates} />)
+
+    // The tile keeps its own definition and its own word.
+    expect(screen.getByText('Booked this month')).toBeInTheDocument()
+    expect(screen.getByText('$22,000')).toBeInTheDocument()
+
+    // The summary states the disagreeing figure under a DIFFERENT name.
+    const summary = screen.getByText(/won on the calendar/)
+    expect(summary.textContent).toBe('$0 won on the calendar · $0 from this month on')
+    expect(summary.textContent).not.toMatch(/booked/i)
+    // "ahead" is the next-90-days tile's word for a third window; the summary
+    // must not borrow that one either.
+    expect(summary.textContent).not.toMatch(/ahead/i)
   })
 
   it('renders the destructive color, not muted, when YoY is down', () => {
