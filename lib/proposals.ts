@@ -18,6 +18,19 @@ export const PROPOSAL_STATUS_LABELS: Record<ProposalStatus, string> = {
   voided: 'Voided',
 }
 
+// StatusPill's tone vocabulary, restated as a plain union so this module stays
+// free of component imports. Kept next to the labels so a new status can never
+// gain a label without also gaining a tone.
+export type StatusTone = 'confirmed' | 'pending' | 'alert' | 'neutral'
+
+export const PROPOSAL_STATUS_TONE: Record<ProposalStatus, StatusTone> = {
+  draft: 'neutral',
+  sent: 'pending',
+  accepted: 'confirmed',
+  rejected: 'alert',
+  voided: 'alert',
+}
+
 function round2(n: number): number {
   return Math.round(n * 100) / 100
 }
