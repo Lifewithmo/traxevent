@@ -14,6 +14,7 @@ const sendProposalSignedConfirmationSpy = vi.hoisted(() => vi.fn().mockResolvedV
 const sendRegistrationConfirmationSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const getVerifiedSendingDomainSpy = vi.hoisted(() => vi.fn().mockResolvedValue('mail.acme.com'))
 const reconcileProposalDepositSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
+const logActivitySpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 
 vi.mock('@/lib/email', () => ({
   sendRegistrationConfirmation: sendRegistrationConfirmationSpy,
@@ -24,6 +25,9 @@ vi.mock('@/actions/domains', () => ({
 }))
 vi.mock('@/lib/crm/deposit-reconcile', () => ({
   reconcileProposalDeposit: reconcileProposalDepositSpy,
+}))
+vi.mock('@/lib/activity', () => ({
+  logActivity: logActivitySpy,
 }))
 
 vi.mock('@/lib/firebase-admin', () => ({
@@ -266,6 +270,23 @@ describe('POST /api/payments/webhook', () => {
         'org-1', 'lead-1', 'prop-1',
         { intent_id: 'pi_dep_1', amount: 6250, paid_at: PI_CREATED_ISO },
       )
+
+      // First delivery on the before_accept path logs BOTH the promoted
+      // signature and the deposit — one call each, in write order — so a
+      // future regression that drops or duplicates either call is caught.
+      expect(logActivitySpy).toHaveBeenCalledTimes(2)
+      expect(logActivitySpy).toHaveBeenNthCalledWith(1, 'org-1', {
+        parent_type: 'opportunity',
+        parent_id: 'lead-1',
+        kind: 'proposal',
+        summary: 'Proposal signed',
+      })
+      expect(logActivitySpy).toHaveBeenNthCalledWith(2, 'org-1', {
+        parent_type: 'opportunity',
+        parent_id: 'lead-1',
+        kind: 'deposit',
+        summary: 'Deposit paid',
+      })
     })
 
     it('before_accept: a verified-domain lookup failure does not block the confirmation email (best-effort fallback)', async () => {
@@ -316,6 +337,10 @@ describe('POST /api/payments/webhook', () => {
         'org-1', 'lead-1', 'prop-1',
         { intent_id: 'pi_dep_1', amount: 6250, paid_at: PI_CREATED_ISO },
       )
+      // Both log calls live inside the `payment_status !== 'deposit_paid'`
+      // guard — a retry that finds the doc already finalized must not
+      // re-log either "Proposal signed" or "Deposit paid".
+      expect(logActivitySpy).not.toHaveBeenCalled()
     })
 
     it('after_accept: an already-signed proposal just sets deposit_paid, without re-advancing the lead', async () => {
@@ -345,6 +370,37 @@ describe('POST /api/payments/webhook', () => {
         'org-1', 'lead-2', 'prop-2',
         { intent_id: 'pi_dep_1', amount: 6250, paid_at: PI_CREATED_ISO },
       )
+
+      // No `promotedSigner` on this path (signature already existed), so
+      // only the deposit is logged — never a second "Proposal signed".
+      expect(logActivitySpy).toHaveBeenCalledTimes(1)
+      expect(logActivitySpy).toHaveBeenCalledWith('org-1', {
+        parent_type: 'opportunity',
+        parent_id: 'lead-2',
+        kind: 'deposit',
+        summary: 'Deposit paid',
+      })
+    })
+
+    it('after_accept: a second identical event skips the finalize and does not log again', async () => {
+      // Simulates the doc state AFTER the first webhook already finalized it.
+      mockProposalSnapshot({
+        id: 'prop-2', lead_id: 'lead-2', org_id: 'org-1', status: 'accepted', payment_status: 'deposit_paid',
+        line_items: [],
+        signature: {
+          signer_name: 'Alex', signer_email: 'a@x.co', signed_at: '2026-07-01T00:00:00.000Z',
+          ip: '198.51.100.1', user_agent: 'UA', consent_electronic: true, document_hash: 'b'.repeat(64),
+        },
+        selection: { package_id: 'good', optional_item_ids: [], selected_total: 12500, selected_at: '2026-07-01T00:00:00.000Z' },
+      })
+      constructEventSpy.mockReturnValue(
+        succeededEvent({ purpose: 'proposal_deposit', proposal_id: 'prop-2', token: 'tok-2' }, 625000),
+      )
+      const res = await POST(makeRequest())
+      expect(res.status).toBe(200)
+      expect(proposalUpdateSpy).not.toHaveBeenCalled()
+      expect(reconcileProposalDepositSpy).toHaveBeenCalledTimes(1)
+      expect(logActivitySpy).not.toHaveBeenCalled()
     })
 
     it('unknown proposal_id → ok, no writes', async () => {
