@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import type { Family, FamilyMember } from '@/lib/types'
 import { getAdminFamily, updateFamilyStatus } from '@/actions/admin-families'
 import { FAMILY_TONE, FAMILY_LABEL } from '@/lib/event-ui'
@@ -12,6 +12,10 @@ import { FamilyPaymentTab } from '@/components/admin/tabs/FamilyPaymentTab'
 import { FamilyNotesTab } from '@/components/admin/tabs/FamilyNotesTab'
 
 type Tab = 'details' | 'campers' | 'payment' | 'notes'
+
+// Everything the Tab trap should cycle through inside the panel.
+const FOCUSABLE_SELECTOR =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
 
 interface FamilySlideOverProps {
   familyId: string | null
@@ -36,11 +40,17 @@ export function FamilySlideOver({
   const [family, setFamily] = useState<Family | null>(null)
   const [members, setMembers] = useState<FamilyMember[]>([])
   const [statusError, setStatusError] = useState<string | null>(null)
-  // Loading is derived (the loaded family lags the requested id) so the effect
-  // never needs a synchronous setState.
+  const panelRef = useRef<HTMLDivElement>(null)
+  const restoreFocusRef = useRef<HTMLElement | null>(null)
+  // Loading is derived (the loaded family lags the requested id) so the fetch
+  // effect never needs a synchronous loading setState.
   const loading = !!familyId && family?.id !== familyId
+  const open = familyId !== null
 
   useEffect(() => {
+    // A status failure belongs to one family: drop it when the subject
+    // changes or the panel closes so it can't leak onto the next family.
+    setStatusError(null)
     if (!familyId) return
     ;(async () => {
       const result = await getAdminFamily(orgId, eventId, familyId)
@@ -59,6 +69,49 @@ export function FamilySlideOver({
     document.addEventListener('keydown', handleKey)
     return () => document.removeEventListener('keydown', handleKey)
   }, [onClose])
+
+  // Focus management: on open, remember the opener (usually the table row)
+  // and move focus into the dialog; on close, hand focus back. Keyed on the
+  // open/closed boolean so navigating Prev/Next keeps the original opener.
+  useEffect(() => {
+    if (!open) return
+    restoreFocusRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null
+    panelRef.current?.focus()
+    return () => {
+      const opener = restoreFocusRef.current
+      restoreFocusRef.current = null
+      if (opener?.isConnected) opener.focus()
+    }
+  }, [open])
+
+  // Trap Tab inside the dialog while it is open (aria-modal promises the
+  // background is inert, so keyboard focus must not wander out of the panel).
+  function handlePanelKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (e.key !== 'Tab') return
+    const panel = panelRef.current
+    if (!panel) return
+    const focusable = Array.from(
+      panel.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)
+    )
+    if (focusable.length === 0) {
+      e.preventDefault()
+      return
+    }
+    const first = focusable[0]
+    const last = focusable[focusable.length - 1]
+    const active = document.activeElement
+    if (e.shiftKey) {
+      // Backwards off the first control (or off the panel itself) wraps to the end.
+      if (active === first || active === panel) {
+        e.preventDefault()
+        last.focus()
+      }
+    } else if (active === last) {
+      e.preventDefault()
+      first.focus()
+    }
+  }
 
   if (!familyId) return null
 
@@ -100,10 +153,13 @@ export function FamilySlideOver({
 
       {/* Panel */}
       <div
+        ref={panelRef}
+        tabIndex={-1}
+        onKeyDown={handlePanelKeyDown}
         role="dialog"
         aria-modal="true"
         aria-label={family ? `${family.last_name}, ${family.first_name}` : 'Family details'}
-        className="fixed right-0 top-0 bottom-0 z-30 w-full max-w-[440px] bg-card shadow-2xl flex flex-col"
+        className="fixed right-0 top-0 bottom-0 z-30 w-full max-w-[440px] bg-card shadow-2xl flex flex-col outline-none"
       >
         {/* Header */}
         <div className="px-4 py-3 border-b border-border flex items-start justify-between">

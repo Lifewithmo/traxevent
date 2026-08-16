@@ -15,7 +15,9 @@ export default async function FamiliesPage({
   const families = await getAdminFamilies(orgId, eventId)
 
   return (
-    <div className="flex flex-col">
+    // Same p-5 gutter as the sibling event leaves (top spacing comes from the
+    // spine band above), so the table no longer runs edge-to-edge.
+    <div className="flex flex-col px-5 pb-5">
       <div className="flex-1 overflow-hidden">
         <Suspense fallback={null}>
           <FamiliesClient
