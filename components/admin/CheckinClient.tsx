@@ -6,7 +6,18 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Badge } from '@/components/ui/badge'
+import { EmptyState } from '@/components/ui/empty-state'
+import { StatTile } from '@/components/ui/stat-tile'
+import { StatusPill } from '@/components/ui/status-pill'
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { checkInMember, checkOutMember } from '@/actions/checkins'
 import type { CheckinRecord, EventMember } from '@/lib/types'
 
@@ -37,6 +48,8 @@ export function CheckinClient({
   const [checkins, setCheckins] = useState<CheckinRecord[]>(initialCheckins)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [checkoutTarget, setCheckoutTarget] = useState<{ member: EventMember; record: CheckinRecord } | null>(null)
+  const [guardianName, setGuardianName] = useState('')
 
   const byMember = new Map(checkins.map((c) => [c.member_id, c]))
 
@@ -72,26 +85,24 @@ export function CheckinClient({
     }
   }
 
-  async function handleCheckOut(member: EventMember, record: CheckinRecord) {
-    let guardianName: string | undefined
+  function requestCheckOut(member: EventMember, record: CheckinRecord) {
     if (guardianMode) {
-      const entered = window.prompt('Who is picking up this child? Enter guardian name:')
-      if (entered === null) return // cancelled
-      const trimmed = entered.trim()
-      if (!trimmed) {
-        setError('A guardian name is required to check out a child.')
-        return
-      }
-      guardianName = trimmed
+      setGuardianName('')
+      setCheckoutTarget({ member, record })
+      return
     }
+    performCheckOut(member, record, undefined)
+  }
+
+  async function performCheckOut(member: EventMember, record: CheckinRecord, guardian: string | undefined) {
     setBusyId(member.member_id)
     setError(null)
     try {
-      await checkOutMember(orgId, eventId, record.id, guardianName)
+      await checkOutMember(orgId, eventId, record.id, guardian)
       setCheckins((prev) =>
         prev.map((c) =>
           c.id === record.id
-            ? { ...c, status: 'out', checked_out_at: new Date().toISOString(), guardian_pickup_name: guardianName }
+            ? { ...c, status: 'out', checked_out_at: new Date().toISOString(), guardian_pickup_name: guardian }
             : c
         )
       )
@@ -102,21 +113,18 @@ export function CheckinClient({
     }
   }
 
-  return (
-    <div className="p-6 max-w-2xl space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Check-in</h1>
-        <a
-          href={`/${orgSlug}/${eventSlug}/checkin/manifest?date=${date}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-sm text-muted-foreground underline"
-        >
-          Print manifest
-        </a>
-      </div>
+  function confirmGuardianCheckOut() {
+    if (!checkoutTarget) return
+    const trimmed = guardianName.trim()
+    if (!trimmed) return // a guardian name is required — mirror the prompt's no-empty-submit rule
+    const { member, record } = checkoutTarget
+    setCheckoutTarget(null)
+    performCheckOut(member, record, trimmed)
+  }
 
-      <div className="flex items-end gap-4">
+  return (
+    <div className="p-5 space-y-4">
+      <div className="flex items-end justify-between gap-3">
         <div className="space-y-1">
           <Label htmlFor="date">Date</Label>
           <Input
@@ -127,11 +135,25 @@ export function CheckinClient({
             className="w-44"
           />
         </div>
-        <div className="flex gap-2 pb-1">
-          <Badge variant="default">{checkedIn} in</Badge>
-          <Badge variant="secondary">{checkedOut} out</Badge>
-          <Badge variant="outline">{notIn} not arrived</Badge>
-        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          render={
+            <a
+              href={`/${orgSlug}/${eventSlug}/checkin/manifest?date=${date}`}
+              target="_blank"
+              rel="noopener noreferrer"
+            />
+          }
+        >
+          Print manifest
+        </Button>
+      </div>
+
+      <div className="grid gap-2.5 sm:grid-cols-3">
+        <StatTile label="Checked in" value={String(checkedIn)} note="today" />
+        <StatTile label="Checked out" value={String(checkedOut)} note="today" />
+        <StatTile label="Not arrived" value={String(notIn)} note="today" />
       </div>
 
       <div aria-live="polite" aria-atomic="true">
@@ -139,9 +161,7 @@ export function CheckinClient({
       </div>
 
       {members.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          No {memberLabel.toLowerCase()} registered for this event yet.
-        </p>
+        <EmptyState title={`No ${memberLabel.toLowerCase()} registered for this event yet.`} />
       ) : (
         <div className="space-y-2">
           {members.map((member) => {
@@ -157,17 +177,18 @@ export function CheckinClient({
                     </p>
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-muted-foreground">{member.family_name}</span>
-                      {status === 'in' && <Badge variant="default" className="text-xs">Checked in</Badge>}
+                      {status === 'in' && <StatusPill tone="confirmed">Checked in</StatusPill>}
                       {status === 'out' && (
-                        <Badge variant="secondary" className="text-xs">
+                        <StatusPill tone="neutral">
                           Out{record?.guardian_pickup_name ? ` · ${record.guardian_pickup_name}` : ''}
-                        </Badge>
+                        </StatusPill>
                       )}
+                      {!status && <StatusPill tone="pending">Not arrived</StatusPill>}
                     </div>
                   </div>
                   <div className="flex gap-2">
                     {record && status === 'in' ? (
-                      <Button size="sm" variant="outline" onClick={() => handleCheckOut(member, record)} disabled={busy}>
+                      <Button size="sm" variant="outline" onClick={() => requestCheckOut(member, record)} disabled={busy}>
                         {busy ? '…' : 'Check out'}
                       </Button>
                     ) : status === 'out' ? (
@@ -186,6 +207,34 @@ export function CheckinClient({
           })}
         </div>
       )}
+
+      <Dialog open={checkoutTarget !== null} onOpenChange={(open) => { if (!open) setCheckoutTarget(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Who is picking up this child?</DialogTitle>
+            <DialogDescription>
+              A guardian name is required to check out
+              {checkoutTarget ? ` ${checkoutTarget.member.first_name} ${checkoutTarget.member.last_name}` : ' a child'}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-1">
+            <Label htmlFor="guardianName">Guardian name</Label>
+            <Input
+              id="guardianName"
+              value={guardianName}
+              onChange={(e) => setGuardianName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') confirmGuardianCheckOut() }}
+              autoFocus
+            />
+          </div>
+          <DialogFooter>
+            <DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>
+            <Button onClick={confirmGuardianCheckOut} disabled={!guardianName.trim()}>
+              Check out
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

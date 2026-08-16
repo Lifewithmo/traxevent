@@ -7,6 +7,19 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
+import { EmptyState } from '@/components/ui/empty-state'
+import { StatTile } from '@/components/ui/stat-tile'
+import { StatusPill } from '@/components/ui/status-pill'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import {
   createSlot,
   updateSlot,
@@ -14,6 +27,7 @@ import {
   assignFamily,
   autoAssign,
 } from '@/actions/assignments'
+import { FAMILY_TONE, FAMILY_LABEL } from '@/lib/event-ui'
 import type { AssignmentSlot, Family } from '@/lib/types'
 import type { Terminology } from '@/lib/event-types'
 
@@ -26,6 +40,8 @@ interface AssignmentsClientProps {
   families: Family[]
   terminology: Terminology
 }
+
+const selectClass = 'h-8 rounded-lg border border-input bg-transparent px-2 text-sm'
 
 export function AssignmentsClient({
   orgId,
@@ -49,6 +65,7 @@ export function AssignmentsClient({
   const [editSlotCapacity, setEditSlotCapacity] = useState<string>('')
   const [slotError, setSlotError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<AssignmentSlot | null>(null)
 
   // Auto-assign state
   const [autoAssigning, setAutoAssigning] = useState(false)
@@ -68,6 +85,17 @@ export function AssignmentsClient({
 
   const slotLabel = terminology.assignmentSingular
   const slotsLabel = terminology.assignmentPlural
+
+  // Occupancy rollups for the figures row
+  const assignedCount = activeFamilies.filter((f) => f.assignment_slot_id).length
+  const unassignedCount = activeFamilies.length - assignedCount
+  const capacitatedSlots = slots.filter((s) => s.capacity != null)
+  const totalCapacity = capacitatedSlots.reduce((sum, s) => sum + (s.capacity ?? 0), 0)
+  const assignedInCapacitated = capacitatedSlots.reduce(
+    (sum, s) => sum + (occupancy.get(s.id) ?? 0),
+    0
+  )
+  const capacityLeft = totalCapacity - assignedInCapacitated
 
   async function handleCreateSlot() {
     if (!newSlotName.trim()) return
@@ -117,6 +145,7 @@ export function AssignmentsClient({
   }
 
   async function handleDeleteSlot(slotId: string) {
+    setDeleteTarget(null)
     setSaving(true)
     setSlotError(null)
     try {
@@ -164,38 +193,57 @@ export function AssignmentsClient({
   }
 
   return (
-    <div className="p-6 space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">{slotsLabel}</h1>
-        <a
-          href={`/${orgSlug}/${eventSlug}/assignments/print`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-sm text-muted-foreground underline"
-        >
-          Print roster
-        </a>
+    <div className="p-5 space-y-4">
+      {/* Occupancy figures */}
+      <div className="grid gap-2.5 sm:grid-cols-3">
+        <StatTile label="Assigned" value={`${assignedCount} of ${activeFamilies.length}`} />
+        <StatTile label="Unassigned" value={String(unassignedCount)} />
+        {capacitatedSlots.length > 0 ? (
+          <StatTile
+            label="Capacity left"
+            value={String(capacityLeft)}
+            tone={capacityLeft < 0 ? 'alert' : 'default'}
+          />
+        ) : (
+          <StatTile label={slotsLabel} value={String(slots.length)} />
+        )}
       </div>
 
       {/* Tab bar */}
-      <div role="tablist" aria-label="Assignment views" className="flex gap-1 border-b">
-        {(['slots', 'assignments'] as const).map((t) => (
-          <button
-            key={t}
-            role="tab"
-            aria-selected={tab === t}
-            aria-controls={`panel-${t}`}
-            id={`tab-${t}`}
-            onClick={() => setTab(t)}
-            className={`px-4 py-2 text-sm font-medium capitalize transition-colors ${
-              tab === t
-                ? 'border-b-2 border-primary text-foreground'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            {t === 'slots' ? slotsLabel : 'Assignments'}
-          </button>
-        ))}
+      <div className="flex items-end justify-between gap-2 border-b border-border">
+        <div role="tablist" aria-label="Assignment views" className="flex gap-1">
+          {(['slots', 'assignments'] as const).map((t) => (
+            <button
+              key={t}
+              role="tab"
+              aria-selected={tab === t}
+              aria-controls={`panel-${t}`}
+              id={`tab-${t}`}
+              onClick={() => setTab(t)}
+              className={`rounded-t px-3 py-1.5 text-sm capitalize transition-colors ${
+                tab === t
+                  ? 'border border-b-0 border-border bg-background font-semibold'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {t === 'slots' ? slotsLabel : 'Assignments'}
+            </button>
+          ))}
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="mb-1.5"
+          render={
+            <a
+              href={`/${orgSlug}/${eventSlug}/assignments/print`}
+              target="_blank"
+              rel="noopener noreferrer"
+            />
+          }
+        >
+          Print roster
+        </Button>
       </div>
 
       {/* Slots tab */}
@@ -206,7 +254,7 @@ export function AssignmentsClient({
               <CardTitle className="text-base">Add {slotLabel}</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="flex gap-2 items-end">
+              <div className="flex flex-wrap gap-2 items-end">
                 <div className="space-y-1 flex-1">
                   <Label htmlFor="newSlotName">{slotLabel} name</Label>
                   <Input
@@ -239,9 +287,10 @@ export function AssignmentsClient({
           </Card>
 
           {slots.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No {slotsLabel.toLowerCase()} defined yet. Add one above.
-            </p>
+            <EmptyState
+              title={`No ${slotsLabel.toLowerCase()} defined yet.`}
+              description="Add one above."
+            />
           ) : (
             <div className="space-y-2">
               {slots.map((slot) => {
@@ -251,7 +300,7 @@ export function AssignmentsClient({
                   <Card key={slot.id}>
                     <CardContent className="py-3">
                       {isEditing ? (
-                        <div className="flex gap-2 items-end">
+                        <div className="flex flex-wrap gap-2 items-end">
                           <div className="flex-1 space-y-1">
                             <Label>Name</Label>
                             <Input
@@ -302,7 +351,7 @@ export function AssignmentsClient({
                             <Button
                               size="sm"
                               variant="outline"
-                              onClick={() => handleDeleteSlot(slot.id)}
+                              onClick={() => setDeleteTarget(slot)}
                               disabled={saving}
                             >
                               Delete
@@ -322,64 +371,48 @@ export function AssignmentsClient({
       {/* Assignments tab */}
       {tab === 'assignments' && (
         <div role="tabpanel" id="panel-assignments" aria-labelledby="tab-assignments" className="space-y-4">
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-muted-foreground">
-              {activeFamilies.filter((f) => f.assignment_slot_id).length} of{' '}
-              {activeFamilies.length} assigned
-            </p>
-            <div className="flex items-center gap-3">
-              <div aria-live="polite" aria-atomic="true">
-                {autoAssignResult && (
-                  <span className="text-sm text-green-700">{autoAssignResult}</span>
-                )}
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleAutoAssign}
-                disabled={autoAssigning || slots.length === 0}
-              >
-                {autoAssigning ? 'Assigning…' : 'Auto-assign'}
-              </Button>
+          <div className="flex items-center justify-end gap-3">
+            <div aria-live="polite" aria-atomic="true">
+              {autoAssignResult && (
+                <span className="text-sm text-[var(--money-green)]">{autoAssignResult}</span>
+              )}
             </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleAutoAssign}
+              disabled={autoAssigning || slots.length === 0}
+            >
+              {autoAssigning ? 'Assigning…' : 'Auto-assign'}
+            </Button>
           </div>
 
           {activeFamilies.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No active registrations to assign.</p>
+            <EmptyState title="No active registrations to assign." />
           ) : (
             <div className="bg-card rounded-lg border overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="bg-muted border-b">
-                  <tr>
-                    <th className="px-4 py-2 text-left font-medium text-muted-foreground">
-                      Registrant
-                    </th>
-                    <th className="px-4 py-2 text-left font-medium text-muted-foreground">
-                      Status
-                    </th>
-                    <th className="px-4 py-2 text-left font-medium text-muted-foreground">
-                      {slotLabel}
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted hover:bg-muted">
+                    <TableHead className="px-4 text-muted-foreground">Registrant</TableHead>
+                    <TableHead className="px-4 text-muted-foreground">Status</TableHead>
+                    <TableHead className="px-4 text-muted-foreground">{slotLabel}</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {activeFamilies.map((family) => (
-                    <tr key={family.id} className="border-b last:border-0">
-                      <td className="px-4 py-2 font-medium">
+                    <TableRow key={family.id}>
+                      <TableCell className="px-4 font-medium">
                         {family.first_name} {family.last_name}
-                      </td>
-                      <td className="px-4 py-2">
-                        <Badge
-                          variant={
-                            family.registration_status === 'confirmed' ? 'default' : 'secondary'
-                          }
-                        >
-                          {family.registration_status}
-                        </Badge>
-                      </td>
-                      <td className="px-4 py-2">
+                      </TableCell>
+                      <TableCell className="px-4">
+                        <StatusPill tone={FAMILY_TONE[family.registration_status]}>
+                          {FAMILY_LABEL[family.registration_status]}
+                        </StatusPill>
+                      </TableCell>
+                      <TableCell className="px-4">
                         <select
-                          className="w-full min-w-0 rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                          className={selectClass + ' w-full min-w-0'}
                           value={family.assignment_slot_id ?? ''}
                           onChange={(e) =>
                             handleAssign(family.id, e.target.value || null)
@@ -395,15 +428,38 @@ export function AssignmentsClient({
                             </option>
                           ))}
                         </select>
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   ))}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             </div>
           )}
         </div>
       )}
+
+      <Dialog open={deleteTarget !== null} onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete this {slotLabel.toLowerCase()}?</DialogTitle>
+            <DialogDescription>
+              {deleteTarget
+                ? `"${deleteTarget.name}" will be deleted and any registrants assigned to it become unassigned.`
+                : ''}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>
+            <Button
+              variant="destructive"
+              disabled={saving}
+              onClick={() => { if (deleteTarget) handleDeleteSlot(deleteTarget.id) }}
+            >
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
