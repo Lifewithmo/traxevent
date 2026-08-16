@@ -13,19 +13,21 @@ const lead = (over: Partial<Lead>): Lead => ({
 
 const base = {
   orgId: 'o1', orgSlug: 'demo',
-  closed: [], openCount: 1, openValue: 1180,
+  closed: [], openCount: 1,
   monthly: { wonCount: 3, wonValue: 4120, lostCount: 1, lostValue: 540 },
 }
 
 describe('PipelineListClient', () => {
   it('renders health groups with status sentences and quick actions', () => {
     render(<PipelineListClient {...base} groups={{
-      needs_attention: [{ lead: lead({ title: 'Fairhaven Realty — agent open house' }),
+      needs_attention: [{ lead: lead({ title: 'Fairhaven Realty — agent open house', estimated_value: 2400 }),
         health: 'needs_attention', statusLine: 'Sep 4 · 60 guests · no task, no touch in 11 days',
         quickAction: 'set_next_step' }],
       waiting: [], active: [],
     }} />)
     expect(screen.getByText('Needs attention')).toBeInTheDocument()
+    // R2: the group rule now carries the bucket's count and what it is worth.
+    expect(screen.getByText(/1 opportunity/)).toBeInTheDocument()
     expect(screen.getByText('Sep 4 · 60 guests · no task, no touch in 11 days')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /set next step/i })).toBeInTheDocument()
   })

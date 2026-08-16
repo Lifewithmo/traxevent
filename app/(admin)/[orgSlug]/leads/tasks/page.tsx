@@ -37,7 +37,12 @@ export default async function PipelineTasksPage({ params }: { params: Promise<{ 
   return (
     <div>
       <PipelineSubNav orgSlug={orgSlug} active="tasks" openCount={open.length} dueTodayCount={dueToday} />
-      <div className="border-b border-border px-6 py-4">
+      {/* The Pipeline section's one frame, identical to leads/page.tsx. Without
+          it, clicking Opportunities → Tasks under the SAME sub-nav jumped the
+          content's left edge by ~380px at 1920. The band's rule is capped WITH
+          the content, matching PipelineStatsHeader's own `border-y` on the
+          opportunities page; only the sub-nav's rule runs full-bleed. */}
+      <div className="mx-auto max-w-6xl border-b border-border px-6 py-4">
         <KpiBand>
           <PipelineStatTile
             label="Overdue"
@@ -63,7 +68,9 @@ export default async function PipelineTasksPage({ params }: { params: Promise<{ 
           />
         </KpiBand>
       </div>
-      <PipelineTasksList orgSlug={orgSlug} today={today} rows={rows} />
+      <div className="mx-auto max-w-6xl">
+        <PipelineTasksList orgSlug={orgSlug} today={today} rows={rows} />
+      </div>
     </div>
   )
 }

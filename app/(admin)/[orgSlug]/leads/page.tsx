@@ -42,7 +42,12 @@ export default async function LeadsPage({
   const monthly = closedThisMonth(leads, today)
   const openValue = open.reduce((s, l) => s + (l.estimated_value ?? 0), 0)
 
-  const dueToday = inputs.reduce(
+  // Everything OWED, not everything due TODAY: `due_date <= today` counts overdue
+  // tasks as well. PipelineSubNav labels this badge "{n} owed" for exactly that
+  // reason (see its comment) — the tasks page's own "Due today" tile counts
+  // `=== today` and read as a contradiction when this was called "due today".
+  // Keep the name, the predicate, and the label saying the same thing.
+  const owedTaskCount = inputs.reduce(
     (n, { tasks }) => n + tasks.filter((t) => !t.done && t.due_date && t.due_date <= today).length,
     0
   )
@@ -58,19 +63,22 @@ export default async function LeadsPage({
     todayYm: ym,
   }
 
-  const shared = {
-    orgId, orgSlug, groups,
-    openCount: open.length, openValue, monthly,
-  }
+  // `openValue` is NOT threaded into the two clients. It already reaches the
+  // screen exactly once, as `stats.openPipeline` on the KPI band below; the
+  // separate prop was declared, destructured and never read on both surfaces.
+  // Rendering it a second time would put the same figure on the page twice.
+  const shared = { orgId, orgSlug, groups, monthly }
   return (
     <div>
-      <PipelineSubNav orgSlug={orgSlug} active="opportunities" openCount={open.length} dueTodayCount={dueToday} />
-      <div className="px-6 pt-6">
+      <PipelineSubNav orgSlug={orgSlug} active="opportunities" openCount={open.length} dueTodayCount={owedTaskCount} />
+      {/* Same `max-w-6xl` frame the two surfaces below use, so the KPI band and
+          the rows share one left edge instead of the band running 400px wider. */}
+      <div className="mx-auto max-w-6xl px-6 pt-6">
         <PipelineStatsHeader stats={stats} />
       </div>
       {view === 'board'
         ? <PipelineBoardView {...shared} customers={customers} />
-        : <PipelineListClient {...shared} closed={closed} customers={customers} />}
+        : <PipelineListClient {...shared} openCount={open.length} closed={closed} customers={customers} />}
     </div>
   )
 }

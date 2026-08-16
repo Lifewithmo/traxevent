@@ -1,15 +1,30 @@
 import type { Lead, Task, Proposal } from '@/lib/types'
 import { computeHealth, nextAction, type OppHealth } from '@/lib/opportunity-health'
-import { daysSince, lastTouchIso } from '@/lib/opportunity-detail'
+import { daysSince, dueStatus, lastTouchIso } from '@/lib/opportunity-detail'
 import { isProposalOpened } from '@/lib/proposal-opens'
 import { CLOSED_STAGES } from '@/lib/leads'
 import { wonValueInMonth } from '@/lib/pipeline-stats'
+import { DUE_TONE, shortDate, type Tone } from '@/lib/pipeline-presentation'
+
+/**
+ * A due-date countdown and the tone it must be painted in, resolved together.
+ *
+ * The tone travels WITH the text on purpose: the list renders this as a
+ * `StatusPill` and previously reached for a flat `Badge variant="secondary"`,
+ * so "2 days overdue" and "in 6 days" were the same shade of grey. Deciding the
+ * tone here — from the same `dueStatus` the rest of the module uses — means no
+ * surface can invent a competing colour for the same state.
+ */
+export interface Countdown {
+  text: string
+  tone: Tone
+}
 
 export interface PipelineRow {
   lead: Lead
   health: OppHealth
   statusLine: string
-  countdown?: string
+  countdown?: Countdown
   quickAction?: 'set_next_step' | 'nudge'
 }
 export interface PipelineGroups {
@@ -18,14 +33,15 @@ export interface PipelineGroups {
   active: PipelineRow[]
 }
 
-export function countdownLabel(dueYmd: string, today: string): string {
-  if (dueYmd === today) return 'Today'
+export function countdownLabel(dueYmd: string, today: string): Countdown {
+  const tone = DUE_TONE[dueStatus(dueYmd, today)]
+  if (dueYmd === today) return { text: 'Today', tone }
   if (dueYmd > today) {
     const n = daysSince(`${today}T00:00:00.000Z`, dueYmd)
-    return `in ${n} day${n === 1 ? '' : 's'}`
+    return { text: `in ${n} day${n === 1 ? '' : 's'}`, tone }
   }
   const n = daysSince(`${dueYmd}T00:00:00.000Z`, today)
-  return `${n} day${n === 1 ? '' : 's'} overdue`
+  return { text: `${n} day${n === 1 ? '' : 's'} overdue`, tone }
 }
 
 /** Newest sent-but-never-opened proposal, or null. Reused by the nudge action. */
@@ -65,14 +81,18 @@ export function buildPipelineRows(
       const w = lead.waiting!
       groups.waiting.push({
         lead, health,
-        statusLine: `Waiting on them — ${w.reason}${w.follow_up_date ? ` · follow up ${w.follow_up_date}` : ''}`,
+        // ONE date format across the module. This emitted a raw ISO ymd, which
+        // on a board card landed two lines under `shortDate(event_date)` —
+        // "Sep 4, 2026" above "follow up 2026-08-09" reads as two different
+        // kinds of date. wave1-addenda §BINDING: pick one format per region.
+        statusLine: `Waiting on them — ${w.reason}${w.follow_up_date ? ` · follow up ${shortDate(w.follow_up_date)}` : ''}`,
         countdown: w.follow_up_date ? countdownLabel(w.follow_up_date, today) : undefined,
       })
     } else if (health === 'active') {
       const next = nextAction(tasks)!
       groups.active.push({
         lead, health,
-        statusLine: `Next: ${next.title} · due ${next.due_date}`,
+        statusLine: `Next: ${next.title} · due ${shortDate(next.due_date!)}`,
         countdown: next.due_date ? countdownLabel(next.due_date, today) : undefined,
       })
     }
