@@ -79,11 +79,11 @@ export function CalendarAttentionRail({ groups, previewLimit = 4, moreHref }: Ca
         className="flex items-baseline justify-between gap-2 border-b border-border pb-2 font-mono text-[13px] font-bold uppercase tracking-wide"
       >
         Needs attention
-        {total > 0 ? (
-          <span className="font-sans text-xs font-medium normal-case tracking-normal text-muted-foreground">
-            {total} {total === 1 ? 'item' : 'items'}
-          </span>
-        ) : null}
+        {/* The rail scans the whole feed, not the shown week — say so, or six
+            months forward it silently lists August rows beside a February grid. */}
+        <span className="font-sans text-xs font-medium normal-case tracking-normal text-muted-foreground">
+          {total > 0 ? `${total} ${total === 1 ? 'item' : 'items'} · next 30 days` : 'next 30 days'}
+        </span>
       </h2>
 
       {groups.length === 0 ? (

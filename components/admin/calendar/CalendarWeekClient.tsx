@@ -69,9 +69,13 @@ function monthLabel(ymd: string): string {
 // be used for the stacked rule: empty cells are `hidden`, so the DOM-last cell is
 // often not the visually-last one and its rule would double with the band's own
 // bottom border. The caller tells us which cell is last *visible* instead.
-function dayCellClass(hidden: boolean, lastVisible: boolean): string {
+// `lg:last:border-r-0` is deliberately NOT used: a sibling rendered after the
+// cells (the stacked-empty fallback) would stop the 7th cell being :last-child
+// and leave a stray rule at the section edge. The column index decides instead.
+function dayCellClass(hidden: boolean, lastVisible: boolean, lastColumn: boolean): string {
   return [
-    'space-y-1 p-1.5 lg:border-b-0 lg:border-r lg:last:border-r-0',
+    'space-y-1 p-1.5 lg:border-b-0',
+    lastColumn ? '' : 'lg:border-r',
     lastVisible ? '' : 'border-b border-border/60',
     hidden ? 'hidden lg:block' : '',
   ]
@@ -85,6 +89,7 @@ interface DayCell {
   isToday: boolean
   hidden: boolean
   lastVisible: boolean
+  lastColumn: boolean
 }
 
 /** Per-day buckets for one band, plus which cells the stacked layout shows. */
@@ -96,7 +101,12 @@ function dayCells(days: string[], items: CalendarItem[], time: boolean, today: s
   }))
   const shown = base.map((c) => c.items.length > 0 || c.isToday)
   const lastShown = shown.reduce((last, visible, i) => (visible ? i : last), -1)
-  return base.map((c, i) => ({ ...c, hidden: !shown[i], lastVisible: i === lastShown }))
+  return base.map((c, i) => ({
+    ...c,
+    hidden: !shown[i],
+    lastVisible: i === lastShown,
+    lastColumn: i === days.length - 1,
+  }))
 }
 
 /** The stacked-layout day label; desktop gets the same marker from the header row. */
@@ -278,7 +288,7 @@ export function CalendarWeekClient({
               <>
                 <div className="grid min-h-24 grid-cols-1 border-b border-border lg:grid-cols-7">
                   {dayCells(days, weekItems, true, today).map((cell) => (
-                    <div key={cell.day} className={dayCellClass(cell.hidden, cell.lastVisible)}>
+                    <div key={cell.day} className={dayCellClass(cell.hidden, cell.lastVisible, cell.lastColumn)}>
                       <StackedDayLabel cell={cell} />
                       {cell.items.map((i) => (
                         <TimeEntry key={`${i.kind}:${i.id}`} item={i} />
@@ -286,11 +296,13 @@ export function CalendarWeekClient({
                     </div>
                   ))}
                   {rollup.eventCount + rollup.tentativeCount === 0 ? (
-                    <p className="px-1.5 py-2 text-xs text-muted-foreground lg:hidden">Nothing booked this week.</p>
+                    <p className="px-1.5 py-2 text-xs text-muted-foreground lg:hidden">
+                      {scope === 'pipeline' ? 'No dates held this week.' : 'Nothing booked this week.'}
+                    </p>
                   ) : null}
                 </div>
 
-                <h3 className="flex flex-wrap items-baseline gap-x-2 border-b border-border bg-muted px-5 py-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-muted-foreground">
+                <h2 className="flex flex-wrap items-baseline gap-x-2 border-b border-border bg-muted px-5 py-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-muted-foreground">
                   Owed{' '}
                   {/* The explicit space keeps the accessible name from reading
                       "Owed1 blocker this week" — flex gap is visual only.
@@ -301,16 +313,19 @@ export function CalendarWeekClient({
                       {rollup.blockerCount} {rollup.blockerCount === 1 ? 'blocker' : 'blockers'} this week
                     </span>
                   ) : null}
-                </h3>
+                </h2>
                 <div className="grid min-h-20 grid-cols-1 border-b border-border lg:grid-cols-7">
                   {dayCells(days, weekItems, false, today).map((cell) => (
-                    <div key={cell.day} className={dayCellClass(cell.hidden, cell.lastVisible)}>
+                    <div key={cell.day} className={dayCellClass(cell.hidden, cell.lastVisible, cell.lastColumn)}>
                       <StackedDayLabel cell={cell} />
                       {cell.items.map((i) => (
                         <OwedEntry key={`${i.kind}:${i.id}`} item={i} />
                       ))}
                     </div>
                   ))}
+                  {rollup.taskCount + rollup.blockerCount === 0 && rollup.dueAmount === 0 ? (
+                    <p className="px-1.5 py-2 text-xs text-muted-foreground lg:hidden">Nothing owed this week.</p>
+                  ) : null}
                 </div>
               </>
             )}
@@ -372,7 +387,11 @@ export function CalendarWeekClient({
         {footnote}
       </div>
 
-      <CalendarAttentionRail groups={attention} moreHref={`${weekHref(weekFrom)}&view=agenda`} />
+      <CalendarAttentionRail
+        groups={attention}
+        // On the agenda the operator is already looking at the full feed.
+        moreHref={view === 'week' ? `${weekHref(weekFrom)}&view=agenda` : undefined}
+      />
     </div>
   )
 }

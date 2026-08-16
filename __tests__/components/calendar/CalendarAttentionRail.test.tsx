@@ -86,12 +86,12 @@ describe('CalendarAttentionRail', () => {
 
   it('shows the total entry count in the heading, pluralised', () => {
     render(<CalendarAttentionRail groups={groups} />)
-    expect(screen.getByText('4 items')).toBeInTheDocument()
+    expect(screen.getByText('4 items · next 30 days')).toBeInTheDocument()
   })
 
   it('shows a singular count for one entry and no count at all when empty', () => {
     const { unmount } = render(<CalendarAttentionRail groups={[groups[0]]} />)
-    expect(screen.getByText('1 item')).toBeInTheDocument()
+    expect(screen.getByText('1 item · next 30 days')).toBeInTheDocument()
     unmount()
 
     render(<CalendarAttentionRail groups={[]} />)
@@ -184,6 +184,25 @@ describe('CalendarAttentionRail', () => {
     expect(screen.getByText('Task A')).toBeInTheDocument()
     expect(screen.queryByText('Task B')).not.toBeInTheDocument()
     expect(screen.getByText('+1 more')).toBeInTheDocument()
+  })
+
+  // "+N more" was dead text: it announced hidden work with no way to reach it.
+  it('turns “+N more” into a link when the caller supplies a destination', () => {
+    const two: AttentionGroup = {
+      key: 'overdue',
+      label: 'Past due',
+      entries: [
+        entry('overdue', true, { id: 'a', title: 'Task A', date: '2026-08-01' }),
+        entry('overdue', true, { id: 'b', title: 'Task B', date: '2026-08-02' }),
+      ],
+    }
+    render(
+      <CalendarAttentionRail groups={[two]} previewLimit={1} moreHref="/acme/calendar?week=2026-08-10&view=agenda" />
+    )
+    expect(screen.getByRole('link', { name: /\+1 more/ })).toHaveAttribute(
+      'href',
+      '/acme/calendar?week=2026-08-10&view=agenda'
+    )
   })
 
   it('shows the good empty state, with no call to action, when nothing needs attention', () => {

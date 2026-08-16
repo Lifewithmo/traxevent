@@ -12,6 +12,12 @@ const items: CalendarItem[] = [
   { id: 'far', title: 'Next month', date: '2026-09-20', kind: 'event', href: '/acme/next/dashboard' },
 ]
 
+/** What `filterFeed(feed, PIPELINE_KINDS)` can actually yield — no events, no invoices. */
+const pipelineItems: CalendarItem[] = [
+  { id: 't1', title: 'Confirm power access', date: '2026-08-11', kind: 'task', href: '/acme/leads/l2', detail: 'Alder & Vine' },
+  { id: 'f1', title: 'Follow up: Dana', date: '2026-08-14', kind: 'follow_up', href: '/acme/leads/l4', detail: 'waiting on venue' },
+]
+
 const props = {
   orgSlug: 'acme',
   items,
@@ -67,31 +73,48 @@ describe('CalendarWeekClient — week view', () => {
     expect(grid().getByRole('heading', { name: /Owed\s+1 blocker this week/ })).toBeInTheDocument()
   })
 
-  it('keeps the active filter across every navigation control', () => {
-    render(<CalendarWeekClient {...props} scope="pipeline" />)
-    expect(screen.getByRole('link', { name: 'Next week' })).toHaveAttribute(
-      'href',
-      '/acme/calendar?kinds=pipeline&week=2026-08-17'
-    )
-    const tabs = within(screen.getByRole('navigation', { name: 'Calendar view' }))
-    expect(tabs.getByRole('link', { name: 'Agenda' })).toHaveAttribute(
-      'href',
-      '/acme/calendar?kinds=pipeline&week=2026-08-10&view=agenda'
-    )
-  })
-
   it('shows a pipeline-shaped band instead of claiming nothing is booked or due', () => {
-    render(<CalendarWeekClient {...props} scope="pipeline" undated={3} />)
+    // the real filtered feed — with the unfiltered fixture these assertions
+    // could pass even if `scope` were ignored entirely
+    render(<CalendarWeekClient {...props} items={pipelineItems} scope="pipeline" undated={3} />)
     expect(screen.getByText('Holds')).toBeInTheDocument()
-    expect(screen.getByText('Tasks due')).toBeInTheDocument()
+    expect(within(tile('Tasks due')).getByText('2')).toBeInTheDocument()
     expect(within(tile('Undated')).getByText('3')).toBeInTheDocument()
     // the filtered-out kinds must not be asserted as absent
     expect(screen.queryByText('Events')).not.toBeInTheDocument()
+    expect(screen.queryByText('Due this week')).not.toBeInTheDocument()
     expect(screen.queryByText('nothing booked')).not.toBeInTheDocument()
     expect(screen.queryByText('nothing due')).not.toBeInTheDocument()
     // …and the legend drops the swatches that mode can never produce
     expect(grid().queryByText('Booked event')).not.toBeInTheDocument()
+    expect(grid().queryByText('Blocker')).not.toBeInTheDocument()
     expect(grid().getByText('Task / follow-up')).toBeInTheDocument()
+  })
+
+  // The stacked fallback is a separate string from the band and was missed by
+  // the first pipeline pass — in a mode that filters events out, "Nothing booked
+  // this week" is the same falsehood the band was fixed to stop telling.
+  it('never says "nothing booked" in a mode that filters bookings out', () => {
+    render(<CalendarWeekClient {...props} items={pipelineItems} scope="pipeline" />)
+    expect(screen.queryByText('Nothing booked this week.')).not.toBeInTheDocument()
+    expect(screen.getByText('No dates held this week.')).toBeInTheDocument()
+  })
+
+  it('keeps every navigation control on the active filter', () => {
+    render(<CalendarWeekClient {...props} items={pipelineItems} scope="pipeline" />)
+    const href = (name: string) => screen.getByRole('link', { name }).getAttribute('href')
+    expect(href('Previous week')).toBe('/acme/calendar?kinds=pipeline&week=2026-08-03')
+    expect(href('Today')).toBe('/acme/calendar?kinds=pipeline&week=2026-08-12')
+    expect(href('Next week')).toBe('/acme/calendar?kinds=pipeline&week=2026-08-17')
+    const tabs = within(screen.getByRole('navigation', { name: 'Calendar view' }))
+    expect(tabs.getByRole('link', { name: 'Week' })).toHaveAttribute(
+      'href',
+      '/acme/calendar?kinds=pipeline&week=2026-08-10&view=week'
+    )
+    expect(tabs.getByRole('link', { name: 'Agenda' })).toHaveAttribute(
+      'href',
+      '/acme/calendar?kinds=pipeline&week=2026-08-10&view=agenda'
+    )
   })
 
   it('splits time from owed: events and holds in the top band, the rest below', () => {
@@ -164,7 +187,7 @@ describe('CalendarWeekClient — week view', () => {
     expect(screen.getByText('3 open opportunities have no date yet')).toBeInTheDocument()
   })
 
-  // Below md the 7 columns stack, empty days drop out, and only the last day
+  // Below lg the 7 columns stack, empty days drop out, and only the last day
   // that is actually SHOWN loses its bottom rule — `last:` would pick the DOM-last
   // cell, which is usually hidden, doubling a hairline against the band border.
   it('stacks the grid below lg: empty days hidden, rules on all but the last shown day', () => {
@@ -189,8 +212,18 @@ describe('CalendarWeekClient — week view', () => {
     expect(has(owed[3], 'border-b')).toBe(false)
     expect(has(owed[0], 'hidden')).toBe(true)
 
-    // every cell keeps the desktop column rule
-    for (const cell of [...time, ...owed]) expect(has(cell, 'lg:border-r')).toBe(true)
+    // today (Wed 12, index 2) has NO time items but must never be dropped —
+    // "you are here" is the point of the screen and the marker row is desktop-only
+    expect(has(time[2], 'hidden')).toBe(false)
+    expect(within(time[2] as HTMLElement).getByText(/today/)).toBeInTheDocument()
+
+    // the desktop column rule sits on every cell but the seventh, so the
+    // section never ends on a stray hairline
+    for (const cell of [...time.slice(0, 6), ...owed.slice(0, 6)]) {
+      expect(has(cell, 'lg:border-r')).toBe(true)
+    }
+    expect(has(time[6], 'lg:border-r')).toBe(false)
+    expect(has(owed[6], 'lg:border-r')).toBe(false)
   })
 })
 

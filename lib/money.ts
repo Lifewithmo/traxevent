@@ -8,8 +8,11 @@
  */
 export function formatMoney(n: number): string {
   const cents = Math.round(n * 100) % 100 !== 0
-  return `$${n.toLocaleString(undefined, {
-    minimumFractionDigits: cents ? 2 : 0,
-    maximumFractionDigits: cents ? 2 : 0,
+  const digits = cents ? 2 : 0
+  // Sign goes outside the symbol: -$50, never $-50.
+  const sign = n < 0 ? '-' : ''
+  return `${sign}$${Math.abs(n).toLocaleString(undefined, {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
   })}`
 }
