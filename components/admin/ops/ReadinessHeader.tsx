@@ -3,12 +3,14 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
+import { StatusPill } from '@/components/ui/status-pill'
 import { acknowledgeReview } from '@/actions/event-ops'
 import { computeReadiness } from '@/lib/ops/readiness'
 import type { OpsPlan } from '@/lib/types'
 
 interface ReadinessHeaderProps {
   plan: OpsPlan
+  /** The shared event spine owns the event name — kept for call-site compatibility, unused here. */
   eventName: string
   eventStart: string
   orgId: string
@@ -19,7 +21,7 @@ interface ReadinessHeaderProps {
   onPlanChange: (next: OpsPlan) => void
 }
 
-export function ReadinessHeader({ plan, eventName, eventStart, orgId, eventId, orgSlug, eventSlug, complianceWarnings, onPlanChange }: ReadinessHeaderProps) {
+export function ReadinessHeader({ plan, eventStart, orgId, eventId, orgSlug, eventSlug, complianceWarnings, onPlanChange }: ReadinessHeaderProps) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const r = computeReadiness(plan, eventStart)
@@ -37,52 +39,52 @@ export function ReadinessHeader({ plan, eventName, eventStart, orgId, eventId, o
   }
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-end justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Event Ops — {eventName}</h1>
-          <p className="text-sm text-gray-500">
-            {r.days_until >= 0 ? `${r.days_until} days until event` : `event was ${-r.days_until} days ago`}
-            {r.overdue > 0 && <span className="ml-2 font-medium text-red-600">{r.overdue} overdue</span>}
-          </p>
-        </div>
-        <div className="flex items-center gap-4">
-          <div className="text-right">
-            <span className="text-2xl font-bold">{r.pct}%</span>
-            <p className="text-xs text-gray-500">{r.done}/{r.total} done</p>
+    <section className="overflow-hidden rounded-xl border border-border bg-card shadow-xs">
+      <header className="flex items-center justify-between border-b border-border px-3 py-2">
+        <h4 className="text-[13px] font-semibold">Readiness</h4>
+        <Button variant="outline" size="sm" render={<Link href={`/${orgSlug}/${eventSlug}/ops/closeout`} />}>
+          Closeout
+        </Button>
+      </header>
+      <div className="space-y-3 p-3">
+        <div className="flex items-end justify-between gap-3">
+          <div>
+            <span className="text-2xl font-bold tabular-nums">{r.pct}%</span>
+            <p className="text-xs text-muted-foreground">{r.done}/{r.total} done</p>
           </div>
-          <Link href={`/${orgSlug}/${eventSlug}/ops/closeout`} className="text-sm underline text-gray-700">
-            Closeout
-          </Link>
+          <div className="flex flex-col items-end gap-1">
+            <p className="text-sm text-muted-foreground">
+              {r.days_until >= 0 ? `${r.days_until} days until event` : `event was ${-r.days_until} days ago`}
+            </p>
+            {r.overdue > 0 && <StatusPill tone="alert">{r.overdue} overdue</StatusPill>}
+          </div>
         </div>
-      </div>
-      <div className="h-2 rounded bg-gray-200 overflow-hidden">
-        <div className="h-full bg-gray-900 transition-all" style={{ width: `${r.pct}%` }} />
-      </div>
+        <div className="h-2 overflow-hidden rounded bg-muted">
+          <div className="h-full bg-primary transition-all" style={{ width: `${r.pct}%` }} />
+        </div>
 
-      {plan.needs_review && (
-        <div className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3">
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-amber-900 font-medium">
+        {plan.needs_review && (
+          <div className="space-y-2 rounded-md border border-[var(--warn-border)] bg-[var(--warn-bg)] px-3 py-2.5">
+            <p className="text-sm font-medium text-[var(--warn-fg)]">
               Requirements changed — shopping quantities were re-derived. Review the lists below.
             </p>
             <Button size="sm" variant="outline" disabled={saving} onClick={handleAcknowledge}>Acknowledge</Button>
+            {error && <p className="text-sm text-destructive">{error}</p>}
           </div>
-          {error && <p className="text-sm text-red-600">{error}</p>}
-        </div>
-      )}
+        )}
 
-      {complianceWarnings.length > 0 && (
-        <div className="rounded-md border border-red-300 bg-red-50 px-4 py-3">
-          <p className="text-sm font-medium text-red-900">Compliance documents expire before this event:</p>
-          <ul className="text-sm text-red-800 list-disc pl-5">
-            {complianceWarnings.map((w) => (
-              <li key={w.name}>{w.name} — expires {w.expires_on}</li>
-            ))}
-          </ul>
-          <Link href={`/${orgSlug}/compliance`} className="text-xs underline text-red-900">Open compliance tracker</Link>
-        </div>
-      )}
-    </div>
+        {complianceWarnings.length > 0 && (
+          <div className="space-y-1 rounded-md border border-[var(--danger-border)] bg-[var(--danger-bg)] px-3 py-2.5">
+            <p className="text-sm font-medium text-[var(--danger-fg)]">Compliance documents expire before this event:</p>
+            <ul className="list-disc pl-5 text-sm text-[var(--danger-fg)]">
+              {complianceWarnings.map((w) => (
+                <li key={w.name}>{w.name} — expires {w.expires_on}</li>
+              ))}
+            </ul>
+            <Link href={`/${orgSlug}/compliance`} className="text-xs text-[var(--danger-text)] underline">Open compliance tracker</Link>
+          </div>
+        )}
+      </div>
+    </section>
   )
 }

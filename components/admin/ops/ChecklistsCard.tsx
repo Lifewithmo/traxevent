@@ -1,9 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { EmptyState } from '@/components/ui/empty-state'
 import { completeChecklistStep } from '@/actions/event-ops'
 import { uploadEvidencePhoto } from '@/actions/ops-evidence'
 import { CHECKLIST_PHASES as PHASE_ORDER } from '@/lib/ops/derive'
@@ -68,13 +68,15 @@ export function ChecklistsCard({ orgId, eventId, plan, onPlanChange }: Checklist
   }
 
   return (
-    <Card>
-      <CardHeader><CardTitle className="text-base">Checklists</CardTitle></CardHeader>
-      <CardContent className="space-y-4">
-        {error && <p className="text-sm text-red-600">{error}</p>}
+    <section className="overflow-hidden rounded-xl border border-border bg-card shadow-xs">
+      <header className="border-b border-border px-3 py-2">
+        <h4 className="text-[13px] font-semibold">Checklists</h4>
+      </header>
+      <div className="space-y-4 p-3">
+        {error && <p className="text-sm text-destructive">{error}</p>}
         {ordered.map((c) => (
           <div key={c.id}>
-            <h3 className="text-sm font-semibold">{c.name} <span className="text-xs font-normal text-gray-400">({c.phase})</span></h3>
+            <h3 className="text-sm font-semibold">{c.name} <span className="text-xs font-normal text-muted-foreground">({c.phase})</span></h3>
             <div className="mt-1 space-y-2">
               {c.steps.map((s, i) => {
                 const key = `${c.id}:${i}`
@@ -84,10 +86,10 @@ export function ChecklistsCard({ orgId, eventId, plan, onPlanChange }: Checklist
                       <label className="flex items-center gap-2 text-sm">
                         <input type="checkbox" aria-label={s.text} checked={s.done} disabled={busy === key}
                           onChange={(e) => complete(c.id, i, { done: e.target.checked })} />
-                        <span className={s.done ? 'line-through text-gray-400' : ''}>{s.text}</span>
+                        <span className={s.done ? 'line-through text-muted-foreground' : ''}>{s.text}</span>
                       </label>
                     ) : (
-                      <span className={`text-sm ${s.done ? 'line-through text-gray-400' : ''}`}>{s.text}</span>
+                      <span className={`text-sm ${s.done ? 'line-through text-muted-foreground' : ''}`}>{s.text}</span>
                     )}
                     {s.evidence === 'number' && !s.done && (
                       <>
@@ -106,7 +108,7 @@ export function ChecklistsCard({ orgId, eventId, plan, onPlanChange }: Checklist
                       </>
                     )}
                     {s.evidence === 'photo' && !s.done && (
-                      <label className="text-sm text-gray-600 cursor-pointer underline">
+                      <label className="cursor-pointer text-sm text-[var(--link)] underline">
                         {busy === key ? 'Uploading…' : 'Take / choose photo'}
                         <input
                           type="file" accept="image/*" capture="environment" className="sr-only"
@@ -116,11 +118,11 @@ export function ChecklistsCard({ orgId, eventId, plan, onPlanChange }: Checklist
                       </label>
                     )}
                     {s.done && s.evidence !== 'none' && (
-                      <span className="text-xs text-gray-500">
+                      <span className="flex items-center gap-1 text-xs text-muted-foreground">
                         {s.evidence === 'photo' && s.evidence_value
-                          ? <a href={s.evidence_value} target="_blank" rel="noreferrer" className="underline">view photo</a>
+                          ? <a href={s.evidence_value} target="_blank" rel="noreferrer" className="text-[var(--link)] underline">view photo</a>
                           : s.evidence_value}
-                        <button className="ml-2 underline" onClick={() => complete(c.id, i, { done: false })}>undo</button>
+                        <Button variant="link" size="xs" onClick={() => complete(c.id, i, { done: false })}>undo</Button>
                       </span>
                     )}
                   </div>
@@ -129,8 +131,8 @@ export function ChecklistsCard({ orgId, eventId, plan, onPlanChange }: Checklist
             </div>
           </div>
         ))}
-        {ordered.length === 0 && <p className="text-sm text-gray-500">No checklists on this plan.</p>}
-      </CardContent>
-    </Card>
+        {ordered.length === 0 && <EmptyState title="No checklists on this plan." />}
+      </div>
+    </section>
   )
 }

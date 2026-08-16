@@ -1,9 +1,11 @@
 'use client'
 
+import { Button } from '@/components/ui/button'
+
 export function PrintButton() {
   return (
-    <button onClick={() => window.print()} className="print:hidden rounded-md border px-3 py-1.5 text-sm">
+    <Button variant="outline" size="sm" className="print:hidden" onClick={() => window.print()}>
       Print
-    </button>
+    </Button>
   )
 }

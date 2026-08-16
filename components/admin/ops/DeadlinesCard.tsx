@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { EmptyState } from '@/components/ui/empty-state'
 import { toggleDeadline } from '@/actions/event-ops'
 import { DEADLINE_TEMPLATES } from '@/lib/ops/derive'
 import type { OpsPlan } from '@/lib/types'
@@ -31,12 +31,14 @@ export function DeadlinesCard({ orgId, eventId, plan, industryPackId, onPlanChan
   }
 
   return (
-    <Card>
-      <CardHeader><CardTitle className="text-base">Deadlines</CardTitle></CardHeader>
-      <CardContent className="space-y-2">
-        {error && <p className="text-sm text-red-600">{error}</p>}
+    <section className="overflow-hidden rounded-xl border border-border bg-card shadow-xs">
+      <header className="border-b border-border px-3 py-2">
+        <h4 className="text-[13px] font-semibold">Deadlines</h4>
+      </header>
+      <div className="space-y-2 p-3">
+        {error && <p className="text-sm text-destructive">{error}</p>}
         {usesGeneralFallback && (
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-muted-foreground">
             Your industry has no deadline template yet — these are the general deadline defaults.
           </p>
         )}
@@ -45,15 +47,15 @@ export function DeadlinesCard({ orgId, eventId, plan, industryPackId, onPlanChan
           return (
             <label key={d.id} className="flex items-center gap-2 text-sm">
               <input type="checkbox" aria-label={d.label} checked={d.done} onChange={(e) => handleToggle(d.id, e.target.checked)} />
-              <span className={d.done ? 'line-through text-gray-400' : ''}>{d.label}</span>
-              <span className={`ml-auto text-xs ${overdue ? 'font-semibold text-red-600' : 'text-gray-500'}`}>
+              <span className={d.done ? 'line-through text-muted-foreground' : ''}>{d.label}</span>
+              <span className={`ml-auto text-xs ${overdue ? 'font-semibold text-destructive' : 'text-muted-foreground'}`}>
                 {d.due}{overdue && ' — overdue'}
               </span>
             </label>
           )
         })}
-        {plan.deadlines.length === 0 && <p className="text-sm text-gray-500">No deadlines.</p>}
-      </CardContent>
-    </Card>
+        {plan.deadlines.length === 0 && <EmptyState title="No deadlines." />}
+      </div>
+    </section>
   )
 }
