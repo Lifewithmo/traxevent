@@ -78,7 +78,25 @@ describe('InvoiceViewClient', () => {
     const { container } = render(<InvoiceViewClient invoice={inv({})} />)
     const sheet = container.querySelector('.invoice-document')
     expect(sheet?.className).toMatch(/\bbg-card\b/)
-    expect(sheet?.className).not.toMatch(/\bbg-white\b/)
+    // Prefix-aware: a plain substring/word-boundary match would also match the
+    // print-scoped `print:bg-white` (a "print:" prefix still leaves a `\b`
+    // boundary right before "bg-white"), so split into class tokens and check
+    // the unprefixed literal is absent rather than matching a substring.
+    const classes = sheet?.className.split(/\s+/) ?? []
+    expect(classes).not.toContain('bg-white')
+  })
+
+  // The sheet's screen background (bg-card) and default text colour both flip
+  // under dark mode, but printed/PDF output should always be white paper with
+  // dark ink — mirroring the print:bg-white already on the page chrome around
+  // the sheet. Without this, a dark-mode print either paints the sheet near-black
+  // (if the browser prints backgrounds) or leaves near-white text on white paper.
+  it('forces the sheet to white paper with dark text when printed, regardless of theme', () => {
+    const { container } = render(<InvoiceViewClient invoice={inv({})} />)
+    const sheet = container.querySelector('.invoice-document')
+    const classes = sheet?.className.split(/\s+/) ?? []
+    expect(classes).toContain('print:bg-white')
+    expect(classes).toContain('print:text-black')
   })
 
   // At 375px the from-column and the number-column were jammed side by side, wrapping

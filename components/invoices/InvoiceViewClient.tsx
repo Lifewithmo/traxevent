@@ -45,7 +45,7 @@ export function InvoiceViewClient({ invoice }: { invoice: PublicInvoice }) {
 
   return (
     <main className="min-h-screen bg-muted/30 py-10 print:bg-white print:py-0">
-      <div className="invoice-document mx-auto max-w-3xl rounded-lg bg-card px-10 py-12 shadow-sm max-md:px-5 max-md:py-8 print:rounded-none print:shadow-none">
+      <div className="invoice-document mx-auto max-w-3xl rounded-lg bg-card px-10 py-12 shadow-sm max-md:px-5 max-md:py-8 print:bg-white print:text-black print:rounded-none print:shadow-none">
         {/* Header: logo + from (left) — number/status/dates (right). Below md the
             two columns stack; side by side at 375px both wrap hard, and neither
             column can shrink without min-w-0 (long address / long title). */}
