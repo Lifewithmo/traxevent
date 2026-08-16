@@ -4,6 +4,7 @@ import {
   depositAmount,
   proposalDisplayRange,
   proposalExpiryInstant,
+  type StatusTone,
 } from '@/lib/proposals'
 import { isProposalOpened } from '@/lib/proposal-opens'
 
@@ -29,6 +30,21 @@ export type ProposalLedgerInput = Proposal & { clientName: string }
  */
 export type ProposalSignal = 'expired' | 'expiring' | 'unopened'
 
+// Kept beside the signal union for the same reason PROPOSAL_STATUS_TONE sits
+// beside the status labels: a new signal cannot be added without choosing a
+// tone for it.
+export const PROPOSAL_SIGNAL_TONE: Record<ProposalSignal, StatusTone> = {
+  expired: 'alert',
+  expiring: 'pending',
+  unopened: 'pending',
+}
+
+export const PROPOSAL_SIGNAL_LABEL: Record<ProposalSignal, string> = {
+  expired: 'Expired',
+  expiring: 'Expiring soon',
+  unopened: 'Not opened',
+}
+
 export type ProposalGroupKey =
   | 'needs_attention'
   | 'out_for_signature'
@@ -53,8 +69,13 @@ export interface ProposalLedgerGroup {
   label: string
   tone: 'urgent' | 'normal'
   rows: ProposalLedgerRow[]
-  /** Σ of the group's ceilings. */
-  value: number
+  /**
+   * Σ of the group's ceilings, or undefined where a money roll-up would lie.
+   * `closed` holds rejected and voided proposals, which keep their locked
+   * `selection.selected_total` (voiding does not clear it) — summing those
+   * would print dead proposals in the same money slot as booked revenue.
+   */
+  value?: number
 }
 
 export interface ProposalLedgerTiles {
@@ -191,7 +212,9 @@ export function buildProposalLedger(
       label: GROUP_META[key].label,
       tone: GROUP_META[key].tone,
       rows,
-      value: round2(rows.reduce((s, r) => s + r.max, 0)),
+      ...(key === 'closed'
+        ? {}
+        : { value: round2(rows.reduce((s, r) => s + r.max, 0)) }),
     }]
   })
 

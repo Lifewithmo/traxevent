@@ -250,6 +250,14 @@
   --money-green: #9cbb7c;
   --money-green-strong: #a6c487;
   --money-green-border: #3b4f2a;
+
+  /* Advisory/destructive banner surfaces. Without these the light cream and
+     terracotta fills stayed put in dark mode, so a warn banner rendered as a
+     glaring light chip — and any text set to --warn-fg (dark brown) landed on
+     a dark surface, unreadable. Mirrors the --status-* pairs above. */
+  --warn-bg: #382d13;    --warn-border: #5c4a22;  --warn-fg: #e3c07a;
+  --danger-bg: #3a1f18;  --danger-border: #6b3226; --danger-fg: #e6a793;
+  --danger-text: #e6a793;
 }
 
 @layer base {

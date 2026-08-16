@@ -1,11 +1,13 @@
 import { describe, it, expect } from 'vitest'
 import {
   PROPOSAL_STATUS_TONE,
+  PROPOSAL_SIGNAL_TONE,
+  PROPOSAL_SIGNAL_LABEL,
   EXPIRING_SOON_DAYS,
   buildProposalLedger,
   type ProposalLedgerInput,
 } from '@/lib/proposals/ledger'
-import { PROPOSAL_STATUSES } from '@/lib/proposals'
+import { PROPOSAL_STATUSES, formatProposalMoney } from '@/lib/proposals'
 import type { ProposalStatus } from '@/lib/types'
 
 const NOW = new Date('2026-08-16T12:00:00.000Z')
@@ -337,5 +339,63 @@ describe('buildProposalLedger — rows', () => {
       NOW,
     )
     expect(led.groups[0].value).toBe(350)
+  })
+
+  // Voiding does not clear `selection`, so a voided proposal still reports its
+  // locked total. Rolling that up would print dead money beside booked money.
+  it('omits the money roll-up for the closed group', () => {
+    const led = buildProposalLedger(
+      [
+        p({
+          id: 'v',
+          status: 'voided',
+          selection: { optional_item_ids: [], selected_total: 50000, selected_at: '2026-08-05T00:00:00.000Z' },
+        }),
+        p({ id: 'r', status: 'rejected' }),
+      ],
+      NOW,
+    )
+    const closed = led.groups.find((g) => g.key === 'closed')!
+    expect(closed.rows).toHaveLength(2)
+    expect(closed.value).toBeUndefined()
+  })
+
+  it('still reports a roll-up for every live group', () => {
+    const led = buildProposalLedger(
+      [p({ id: 'a', status: 'draft' }), p({ id: 'b', status: 'sent' }), p({ id: 'c', status: 'accepted' })],
+      NOW,
+    )
+    for (const g of led.groups) expect(g.value).toBe(100)
+  })
+})
+
+describe('PROPOSAL_SIGNAL_TONE / LABEL', () => {
+  it('gives every signal a tone and a label', () => {
+    for (const s of ['expired', 'expiring', 'unopened'] as const) {
+      expect(PROPOSAL_SIGNAL_TONE[s]).toBeTruthy()
+      expect(PROPOSAL_SIGNAL_LABEL[s]).toBeTruthy()
+    }
+  })
+  it('reserves the alert tone for an expired proposal', () => {
+    expect(PROPOSAL_SIGNAL_TONE.expired).toBe('alert')
+    expect(PROPOSAL_SIGNAL_TONE.expiring).toBe('pending')
+    expect(PROPOSAL_SIGNAL_TONE.unopened).toBe('pending')
+  })
+})
+
+describe('formatProposalMoney', () => {
+  it('separates thousands', () => {
+    expect(formatProposalMoney(12345)).toBe('$12,345')
+    expect(formatProposalMoney(0)).toBe('$0')
+  })
+  // The bug this replaced: toLocaleString() defaults to a 0 minimum and a 3
+  // maximum, so $99.90 printed as "$99.9" — a money figure missing a digit.
+  it('keeps both cents when there are cents', () => {
+    expect(formatProposalMoney(99.9)).toBe('$99.90')
+    expect(formatProposalMoney(1234.5)).toBe('$1,234.50')
+    expect(formatProposalMoney(2500.75)).toBe('$2,500.75')
+  })
+  it('omits cents for whole dollars', () => {
+    expect(formatProposalMoney(1000)).toBe('$1,000')
   })
 })
