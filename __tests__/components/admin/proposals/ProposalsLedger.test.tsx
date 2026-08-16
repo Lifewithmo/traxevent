@@ -64,6 +64,52 @@ describe('ProposalsLedger — groups', () => {
     expect(screen.queryByText(/^Accepted ·/)).not.toBeInTheDocument()
     expect(screen.queryByText(/^Closed ·/)).not.toBeInTheDocument()
   })
+
+  // Voiding does not clear `selection.selected_total`, so a dead proposal still
+  // carries its locked price. Rolling those up would print them in the same
+  // money slot the live groups use for real pipeline value.
+  it('renders the closed group with rows but no money roll-up', () => {
+    render(
+      <ProposalsLedger
+        orgSlug="acme"
+        ledger={ledgerOf([
+          p({
+            id: 'dead',
+            status: 'voided',
+            title: 'Cancelled retreat',
+            selection: {
+              optional_item_ids: [],
+              selected_total: 50000,
+              selected_at: '2026-08-05T00:00:00.000Z',
+            },
+          }),
+        ])}
+      />
+    )
+    expect(screen.getByRole('link', { name: /Cancelled retreat/ })).toBeInTheDocument()
+
+    const header = screen.getByText('Closed · 1').parentElement!
+    // The header must carry the label alone — no money slot at all.
+    expect(header.textContent).toBe('Closed · 1')
+    expect(header.textContent).not.toContain('$')
+
+    // The row still shows its own locked price; the roll-up is what must not
+    // exist, so restoring it makes this figure appear twice instead of once.
+    expect(screen.getAllByText('$50,000')).toHaveLength(1)
+  })
+
+  it('still rolls up the live groups', () => {
+    render(
+      <ProposalsLedger
+        orgSlug="acme"
+        ledger={ledgerOf([
+          p({ id: 'a', status: 'draft', line_items: [{ description: 'x', quantity: 1, unit_price: 700 }] }),
+          p({ id: 'b', status: 'draft', line_items: [{ description: 'x', quantity: 1, unit_price: 300 }] }),
+        ])}
+      />
+    )
+    expect(screen.getByText('Drafts · 2').parentElement!.textContent).toContain('$1,000')
+  })
 })
 
 describe('ProposalsLedger — rows', () => {
@@ -145,5 +191,68 @@ describe('ProposalsLedger — rows', () => {
     )
     expect(screen.getByText('—')).toBeInTheDocument()
     expect(screen.getByRole('img', { name: 'Unknown' })).toBeInTheDocument()
+  })
+
+  // A whitespace-only name is truthy, so `||` let it through — an avatar with no
+  // monogram over a blank line where the client should be.
+  it('treats a whitespace-only client name as missing', () => {
+    render(
+      <ProposalsLedger
+        orgSlug="acme"
+        ledger={ledgerOf([p({ id: 'a', status: 'draft', clientName: '   ' })])}
+      />
+    )
+    expect(screen.getByText('—')).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: 'Unknown' })).toBeInTheDocument()
+  })
+
+  // Nothing asserted tone before, so `expired` and `expiring` could both have
+  // rendered `pending` with every test still green.
+  it('gives the expired and expiring signals distinct pill tones', () => {
+    render(
+      <ProposalsLedger
+        orgSlug="acme"
+        ledger={ledgerOf([
+          p({ id: 'exp', status: 'sent', expires_at: '2026-08-10', first_opened_at: OPENED }),
+          p({ id: 'soon', status: 'sent', expires_at: '2026-08-20', first_opened_at: OPENED }),
+        ])}
+      />
+    )
+    expect(screen.getByText('Expired')).toHaveClass('bg-[var(--status-alert-bg)]')
+    expect(screen.getByText('Expiring soon')).not.toHaveClass('bg-[var(--status-alert-bg)]')
+    expect(screen.getByText('Expiring soon')).toHaveClass('bg-[var(--status-pending-bg)]')
+  })
+
+  it('accents the expired row with a left border', () => {
+    render(
+      <ProposalsLedger
+        orgSlug="acme"
+        ledger={ledgerOf([
+          p({ id: 'exp', status: 'sent', title: 'Late gala', expires_at: '2026-08-10', first_opened_at: OPENED }),
+          p({ id: 'soon', status: 'sent', title: 'Soon gala', expires_at: '2026-08-20', first_opened_at: OPENED }),
+        ])}
+      />
+    )
+    expect(screen.getByRole('link', { name: /Late gala/ })).toHaveClass('border-l-destructive')
+    expect(screen.getByRole('link', { name: /Soon gala/ })).not.toHaveClass('border-l-destructive')
+  })
+
+  // The local formatter this replaced printed "$1,234.5" — cents are all-or-none.
+  it('renders both cents of a non-integer amount', () => {
+    render(
+      <ProposalsLedger
+        orgSlug="acme"
+        ledger={ledgerOf([
+          p({
+            id: 'cents',
+            status: 'draft',
+            line_items: [{ description: 'x', quantity: 1, unit_price: 1234.5 }],
+          }),
+        ])}
+      />
+    )
+    // Once on the row, once in the Drafts roll-up.
+    expect(screen.getAllByText('$1,234.50')).toHaveLength(2)
+    expect(screen.queryByText('$1,234.5')).not.toBeInTheDocument()
   })
 })

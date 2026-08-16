@@ -1,5 +1,6 @@
 import { KpiBand } from '@/components/ui/kpi-band'
 import { StatTile } from '@/components/ui/stat-tile'
+import { formatProposalMoney } from '@/lib/proposals'
 import type { ProposalLedgerTiles } from '@/lib/proposals/ledger'
 
 // Server component on purpose: see ProposalsLedger for the PII rationale — the
@@ -11,18 +12,19 @@ interface ProposalsKpiBandProps {
   tiles: ProposalLedgerTiles
 }
 
-function money(n: number): string {
-  return `$${n.toLocaleString()}`
-}
-
 export function ProposalsKpiBand({ tiles }: ProposalsKpiBandProps) {
+  const { outstandingCount } = tiles
   return (
     <KpiBand>
+      {/* "Out for signature" sums each proposal's ceiling while "Accepted" sums
+          locked floors — two different aggregations sitting side by side. Three
+          tiered $1,000–$9,000 proposals read $27,000 against a $3,000 floor, so
+          the note says out loud that this figure is the best case, not a forecast. */}
       <StatTile
         label="Out for signature"
-        value={money(tiles.outstandingValue)}
+        value={formatProposalMoney(tiles.outstandingValue)}
         tone="money"
-        note={`${tiles.outstandingCount} ${tiles.outstandingCount === 1 ? 'proposal' : 'proposals'}`}
+        note={`ceiling · ${outstandingCount} ${outstandingCount === 1 ? 'proposal' : 'proposals'}`}
       />
       <StatTile
         label="Needs attention"
@@ -31,13 +33,13 @@ export function ProposalsKpiBand({ tiles }: ProposalsKpiBandProps) {
       />
       <StatTile
         label="Accepted"
-        value={money(tiles.acceptedValue)}
+        value={formatProposalMoney(tiles.acceptedValue)}
         tone="money"
         note={`${tiles.acceptedCount} won`}
       />
       <StatTile
         label="Deposits due"
-        value={money(tiles.depositsDue)}
+        value={formatProposalMoney(tiles.depositsDue)}
         tone={tiles.depositsDue > 0 ? 'alert' : 'default'}
       />
     </KpiBand>

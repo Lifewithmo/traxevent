@@ -4,12 +4,13 @@ import { Avatar } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { StatusPill } from '@/components/ui/status-pill'
-import { PROPOSAL_STATUS_LABELS, PROPOSAL_STATUS_TONE } from '@/lib/proposals'
-import type {
-  ProposalLedger,
-  ProposalLedgerGroup,
-  ProposalLedgerRow,
-  ProposalSignal,
+import { PROPOSAL_STATUS_LABELS, PROPOSAL_STATUS_TONE, formatProposalMoney } from '@/lib/proposals'
+import {
+  PROPOSAL_SIGNAL_LABEL,
+  PROPOSAL_SIGNAL_TONE,
+  type ProposalLedger,
+  type ProposalLedgerGroup,
+  type ProposalLedgerRow,
 } from '@/lib/proposals/ledger'
 
 // Deliberately a SERVER component — no 'use client'. The raw Proposal doc the
@@ -17,16 +18,6 @@ import type {
 // `pending_signature`; buildProposalLedger narrows it to the minimal row shape
 // above. Rendering here keeps that PII out of the client bundle entirely, which
 // a client component would undo by serializing whatever it is handed.
-
-const SIGNAL_LABEL: Record<ProposalSignal, string> = {
-  expired: 'Expired',
-  expiring: 'Expiring soon',
-  unopened: 'Not opened',
-}
-
-function money(n: number): string {
-  return `$${n.toLocaleString()}`
-}
 
 function GroupHeader({ group }: { group: ProposalLedgerGroup }) {
   return (
@@ -41,18 +32,26 @@ function GroupHeader({ group }: { group: ProposalLedgerGroup }) {
       <span>
         {group.label} · {group.rows.length}
       </span>
-      <span className="tabular-nums">{money(group.value)}</span>
+      {/* `closed` deliberately carries no roll-up — see ProposalLedgerGroup.value.
+          justify-between leaves the label at flex-start on its own. */}
+      {group.value !== undefined && (
+        <span className="tabular-nums">{formatProposalMoney(group.value)}</span>
+      )}
     </div>
   )
 }
 
 function Row({ row, orgSlug }: { row: ProposalLedgerRow; orgSlug: string }) {
-  const amount = row.min === row.max ? money(row.min) : `${money(row.min)}–${money(row.max)}`
+  const amount =
+    row.min === row.max
+      ? formatProposalMoney(row.min)
+      : `${formatProposalMoney(row.min)}–${formatProposalMoney(row.max)}`
+  const clientName = row.clientName.trim()
   // A signalled row is always `sent`, so the signal replaces the status pill
   // rather than sitting beside a redundant "Sent".
   const pill = row.signal ? (
-    <StatusPill tone={row.signal === 'expired' ? 'alert' : 'pending'}>
-      {SIGNAL_LABEL[row.signal]}
+    <StatusPill tone={PROPOSAL_SIGNAL_TONE[row.signal]}>
+      {PROPOSAL_SIGNAL_LABEL[row.signal]}
     </StatusPill>
   ) : (
     <StatusPill tone={PROPOSAL_STATUS_TONE[row.status]}>
@@ -68,12 +67,14 @@ function Row({ row, orgSlug }: { row: ProposalLedgerRow; orgSlug: string }) {
         row.signal === 'expired' ? 'border-l-2 border-l-destructive' : '',
       ].join(' ')}
     >
-      <Avatar name={row.clientName || 'Unknown'} size="sm" />
+      <Avatar name={clientName || 'Unknown'} size="sm" />
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-semibold">{row.title}</p>
-        <p className="mt-0.5 truncate text-xs text-muted-foreground">{row.clientName || '—'}</p>
+        <p className="mt-0.5 truncate text-xs text-muted-foreground">{clientName || '—'}</p>
       </div>
-      {pill}
+      {/* Wrapped rather than given a className so the pill's own tone variants
+          stay the only thing driving its look; the wrapper carries the sizing. */}
+      <span className="shrink-0">{pill}</span>
       <span className="shrink-0 text-sm font-semibold tabular-nums">{amount}</span>
     </Link>
   )

@@ -29,7 +29,10 @@ export default async function ProposalsPage({
         <span className="text-sm text-muted-foreground">{ledger.total}</span>
       </div>
 
-      <ProposalsKpiBand tiles={ledger.tiles} />
+      {/* A brand-new org has nothing to roll up; a band of four zeros stacked
+          above "No proposals yet" is noise, so the ledger's empty state stands
+          alone until there is at least one proposal to summarize. */}
+      {ledger.total > 0 && <ProposalsKpiBand tiles={ledger.tiles} />}
       <ProposalsLedger ledger={ledger} orgSlug={orgSlug} />
     </div>
   )
