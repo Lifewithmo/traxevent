@@ -51,7 +51,7 @@ The playbook says per-package **"fulfillment cost + margin" is already computabl
 
 Wrap `@base-ui/react/tabs` (present at `node_modules/@base-ui/react/tabs`, v1.5). Mirror the structure and token vocabulary of `components/ui/menu.tsx`.
 
-Exports: `Tabs` (Root), `TabsList`, `TabsTab`, `TabsPanel`, `TabsIndicator`. Props pass through Base UI's (`BaseTabs.Root.Props` etc.) so `value` / `onValueChange` / `keepMounted` all work.
+Exports: `Tabs` (Root), `TabsList`, `TabsTab`, `TabsPanel`. Props pass through Base UI's (`BaseTabs.Root.Props` etc.) so `value` / `onValueChange` / `keepMounted` all work. (A `TabsIndicator` passthrough was built and then removed in review — the active tab draws its own underline via `data-[active]:border-foreground`, so a sliding indicator would have to replace that mechanism, not sit beside it.)
 
 Styling: list is a bottom-bordered strip (`border-b border-border`) that **scrolls horizontally rather than wrapping** (`overflow-x-auto` + `whitespace-nowrap`) — tab 1's label is variable-length industry copy and the row overflows on narrow viewports today. Tab: `text-sm font-medium px-3 py-2 text-muted-foreground data-[selected]:text-foreground` with a `-mb-px border-b-2 border-transparent data-[selected]:border-foreground` underline. No raw grays.
 
