@@ -1,5 +1,6 @@
 'use client'
 
+import { Button } from '@/components/ui/button'
 import { buildIcs } from '@/lib/ics'
 
 /**
@@ -22,8 +23,8 @@ export function AddToCalendarButton({ title, date }: { title: string; date: stri
   }
 
   return (
-    <button type="button" onClick={download} className="text-xs text-muted-foreground underline hover:text-foreground">
+    <Button variant="outline" size="xs" onClick={download}>
       Add to my calendar
-    </button>
+    </Button>
   )
 }

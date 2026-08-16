@@ -19,9 +19,13 @@ interface NextActionBannerProps {
   onAddNextStep: () => void
 }
 
+// Waiting reads from the pending status tokens (app/globals.css:158-159), which
+// already carry their own dark values (:247) — so unlike the raw amber literal
+// this replaced, no `dark:` override is needed and the banner can never drift
+// out of the tone the "Waiting" StatusPill uses elsewhere.
 const TONE: Record<string, string> = {
   active: 'border-primary/30 bg-primary/5',
-  waiting: 'border-amber-300 bg-amber-50 dark:bg-amber-950/30',
+  waiting: 'border-[var(--status-pending-fg)]/30 bg-[var(--status-pending-bg)]',
   attention: 'border-destructive/40 bg-destructive/5',
   closed: 'border-border bg-muted/40',
 }
@@ -57,7 +61,7 @@ export function NextActionBanner({ orgId, lead, tasks, onAddNextStep }: NextActi
     : CheckCircle2
 
   return (
-    <div className={`rounded-lg border p-4 ${TONE[content.tone]}`}>
+    <div data-slot="next-action-banner" className={`rounded-xl border p-4 shadow-xs ${TONE[content.tone]}`}>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-start gap-3">
           <Icon className="mt-0.5 h-5 w-5 shrink-0" />

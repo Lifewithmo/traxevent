@@ -48,6 +48,26 @@ describe('NextActionBanner', () => {
     expect(onAdd).toHaveBeenCalled()
   })
 
+  it('needs attention: parking the deal opens a real dialog', () => {
+    render(<NextActionBanner orgId="o1" lead={lead} tasks={[]} onAddNextStep={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Mark as waiting' }))
+    expect(screen.getByRole('dialog', { name: 'Mark as waiting' })).toBeInTheDocument()
+  })
+
+  it('waiting: paints from the pending status tokens, not a raw amber literal', () => {
+    const { container } = render(
+      <NextActionBanner
+        orgId="o1"
+        lead={{ ...lead, waiting: { reason: 'Client reviewing' } }}
+        tasks={[]}
+        onAddNextStep={vi.fn()}
+      />
+    )
+    const banner = container.querySelector('[data-slot="next-action-banner"]')!
+    expect(banner.className).toContain('bg-[var(--status-pending-bg)]')
+    expect(banner.className).not.toMatch(/amber/)
+  })
+
   it('closed: shows the outcome and no actions', () => {
     render(<NextActionBanner orgId="o1" lead={{ ...lead, stage: 'closed_won' }} tasks={[]} onAddNextStep={vi.fn()} />)
     expect(screen.getByText('Closed Won')).toBeInTheDocument()

@@ -15,12 +15,11 @@ const lead = (over: Partial<Lead>): Lead => ({
 
 const base = {
   orgId: 'o1', orgSlug: 'demo',
-  openCount: 1, openValue: 1180,
   monthly: { wonCount: 3, wonValue: 4120, lostCount: 1, lostValue: 540 },
 }
 
 describe('PipelineBoardView', () => {
-  it('renders the three open columns, the won/lost strip, and health on cards', () => {
+  it('renders the three open columns, the won/lost figures, and health on cards', () => {
     const { container } = render(<PipelineBoardView {...base} groups={{
       needs_attention: [{ lead: lead({ title: 'Fairhaven Realty — agent open house' }),
         health: 'needs_attention', statusLine: 'Sep 4 · 60 guests · no task, no touch in 11 days',
@@ -30,7 +29,14 @@ describe('PipelineBoardView', () => {
     expect(screen.getByRole('heading', { name: 'Inquiry' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Consultation' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Proposal' })).toBeInTheDocument()
-    expect(screen.getByText(/Won this month: 3 · \$4,120 — moved to/)).toBeInTheDocument()
+    // The month rollup is the LOSS side plus the calendar route. The won money
+    // is the KPI band's "Booked this month" — the identical
+    // `wonValueInMonth(leads, ym)` call — so rendering it here too would put one
+    // figure on the page twice.
+    expect(screen.getByText('Lost this month')).toBeInTheDocument()
+    expect(screen.getByText('$540')).toBeInTheDocument()
+    expect(screen.queryByText('Won this month')).toBeNull()
+    expect(screen.queryByText('$4,120')).toBeNull()
     expect(screen.getByRole('link', { name: 'Events' })).toBeInTheDocument()
     expect(container.querySelector('[data-health="needs_attention"]')).not.toBeNull()
   })

@@ -2,11 +2,15 @@
 
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
+import { ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { StatusPill } from '@/components/ui/status-pill'
+import { EmptyState } from '@/components/ui/empty-state'
 import { listCalendarRange } from '@/actions/calendar'
 import { cn } from '@/lib/utils'
 import {
-  windowDays, rangeLabel, daysOutLabel, monthStartOf, addMonths,
+  windowDays, rangeLabel, monthStartOf, addMonths,
   monthLabel, monthGrid, bucketByDay, shortDayLabel, listDateLabel,
 } from '@/lib/date-window'
 import { addDays } from '@/lib/opportunity-detail'
@@ -47,6 +51,11 @@ export function DatesPanel({ orgId, orgSlug, lead, today, initialItems }: DatesP
   // True while the most recent fetch attempt for an uncovered range failed — distinguishes
   // "genuinely nothing here" from "we don't actually know yet" in the empty-state line.
   const [loadFailed, setLoadFailed] = useState(false)
+  // True while an explicit Retry is in flight. `ensureRange` clears `loadFailed`
+  // synchronously before its await, so without this the failure state would be
+  // replaced by the free-window message for the whole refetch — exactly the
+  // false "nothing booked here" the loadFailed distinction exists to prevent.
+  const [retrying, setRetrying] = useState(false)
 
   const displayCenter = pinned ? center : hovered ?? center
   const days = windowDays(displayCenter)
@@ -89,8 +98,8 @@ export function DatesPanel({ orgId, orgSlug, lead, today, initialItems }: DatesP
       // number of overlapping failures. This can cause one duplicate fetch
       // for a still-in-flight overlapping call, which is an acceptable
       // cost. Silent retry-on-next-change (no toast/banner); the empty-state
-      // line below is swapped for a "couldn't load" line while the window
-      // sits outside `confirmed`, so a fetch failure never reads as "free."
+      // below is swapped for a "couldn't load" state while the window sits
+      // outside `confirmed`, so a fetch failure never reads as "free."
       covered.current = confirmed.current
       setLoadFailed(true)
     }
@@ -113,103 +122,127 @@ export function DatesPanel({ orgId, orgSlug, lead, today, initialItems }: DatesP
     setHovered(null)
   }
 
+  function goHome() {
+    setPinned(false)
+    setHovered(null)
+    setCenter(homeCenter)
+  }
+
   const daysSet = new Set(days)
   const windowItems = items
     .filter((i) => daysSet.has(i.date.slice(0, 10)))
     .sort((a, b) => a.date.localeCompare(b.date))
   const listableItems = windowItems.filter((i) => i.kind !== 'task')
   const taskCount = windowItems.filter((i) => i.kind === 'task').length
-  const distance = daysOutLabel(lead.event_date, today)
   // The displayed window isn't fully backed by a range we've actually loaded successfully.
   const windowUnconfirmed = days[0] < confirmed.current.from || days[9] > confirmed.current.to
+  const awayFromHome = displayCenter !== homeCenter
 
   return (
     <Card>
       <CardContent className="space-y-2">
-        {/* Header row */}
-        <div className="flex items-center justify-between">
+        {/* Header row. The days-to-event figure that used to sit here as 12px
+            gray prose is now a figure tile in the opportunity KPI band — it is
+            deliberately NOT repeated inline. What stays is the panel-local
+            preview state, which the band cannot show. */}
+        <div className="flex items-center justify-between gap-2">
           <span className="text-sm font-semibold">Dates</span>
-          <span className="flex items-center gap-2">
+          {/* Height-pinned slot: the contents swap between a button and a pill
+              on hover-preview, and the grid driving that hover sits BELOW this
+              row — an unpinned slot would resize the header and re-seat the
+              pointer mid-hover. min-h-7 covers the taller of the two. */}
+          <span className="flex min-h-7 items-center gap-2">
             {lead.event_date && !previewing && (
               <AddToCalendarButton title={opportunityTitle(lead)} date={lead.event_date} />
             )}
-            {previewing ? (
-              <span className="text-xs font-medium text-destructive">previewing {shortMonthDay(displayCenter)}</span>
-            ) : (
-              distance && <span className="text-xs text-muted-foreground">{distance}</span>
+            {previewing && (
+              <StatusPill tone="pending">previewing {shortMonthDay(displayCenter)}</StatusPill>
             )}
           </span>
         </div>
 
         {/* Strip controls row */}
         <div className="flex items-center gap-2">
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="icon-xs"
             aria-label="Toggle month"
             aria-expanded={monthOpen}
             onClick={() => setMonthOpen((v) => !v)}
-            className="text-muted-foreground"
           >
-            ▾
-          </button>
-          <span className={cn('text-xs font-medium', previewing ? 'text-destructive' : '')}>{rangeLabel(days)}</span>
+            <ChevronDown />
+          </Button>
+          <span className={cn('text-xs font-medium', previewing ? 'text-primary' : '')}>{rangeLabel(days)}</span>
           <div className="ml-auto flex items-center gap-1">
-            <button
-              type="button"
+            <Button
+              variant="ghost"
+              size="icon-xs"
               aria-label="Earlier dates"
               onClick={() => { setCenter(addDays(center, -10)); setPinned(false) }}
-              className="text-muted-foreground"
             >
-              ←
-            </button>
-            <button
-              type="button"
+              <ChevronLeft />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-xs"
               aria-label="Later dates"
               onClick={() => { setCenter(addDays(center, 10)); setPinned(false) }}
-              className="text-muted-foreground"
             >
-              →
-            </button>
+              <ChevronRight />
+            </Button>
           </div>
         </div>
 
-        {/* Ten-day strip */}
-        <div className="grid grid-cols-10 gap-1">
-          {days.map((d) => {
-            const { weekday, day } = shortDayLabel(d)
-            const isEventDay = d === lead.event_date
-            const isPreviewDay = d === displayCenter && previewing
-            return (
-              <div key={d} className="flex flex-col items-center gap-1">
-                <span className="text-[10px] text-muted-foreground">{weekday}</span>
-                <span
-                  className={cn(
-                    'box-border flex h-5 w-5 items-center justify-center rounded-full border text-[11px]',
-                    isEventDay
-                      ? 'border-transparent bg-foreground text-background'
-                      : isPreviewDay
-                        ? 'border-foreground'
-                        : 'border border-transparent'
-                  )}
-                >
-                  {day}
-                </span>
-                <div className="flex w-full flex-col gap-0.5">
-                  {(buckets[d] ?? []).map((item) => (
-                    <span
-                      key={`${item.kind}:${item.id}`}
-                      className={cn(
-                        'box-border w-full rounded-sm',
-                        item.kind === 'event' && 'h-6 bg-foreground',
-                        item.kind === 'lead' && 'h-6 border border-dashed border-foreground',
-                        item.kind === 'task' && 'h-1.5 bg-muted-foreground/40'
-                      )}
-                    />
-                  ))}
+        {/* Ten-day strip. R8: ten columns cannot legibly collapse — the window
+            is a fixed ten days (windowDays()) and the covered/confirmed range
+            refs index days[0]/days[9]. Rather than reshape the window, the
+            strip keeps its natural width and scrolls sideways inside the rail,
+            which is ~319px wide on a 375px phone. A scrollable region has to be
+            focusable or keyboard-only users can never reach the clipped columns
+            (WCAG 2.1.1), so it takes a tab stop, a name, and a focus ring. */}
+        <div
+          tabIndex={0}
+          role="group"
+          aria-label="Ten-day availability strip"
+          className="overflow-x-auto rounded-md pb-1 outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+        >
+          <div className="grid min-w-[360px] grid-cols-10 gap-1">
+            {days.map((d) => {
+              const { weekday, day } = shortDayLabel(d)
+              const isEventDay = d === lead.event_date
+              const isPreviewDay = d === displayCenter && previewing
+              return (
+                <div key={d} className="flex flex-col items-center gap-1">
+                  <span className="text-[10px] text-muted-foreground">{weekday}</span>
+                  <span
+                    className={cn(
+                      'box-border flex h-5 w-5 items-center justify-center rounded-full border text-[11px]',
+                      isEventDay
+                        ? 'border-transparent bg-foreground text-background'
+                        : isPreviewDay
+                          ? 'border-foreground'
+                          : 'border border-transparent'
+                    )}
+                  >
+                    {day}
+                  </span>
+                  <div className="flex w-full flex-col gap-0.5">
+                    {(buckets[d] ?? []).map((item) => (
+                      <span
+                        key={`${item.kind}:${item.id}`}
+                        className={cn(
+                          'box-border w-full rounded-sm',
+                          item.kind === 'event' && 'h-6 bg-foreground',
+                          item.kind === 'lead' && 'h-6 border border-dashed border-foreground',
+                          item.kind === 'task' && 'h-1.5 bg-muted-foreground/40'
+                        )}
+                      />
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )
-          })}
+              )
+            })}
+          </div>
         </div>
 
         {/* Month grid — renders below the strip so the strip never moves. */}
@@ -218,24 +251,30 @@ export function DatesPanel({ orgId, orgSlug, lead, today, initialItems }: DatesP
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold">{monthLabel(monthStart)}</span>
               <div className="flex items-center gap-1">
-                <button
-                  type="button"
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
                   aria-label="Previous month"
                   onClick={() => setMonthStart(addMonths(monthStart, -1))}
-                  className="text-muted-foreground"
                 >
-                  ←
-                </button>
-                <button
-                  type="button"
+                  <ChevronLeft />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
                   aria-label="Next month"
                   onClick={() => setMonthStart(addMonths(monthStart, 1))}
-                  className="text-muted-foreground"
                 >
-                  →
-                </button>
+                  <ChevronRight />
+                </Button>
               </div>
             </div>
+            {/* R8 exception, decided deliberately: a month calendar IS seven
+                columns — collapsing it destroys the weekday alignment that makes
+                it readable, so it does NOT stack below md. It stays legible at
+                375px: the rail is ~319px wide there, and seven columns with
+                gap-1 leave ~41px per cell — comfortably above the 24px tap
+                target for a two-digit day. */}
             <div className="grid grid-cols-7 text-center text-[10px] text-muted-foreground">
               {WEEKDAY_HEADERS.map((w, i) => (
                 <span key={i}>{w}</span>
@@ -255,7 +294,7 @@ export function DatesPanel({ orgId, orgSlug, lead, today, initialItems }: DatesP
                     onMouseLeave={() => !pinned && setHovered(null)}
                     onClick={() => pinDay(cell.ymd)}
                     className={cn(
-                      'box-border rounded-sm border border-transparent py-1 text-xs',
+                      'box-border min-h-8 rounded-sm border border-transparent py-1 text-xs',
                       !cell.inMonth && 'text-muted-foreground',
                       inWindow && 'bg-muted'
                     )}
@@ -271,24 +310,81 @@ export function DatesPanel({ orgId, orgSlug, lead, today, initialItems }: DatesP
         {/* List */}
         <div className="space-y-1 pt-1 text-sm">
           {listableItems.length === 0 && taskCount === 0 ? (
-            windowUnconfirmed && loadFailed ? (
-              <p className="text-muted-foreground">Couldn&apos;t load this window — try again.</p>
+            (windowUnconfirmed && loadFailed) || retrying ? (
+              // Deliberately distinct from the free-window state below: a failed
+              // fetch must never read as "nothing booked here" — including for
+              // the duration of a retry, which is still "we don't know yet."
+              <EmptyState
+                title="Calendar didn't load"
+                description="Couldn't load this window — try again."
+                action={
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={retrying}
+                    onClick={async () => {
+                      setRetrying(true)
+                      try { await ensureRange(days[0], days[9]) } finally { setRetrying(false) }
+                    }}
+                  >
+                    {retrying ? 'Retrying…' : 'Retry'}
+                  </Button>
+                }
+              />
             ) : (
-              <p className="text-muted-foreground">Nothing on the calendar in this window.</p>
+              <EmptyState
+                title="This window is free"
+                description="Nothing on the calendar in this window."
+                action={
+                  awayFromHome ? (
+                    <Button variant="outline" size="sm" onClick={goHome}>
+                      {lead.event_date ? 'Back to event week' : 'Back to today'}
+                    </Button>
+                  ) : monthOpen ? (
+                    // The one CTA must move the operator FORWARD. Once the month
+                    // grid is open — which this state's own CTA did — offering
+                    // "Hide months" would take the browsing tool away again, so
+                    // the next step becomes advancing the window instead.
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => { setCenter(addDays(center, 10)); setPinned(false) }}
+                    >
+                      Next 10 days
+                    </Button>
+                  ) : (
+                    <Button variant="outline" size="sm" onClick={() => setMonthOpen(true)}>
+                      Browse months
+                    </Button>
+                  )
+                }
+              />
             )
           ) : (
             <>
               {listableItems.map((item) => (
-                <div key={`${item.kind}:${item.id}`}>
-                  <Link href={item.href} className="hover:underline">
+                <div key={`${item.kind}:${item.id}`} className="flex items-center justify-between gap-2">
+                  <Link href={item.href} className="min-w-0 text-primary hover:underline">
                     {listDateLabel(item.date)} — {item.title}
                   </Link>
-                  <span className="ml-2 text-muted-foreground">{item.kind === 'event' ? 'Booked' : 'Tentative'}</span>
+                  {item.kind === 'event' ? (
+                    <StatusPill tone="confirmed" className="shrink-0">Booked</StatusPill>
+                  ) : (
+                    <StatusPill tone="pending" className="shrink-0">Tentative</StatusPill>
+                  )}
                 </div>
               ))}
               {taskCount > 0 && (
-                <p className="text-muted-foreground">
-                  {taskCount} task{taskCount === 1 ? '' : 's'} across the window
+                // A computed rollup reads as a figure, not as muted gray prose.
+                // Compact inline rather than a tile — the rail panel is too
+                // narrow for one, and the KPI band above is a fixed four.
+                <p data-testid="window-task-count" className="flex items-baseline gap-1.5 pt-0.5">
+                  <span className="text-[15px] font-semibold leading-none tracking-[-.02em] tabular-nums">
+                    {taskCount}
+                  </span>
+                  <span className="text-[10px] font-semibold uppercase tracking-[.06em] text-muted-foreground">
+                    tasks in window
+                  </span>
                 </p>
               )}
             </>
