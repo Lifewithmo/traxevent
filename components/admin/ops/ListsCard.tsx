@@ -42,7 +42,7 @@ export function ListsCard({ orgId, eventId, plan, orgSlug, eventSlug, onPlanChan
     const items = plan[list]
     return (
       <div>
-        <h3 className="mb-2 text-sm font-semibold">{title}</h3>
+        <h5 className="mb-2 text-sm font-semibold">{title}</h5>
         <div className="space-y-1">
           {items.map((i) => (
             <label key={`${i.resource_id}|${i.unit ?? ''}`} className="flex items-center gap-2 text-sm">
@@ -62,7 +62,7 @@ export function ListsCard({ orgId, eventId, plan, orgSlug, eventSlug, onPlanChan
     <section className="overflow-hidden rounded-xl border border-border bg-card shadow-xs">
       <header className="flex items-center justify-between border-b border-border px-3 py-2">
         <h4 className="text-[13px] font-semibold">Shopping &amp; packing</h4>
-        <Button variant="link" size="xs" render={<Link href={`/${orgSlug}/${eventSlug}/ops/print`} />}>
+        <Button variant="link" size="xs" nativeButton={false} render={<Link href={`/${orgSlug}/${eventSlug}/ops/print`} />}>
           Print lists
         </Button>
       </header>

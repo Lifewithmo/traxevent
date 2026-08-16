@@ -55,7 +55,7 @@ function downloadMissingCsv(row: { template_name: string; missing: { name: strin
   URL.revokeObjectURL(url)
 }
 
-export function ReportsClient({ orgId, eventId, eventName, data, formSubmissions }: ReportsClientProps) {
+export function ReportsClient({ orgId, eventId, eventName, registrationType, data, formSubmissions }: ReportsClientProps) {
   const [tab, setTab] = useState<TabKey>('summary')
   const [selectedFields, setSelectedFields] = useState<CustomReportField[]>([
     'family_last_name',
@@ -118,7 +118,7 @@ export function ReportsClient({ orgId, eventId, eventName, data, formSubmissions
       {tab === 'summary' && (
         <div role="tabpanel" id="panel-summary" aria-labelledby="tab-summary" className="space-y-4">
           <KpiBand>
-            <StatTile label="Registrations" value={String(data.summary.total)} />
+            <StatTile label="Registrations" value={String(data.summary.total)} note={`${registrationType} registration`} />
             <StatTile label="Confirmed" value={String(data.summary.byStatus.confirmed ?? 0)} />
             <StatTile label="Collected" value={formatMoney(data.financial.totalPaid)} tone="money" />
             <StatTile label="Outstanding" value={formatMoney(data.financial.outstanding)} tone="money" />

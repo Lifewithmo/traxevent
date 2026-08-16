@@ -68,7 +68,7 @@ export function OpsPlanClient(props: OpsPlanClientProps) {
           <ChecklistsCard orgId={props.orgId} eventId={props.eventId} plan={plan} onPlanChange={setPlan} />
           <ListsCard orgId={props.orgId} eventId={props.eventId} plan={plan} orgSlug={props.orgSlug} eventSlug={props.eventSlug} onPlanChange={setPlan} />
         </div>
-        <aside className="space-y-4 lg:col-span-2">
+        <aside className="space-y-4 max-lg:order-first lg:col-span-2">
           <ReadinessHeader
             plan={plan}
             eventName={props.eventName}

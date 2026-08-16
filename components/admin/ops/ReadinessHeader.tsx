@@ -42,7 +42,7 @@ export function ReadinessHeader({ plan, eventStart, orgId, eventId, orgSlug, eve
     <section className="overflow-hidden rounded-xl border border-border bg-card shadow-xs">
       <header className="flex items-center justify-between border-b border-border px-3 py-2">
         <h4 className="text-[13px] font-semibold">Readiness</h4>
-        <Button variant="outline" size="sm" render={<Link href={`/${orgSlug}/${eventSlug}/ops/closeout`} />}>
+        <Button variant="outline" size="sm" nativeButton={false} render={<Link href={`/${orgSlug}/${eventSlug}/ops/closeout`} />}>
           Closeout
         </Button>
       </header>

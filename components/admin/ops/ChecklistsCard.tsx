@@ -76,7 +76,7 @@ export function ChecklistsCard({ orgId, eventId, plan, onPlanChange }: Checklist
         {error && <p className="text-sm text-destructive">{error}</p>}
         {ordered.map((c) => (
           <div key={c.id}>
-            <h3 className="text-sm font-semibold">{c.name} <span className="text-xs font-normal text-muted-foreground">({c.phase})</span></h3>
+            <h5 className="text-sm font-semibold">{c.name} <span className="text-xs font-normal text-muted-foreground">({c.phase})</span></h5>
             <div className="mt-1 space-y-2">
               {c.steps.map((s, i) => {
                 const key = `${c.id}:${i}`

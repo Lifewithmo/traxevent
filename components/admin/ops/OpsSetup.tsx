@@ -86,7 +86,7 @@ export function OpsSetup({ orgId, eventId, orgSlug, packages, eventStart, indust
               title="No packages in your catalog yet"
               description="Create one under Menu Packages first."
               action={orgSlug ? (
-                <Button variant="outline" size="sm" render={<Link href={`/${orgSlug}/packages`} />}>
+                <Button variant="outline" size="sm" nativeButton={false} render={<Link href={`/${orgSlug}/packages`} />}>
                   Open Menu Packages
                 </Button>
               ) : undefined}
