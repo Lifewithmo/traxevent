@@ -12,6 +12,7 @@ function rollup(overrides: Partial<WeekRollup> = {}): WeekRollup {
     eventCount: 0,
     guestCount: 0,
     tentativeCount: 0,
+    taskCount: 0,
     dueAmount: 0,
     overdueDueAmount: 0,
     blockerCount: 0,
@@ -135,7 +136,7 @@ describe('CalendarKpiBand', () => {
       />
     )
     expect(screen.getByText('6')).toBeInTheDocument()
-    expect(screen.getByText('1 blocking')).toBeInTheDocument()
+    expect(screen.getByText('1 blocking · next 30 days')).toBeInTheDocument()
   })
 
   // Regression: the value came from the feed-wide `attention` while the note came
@@ -144,8 +145,8 @@ describe('CalendarKpiBand', () => {
   it('never contradicts itself when the shown week has blockers outside the horizon', () => {
     render(<CalendarKpiBand rollup={rollup({ blockerCount: 1 })} attention={[]} />)
     expect(screen.getByText('Needs attention')).toBeInTheDocument()
-    expect(screen.queryByText('1 blocking')).not.toBeInTheDocument()
-    expect(screen.getByText('nothing blocking')).toBeInTheDocument()
+    expect(screen.queryByText(/1 blocking/)).not.toBeInTheDocument()
+    expect(screen.getByText('none in the next 30 days')).toBeInTheDocument()
   })
 
   it('notes the horizon when work is pending but nothing is blocking', () => {
@@ -155,13 +156,13 @@ describe('CalendarKpiBand', () => {
 
   it('singularises the blocker note and falls back when nothing blocks', () => {
     const { rerender } = render(<CalendarKpiBand rollup={rollup()} attention={[group('blocker', 1)]} />)
-    expect(screen.getByText('1 blocking')).toBeInTheDocument()
+    expect(screen.getByText('1 blocking · next 30 days')).toBeInTheDocument()
 
     rerender(<CalendarKpiBand rollup={rollup()} attention={[group('blocker', 4)]} />)
-    expect(screen.getByText('4 blocking')).toBeInTheDocument()
+    expect(screen.getByText('4 blocking · next 30 days')).toBeInTheDocument()
 
     rerender(<CalendarKpiBand rollup={rollup()} attention={[]} />)
-    expect(screen.getByText('nothing blocking')).toBeInTheDocument()
+    expect(screen.getByText('none in the next 30 days')).toBeInTheDocument()
   })
 
   it('insets the band to match the px-5 header above it', () => {

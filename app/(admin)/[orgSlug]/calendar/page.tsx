@@ -1,5 +1,6 @@
 export const dynamic = 'force-dynamic'
 
+import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { adminDb } from '@/lib/firebase-admin'
 import { getCalendarFeed } from '@/actions/calendar'
@@ -48,10 +49,18 @@ export default async function CalendarPage({
         weekFrom={from}
         view={view === 'agenda' ? 'agenda' : 'week'}
         subscribeUrl={`${origin}/ics/${orgSlug}/${icsToken}`}
+        scope={pipelineOnly ? 'pipeline' : 'all'}
+        undated={undated}
         footnote={
           pipelineOnly && undated > 0 ? (
+            // The count is promoted to a StatTile in pipeline scope; this line
+            // stays as the way to act on it.
             <p className="border-t border-border px-5 py-2.5 text-xs text-muted-foreground">
-              {undated} open opportunit{undated === 1 ? 'y has' : 'ies have'} no date yet — they will not appear on any week.
+              {undated} open opportunit{undated === 1 ? 'y has' : 'ies have'} no date yet — they will not appear on
+              any week.{' '}
+              <Link href={`/${orgSlug}/leads`} className="font-medium text-[var(--link)] hover:underline">
+                Set dates in the pipeline &rarr;
+              </Link>
             </p>
           ) : undefined
         }

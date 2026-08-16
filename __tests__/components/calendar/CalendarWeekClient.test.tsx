@@ -38,19 +38,60 @@ describe('CalendarWeekClient — week view', () => {
     expect(within(tile('Events')).getByText('+1 tentative hold')).toBeInTheDocument()
     expect(within(tile('Guests')).getByText('165')).toBeInTheDocument()
     expect(within(tile('Guests')).getByText('across 1 event')).toBeInTheDocument()
-    expect(within(tile('Due this week')).getByText('$1,567.5')).toBeInTheDocument()
+    expect(within(tile('Due this week')).getByText('$1,567.50')).toBeInTheDocument()
     expect(within(tile('Due this week')).getByText('nothing overdue')).toBeInTheDocument()
     // blocker + past-due task + invoice + tentative hold across the whole feed
     expect(within(tile('Needs attention')).getByText('4')).toBeInTheDocument()
-    expect(within(tile('Needs attention')).getByText('1 blocking')).toBeInTheDocument()
+    expect(within(tile('Needs attention')).getByText('1 blocking · next 30 days')).toBeInTheDocument()
     // the old duplicated prose summary is gone
     expect(screen.queryByText('1 event · 165 guests · 1 blocker')).not.toBeInTheDocument()
   })
 
-  it('renders the KPI band in the agenda view too', () => {
+  it('keeps the week-scoped band and week stepping off the agenda', () => {
     render(<CalendarWeekClient {...props} view="agenda" />)
-    expect(screen.getByText('Due this week')).toBeInTheDocument()
-    expect(within(tile('Needs attention')).getByText('4')).toBeInTheDocument()
+    // the agenda lists the whole feed by month, so "this week" figures would
+    // describe something the reader is not looking at
+    expect(document.body.querySelector('[data-slot="kpi-band"]')).toBeNull()
+    expect(screen.queryByText('Due this week')).not.toBeInTheDocument()
+    // week stepping moved nothing on this view, so it is gone too
+    expect(screen.queryByRole('link', { name: 'Previous week' })).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: 'Agenda' })).toBeInTheDocument()
+    // the feed-scoped rail still answers "what should I go fix"
+    expect(rail().getByRole('heading', { name: 'Blocking a booked event' })).toBeInTheDocument()
+  })
+
+  it('promotes the week’s own blocker count beside the Owed band', () => {
+    render(<CalendarWeekClient {...props} />)
+    // week-scoped, so it stays true however far ahead the operator pages —
+    // unlike the feed-scoped "Needs attention" tile
+    expect(grid().getByRole('heading', { name: /Owed\s+1 blocker this week/ })).toBeInTheDocument()
+  })
+
+  it('keeps the active filter across every navigation control', () => {
+    render(<CalendarWeekClient {...props} scope="pipeline" />)
+    expect(screen.getByRole('link', { name: 'Next week' })).toHaveAttribute(
+      'href',
+      '/acme/calendar?kinds=pipeline&week=2026-08-17'
+    )
+    const tabs = within(screen.getByRole('navigation', { name: 'Calendar view' }))
+    expect(tabs.getByRole('link', { name: 'Agenda' })).toHaveAttribute(
+      'href',
+      '/acme/calendar?kinds=pipeline&week=2026-08-10&view=agenda'
+    )
+  })
+
+  it('shows a pipeline-shaped band instead of claiming nothing is booked or due', () => {
+    render(<CalendarWeekClient {...props} scope="pipeline" undated={3} />)
+    expect(screen.getByText('Holds')).toBeInTheDocument()
+    expect(screen.getByText('Tasks due')).toBeInTheDocument()
+    expect(within(tile('Undated')).getByText('3')).toBeInTheDocument()
+    // the filtered-out kinds must not be asserted as absent
+    expect(screen.queryByText('Events')).not.toBeInTheDocument()
+    expect(screen.queryByText('nothing booked')).not.toBeInTheDocument()
+    expect(screen.queryByText('nothing due')).not.toBeInTheDocument()
+    // …and the legend drops the swatches that mode can never produce
+    expect(grid().queryByText('Booked event')).not.toBeInTheDocument()
+    expect(grid().getByText('Task / follow-up')).toBeInTheDocument()
   })
 
   it('splits time from owed: events and holds in the top band, the rest below', () => {
@@ -126,7 +167,7 @@ describe('CalendarWeekClient — week view', () => {
   // Below md the 7 columns stack, empty days drop out, and only the last day
   // that is actually SHOWN loses its bottom rule — `last:` would pick the DOM-last
   // cell, which is usually hidden, doubling a hairline against the band border.
-  it('stacks the grid below md: empty days hidden, rules on all but the last shown day', () => {
+  it('stacks the grid below lg: empty days hidden, rules on all but the last shown day', () => {
     const { container } = render(<CalendarWeekClient {...props} />)
     const bands = container.querySelectorAll('section[aria-label="Week grid"] > div.grid')
     expect(bands).toHaveLength(2)
@@ -140,7 +181,7 @@ describe('CalendarWeekClient — week view', () => {
     expect(has(time[0], 'border-b')).toBe(true)
     expect(has(time[5], 'border-b')).toBe(false) // last shown day — no doubled rule
     expect(has(time[6], 'hidden')).toBe(true)
-    expect(has(time[6], 'md:block')).toBe(true)
+    expect(has(time[6], 'lg:block')).toBe(true)
 
     // owed band: task Tue 11 (1), compliance Wed 12 (2), invoice Thu 13 (3)
     const owed = Array.from(bands[1].children)
@@ -149,7 +190,7 @@ describe('CalendarWeekClient — week view', () => {
     expect(has(owed[0], 'hidden')).toBe(true)
 
     // every cell keeps the desktop column rule
-    for (const cell of [...time, ...owed]) expect(has(cell, 'md:border-r')).toBe(true)
+    for (const cell of [...time, ...owed]) expect(has(cell, 'lg:border-r')).toBe(true)
   })
 })
 
@@ -161,10 +202,12 @@ describe('CalendarWeekClient — agenda view', () => {
     expect(screen.getByRole('link', { name: 'Next month' })).toBeInTheDocument()
   })
 
-  it('shows the same empty state and CTA when nothing is scheduled', () => {
+  it('shows a feed-wide empty state and CTA when nothing is scheduled', () => {
     render(<CalendarWeekClient {...props} items={[]} view="agenda" />)
     expect(screen.queryByText('Nothing scheduled yet.')).not.toBeInTheDocument()
-    expect(screen.getByText('Nothing on the calendar this week')).toBeInTheDocument()
+    // the agenda spans the whole feed, so the copy must not say "this week"
+    expect(screen.getByText('Nothing on the calendar')).toBeInTheDocument()
+    expect(screen.queryByText('Nothing on the calendar this week')).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Open the pipeline' })).toHaveAttribute('href', '/acme/leads')
   })
 })

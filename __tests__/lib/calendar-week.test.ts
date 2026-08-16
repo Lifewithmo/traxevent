@@ -26,7 +26,7 @@ const pickup = (over: Partial<CalendarItem> & Pick<CalendarItem, 'id' | 'date'>)
   item({ kind: 'drop', title: 'Drop pickup: Weekend', ...over })
 
 describe('weekRollup', () => {
-  it('reports all six figures over a mixed week', () => {
+  it('reports all seven figures over a mixed week', () => {
     const rollup = weekRollup(
       [
         ev({ id: 'e1', date: '2026-08-10', headcount: 80 }),
@@ -43,6 +43,7 @@ describe('weekRollup', () => {
       eventCount: 2,
       guestCount: 125,
       tentativeCount: 1,
+      taskCount: 0,
       dueAmount: 1150,
       overdueDueAmount: 900,
       blockerCount: 1,
@@ -70,9 +71,23 @@ describe('weekRollup', () => {
     expect(rollup.overdueDueAmount).toBe(400)
   })
 
+  it('counts open tasks and follow-ups landing in the week', () => {
+    const rollup = weekRollup(
+      [
+        todo({ id: 't1', date: '2026-08-11' }),
+        todo({ id: 't2', date: '2026-08-13' }),
+        followUp({ id: 'f1', date: '2026-08-14' }),
+        ev({ id: 'e1', date: '2026-08-12' }),
+      ],
+      TODAY
+    )
+    expect(rollup.taskCount).toBe(3)
+  })
+
   it('returns all zeros for an empty week', () => {
     expect(weekRollup([], TODAY)).toEqual({
-      eventCount: 0, guestCount: 0, tentativeCount: 0, dueAmount: 0, overdueDueAmount: 0, blockerCount: 0,
+      eventCount: 0, guestCount: 0, tentativeCount: 0, taskCount: 0, dueAmount: 0, overdueDueAmount: 0,
+      blockerCount: 0,
     })
   })
 })

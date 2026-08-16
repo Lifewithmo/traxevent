@@ -1,13 +1,16 @@
 import Link from 'next/link'
 import { EmptyState } from '@/components/ui/empty-state'
+import { formatMoney } from '@/lib/money'
 import { StatusPill } from '@/components/ui/status-pill'
-import type { AttentionEntry, AttentionGroup, AttentionReason } from '@/lib/calendar-week'
+import { attentionCount, type AttentionEntry, type AttentionGroup, type AttentionReason } from '@/lib/calendar-week'
 
 interface CalendarAttentionRailProps {
   /** Already computed by the caller via needsAttention() — pre-sorted, worst group first. */
   groups: AttentionGroup[]
-  /** Entries shown per group before the "+N more" line. */
+  /** Entries shown per group before the "+N more" link. */
   previewLimit?: number
+  /** Where "+N more" goes — the agenda view lists the whole feed. */
+  moreHref?: string
 }
 
 /** What each reason reads as on the row — short enough to sit under a title. */
@@ -26,10 +29,6 @@ function dayLabel(date: string): string {
     day: 'numeric',
     timeZone: 'UTC',
   })
-}
-
-function money(n: number): string {
-  return `$${n.toLocaleString()}`
 }
 
 function AttentionRow({ entry }: { entry: AttentionEntry }) {
@@ -55,7 +54,7 @@ function AttentionRow({ entry }: { entry: AttentionEntry }) {
         </span>
         {item.amount !== undefined ? (
           <span className="ml-auto text-[13px] font-semibold tabular-nums text-[var(--money-green)]">
-            {money(item.amount)}
+            {formatMoney(item.amount)}
           </span>
         ) : null}
       </span>
@@ -64,15 +63,16 @@ function AttentionRow({ entry }: { entry: AttentionEntry }) {
 }
 
 /** The right-hand rail: what is about to go wrong, worst first. */
-export function CalendarAttentionRail({ groups, previewLimit = 4 }: CalendarAttentionRailProps) {
-  const total = groups.reduce((sum, g) => sum + g.entries.length, 0)
+export function CalendarAttentionRail({ groups, previewLimit = 4, moreHref }: CalendarAttentionRailProps) {
+  // Same helper the KPI tile uses, so the two counts cannot drift apart.
+  const total = attentionCount(groups)
 
   return (
     // Named landmark: without this the rail is an anonymous "complementary"
     // region when navigating by landmark.
     <aside
       aria-labelledby="attention-rail-heading"
-      className="w-full md:w-72 md:shrink-0 border-l border-border bg-muted/40 p-4"
+      className="w-full border-t border-border bg-muted/40 p-4 xl:w-72 xl:shrink-0 xl:border-l xl:border-t-0"
     >
       <h2
         id="attention-rail-heading"
@@ -107,7 +107,16 @@ export function CalendarAttentionRail({ groups, previewLimit = 4 }: CalendarAtte
                 ))}
               </div>
               {hidden > 0 ? (
-                <p className="mt-1 text-xs text-muted-foreground">+{hidden} more</p>
+                moreHref ? (
+                  <Link
+                    href={moreHref}
+                    className="mt-1 inline-block text-xs font-medium text-[var(--link)] hover:underline"
+                  >
+                    +{hidden} more &rarr;
+                  </Link>
+                ) : (
+                  <p className="mt-1 text-xs text-muted-foreground">+{hidden} more</p>
+                )
               ) : null}
             </section>
           )

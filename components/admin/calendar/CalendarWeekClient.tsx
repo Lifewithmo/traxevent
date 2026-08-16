@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { addDays } from '@/lib/opportunity-detail'
 import { feedInRange, weekDays, type CalendarItem } from '@/lib/calendar'
 import { needsAttention, weekRollup } from '@/lib/calendar-week'
+import { formatMoney } from '@/lib/money'
 import { CalendarAttentionRail } from '@/components/admin/calendar/CalendarAttentionRail'
 import { CalendarKpiBand } from '@/components/admin/calendar/CalendarKpiBand'
 import { SubscribePanel } from '@/components/admin/calendar/SubscribePanel'
@@ -20,8 +21,11 @@ interface CalendarWeekClientProps {
   weekFrom: string
   view: 'week' | 'agenda'
   subscribeUrl: string
-  /** Path the week/view links write to; the pipeline calendar reuses this component. */
-  basePath?: string
+  /** `?kinds=pipeline` shows lead/task/follow-up only — events and invoices are
+   *  filtered out, so the band and legend must not claim they are absent. */
+  scope?: 'all' | 'pipeline'
+  /** pipeline scope only: open opportunities carrying no date at all. */
+  undated?: number
   /** Rendered under the grid — e.g. the pipeline calendar's scope note. */
   footnote?: React.ReactNode
 }
@@ -55,35 +59,59 @@ function monthLabel(ymd: string): string {
   })
 }
 
-function money(n: number): string {
-  return `$${n.toLocaleString()}`
-}
-
-// Below md the 7-column grid stacks into one column, so a cell needs its own day
-// label (the header row is desktop-only) and an empty cell is dropped entirely —
+// Below lg the 7-column grid stacks into one column, so a cell carries its own
+// day label (the header row is desktop-only) and an empty cell is dropped —
 // scrolling past seven blank boxes on a phone is worse than not seeing them.
-// Stacked below md (bottom rules), 7 columns at md+ (right rules). `last:` can't
-// be used for the mobile rule: empty cells are `hidden`, so the DOM-last cell is
+// Today is the exception: it is never hidden, because "you are here" is the
+// whole point of the screen and the desktop-only header carries the marker.
+//
+// Stacked below lg (bottom rules), 7 columns at lg+ (right rules). `last:` can't
+// be used for the stacked rule: empty cells are `hidden`, so the DOM-last cell is
 // often not the visually-last one and its rule would double with the band's own
 // bottom border. The caller tells us which cell is last *visible* instead.
-function dayCellClass(empty: boolean, lastVisible: boolean): string {
+function dayCellClass(hidden: boolean, lastVisible: boolean): string {
   return [
-    'space-y-1 p-1.5 md:border-b-0 md:border-r md:last:border-r-0',
+    'space-y-1 p-1.5 lg:border-b-0 lg:border-r lg:last:border-r-0',
     lastVisible ? '' : 'border-b border-border/60',
-    empty ? 'hidden md:block' : '',
+    hidden ? 'hidden lg:block' : '',
   ]
     .filter(Boolean)
     .join(' ')
 }
 
-/** Per-day buckets for one band, plus which day is the last one shown on mobile. */
-function dayCells(days: string[], items: CalendarItem[], time: boolean) {
-  const cells = days.map((d) => ({
+interface DayCell {
+  day: string
+  items: CalendarItem[]
+  isToday: boolean
+  hidden: boolean
+  lastVisible: boolean
+}
+
+/** Per-day buckets for one band, plus which cells the stacked layout shows. */
+function dayCells(days: string[], items: CalendarItem[], time: boolean, today: string): DayCell[] {
+  const base = days.map((d) => ({
     day: d,
     items: items.filter((i) => TIME_KINDS.has(i.kind) === time && i.date.slice(0, 10) === d),
+    isToday: d === today,
   }))
-  const lastFilled = cells.reduce((last, c, i) => (c.items.length > 0 ? i : last), -1)
-  return cells.map((c, i) => ({ ...c, lastVisible: i === lastFilled }))
+  const shown = base.map((c) => c.items.length > 0 || c.isToday)
+  const lastShown = shown.reduce((last, visible, i) => (visible ? i : last), -1)
+  return base.map((c, i) => ({ ...c, hidden: !shown[i], lastVisible: i === lastShown }))
+}
+
+/** The stacked-layout day label; desktop gets the same marker from the header row. */
+function StackedDayLabel({ cell }: { cell: DayCell }) {
+  return (
+    <p
+      className={[
+        '-mx-1.5 -mt-1.5 mb-1 px-1.5 py-1 font-mono text-[10px] font-bold uppercase tracking-wide lg:hidden',
+        cell.isToday ? 'bg-foreground text-background' : 'text-muted-foreground',
+      ].join(' ')}
+    >
+      {dayLabel(cell.day)}
+      {cell.isToday ? ' · today' : ''}
+    </p>
+  )
 }
 
 function TimeEntry({ item }: { item: CalendarItem }) {
@@ -118,7 +146,7 @@ function OwedEntry({ item }: { item: CalendarItem }) {
       <span className={item.kind === 'compliance' ? 'font-semibold' : ''}>
         {item.title}
         {item.kind === 'invoice_due' && item.amount !== undefined && (
-          <span className="font-semibold tabular-nums text-[var(--money-green)]"> {money(item.amount)}</span>
+          <span className="font-semibold tabular-nums text-[var(--money-green)]"> {formatMoney(item.amount)}</span>
         )}
       </span>
       {item.detail && <span className="block truncate text-[10px] text-muted-foreground">{item.detail}</span>}
@@ -126,11 +154,11 @@ function OwedEntry({ item }: { item: CalendarItem }) {
   )
 }
 
-const LEGEND: Array<{ label: string; swatch: string }> = [
-  { label: 'Booked event', swatch: 'h-2.5 w-2.5 rounded-sm bg-[var(--money-green)]' },
-  { label: 'Opportunity date', swatch: 'h-2.5 w-2.5 rounded-sm border border-dashed border-foreground/60' },
-  { label: 'Task / follow-up', swatch: 'h-2.5 w-2.5 rounded-sm bg-muted-foreground/40' },
-  { label: 'Blocker', swatch: 'h-2.5 w-2.5 rounded-sm bg-destructive' },
+const LEGEND: Array<{ label: string; swatch: string; pipeline: boolean }> = [
+  { label: 'Booked event', swatch: 'h-2.5 w-2.5 rounded-sm bg-[var(--money-green)]', pipeline: false },
+  { label: 'Opportunity date', swatch: 'h-2.5 w-2.5 rounded-sm border border-dashed border-foreground/60', pipeline: true },
+  { label: 'Task / follow-up', swatch: 'h-2.5 w-2.5 rounded-sm bg-muted-foreground/40', pipeline: true },
+  { label: 'Blocker', swatch: 'h-2.5 w-2.5 rounded-sm bg-destructive', pipeline: false },
 ]
 
 export function CalendarWeekClient({
@@ -140,14 +168,18 @@ export function CalendarWeekClient({
   weekFrom,
   view,
   subscribeUrl,
-  basePath,
+  scope = 'all',
+  undated = 0,
   footnote,
 }: CalendarWeekClientProps) {
   const [subscribing, setSubscribing] = useState(false)
-  const path = basePath ?? `/${orgSlug}/calendar`
+  const path = `/${orgSlug}/calendar`
   const days = weekDays(weekFrom)
   const weekItems = feedInRange(items, weekFrom, days[6])
-  const weekHref = (anchor: string) => `${path}?week=${anchor}`
+  // The filter has to survive navigation: without `kinds`, one click on
+  // "Next week" silently dropped the operator back to the unfiltered calendar.
+  const kindsParam = scope === 'pipeline' ? 'kinds=pipeline&' : ''
+  const weekHref = (anchor: string) => `${path}?${kindsParam}week=${anchor}`
 
   // Deliberate asymmetry: the band summarises the SHOWN week ("how is this
   // week"); the rail scans the WHOLE feed forward 30 days plus anything already
@@ -178,14 +210,21 @@ export function CalendarWeekClient({
   )
 
   return (
-    <div className="flex min-w-0 flex-col md:flex-row">
+    <div className="flex min-w-0 flex-col xl:flex-row">
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-3 border-b border-border px-5 py-3">
-          <h1 className="text-base font-semibold">{rangeLabel(weekFrom)}</h1>
+          <h1 className="text-base font-semibold">{view === 'week' ? rangeLabel(weekFrom) : 'Agenda'}</h1>
           <div className="ml-auto flex flex-wrap items-center gap-2">
-            <Link href={weekHref(addDays(weekFrom, -7))} aria-label="Previous week" className={NAV_BUTTON}>←</Link>
-            <Link href={weekHref(today)} className={NAV_BUTTON}>Today</Link>
-            <Link href={weekHref(addDays(weekFrom, 7))} aria-label="Next week" className={NAV_BUTTON}>→</Link>
+            {/* The agenda ignores weekFrom, so week stepping there moved nothing
+                on screen. The view tabs carry the week across, so switching back
+                still lands on the week you left. */}
+            {view === 'week' && (
+              <>
+                <Link href={weekHref(addDays(weekFrom, -7))} aria-label="Previous week" className={NAV_BUTTON}>←</Link>
+                <Link href={weekHref(today)} className={NAV_BUTTON}>Today</Link>
+                <Link href={weekHref(addDays(weekFrom, 7))} aria-label="Next week" className={NAV_BUTTON}>→</Link>
+              </>
+            )}
             <TabLinks
               ariaLabel="Calendar view"
               active={view}
@@ -196,7 +235,7 @@ export function CalendarWeekClient({
             />
             <Button
               type="button"
-              variant="outline"
+              variant="ghost"
               size="sm"
               onClick={() => setSubscribing((s) => !s)}
               aria-expanded={subscribing}
@@ -210,11 +249,16 @@ export function CalendarWeekClient({
             its trigger rather than being pushed below the figures. */}
         {subscribing && <SubscribePanel url={subscribeUrl} />}
 
-        <CalendarKpiBand rollup={rollup} attention={attention} />
+        {/* Week-scoped figures belong over the week grid. The agenda lists the
+            whole feed by month, so a "this week" band there would describe
+            something the reader is not looking at. */}
+        {view === 'week' && (
+          <CalendarKpiBand rollup={rollup} attention={attention} scope={scope} undated={undated} />
+        )}
 
         {view === 'week' ? (
           <section aria-label="Week grid">
-            <div className="hidden border-b border-border md:grid md:grid-cols-7">
+            <div className="hidden border-b border-border lg:grid lg:grid-cols-7">
               {days.map((d) => (
                 <div
                   key={d}
@@ -232,34 +276,36 @@ export function CalendarWeekClient({
               <div className="border-b border-border">{emptyCalendar}</div>
             ) : (
               <>
-                <div className="grid min-h-24 grid-cols-1 border-b border-border md:grid-cols-7">
-                  {dayCells(days, weekItems, true).map((cell) => (
-                    <div
-                      key={cell.day}
-                      className={dayCellClass(cell.items.length === 0, cell.lastVisible)}
-                    >
-                      <p className="font-mono text-[10px] font-bold uppercase tracking-wide text-muted-foreground md:hidden">
-                        {dayLabel(cell.day)}
-                      </p>
+                <div className="grid min-h-24 grid-cols-1 border-b border-border lg:grid-cols-7">
+                  {dayCells(days, weekItems, true, today).map((cell) => (
+                    <div key={cell.day} className={dayCellClass(cell.hidden, cell.lastVisible)}>
+                      <StackedDayLabel cell={cell} />
                       {cell.items.map((i) => (
                         <TimeEntry key={`${i.kind}:${i.id}`} item={i} />
                       ))}
                     </div>
                   ))}
+                  {rollup.eventCount + rollup.tentativeCount === 0 ? (
+                    <p className="px-1.5 py-2 text-xs text-muted-foreground lg:hidden">Nothing booked this week.</p>
+                  ) : null}
                 </div>
 
-                <div className="border-b border-border bg-muted px-5 py-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-muted-foreground">
-                  Owed
-                </div>
-                <div className="grid min-h-20 grid-cols-1 border-b border-border md:grid-cols-7">
-                  {dayCells(days, weekItems, false).map((cell) => (
-                    <div
-                      key={cell.day}
-                      className={dayCellClass(cell.items.length === 0, cell.lastVisible)}
-                    >
-                      <p className="font-mono text-[10px] font-bold uppercase tracking-wide text-muted-foreground md:hidden">
-                        {dayLabel(cell.day)}
-                      </p>
+                <h3 className="flex flex-wrap items-baseline gap-x-2 border-b border-border bg-muted px-5 py-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-muted-foreground">
+                  Owed{' '}
+                  {/* The explicit space keeps the accessible name from reading
+                      "Owed1 blocker this week" — flex gap is visual only.
+                      Week-scoped, so it stays true however far ahead you page,
+                      unlike the feed-scoped "Needs attention" tile above. */}
+                  {rollup.blockerCount > 0 ? (
+                    <span className="font-sans font-semibold normal-case tracking-normal text-destructive">
+                      {rollup.blockerCount} {rollup.blockerCount === 1 ? 'blocker' : 'blockers'} this week
+                    </span>
+                  ) : null}
+                </h3>
+                <div className="grid min-h-20 grid-cols-1 border-b border-border lg:grid-cols-7">
+                  {dayCells(days, weekItems, false, today).map((cell) => (
+                    <div key={cell.day} className={dayCellClass(cell.hidden, cell.lastVisible)}>
+                      <StackedDayLabel cell={cell} />
                       {cell.items.map((i) => (
                         <OwedEntry key={`${i.kind}:${i.id}`} item={i} />
                       ))}
@@ -272,7 +318,7 @@ export function CalendarWeekClient({
             {/* Nothing to key when the week is empty. */}
             {weekItems.length > 0 && (
               <div className="flex flex-wrap items-center gap-4 px-5 py-2.5 text-[11px] text-muted-foreground">
-                {LEGEND.map((l) => (
+                {LEGEND.filter((l) => scope === 'all' || l.pipeline).map((l) => (
                   <span key={l.label} className="flex items-center gap-1.5">
                     <span className={l.swatch} />
                     {l.label}
@@ -283,7 +329,18 @@ export function CalendarWeekClient({
           </section>
         ) : (
           <div className="px-5 py-4">
-            {agendaGroups.length === 0 && emptyCalendar}
+            {agendaGroups.length === 0 && (
+              <EmptyState
+                title="Nothing on the calendar"
+                description="Booked events, holds, tasks and invoice due dates all land here."
+                className="px-5 py-10"
+                action={
+                  <Link className={cn(buttonVariants({ variant: 'outline', size: 'sm' }))} href={`/${orgSlug}/leads`}>
+                    Open the pipeline
+                  </Link>
+                }
+              />
+            )}
             {agendaGroups.map((group) => (
               <div key={group.label} className="mb-5">
                 <h2 className="border-b border-border pb-1 font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-muted-foreground">
@@ -302,7 +359,7 @@ export function CalendarWeekClient({
                     </div>
                     {item.amount !== undefined && (
                       <span className="shrink-0 text-xs font-semibold tabular-nums text-[var(--money-green)]">
-                        {money(item.amount)}
+                        {formatMoney(item.amount)}
                       </span>
                     )}
                   </div>
@@ -315,7 +372,7 @@ export function CalendarWeekClient({
         {footnote}
       </div>
 
-      <CalendarAttentionRail groups={attention} />
+      <CalendarAttentionRail groups={attention} moreHref={`${weekHref(weekFrom)}&view=agenda`} />
     </div>
   )
 }

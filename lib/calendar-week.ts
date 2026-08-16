@@ -11,6 +11,8 @@ export interface WeekRollup {
   eventCount: number
   guestCount: number
   tentativeCount: number
+  /** Open tasks + follow-ups landing in the week — the pipeline band's figure. */
+  taskCount: number
   dueAmount: number
   overdueDueAmount: number
   blockerCount: number
@@ -23,6 +25,7 @@ export function weekRollup(weekItems: CalendarItem[], today: string): WeekRollup
     eventCount: 0,
     guestCount: 0,
     tentativeCount: 0,
+    taskCount: 0,
     dueAmount: 0,
     overdueDueAmount: 0,
     blockerCount: 0,
@@ -32,6 +35,7 @@ export function weekRollup(weekItems: CalendarItem[], today: string): WeekRollup
       rollup.eventCount += 1
       rollup.guestCount += item.headcount ?? 0
     }
+    if (item.kind === 'task' || item.kind === 'follow_up') rollup.taskCount += 1
     if (item.tentative === true) rollup.tentativeCount += 1
     if (item.blocker === true) rollup.blockerCount += 1
     if (item.kind === 'invoice_due') {
