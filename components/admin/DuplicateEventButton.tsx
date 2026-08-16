@@ -26,24 +26,16 @@ interface DuplicateEventProps {
 
 /**
  * Row-actions menu for the org events ledger. Self-contained: renders the kit
- * Menu trigger plus the DuplicateEventDialog it drives. It sits inside the
- * row's <Link>, so the wrapper swallows clicks: stopPropagation keeps the
- * Link's client navigation from firing (menu/dialog portals still bubble
- * through the React tree), and preventDefault — only for clicks physically
- * inside the wrapper, i.e. the trigger — cancels the anchor's native
- * navigation without breaking label/input defaults inside the portaled dialog.
+ * Menu trigger plus the DuplicateEventDialog it drives. It renders as a
+ * SIBLING of the row's stretched <Link> (never inside the anchor), lifted
+ * above the link's after-overlay with relative z-10 so the trigger receives
+ * its own clicks natively — no propagation containment needed.
  */
 export function DuplicateEventMenu(props: DuplicateEventProps) {
   const [dialogOpen, setDialogOpen] = useState(false)
 
   return (
-    <span
-      className="shrink-0"
-      onClick={(e) => {
-        e.stopPropagation()
-        if (e.currentTarget.contains(e.target as Node)) e.preventDefault()
-      }}
-    >
+    <span className="relative z-10 shrink-0">
       <Menu>
         <MenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label="More actions" />}>
           <MoreHorizontal />

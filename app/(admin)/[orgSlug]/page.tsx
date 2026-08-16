@@ -5,7 +5,6 @@ import { listSeries } from '@/actions/series'
 import { kindOf } from '@/lib/occasions/kind'
 import { EVENT_STATUS_TONE, EVENT_STATUS_LABEL, formatEventDateRange } from '@/lib/event-ui'
 import { todayYmd } from '@/lib/opportunity-detail'
-import { formatMoney } from '@/lib/utils'
 import { redirect } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -38,13 +37,11 @@ export default async function OrgHomePage({
   const marketDays = events.filter((e) => kindOf(e) === 'market_day')
 
   const today = todayYmd()
-  const upcoming = events.filter((e) => e.event_start >= today)
+  const upcoming = events.filter((e) => e.status !== 'archived' && e.event_start >= today)
   const nextStart = upcoming.length > 0
     ? upcoming.reduce((min, e) => (e.event_start < min ? e.event_start : min), upcoming[0].event_start)
     : null
-  const bookedValue =
-    clientJobs.reduce((sum, e) => sum + (e.payment_amount ?? 0), 0) +
-    marketDays.reduce((sum, e) => sum + (e.booth_fee ?? 0), 0)
+  const guestsExpected = upcoming.reduce((sum, e) => sum + (e.headcount ?? 0), 0)
 
   const renderRow = (event: (typeof events)[number], showYear: boolean) => {
     const meta = [
@@ -53,18 +50,26 @@ export default async function OrgHomePage({
     ]
       .filter(Boolean)
       .join(' · ')
+    // Stretched-link row: the container is the hover/hit surface, the Link's
+    // after-overlay makes the whole row navigate, and the menu sits above the
+    // overlay as a sibling so it receives its own clicks (never nested in the
+    // anchor).
     return (
-      <Link
+      <div
         key={event.id}
-        href={`/${orgSlug}/${event.slug}/dashboard`}
-        className="flex items-center gap-3 rounded-lg px-3 py-2 hover:bg-muted/50"
+        className="relative flex items-center gap-3 rounded-lg px-3 py-2 hover:bg-muted/50"
       >
-        <span className="min-w-0 flex-1 truncate text-sm font-medium">{event.name}</span>
-        <StatusPill tone={EVENT_STATUS_TONE[event.status]}>{EVENT_STATUS_LABEL[event.status]}</StatusPill>
-        <span className="whitespace-nowrap text-xs text-muted-foreground">{meta}</span>
-        {showYear && <Badge variant="outline">{event.year}</Badge>}
+        <Link
+          href={`/${orgSlug}/${event.slug}/dashboard`}
+          className="flex min-w-0 flex-1 items-center gap-3 after:absolute after:inset-0"
+        >
+          <span className="min-w-0 flex-1 truncate text-sm font-medium">{event.name}</span>
+          <StatusPill tone={EVENT_STATUS_TONE[event.status]}>{EVENT_STATUS_LABEL[event.status]}</StatusPill>
+          <span className="whitespace-nowrap text-xs text-muted-foreground">{meta}</span>
+          {showYear && <Badge variant="outline">{event.year}</Badge>}
+        </Link>
         <DuplicateEventMenu orgId={org.id} orgSlug={orgSlug} sourceEventId={event.id} sourceName={event.name} />
-      </Link>
+      </div>
     )
   }
 
@@ -117,10 +122,9 @@ export default async function OrgHomePage({
               <StatTile label="Client jobs" value={String(clientJobs.length)} />
               <StatTile label="Market days" value={String(marketDays.length)} />
               <StatTile
-                label="Booked value"
-                value={formatMoney(bookedValue)}
-                tone="money"
-                note="contracts + booth fees"
+                label="Guests expected"
+                value={String(guestsExpected)}
+                note="across upcoming events"
               />
             </KpiBand>
           </div>
