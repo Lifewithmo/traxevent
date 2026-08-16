@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { LeadInvoicesClient } from '@/components/admin/LeadInvoicesClient'
 import type { NormalizedInvoice } from '@/lib/types'
 
@@ -194,5 +194,52 @@ describe('LeadInvoicesClient — empty state', () => {
     fireEvent.click(screen.getByRole('button', { name: /^create invoice$/i }))
     await waitFor(() => expect(createInvoice).toHaveBeenCalledWith('o', 'l', {}))
     await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/s/leads/l/invoices/inv-1'))
+  })
+})
+
+// `createInvoice` mints a fresh id and does an unconditional set(), so nothing
+// downstream dedupes: whatever reaches the action becomes a draft. Both create
+// affordances therefore have to be one-shot on their own. Kept last in the file
+// because these cases pin the action in-flight and never settle it.
+describe('LeadInvoicesClient — create is one-shot', () => {
+  // Never settles, so `creating` stays true exactly like an open request.
+  const pinInFlight = () => {
+    createInvoice.mockClear()
+    createInvoice.mockImplementation(() => new Promise(() => {}))
+  }
+
+  it('ignores a second activation fired inside the same commit window', () => {
+    pinInFlight()
+    render(<LeadInvoicesClient {...base} acceptedProposals={[]} />)
+    const button = screen.getByRole('button', { name: /^create invoice$/i })
+    // Two native clicks with no render between them: `disabled` has not been
+    // painted yet, so only the synchronous ref guard can stop the second one.
+    act(() => {
+      button.click()
+      button.click()
+    })
+    expect(createInvoice).toHaveBeenCalledTimes(1)
+  })
+
+  it('disables the empty-state CTA once the request is open', async () => {
+    pinInFlight()
+    render(<LeadInvoicesClient {...base} acceptedProposals={[]} />)
+    fireEvent.click(screen.getByRole('button', { name: /^create invoice$/i }))
+
+    const busy = await screen.findByRole('button', { name: /^creating…$/i })
+    expect(busy).toBeDisabled()
+    fireEvent.click(busy)
+    expect(createInvoice).toHaveBeenCalledTimes(1)
+  })
+
+  it('disables the header create button once the request is open', async () => {
+    pinInFlight()
+    render(<LeadInvoicesClient {...base} invoices={[invoice({ id: 'i-sent' })]} acceptedProposals={[]} />)
+    fireEvent.click(screen.getByRole('button', { name: /\+ new invoice/i }))
+
+    const busy = await screen.findByRole('button', { name: /^creating…$/i })
+    expect(busy).toBeDisabled()
+    fireEvent.click(busy)
+    expect(createInvoice).toHaveBeenCalledTimes(1)
   })
 })

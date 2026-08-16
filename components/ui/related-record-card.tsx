@@ -43,12 +43,17 @@ function Row({ row }: { row: RelatedRow }) {
 }
 
 function RelatedRecordCard({
-  title, count, rows, previewLimit = 3, newLabel = "+ New", onNew,
-  emptyTitle, emptyCtaLabel, onEmptyCta, footer, className,
+  title, count, rows, previewLimit = 3, newLabel = "+ New", onNew, newDisabled,
+  emptyTitle, emptyCtaLabel, onEmptyCta, emptyCtaDisabled, footer, className,
 }: {
   title: string; count: number; rows: RelatedRow[]; previewLimit?: number
   newLabel?: string; onNew?: () => void; emptyTitle: string; emptyCtaLabel: string
   onEmptyCta?: () => void; footer?: React.ReactNode; className?: string
+  /** Both default to enabled, so a caller that tracks no in-flight state is
+   *  unaffected. A create handler that mints a fresh id per call has no
+   *  data-layer backstop, so the caller must be able to shut the button while
+   *  its request is open or a double-click writes two records. */
+  newDisabled?: boolean; emptyCtaDisabled?: boolean
 }) {
   const shown = rows.slice(0, previewLimit)
   return (
@@ -58,10 +63,10 @@ function RelatedRecordCard({
           <h4 className="text-[13px] font-semibold">{title}</h4>
           <span className="rounded-full bg-muted px-1.5 text-[11px] font-semibold text-muted-foreground tabular-nums">{count}</span>
         </div>
-        {onNew ? <Button variant="ghost" size="xs" onClick={onNew}>{newLabel}</Button> : null}
+        {onNew ? <Button variant="ghost" size="xs" onClick={onNew} disabled={newDisabled}>{newLabel}</Button> : null}
       </header>
       {rows.length === 0 ? (
-        <EmptyState title={emptyTitle} action={<Button variant="outline" size="sm" onClick={onEmptyCta}>{emptyCtaLabel}</Button>} />
+        <EmptyState title={emptyTitle} action={<Button variant="outline" size="sm" onClick={onEmptyCta} disabled={emptyCtaDisabled}>{emptyCtaLabel}</Button>} />
       ) : (
         <div>
           {shown.map((r) => <Row key={r.id} row={r} />)}

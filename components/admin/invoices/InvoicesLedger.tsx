@@ -23,9 +23,24 @@ const FILTERS: { key: FilterKey; label: string; groups: LedgerGroupKey[] | null 
   { key: 'settled', label: 'Settled', groups: ['settled'] },
 ]
 
-// Invoice · Job · Status · Total · Balance · actions. Below md the row stacks
-// into a 2-column, 3-row block instead of side-scrolling a <table>.
-const GRID = 'md:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_9.5rem_7rem_7rem_2.25rem]'
+// Invoice · Job · Status · Total · Balance · actions. Below the breakpoint the
+// row stacks into a 2-column, 3-row block instead of side-scrolling a <table>.
+//
+// A pixel breakpoint, not `md:` — same reason as the editor's `min-[1200px]:`
+// (see InvoiceEditorClient): Tailwind breakpoints are viewport-based but `main`
+// is not, because the md:w-56 sidebar takes 224px off it. At a 768px viewport
+// `md:` fired with main at 544px: minus px-4 → 512, minus 412px of fixed tracks
+// (9.5+7+7+2.25rem) and 60px of gaps, the two flexible columns split 40px —
+// which is why every job name rendered as "Nin…". At 1000px main is 776 → 744
+// of content → 272px for the pair, so at 1.6fr/1fr the invoice gets ~167px and
+// the job ~105px, enough for a real name. Below it the stacked block shows the
+// name in full, so the table must not appear until it beats that.
+//
+// Every `max-[1000px]:` / `min-[1000px]:` pair below is exactly complementary
+// (`width < 1000px` vs `width >= 1000px`). Do NOT "fix" the max side to 999px:
+// Tailwind v4 compiles `max-[999px]:` to `width < 999px`, which leaves a 999px
+// viewport matching NEITHER layout.
+const GRID = 'min-[1000px]:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_9.5rem_7rem_7rem_2.25rem]'
 
 function formatDue(dueDate: string): string {
   return new Date(dueDate.slice(0, 10) + 'T00:00:00Z').toLocaleDateString('en-US', {
@@ -92,12 +107,12 @@ function LedgerRowItem({ row, orgSlug }: { row: LedgerRow; orgSlug: string }) {
       data-testid="invoice-ledger-row"
       className={cn(
         'grid gap-x-3 gap-y-1 border-b border-border px-4 py-2.5 text-sm last:border-b-0 hover:bg-muted/50',
-        'max-md:grid-cols-[minmax(0,1fr)_auto] md:items-center',
+        'max-[1000px]:grid-cols-[minmax(0,1fr)_auto] min-[1000px]:items-center',
         GRID
       )}
     >
       {/* Invoice */}
-      <div className="min-w-0 max-md:col-start-1 max-md:row-start-1">
+      <div className="min-w-0 max-[1000px]:col-start-1 max-[1000px]:row-start-1">
         <Link
           href={`/${orgSlug}/leads/${row.leadId}/invoices/${row.id}`}
           className="block truncate font-medium text-[var(--link)] hover:underline"
@@ -110,30 +125,30 @@ function LedgerRowItem({ row, orgSlug }: { row: LedgerRow; orgSlug: string }) {
       </div>
 
       {/* Job — the LEAD name, which is what listLeads gives us, not the customer's */}
-      <div className="flex min-w-0 items-baseline gap-1 max-md:col-start-1 max-md:row-start-2">
-        <span className="text-xs text-muted-foreground md:sr-only">Job</span>
-        <span className="truncate text-xs text-muted-foreground md:text-sm md:text-foreground">
+      <div className="flex min-w-0 items-baseline gap-1 max-[1000px]:col-start-1 max-[1000px]:row-start-2">
+        <span className="text-xs text-muted-foreground min-[1000px]:sr-only">Job</span>
+        <span className="truncate text-xs text-muted-foreground min-[1000px]:text-sm min-[1000px]:text-foreground">
           {row.clientName || '—'}
         </span>
       </div>
 
       {/* Status + the due date the old table never rendered */}
-      <div className="flex flex-col gap-0.5 max-md:col-start-2 max-md:row-start-1 max-md:items-end">
+      <div className="flex flex-col gap-0.5 max-[1000px]:col-start-2 max-[1000px]:row-start-1 max-[1000px]:items-end">
         <StatusPill tone={row.pill.tone}>{row.pill.label}</StatusPill>
         <DueNote row={row} />
       </div>
 
       {/* Total */}
-      <div className="flex items-baseline gap-1 max-md:col-start-1 max-md:row-start-3 md:justify-end">
-        <span className="text-xs text-muted-foreground md:sr-only">Total</span>
-        <span className="text-xs tabular-nums text-muted-foreground md:text-sm">
+      <div className="flex items-baseline gap-1 max-[1000px]:col-start-1 max-[1000px]:row-start-3 min-[1000px]:justify-end">
+        <span className="text-xs text-muted-foreground min-[1000px]:sr-only">Total</span>
+        <span className="text-xs tabular-nums text-muted-foreground min-[1000px]:text-sm">
           {money2(row.total)}
         </span>
       </div>
 
       {/* Balance — negative when overpaid; that is money in hand, so it reads as money */}
-      <div className="flex items-baseline gap-1 max-md:col-start-2 max-md:row-start-2 max-md:justify-end md:justify-end">
-        <span className="text-xs text-muted-foreground md:sr-only">Balance</span>
+      <div className="flex items-baseline gap-1 max-[1000px]:col-start-2 max-[1000px]:row-start-2 max-[1000px]:justify-end min-[1000px]:justify-end">
+        <span className="text-xs text-muted-foreground min-[1000px]:sr-only">Balance</span>
         <span
           className={cn(
             'font-medium tabular-nums',
@@ -144,7 +159,7 @@ function LedgerRowItem({ row, orgSlug }: { row: LedgerRow; orgSlug: string }) {
         </span>
       </div>
 
-      <div className="max-md:col-start-2 max-md:row-start-3 justify-self-end">
+      <div className="max-[1000px]:col-start-2 max-[1000px]:row-start-3 justify-self-end">
         <RowActions row={row} orgSlug={orgSlug} />
       </div>
     </div>
@@ -155,7 +170,7 @@ function ColumnHeader() {
   return (
     <div
       className={cn(
-        'hidden border-b border-border px-4 py-2 text-[11px] font-semibold uppercase tracking-[.04em] text-muted-foreground md:grid md:items-center',
+        'hidden border-b border-border px-4 py-2 text-[11px] font-semibold uppercase tracking-[.04em] text-muted-foreground min-[1000px]:grid min-[1000px]:items-center',
         GRID
       )}
     >

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { describe, it, expect, vi } from 'vitest'
-import { act, render, screen } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 
 // The dialog is controlled, so every test needs an owner for `open`. This one
@@ -36,13 +36,23 @@ describe('ConfirmDialog', () => {
     expect(confirmButton()).toBeInTheDocument()
   })
 
+  // Both dismissal tests assert the dialog actually CLOSED, not just that the
+  // verb stayed unrun. `onConfirm` is reachable only from the confirm Button's
+  // own onClick, so "not called" is true even if the dismissal is entirely
+  // broken — a mutation that disabled Escape, and one that stopped Cancel from
+  // closing, both left the suite green. The disappearance of the verb is the
+  // part that can fail.
   it('Cancel closes without running the action', async () => {
     const { default: userEvent } = await import('@testing-library/user-event')
     const user = userEvent.setup()
     const onConfirm = vi.fn()
     render(<Harness onConfirm={onConfirm} />)
+    expect(confirmButton()).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: /cancel/i }))
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: 'Void invoice' })).toBeNull()
+    })
     expect(onConfirm).not.toHaveBeenCalled()
   })
 
@@ -51,8 +61,12 @@ describe('ConfirmDialog', () => {
     const user = userEvent.setup()
     const onConfirm = vi.fn()
     render(<Harness onConfirm={onConfirm} />)
+    expect(confirmButton()).toBeInTheDocument()
 
     await user.keyboard('{Escape}')
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: 'Void invoice' })).toBeNull()
+    })
     expect(onConfirm).not.toHaveBeenCalled()
   })
 

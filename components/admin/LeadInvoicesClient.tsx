@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Check, Link2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -36,13 +36,25 @@ export function LeadInvoicesClient({ orgId, orgSlug, leadId, invoices, acceptedP
   const [genType, setGenType] = useState<InvoiceType>('deposit')
   const [generating, setGenerating] = useState(false)
 
+  // `createInvoice` mints a fresh id and does an unconditional set(), so there is
+  // no data-layer backstop: a second call while the first is open writes a second
+  // draft. `newDisabled`/`emptyCtaDisabled` shut the button on the next paint, but
+  // two activations inside one commit window read the same pre-click closure and
+  // both see `creating === false` — so the ref is the guard that actually holds,
+  // exactly as in ConfirmButton (components/ui/confirm-dialog.tsx).
+  const creatingRef = useRef(false)
+
   async function handleCreate() {
+    if (creatingRef.current) return
+    creatingRef.current = true
     setCreating(true); setError(null)
     try {
       const created = await createInvoice(orgId, leadId, {})
       router.push(`/${orgSlug}/leads/${leadId}/invoices/${created.id}`)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to create invoice')
+      // Re-arm only on failure; success navigates away, so the button stays shut.
+      creatingRef.current = false
       setCreating(false)
     }
   }
@@ -190,9 +202,11 @@ export function LeadInvoicesClient({ orgId, orgSlug, leadId, invoices, acceptedP
         // Exactly one create affordance per state: the empty state owns the CTA
         // when there is nothing to list, the header owns it once rows exist.
         onNew={rows.length > 0 ? handleCreate : undefined}
+        newDisabled={creating}
         emptyTitle="No invoices yet"
         emptyCtaLabel={creating ? 'Creating…' : 'Create invoice'}
         onEmptyCta={handleCreate}
+        emptyCtaDisabled={creating}
         footer={footer}
       />
     </div>
