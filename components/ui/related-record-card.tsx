@@ -6,13 +6,17 @@ import { Button } from "@/components/ui/button"
 export type RelatedRow = {
   id: string; title: string; subtitle?: string; badge?: React.ReactNode
   amount?: string; amountTone?: "default" | "money" | "alert"; href?: string
+  /** Interactive controls (buttons, menus). Rendered OUTSIDE the row's anchor —
+   *  `<a>` excludes interactive descendants, so a button nested in the link is
+   *  invalid HTML and leaves keyboard/AT focus order unreliable. */
+  actions?: React.ReactNode
 }
 
 const amountClass = { default: "", money: "text-[var(--money-green)]", alert: "text-destructive" } as const
 
 function Row({ row }: { row: RelatedRow }) {
   const body = (
-    <div className="flex items-center justify-between gap-3 px-3 py-2">
+    <div className={cn("flex items-center justify-between gap-3 py-2", row.actions ? "pl-3 pr-2" : "px-3")}>
       <div className="min-w-0">
         <p className="truncate text-[13px] font-medium text-foreground">{row.title}</p>
         {row.subtitle ? <p className="truncate text-xs text-muted-foreground">{row.subtitle}</p> : null}
@@ -23,8 +27,19 @@ function Row({ row }: { row: RelatedRow }) {
       </div>
     </div>
   )
-  return row.href ? <Link href={row.href} className="block border-t border-border first:border-t-0 hover:bg-muted/50">{body}</Link>
-    : <div className="border-t border-border first:border-t-0">{body}</div>
+  // No actions: the anchor (or plain div) *is* the row, exactly as before.
+  if (!row.actions) {
+    return row.href ? <Link href={row.href} className="block border-t border-border first:border-t-0 hover:bg-muted/50">{body}</Link>
+      : <div className="border-t border-border first:border-t-0">{body}</div>
+  }
+  // With actions: a flex container owns the row chrome so the controls sit
+  // beside the link rather than inside it, and hovering anywhere still tints.
+  return (
+    <div className={cn("flex items-center border-t border-border first:border-t-0", row.href && "hover:bg-muted/50")}>
+      {row.href ? <Link href={row.href} className="block min-w-0 flex-1">{body}</Link> : <div className="min-w-0 flex-1">{body}</div>}
+      <div className="flex shrink-0 items-center gap-1 pr-3">{row.actions}</div>
+    </div>
+  )
 }
 
 function RelatedRecordCard({

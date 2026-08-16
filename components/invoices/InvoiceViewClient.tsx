@@ -1,5 +1,6 @@
 import type { PublicInvoice } from '@/actions/invoices-public'
 import { lineItemSubtotal } from '@/lib/invoices'
+import { StatusPill } from '@/components/ui/status-pill'
 
 // Plain presentational component — read-only, no handlers, so no 'use client'.
 // Document-shaped page (no stacked cards): a single sheet mirroring the
@@ -44,10 +45,12 @@ export function InvoiceViewClient({ invoice }: { invoice: PublicInvoice }) {
 
   return (
     <main className="min-h-screen bg-muted/30 py-10 print:bg-white print:py-0">
-      <div className="invoice-document mx-auto max-w-3xl rounded-lg bg-white px-10 py-12 shadow-sm max-md:px-5 max-md:py-8 print:rounded-none print:shadow-none">
-        {/* Header: logo + from (left) — number/status/dates (right) */}
-        <header className="flex items-start justify-between gap-6 border-b pb-8">
-          <div>
+      <div className="invoice-document mx-auto max-w-3xl rounded-lg bg-card px-10 py-12 shadow-sm max-md:px-5 max-md:py-8 print:bg-white print:text-black print:rounded-none print:shadow-none">
+        {/* Header: logo + from (left) — number/status/dates (right). Below md the
+            two columns stack; side by side at 375px both wrap hard, and neither
+            column can shrink without min-w-0 (long address / long title). */}
+        <header className="flex items-start justify-between gap-6 border-b pb-8 max-md:flex-col max-md:gap-3">
+          <div className="min-w-0">
             {invoice.from?.logo_url && (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={invoice.from.logo_url} alt="" className="mb-3 h-12 object-contain" />
@@ -61,15 +64,15 @@ export function InvoiceViewClient({ invoice }: { invoice: PublicInvoice }) {
               </>
             )}
           </div>
-          <div className="text-right">
+          <div className="min-w-0 max-md:text-left md:text-right">
             {/* Document identity, not the focal figure — the balance below is
                 the largest thing on the page, and stays that way. */}
             <h1 className="text-xl font-bold tracking-tight">{heading}</h1>
             {invoice.title && <p className="mt-1 text-sm text-muted-foreground">{invoice.title}</p>}
             {isPaid ? (
-              <span className="mt-2 inline-block rounded-full bg-emerald-100 px-3 py-0.5 text-xs font-semibold text-emerald-800">
-                Paid
-              </span>
+              // The shared kit pill, so the customer-facing "Paid" carries the
+              // same status tokens (and dark-mode behaviour) as the operator's.
+              <StatusPill tone="confirmed" className="mt-2">Paid</StatusPill>
             ) : (
               invoice.due_date && <p className="mt-1 text-sm text-muted-foreground">Due {invoice.due_date}</p>
             )}
@@ -119,38 +122,38 @@ export function InvoiceViewClient({ invoice }: { invoice: PublicInvoice }) {
 
         {/* Totals: right-aligned block */}
         <div className="mt-6 flex justify-end">
-          <dl className="w-full max-w-xs space-y-2 text-sm">
+          <dl className="w-full max-w-sm space-y-2 text-sm">
             <div className="flex justify-between">
               <dt className="text-muted-foreground">Subtotal</dt>
-              <dd className="font-medium">{money(invoice.subtotal)}</dd>
+              <dd className="font-medium tabular-nums">{money(invoice.subtotal)}</dd>
             </div>
             {invoice.discount_amount > 0 && (
               <div className="flex justify-between">
                 <dt className="text-muted-foreground">
                   {invoice.discount?.reason ? `Discount — ${invoice.discount.reason}` : 'Discount'}
                 </dt>
-                <dd className="font-medium">−{money(invoice.discount_amount)}</dd>
+                <dd className="font-medium tabular-nums">−{money(invoice.discount_amount)}</dd>
               </div>
             )}
             {invoice.tax_amount > 0 && (
               <div className="flex justify-between">
                 <dt className="text-muted-foreground">Tax</dt>
-                <dd className="font-medium">+{money(invoice.tax_amount)}</dd>
+                <dd className="font-medium tabular-nums">+{money(invoice.tax_amount)}</dd>
               </div>
             )}
             {invoice.credits.map((credit, i) => (
               <div key={i} className="flex justify-between">
                 <dt className="text-muted-foreground">{credit.description || 'Credit'}</dt>
-                <dd className="font-medium">−{money(credit.amount)}</dd>
+                <dd className="font-medium tabular-nums">−{money(credit.amount)}</dd>
               </div>
             ))}
             <div className="flex justify-between border-t pt-2">
               <dt className="font-semibold">Total</dt>
-              <dd className="font-semibold">{money(total)}</dd>
+              <dd className="font-semibold tabular-nums">{money(total)}</dd>
             </div>
             <div className="flex justify-between">
               <dt className="text-muted-foreground">Amount paid</dt>
-              <dd className="font-medium">{money(invoice.amount_paid)}</dd>
+              <dd className="font-medium tabular-nums">{money(invoice.amount_paid)}</dd>
             </div>
             {/* The one figure the customer opened this for — rendered once,
                 with its interpretation, matching the editor's totals block. */}
@@ -164,7 +167,7 @@ export function InvoiceViewClient({ invoice }: { invoice: PublicInvoice }) {
                 description list stays well-formed. */}
             <div
               data-testid="public-balance-note"
-              className={`text-right text-xs ${isPaid ? 'text-emerald-700' : 'text-muted-foreground'}`}
+              className={`text-right text-xs ${isPaid ? 'text-[var(--money-green)]' : 'text-muted-foreground'}`}
             >
               {balanceNote}
             </div>
