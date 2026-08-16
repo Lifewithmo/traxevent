@@ -143,6 +143,32 @@ describe('InvoicesLedger', () => {
     expect(overdue.className).toContain('--status-alert-fg')
   })
 
+  // The stacked block and the 6-column table are selected by media queries that
+  // must partition the axis exactly, or a width renders both layouts or neither.
+  it('gates the table on container width, with exactly complementary queries', () => {
+    const { container } = renderLedger()
+    const tokens = [...container.querySelectorAll<HTMLElement>('[class]')].flatMap((el) => [
+      ...el.classList,
+    ])
+
+    // Never a viewport keyword. Tailwind breakpoints are viewport-based but
+    // `main` is not: the md:w-56 sidebar takes 224px off it, so `md:` opened the
+    // table with only 544px of content and crushed every job name to "Nin…".
+    expect(tokens.filter((t) => /^(max-)?md:/.test(t))).toEqual([])
+
+    // `max-[1000px]:` is `width < 1000px`, `min-[1000px]:` is `width >= 1000px`.
+    // `max-[999px]:` would compile to `width < 999px` and leave a 999px viewport
+    // matching neither half.
+    const breakpoints = [
+      ...new Set(tokens.filter((t) => /^(max|min)-\[\d+px\]:/.test(t)).map((t) => t.split(':')[0])),
+    ].sort()
+    expect(breakpoints).toEqual(['max-[1000px]', 'min-[1000px]'])
+
+    const row = screen.getAllByTestId('invoice-ledger-row')[0]
+    expect(row.className).toContain('max-[1000px]:grid-cols-')
+    expect(row.className).toContain('min-[1000px]:grid-cols-')
+  })
+
   it('shows each group header with its own money total', () => {
     renderLedger()
     expect(screen.getByText('Overdue · 1')).toBeInTheDocument()
