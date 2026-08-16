@@ -7,7 +7,8 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
+import { EmptyState } from '@/components/ui/empty-state'
+import { StatusPill } from '@/components/ui/status-pill'
 import {
   createProposalTemplate,
   renameProposalTemplate,
@@ -57,8 +58,8 @@ export function TemplateListClient({
   }
 
   return (
-    <div className="p-6">
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+    <div className="mx-auto max-w-6xl space-y-4 p-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">Proposal templates</h1>
           <p className="text-sm text-muted-foreground">
@@ -69,45 +70,63 @@ export function TemplateListClient({
       </div>
 
       <div aria-live="polite" aria-atomic="true">
-        {error && <p className="mb-4 text-sm text-destructive">{error}</p>}
+        {error && <p className="text-sm text-destructive">{error}</p>}
       </div>
 
       {templates.length === 0 ? (
-        <Card>
-          <CardContent className="pt-6 text-sm text-muted-foreground">
-            No templates yet. Build one from scratch here, or open any proposal and choose
-            “Save as template”.
-          </CardContent>
-        </Card>
+        <div className="rounded-xl border border-border bg-card">
+          <EmptyState
+            title="No templates yet"
+            description="Build one from scratch, or open any proposal and choose “Save as template”."
+            action={
+              <Button variant="outline" size="sm" onClick={handleNew}>
+                New template
+              </Button>
+            }
+            className="py-10"
+          />
+        </div>
       ) : (
-        <div className="space-y-2">
-          {templates.map((t) => (
-            <Card key={t.id}>
-              <CardContent className="flex flex-wrap items-center justify-between gap-3 py-4">
-                <div className="min-w-0">
+        <div className="overflow-hidden rounded-xl border border-border bg-card">
+          {templates.map((t) => {
+            // Row-scoped: `busy` holds the id of the row whose action is in
+            // flight, so one row's work never freezes the rest of the library.
+            const rowBusy = busy === t.id
+            const used = t.usage_count ?? 0
+            return (
+              <div
+                key={t.id}
+                data-testid={`template-row-${t.id}`}
+                className="flex items-center gap-3 border-b border-border/60 px-4 py-2.5 last:border-b-0"
+              >
+                <div className="min-w-0 flex-1">
                   <Link
                     href={`/${orgSlug}/proposal-templates/${t.id}`}
-                    className="font-medium underline-offset-4 hover:underline"
+                    className="truncate text-sm font-medium underline-offset-4 hover:underline"
                   >
                     {t.name}
                   </Link>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="mt-0.5 truncate text-xs text-muted-foreground">
                     {[
                       t.description,
                       `${t.line_items.length} line item${t.line_items.length === 1 ? '' : 's'}`,
                       t.packages?.length ? `${t.packages.length} packages` : null,
-                      `used ${t.usage_count ?? 0}×`,
                       t.updated_at ? `updated ${t.updated_at.slice(0, 10)}` : null,
                     ]
                       .filter(Boolean)
                       .join(' · ')}
                   </p>
                 </div>
-                <div className="flex shrink-0 items-center gap-2">
+                {used > 0 ? (
+                  <StatusPill tone="confirmed">Used {used}×</StatusPill>
+                ) : (
+                  <StatusPill tone="neutral">Unused</StatusPill>
+                )}
+                <div className="flex shrink-0 items-center gap-1">
                   <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={busy !== null}
+                    variant="ghost"
+                    size="xs"
+                    disabled={rowBusy}
                     onClick={() => {
                       const name = window.prompt('Rename template:', t.name)
                       if (!name?.trim() || name.trim() === t.name) return
@@ -117,17 +136,18 @@ export function TemplateListClient({
                     Rename
                   </Button>
                   <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={busy !== null}
+                    variant="ghost"
+                    size="xs"
+                    disabled={rowBusy}
                     onClick={() => void run(t.id, async () => { await duplicateProposalTemplate(orgId, t.id) })}
                   >
                     Duplicate
                   </Button>
                   <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={busy !== null}
+                    variant="ghost"
+                    size="xs"
+                    className="text-destructive"
+                    disabled={rowBusy}
                     onClick={() => {
                       if (!window.confirm(`Delete “${t.name}”? Proposals already created from it are unaffected.`)) return
                       void run(t.id, () => deleteProposalTemplate(orgId, t.id))
@@ -136,9 +156,9 @@ export function TemplateListClient({
                     Delete
                   </Button>
                 </div>
-              </CardContent>
-            </Card>
-          ))}
+              </div>
+            )
+          })}
         </div>
       )}
     </div>

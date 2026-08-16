@@ -33,7 +33,7 @@ export function TemplateTopBar({
   busy?: boolean
 }) {
   return (
-    <header className="sticky top-0 z-40 flex items-center gap-3 border-b bg-white/95 px-4 py-2 backdrop-blur">
+    <header className="sticky top-0 z-40 flex items-center gap-3 border-b bg-card/95 px-4 py-2 backdrop-blur">
       <Link
         href={`/${orgSlug}/proposal-templates`}
         className="shrink-0 text-sm text-muted-foreground underline-offset-4 hover:underline"
