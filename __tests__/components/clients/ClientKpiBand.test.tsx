@@ -14,4 +14,15 @@ describe('ClientKpiBand', () => {
     expect(screen.getByText('$1,800')).toBeInTheDocument() // Open balance = ar.outstanding
     expect(screen.queryByText('$99,999')).not.toBeInTheDocument() // never totalWonValue
   })
+
+  it('shows "not yet due" (not "nothing outstanding") for an open balance that is not overdue', () => {
+    render(
+      <ClientKpiBand
+        ar={{ invoiced: 1500, paid: 0, outstanding: 1500, overdueAmount: 0, openCount: 1 }}
+        rollup={{ openCount: 1, wonCount: 0, lostCount: 0, totalWonValue: 0, openValue: 1500 }}
+      />
+    )
+    expect(screen.getByText('not yet due')).toBeInTheDocument()
+    expect(screen.queryByText('nothing outstanding')).not.toBeInTheDocument()
+  })
 })

@@ -27,7 +27,7 @@ export function ClientKpiBand({ ar, rollup }: ClientKpiBandProps) {
         label="Open balance"
         value={money(ar.outstanding)}
         tone={pastDue ? 'alert' : 'default'}
-        note={pastDue ? '⚠ past due' : 'nothing outstanding'}
+        note={ar.outstanding === 0 ? 'nothing outstanding' : (ar.overdueAmount > 0 ? '⚠ past due' : 'not yet due')}
       />
       <StatTile label="Jobs" value={`${rollup.wonCount} / ${totalJobs}`} note="won / total" />
       <StatTile

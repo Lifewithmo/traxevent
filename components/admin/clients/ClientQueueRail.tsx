@@ -23,13 +23,12 @@ interface ClientQueueRailProps {
   rows: ClientRow[]
 }
 
-type FilterKey = 'all' | 'active' | 'leads' | 'past_due' | 'dormant'
+type FilterKey = 'all' | 'active' | 'leads' | 'dormant'
 
 const FILTERS: { key: FilterKey; label: string }[] = [
   { key: 'all', label: 'All' },
   { key: 'active', label: 'Active' },
   { key: 'leads', label: 'Leads' },
-  { key: 'past_due', label: 'Past-due' },
   { key: 'dormant', label: 'Dormant' },
 ]
 
@@ -45,20 +44,15 @@ const GROUP_LABEL: Record<ClientGroup, string> = {
 
 // AR/invoice balances aren't part of ClientRow yet (see lib/crm/client-list.ts —
 // no owed/pastDue field exists; that lands with the AR panel, plan letter D).
-// The chip stays wired up but honestly matches nothing until a real balance
-// is available on the row, rather than guessing from pipeline value.
-function isPastDue(_row: ClientRow): boolean {
-  return false
-}
-
+// A "Past-due" filter chip returns once per-customer AR is surfaced on the row;
+// until then there's no real predicate to back it, so it's omitted rather than
+// wired up to something that always returns false.
 function matchesFilter(row: ClientRow, filter: FilterKey): boolean {
   switch (filter) {
     case 'all':
       return true
     case 'dormant':
       return row.group === 'dormant_repeat'
-    case 'past_due':
-      return isPastDue(row)
     case 'active':
       return row.group !== 'dormant_repeat' && row.rollup.wonCount > 0
     case 'leads':

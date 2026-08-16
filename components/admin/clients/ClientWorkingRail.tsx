@@ -267,7 +267,10 @@ export function ClientWorkingRail({ orgId, orgSlug, customer, opportunities, inv
   }
 
   function goToInvoices() {
-    if (mostRecentLeadId) router.push(`/${orgSlug}/leads/${mostRecentLeadId}/invoices`)
+    // No standalone invoices list route exists for a lead — invoices render
+    // inside the lead detail page itself (only .../invoices/[invoiceId]
+    // has a page.tsx). Route to the lead detail, not a nonexistent list page.
+    if (mostRecentLeadId) router.push(`/${orgSlug}/leads/${mostRecentLeadId}`)
     else setCreatingJob(true)
   }
 
