@@ -8,6 +8,7 @@ import { StatusPill, type pillVariants } from '@/components/ui/status-pill'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { createResource, updateResource, deleteResource } from '@/actions/resources'
+import { resolveDimension } from '@/lib/ops/units'
 import { formatMoney } from '@/lib/utils'
 import type { OpsResource, WorkPackage, ResourceKind } from '@/lib/types'
 import type { VariantProps } from 'class-variance-authority'
@@ -78,28 +79,61 @@ export function ResourcesTab({ orgId, isAdmin, resources, setResources, packages
     }
   }
 
+  // Both inline editors are uncontrolled (defaultValue + onBlur + an equality
+  // guard), and this tab is never remounted — so a rejected write would leave
+  // the typed-but-unsaved value sitting in the DOM for the rest of the session,
+  // reading as saved. Put the persisted value back by hand when a write fails.
+  function restoreInput(ref: HTMLInputElement | null | undefined, persisted: string) {
+    if (ref) ref.value = persisted
+  }
+
   // `null` is not "omit" here: lib/ops/resources.ts turns a null field into a
   // FieldValue.delete(), which is the only way to clear one — omitting it means
   // "leave it alone". Clearing the unit also re-resolves `dimension` server-side.
   async function handleUnitChange(r: OpsResource, value: string) {
     const unit = value.trim() === '' ? null : value.trim()
+    // Error/`saving` are cleared at the request boundary, not before the guard:
+    // tabbing through an untouched field starts no write, so it must not
+    // dismiss a warning about an edit that really did fail.
     if (unit === (r.unit ?? null)) return
+    setSaving(true); setError(null)
     try {
       await updateResource(orgId, r.id, { unit })
-      setResources((prev) => prev.map((x) => (x.id === r.id ? { ...x, unit: unit ?? undefined } : x)))
+      // updateResource resolves to void, so the server's re-derived `dimension`
+      // never comes back — mirror it exactly. lib/ops/resources.ts:71-73 calls
+      // `resolveDimension({ unit: updates.unit ?? undefined })`: only the unit
+      // is passed, because resolveDimension returns any dimension it is handed
+      // (units.ts:50) and passing the old one would just echo it back. Skip
+      // this and the client keeps a stale dimension all session; since tabs are
+      // kept mounted, unitOptionsForResource then offers the wrong dimension's
+      // units on the packages tab and convert() drops the line as a gap.
+      setResources((prev) =>
+        prev.map((x) =>
+          x.id === r.id
+            ? { ...x, unit: unit ?? undefined, dimension: resolveDimension({ unit: unit ?? undefined }) }
+            : x
+        )
+      )
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to save')
+      restoreInput(unitRefs.current[r.id], r.unit ?? '')
+    } finally {
+      setSaving(false)
     }
   }
 
   async function handleCostChange(r: OpsResource, value: string) {
     const unit_cost = value === '' ? null : Number(value)
     if (unit_cost === (r.unit_cost ?? null)) return
+    setSaving(true); setError(null)
     try {
       await updateResource(orgId, r.id, { unit_cost })
       setResources((prev) => prev.map((x) => (x.id === r.id ? { ...x, unit_cost: unit_cost ?? undefined } : x)))
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to save')
+      restoreInput(costRefs.current[r.id], r.unit_cost !== undefined ? String(r.unit_cost) : '')
+    } finally {
+      setSaving(false)
     }
   }
 

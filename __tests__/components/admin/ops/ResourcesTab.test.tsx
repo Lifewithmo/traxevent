@@ -37,6 +37,12 @@ const syrup: OpsResource = {
   id: 'r5', name: 'Vanilla syrup', kind: 'consumable', unit_cost: 0.12,
   created_at: '2026-08-01T00:00:00.000Z',
 }
+// Carries an explicit `dimension`, so a stale client copy is visible: it was
+// stored as 'count' when the resource was created without a unit.
+const milk: OpsResource = {
+  id: 'r6', name: 'Whole milk', kind: 'consumable', unit_cost: 0.03, dimension: 'count',
+  created_at: '2026-08-01T00:00:00.000Z',
+}
 const pkg: WorkPackage = {
   id: 'p1', name: 'Espresso Bar', price: 900,
   lines: [{ kind: 'consumable', resource_id: 'r1', qty_per_guest: 0.75 }],
@@ -63,7 +69,9 @@ function Shell({
       />
       {showState && (
         <div data-testid="shell-state">
-          {resources.map((r) => `${r.name}=${r.unit ?? '-'}@${r.unit_cost ?? '-'}`).join('|')}
+          {resources
+            .map((r) => `${r.name}=${r.unit ?? '-'}@${r.unit_cost ?? '-'}#${r.dimension ?? '-'}`)
+            .join('|')}
         </div>
       )}
     </>
@@ -174,6 +182,86 @@ describe('ResourcesTab', () => {
     render(<Shell initialResources={[beans]} packages={[]} />)
     fireEvent.blur(screen.getByLabelText('Unit for Espresso beans'), { target: { value: '  ' } })
     await waitFor(() => expect(updateResource).toHaveBeenCalledWith('o1', 'r1', { unit: null }))
+  })
+
+  // Regression guard: updateResource resolves to void, so the `dimension` the
+  // server re-derives on every unit write (lib/ops/resources.ts:71-73) never
+  // comes back. The client used to keep the old one, and because the tabs are
+  // kept mounted, unitOptionsForResource then offered count units for a weight
+  // resource — convert() returned null and the package read "Not costed" until
+  // a reload silently fixed it.
+  it('re-derives the dimension locally when a unit is added, as the server does', async () => {
+    render(<Shell initialResources={[milk]} packages={[]} showState />)
+    fireEvent.blur(screen.getByLabelText('Unit for Whole milk'), { target: { value: 'oz' } })
+    await waitFor(() => expect(updateResource).toHaveBeenCalledWith('o1', 'r6', { unit: 'oz' }))
+    // resolveDimension({ unit: 'oz' }) === 'weight' — 'oz' is weight in units.ts.
+    await waitFor(() =>
+      expect(screen.getByTestId('shell-state')).toHaveTextContent('Whole milk=oz@0.03#weight')
+    )
+  })
+
+  // The mirror case: the server's re-derivation falls back to 'count' with no
+  // unit to infer from, so a client left on 'weight' is wrong in the other
+  // direction.
+  it('re-derives the dimension locally when a unit is cleared', async () => {
+    const weighed: OpsResource = { ...milk, unit: 'oz', dimension: 'weight' }
+    render(<Shell initialResources={[weighed]} packages={[]} showState />)
+    fireEvent.blur(screen.getByLabelText('Unit for Whole milk'), { target: { value: '' } })
+    await waitFor(() => expect(updateResource).toHaveBeenCalledWith('o1', 'r6', { unit: null }))
+    await waitFor(() =>
+      expect(screen.getByTestId('shell-state')).toHaveTextContent('Whole milk=-@0.03#count')
+    )
+  })
+
+  // The inputs are uncontrolled and this tab never remounts, so a rejected
+  // write must not leave its value on screen — the ledger would keep showing a
+  // unit nothing ever persisted.
+  it('surfaces a rejected unit write and drops the unpersisted value', async () => {
+    vi.mocked(updateResource).mockRejectedValueOnce(new Error('Permission denied'))
+    render(<Shell initialResources={[beans]} packages={[]} showState />)
+    const input = screen.getByLabelText('Unit for Espresso beans')
+    fireEvent.blur(input, { target: { value: 'lb' } })
+    expect(await screen.findByText('Permission denied')).toBeInTheDocument()
+    expect(input).toHaveValue('oz')
+    expect(screen.getByTestId('shell-state')).toHaveTextContent('Espresso beans=oz@0.55')
+  })
+
+  it('surfaces a rejected cost write and drops the unpersisted value', async () => {
+    vi.mocked(updateResource).mockRejectedValueOnce(new Error('Permission denied'))
+    render(<Shell initialResources={[beans]} packages={[]} showState />)
+    const input = screen.getByLabelText('Unit cost for Espresso beans')
+    fireEvent.blur(input, { target: { value: '9.99' } })
+    expect(await screen.findByText('Permission denied')).toBeInTheDocument()
+    expect(input).toHaveValue(0.55)
+    expect(screen.getByTestId('shell-state')).toHaveTextContent('Espresso beans=oz@0.55')
+  })
+
+  it('clears a stale failure message on the next successful edit', async () => {
+    vi.mocked(updateResource).mockRejectedValueOnce(new Error('Permission denied'))
+    render(<Shell initialResources={[beans]} packages={[]} />)
+    const input = screen.getByLabelText('Unit cost for Espresso beans')
+    fireEvent.blur(input, { target: { value: '9.99' } })
+    expect(await screen.findByText('Permission denied')).toBeInTheDocument()
+    fireEvent.blur(input, { target: { value: '0.62' } })
+    await waitFor(() => expect(updateResource).toHaveBeenCalledWith('o1', 'r1', { unit_cost: 0.62 }))
+    await waitFor(() => expect(screen.queryByText('Permission denied')).not.toBeInTheDocument())
+  })
+
+  // Deleting a row mid-write would race the write it is deleting under.
+  it('disables the row delete while an inline edit is in flight', async () => {
+    let finish: () => void = () => {}
+    vi.mocked(updateResource).mockImplementationOnce(
+      () => new Promise<void>((resolve) => { finish = resolve })
+    )
+    render(<Shell initialResources={[beans]} packages={[]} />)
+    fireEvent.blur(screen.getByLabelText('Unit for Espresso beans'), { target: { value: 'lb' } })
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Delete Espresso beans' })).toBeDisabled()
+    )
+    finish()
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Delete Espresso beans' })).toBeEnabled()
+    )
   })
 
   it('cancelling the delete dialog does not delete', async () => {
