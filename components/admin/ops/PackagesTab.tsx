@@ -74,6 +74,17 @@ function lineSummary(line: WorkPackageLine, resourceById: Map<string, OpsResourc
   return `${name} × ${line.qty}`
 }
 
+/** The single muted run under a package name: what it is made of, then how many
+ *  checklists it drags onto an event. Empty `checklist_template_ids` is
+ *  meaningful (every template for the industry runs) and is deliberately not
+ *  counted here — only an explicit attachment is worth a row-level mention. */
+function rowSummary(p: WorkPackage, resourceById: Map<string, OpsResource>): string {
+  const parts = p.lines.map((l) => lineSummary(l, resourceById))
+  const attached = p.checklist_template_ids?.length ?? 0
+  if (attached > 0) parts.push(`${attached} ${attached === 1 ? 'checklist' : 'checklists'}`)
+  return parts.join(' · ')
+}
+
 /** Every line has the fields it needs to be saved — gates the Save button. */
 function linesComplete(lines: WorkPackageLine[]): boolean {
   return lines.every((l) => {
@@ -172,6 +183,16 @@ export function PackagesTab({ orgId, isAdmin, packages, setPackages, resources, 
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // The Sheet's popup stays mounted through its slide-out animation. Gating its
+  // children on `draft` alone emptied the panel the instant it closed, so what
+  // slid off screen was a blank card. Every path that clears `draft` hands the
+  // outgoing copy to `exitingDraft` first, and the panel renders from that until
+  // Base UI reports the animation finished. State, not a ref: a ref read during
+  // render is not a render input, and an effect only runs after the empty frame
+  // has already painted — which is the bug.
+  const [exitingDraft, setExitingDraft] = useState<Draft | null>(null)
+  const sheetDraft = draft ?? exitingDraft
+
   const resourceById = new Map(resources.map((r) => [r.id, r]))
   const consumables = resources.filter((r) => r.kind === 'consumable')
   const equipment = resources.filter((r) => r.kind !== 'consumable')
@@ -239,8 +260,10 @@ export function PackagesTab({ orgId, isAdmin, packages, setPackages, resources, 
         const created = await createWorkPackage(orgId, toCreateInput(draft))
         setPackages((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)))
       }
-      setDraft(null)
+      closeEditor(draft)
     } catch (err: unknown) {
+      // Deliberately leaves `draft` set: the editor stays open with the typed
+      // values intact, and the message renders inside it (see SheetBody).
       setError(err instanceof Error ? err.message : 'Failed to save')
     } finally {
       setSaving(false)
@@ -259,7 +282,23 @@ export function PackagesTab({ orgId, isAdmin, packages, setPackages, resources, 
     }
   }
 
+  /** The one way out of the editor. It hands the draft to `exitingDraft` so the
+   *  panel still has something to render while it slides away, and it drops the
+   *  error with it — that error belongs to the editing session, and leaving it
+   *  behind would surface it on the page as if the delete path had failed. */
+  function closeEditor(outgoing: Draft | null) {
+    setExitingDraft(outgoing)
+    setDraft(null)
+    setError(null)
+  }
+
+  function newDraft() {
+    setError(null)
+    setDraft(EMPTY_DRAFT)
+  }
+
   function edit(p: WorkPackage) {
+    setError(null)
     setDraft({
       id: p.id,
       name: p.name,
@@ -284,13 +323,18 @@ export function PackagesTab({ orgId, isAdmin, packages, setPackages, resources, 
 
   return (
     <div className="space-y-4">
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {/* The delete path's error surface. While the editor is open the same
+          message renders inside the Sheet instead (the Sheet is modal, so
+          anything out here is behind a backdrop and marked inert) — the two are
+          gated on opposite sides of `draft` so the message can never render
+          twice at once. */}
+      {error && draft === null && <p role="alert" className="text-sm text-destructive">{error}</p>}
 
       {/* Exactly one "New package" affordance in either state: the empty state
           carries the CTA, otherwise this toolbar does. */}
       {isAdmin && packages.length > 0 && (
         <div className="flex justify-end">
-          <Button size="sm" onClick={() => setDraft(EMPTY_DRAFT)}>New package</Button>
+          <Button size="sm" onClick={newDraft}>New package</Button>
         </div>
       )}
 
@@ -298,7 +342,7 @@ export function PackagesTab({ orgId, isAdmin, packages, setPackages, resources, 
         <EmptyState
           title="No packages yet"
           description="Build your first offering — like an espresso bar priced for up to 100 guests."
-          action={isAdmin ? <Button onClick={() => setDraft(EMPTY_DRAFT)}>New package</Button> : undefined}
+          action={isAdmin ? <Button onClick={newDraft}>New package</Button> : undefined}
         />
       ) : (
         <div className="overflow-hidden rounded-lg border border-border bg-card">
@@ -312,7 +356,9 @@ export function PackagesTab({ orgId, isAdmin, packages, setPackages, resources, 
             <span className="min-w-0 flex-1">Package</span>
             <span className="w-20 shrink-0 text-right sm:w-24">Price</span>
             <span className="w-32 shrink-0 text-right sm:w-40">Materials</span>
-            {isAdmin && <span className="w-8 shrink-0" />}
+            {/* w-7 == the `icon-sm` trigger below (size-7). At w-8 the heading
+                row ran 4px wider than the column it labels. */}
+            {isAdmin && <span className="w-7 shrink-0" />}
           </div>
 
           {groups.map((group) => (
@@ -328,8 +374,13 @@ export function PackagesTab({ orgId, isAdmin, packages, setPackages, resources, 
                           <span className="truncate text-[13px] font-medium text-foreground">{p.name}</span>
                           {p.max_guests !== undefined && <StatusPill tone="neutral">up to {p.max_guests} guests</StatusPill>}
                         </div>
+                        {/* The attached-checklist count rides in the same run as
+                            the lines. The card list named the templates on their
+                            own line; a ledger row can't carry that, but "which
+                            events run extra checklists" must not become invisible
+                            until someone opens the editor. */}
                         <p className="truncate text-xs text-muted-foreground">
-                          {p.lines.map((l) => lineSummary(l, resourceById)).join(' · ')}
+                          {rowSummary(p, resourceById)}
                         </p>
                       </div>
                       <div className="w-20 shrink-0 text-right sm:w-24">
@@ -345,7 +396,13 @@ export function PackagesTab({ orgId, isAdmin, packages, setPackages, resources, 
                       </div>
                       {isAdmin && (
                         <Menu>
-                          <MenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label={`Actions for ${p.name}`} disabled={saving} />}>
+                          {/* shrink-0: without it the trigger is the only flex
+                              child that can give, so a narrow viewport squashed
+                              it below 28px and clipped its icon. */}
+                          <MenuTrigger
+                            className="shrink-0"
+                            render={<Button variant="ghost" size="icon-sm" aria-label={`Actions for ${p.name}`} disabled={saving} />}
+                          >
                             <MoreHorizontal />
                           </MenuTrigger>
                           <MenuContent>
@@ -374,57 +431,73 @@ export function PackagesTab({ orgId, isAdmin, packages, setPackages, resources, 
       {/* The editor is a right-side panel, not a form appended below the list:
           with a dozen packages, editing the first used to render the form
           ~2000px below it with no scroll, no focus move and no link to the row. */}
-      <Sheet open={isAdmin && draft !== null} onOpenChange={(open) => { if (!open) setDraft(null) }}>
+      <Sheet
+        open={isAdmin && draft !== null}
+        onOpenChange={(open) => { if (!open) closeEditor(draft) }}
+        // Base UI keeps the popup mounted for its exit animation and calls this
+        // once the animation has finished — the point at which the outgoing
+        // draft is finally safe to drop.
+        onOpenChangeComplete={(open) => { if (!open) setExitingDraft(null) }}
+      >
         <SheetContent className="sm:max-w-xl">
-          {draft && (
+          {sheetDraft && (
             <>
               <SheetHeader>
                 {/* Deliberately not `Edit {draft.name}`: the row behind carries that
                     name, and rendering it twice makes every name query ambiguous. */}
-                <SheetTitle>{draft.id ? 'Edit package' : 'New package'}</SheetTitle>
+                <SheetTitle>{sheetDraft.id ? 'Edit package' : 'New package'}</SheetTitle>
                 <SheetDescription>
                   Lines drive the prep list on every event and the materials figure in the ledger.
                 </SheetDescription>
               </SheetHeader>
 
               <SheetBody className="space-y-4">
+                {/* A failed save leaves the editor open, so this is the only place
+                    the operator can actually see why. The page-level <p> is behind
+                    the backdrop and inert; before this, Save simply re-enabled and
+                    nothing on screen changed. Gated on `draft` (not `sheetDraft`)
+                    so it is never on screen at the same time as the page-level one. */}
+                {error && draft !== null && (
+                  <p role="alert" className="text-sm text-destructive">{error}</p>
+                )}
+
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div>
                     <Label htmlFor="pkg-name">Name</Label>
-                    <Input id="pkg-name" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
+                    <Input id="pkg-name" value={sheetDraft.name} onChange={(e) => setDraft((d) => d && { ...d, name: e.target.value })} />
                   </div>
                   <div>
                     <Label htmlFor="pkg-price">Price ($)</Label>
-                    <Input id="pkg-price" type="number" step="0.01" value={draft.price} onChange={(e) => setDraft({ ...draft, price: e.target.value })} />
+                    <Input id="pkg-price" type="number" step="0.01" value={sheetDraft.price} onChange={(e) => setDraft((d) => d && { ...d, price: e.target.value })} />
                   </div>
                   <div>
                     <Label htmlFor="pkg-guests">Max guests</Label>
-                    <Input id="pkg-guests" type="number" value={draft.max_guests} onChange={(e) => setDraft({ ...draft, max_guests: e.target.value })} />
+                    <Input id="pkg-guests" type="number" value={sheetDraft.max_guests} onChange={(e) => setDraft((d) => d && { ...d, max_guests: e.target.value })} />
                   </div>
                   <div>
                     <Label htmlFor="pkg-desc">Description</Label>
-                    <Input id="pkg-desc" value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} />
+                    <Input id="pkg-desc" value={sheetDraft.description} onChange={(e) => setDraft((d) => d && { ...d, description: e.target.value })} />
                   </div>
                   <div>
                     <Label htmlFor="pkg-scope">Customer-facing scope</Label>
-                    <Input id="pkg-scope" value={draft.scope} onChange={(e) => setDraft({ ...draft, scope: e.target.value })} />
+                    <Input id="pkg-scope" value={sheetDraft.scope} onChange={(e) => setDraft((d) => d && { ...d, scope: e.target.value })} />
                   </div>
                   {/* Setup/teardown get their own row instead of sharing one cell. */}
                   <div className="grid grid-cols-1 gap-3 sm:col-span-2 sm:grid-cols-2">
                     <div>
                       <Label htmlFor="pkg-setup">Setup (min)</Label>
-                      <Input id="pkg-setup" type="number" value={draft.setup_minutes} onChange={(e) => setDraft({ ...draft, setup_minutes: e.target.value })} />
+                      <Input id="pkg-setup" type="number" value={sheetDraft.setup_minutes} onChange={(e) => setDraft((d) => d && { ...d, setup_minutes: e.target.value })} />
                     </div>
                     <div>
                       <Label htmlFor="pkg-teardown">Teardown (min)</Label>
-                      <Input id="pkg-teardown" type="number" value={draft.teardown_minutes} onChange={(e) => setDraft({ ...draft, teardown_minutes: e.target.value })} />
+                      <Input id="pkg-teardown" type="number" value={sheetDraft.teardown_minutes} onChange={(e) => setDraft((d) => d && { ...d, teardown_minutes: e.target.value })} />
                     </div>
                   </div>
                 </div>
 
                 <div className="space-y-2">
                   <p className="text-sm font-medium">Lines</p>
-                  {draft.lines.map((line, i) => (
+                  {sheetDraft.lines.map((line, i) => (
                     <div key={i} className="flex flex-wrap items-center gap-2">
                       {line.kind === 'consumable' && (
                         <>
@@ -516,22 +589,22 @@ export function PackagesTab({ orgId, isAdmin, packages, setPackages, resources, 
                         </>
                       )}
                       <Button variant="ghost" size="sm" aria-label={`Remove line ${i + 1}`}
-                        onClick={() => setDraft({ ...draft, lines: draft.lines.filter((_, idx) => idx !== i) })}>
+                        onClick={() => setDraft((d) => d && { ...d, lines: d.lines.filter((_, idx) => idx !== i) })}>
                         ✕
                       </Button>
                     </div>
                   ))}
                   <div className="flex flex-wrap gap-2">
                     <Button variant="outline" size="sm"
-                      onClick={() => setDraft({ ...draft, lines: [...draft.lines, { kind: 'consumable', resource_id: '', qty_per_guest: { qty: 0, unit: 'each' } }] })}>
+                      onClick={() => setDraft((d) => d && { ...d, lines: [...d.lines, { kind: 'consumable', resource_id: '', qty_per_guest: { qty: 0, unit: 'each' } }] })}>
                       Add consumable
                     </Button>
                     <Button variant="outline" size="sm"
-                      onClick={() => setDraft({ ...draft, lines: [...draft.lines, { kind: 'equipment', resource_id: '', qty: 1 }] })}>
+                      onClick={() => setDraft((d) => d && { ...d, lines: [...d.lines, { kind: 'equipment', resource_id: '', qty: 1 }] })}>
                       Add equipment
                     </Button>
                     <Button variant="outline" size="sm"
-                      onClick={() => setDraft({ ...draft, lines: [...draft.lines, { kind: 'labor', role: '', count: 1 }] })}>
+                      onClick={() => setDraft((d) => d && { ...d, lines: [...d.lines, { kind: 'labor', role: '', count: 1 }] })}>
                       Add labor
                     </Button>
                   </div>
@@ -545,13 +618,13 @@ export function PackagesTab({ orgId, isAdmin, packages, setPackages, resources, 
                       <input
                         type="checkbox"
                         aria-label={`Attach ${t.name}`}
-                        checked={draft.checklist_template_ids.includes(t.id)}
+                        checked={sheetDraft.checklist_template_ids.includes(t.id)}
                         onChange={(e) =>
-                          setDraft({
-                            ...draft,
+                          setDraft((d) => d && {
+                            ...d,
                             checklist_template_ids: e.target.checked
-                              ? [...draft.checklist_template_ids, t.id]
-                              : draft.checklist_template_ids.filter((id) => id !== t.id),
+                              ? [...d.checklist_template_ids, t.id]
+                              : d.checklist_template_ids.filter((id) => id !== t.id),
                           })
                         }
                       />
@@ -562,26 +635,30 @@ export function PackagesTab({ orgId, isAdmin, packages, setPackages, resources, 
               </SheetBody>
 
               <SheetFooter>
-                <Button variant="outline" onClick={() => setDraft(null)} disabled={saving}>Cancel</Button>
-                <Button onClick={handleSave} disabled={saving || !draft.name.trim() || !linesComplete(draft.lines)}>Save package</Button>
+                <Button variant="outline" onClick={() => closeEditor(draft)} disabled={saving}>Cancel</Button>
+                <Button onClick={handleSave} disabled={saving || !sheetDraft.name.trim() || !linesComplete(sheetDraft.lines)}>Save package</Button>
               </SheetFooter>
             </>
           )}
         </SheetContent>
       </Sheet>
 
-      {pendingDelete && (
-        <ConfirmDialog
-          open
-          onOpenChange={(open) => { if (!open) setPendingDelete(null) }}
-          title={`Delete “${pendingDelete.name}”?`}
-          description={DELETE_WARNING}
-          confirmLabel="Delete"
-          destructive
-          pending={saving}
-          onConfirm={() => handleDelete(pendingDelete)}
-        />
-      )}
+      {/* Always mounted, like both sibling tabs. Mounting it conditionally tore
+          the Dialog out in the same commit that closed it, so Base UI never got
+          to restore focus to the row's trigger and keyboard focus fell to
+          <body>. `title` needs a null fallback now that the component outlives
+          `pendingDelete`; it only ever paints during the close animation.
+          `description` is the verbatim soft-delete warning either way. */}
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => { if (!open) setPendingDelete(null) }}
+        title={pendingDelete ? `Delete “${pendingDelete.name}”?` : 'Delete package?'}
+        description={DELETE_WARNING}
+        confirmLabel="Delete"
+        destructive
+        pending={saving}
+        onConfirm={() => { if (pendingDelete) handleDelete(pendingDelete) }}
+      />
     </div>
   )
 }

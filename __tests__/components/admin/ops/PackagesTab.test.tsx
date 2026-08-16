@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 vi.mock('@/actions/work-packages', () => ({
@@ -56,6 +56,15 @@ const pourOverBar: WorkPackage = {
 const shotBar: WorkPackage = {
   id: 'p3', name: 'Shot Bar', price: 700, max_guests: 100,
   lines: [{ kind: 'consumable', resource_id: 'r1', qty_per_guest: { qty: 2, unit: 'shot' } }],
+  created_at: '2026-08-01T00:00:00.000Z',
+}
+// Carries both a description and two explicitly attached checklists. The ledger
+// row sheds the prose but must not silently swallow which checklists run.
+const brunchBar: WorkPackage = {
+  id: 'p5', name: 'Brunch Bar', price: 1200, max_guests: 100,
+  description: 'Pastries and drip for a slow morning',
+  lines: [{ kind: 'consumable', resource_id: 'r1', qty_per_guest: 0.5 }],
+  checklist_template_ids: ['bi-cc-prep', 'bi-cc-close'],
   created_at: '2026-08-01T00:00:00.000Z',
 }
 // One priceable line and one that can never be priced: costed, but understated.
@@ -303,5 +312,122 @@ describe('PackagesTab', () => {
 
     fireEvent.change(screen.getByLabelText('Consumable 1 qty per guest'), { target: { value: '0.5' } })
     expect(screen.getByRole('button', { name: 'Save package' })).not.toBeDisabled()
+  })
+
+  it('builds an equipment line from scratch through the sheet', async () => {
+    renderTab({ resources: [beans, machine] })
+    await openNewEditor()
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Machine Only' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add equipment' }))
+    // Equipment lists everything that is NOT a consumable — beans must not be offered.
+    const picker = screen.getByLabelText('Equipment 1 resource')
+    expect(within(picker).getByRole('option', { name: 'Espresso Machine 02' })).toBeInTheDocument()
+    expect(within(picker).queryByRole('option', { name: 'Espresso beans' })).not.toBeInTheDocument()
+    fireEvent.change(picker, { target: { value: 'r2' } })
+    fireEvent.change(screen.getByLabelText('Equipment 1 qty'), { target: { value: '2' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save package' }))
+    await waitFor(() => expect(createWorkPackage).toHaveBeenCalledWith('o1', {
+      name: 'Machine Only',
+      price: 0,
+      lines: [{ kind: 'equipment', resource_id: 'r2', qty: 2 }],
+    }))
+  })
+
+  it('builds a labor line from scratch through the sheet', async () => {
+    renderTab({ resources: [beans, machine] })
+    await openNewEditor()
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Staffed Cart' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add labor' }))
+    // A labor line with a blank role can never be saved.
+    expect(screen.getByRole('button', { name: 'Save package' })).toBeDisabled()
+    fireEvent.change(screen.getByLabelText('Labor 1 role'), { target: { value: 'barista' } })
+    fireEvent.change(screen.getByLabelText('Labor 1 count'), { target: { value: '3' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save package' }))
+    await waitFor(() => expect(createWorkPackage).toHaveBeenCalledWith('o1', {
+      name: 'Staffed Cart',
+      price: 0,
+      lines: [{ kind: 'labor', role: 'barista', count: 3 }],
+    }))
+  })
+
+  // The Sheet is modal: focus is trapped and everything outside it is inert. An
+  // error rendered in the page flow behind the backdrop is unreachable by sight
+  // OR by screen reader, so a failed save looked to the operator like nothing
+  // happened at all — they just clicked Save again.
+  it('renders a failed edit inside the open sheet, not behind its backdrop', async () => {
+    const user = userEvent.setup()
+    vi.mocked(updateWorkPackage).mockRejectedValueOnce(new Error('Unknown resource: r9'))
+    renderTab({ packages: [espressoBar], resources: [beans, machine] })
+    await openEditor(user, 'Espresso Bar')
+    fireEvent.click(screen.getByRole('button', { name: 'Save package' }))
+
+    const message = await screen.findByText('Unknown resource: r9')
+    // ...inside the sheet, which is still open so the operator can fix the line.
+    const sheet = screen.getByRole('dialog')
+    expect(within(sheet).getByText('Unknown resource: r9')).toBe(message)
+    expect(within(sheet).getByLabelText('Name')).toHaveValue('Espresso Bar')
+    expect(message).toHaveAttribute('role', 'alert')
+    // Exactly one node — the page-level surface must not double-report it.
+    expect(screen.getAllByText('Unknown resource: r9')).toHaveLength(1)
+    // Save is usable again, so the operator can retry after fixing the line.
+    expect(screen.getByRole('button', { name: 'Save package' })).not.toBeDisabled()
+  })
+
+  it('renders a failed create inside the open sheet, and keeps the draft', async () => {
+    vi.mocked(createWorkPackage).mockRejectedValueOnce(new Error('Quantities must be positive'))
+    renderTab({ resources: [beans, machine] })
+    await openNewEditor()
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Cold Brew Cart' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save package' }))
+
+    const message = await screen.findByText('Quantities must be positive')
+    const sheet = screen.getByRole('dialog')
+    expect(within(sheet).getByText('Quantities must be positive')).toBe(message)
+    // The typed draft survives the failure — retyping it would be the second insult.
+    expect(within(sheet).getByLabelText('Name')).toHaveValue('Cold Brew Cart')
+    expect(screen.getAllByText('Quantities must be positive')).toHaveLength(1)
+  })
+
+  it('dismissing the editor after a failed save does not leak the error onto the page', async () => {
+    const user = userEvent.setup()
+    vi.mocked(updateWorkPackage).mockRejectedValueOnce(new Error('Unknown resource: r9'))
+    renderTab({ packages: [espressoBar], resources: [beans, machine] })
+    await openEditor(user, 'Espresso Bar')
+    fireEvent.click(screen.getByRole('button', { name: 'Save package' }))
+    await screen.findByText('Unknown resource: r9')
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    // The error left with the editing session it belonged to — it must not
+    // resurface on the page, where it would read as a failed delete.
+    expect(screen.queryByText('Unknown resource: r9')).not.toBeInTheDocument()
+  })
+
+  // The delete path is the opposite case: ConfirmDialog closes before running the
+  // verb, so by the time this message exists there is no popup to put it in.
+  it('renders a failed delete at page level once the confirm dialog has closed', async () => {
+    const user = userEvent.setup()
+    vi.mocked(deleteWorkPackage).mockRejectedValueOnce(new Error('Package no longer exists'))
+    renderTab({ packages: [espressoBar], resources: [beans, machine] })
+    await rowAction(user, 'Espresso Bar', 'Delete')
+    await user.click(await screen.findByRole('button', { name: 'Delete' }))
+
+    await screen.findByText('Package no longer exists')
+    expect(screen.getAllByText('Package no longer exists')).toHaveLength(1)
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    // The row survives a failed delete — the ledger must not lie about what is gone.
+    expect(screen.getByText('Espresso Bar')).toBeInTheDocument()
+  })
+
+  it('counts attached checklists in the row summary without reprinting the description', () => {
+    renderTab({ packages: [brunchBar], resources: [beans], templates: [prepTemplate] })
+    expect(screen.getByText(/· 2 checklists$/)).toBeInTheDocument()
+    // A compact ledger sheds prose; it must not shed which checklists run.
+    expect(screen.queryByText(/Pastries and drip/)).not.toBeInTheDocument()
+  })
+
+  it('leaves the checklist count off a package that attaches none', () => {
+    // Empty means "every template for the industry runs" — not "zero checklists".
+    renderTab({ packages: [espressoBar], resources: [beans, machine] })
+    expect(screen.queryByText(/checklists?$/)).not.toBeInTheDocument()
   })
 })
