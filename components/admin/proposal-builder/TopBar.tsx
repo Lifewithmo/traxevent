@@ -11,7 +11,6 @@ import { StatusPill, pillVariants } from '@/components/ui/status-pill'
 import { InlineText } from '@/components/admin/proposal-builder/InlineText'
 import type { SaveStatus } from '@/components/admin/proposal-builder/useDraftAutosave'
 import { PROPOSAL_STATUS_LABELS, PROPOSAL_STATUS_TONE } from '@/lib/proposals'
-import { cn } from '@/lib/utils'
 import type { ProposalStatus } from '@/lib/types'
 
 export type Viewport = 'desktop' | 'mobile'
@@ -106,7 +105,7 @@ export function TopBar({
           <button
             type="button"
             onClick={onPlaceholderChip}
-            className={cn(pillVariants({ tone: 'pending' }))}
+            className={pillVariants({ tone: 'pending' })}
           >
             {placeholderCount} placeholder{placeholderCount === 1 ? '' : 's'}
           </button>
@@ -132,19 +131,31 @@ export function TopBar({
               Open print view
             </MenuItem>
             {onSaveAsTemplate && (
-              <MenuItem disabled={busy} onClick={onSaveAsTemplate}>
+              <MenuItem disabled={busy} onClick={() => onSaveAsTemplate()}>
                 Save as template
               </MenuItem>
             )}
             <MenuItem onClick={() => onViewport('desktop')}>Desktop</MenuItem>
             <MenuItem onClick={() => onViewport('mobile')}>Mobile</MenuItem>
+            {/* The kit MenuItem base sets `data-highlighted:text-foreground`, which
+                tailwind-merge keeps alongside `text-destructive` and wins on hover
+                AND on keyboard focus — so the destructive cue vanished exactly when
+                the user was about to act. Re-state the highlight colors here. */}
             {canVoid && onVoid && (
-              <MenuItem disabled={busy} className="text-destructive" onClick={onVoid}>
+              <MenuItem
+                disabled={busy}
+                className="text-destructive data-highlighted:bg-destructive/10 data-highlighted:text-destructive"
+                onClick={() => onVoid()}
+              >
                 Void proposal
               </MenuItem>
             )}
             {canDelete && onDelete && (
-              <MenuItem disabled={busy} className="text-destructive" onClick={onDelete}>
+              <MenuItem
+                disabled={busy}
+                className="text-destructive data-highlighted:bg-destructive/10 data-highlighted:text-destructive"
+                onClick={() => onDelete()}
+              >
                 Delete
               </MenuItem>
             )}

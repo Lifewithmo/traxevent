@@ -69,7 +69,64 @@ describe('TopBar', () => {
     expect(within(menu).queryByRole('menuitem', { name: 'Delete' })).not.toBeInTheDocument()
   })
 
-  it('busy disables the destructive overflow items: Delete (draft) and Void proposal (sent)', () => {
+  it('Save as template renders only when handed a handler, fires it, and is busy-gated', () => {
+    const onSaveAsTemplate = vi.fn()
+
+    // Absent when the prop is not supplied at all.
+    const { unmount } = render(<TopBar {...baseProps({ status: 'draft', locked: false })} />)
+    fireEvent.click(screen.getByRole('button', { name: 'More actions' }))
+    expect(screen.queryByRole('menuitem', { name: 'Save as template' })).not.toBeInTheDocument()
+    unmount()
+
+    render(<TopBar {...baseProps({ status: 'draft', locked: false, onSaveAsTemplate })} />)
+    fireEvent.click(screen.getByRole('button', { name: 'More actions' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Save as template' }))
+    expect(onSaveAsTemplate).toHaveBeenCalled()
+
+    onSaveAsTemplate.mockClear()
+    // Fresh mount rather than rerender: activating the item above closed the menu.
+    render(<TopBar {...baseProps({ status: 'draft', locked: false, busy: true, onSaveAsTemplate })} />)
+    fireEvent.click(screen.getAllByRole('button', { name: 'More actions' })[1])
+    const item = screen.getByRole('menuitem', { name: 'Save as template' })
+    expect(item).toHaveAttribute('aria-disabled', 'true')
+    fireEvent.click(item)
+    expect(onSaveAsTemplate).not.toHaveBeenCalled()
+  })
+
+  it('viewport items pass the matching argument: Mobile -> onViewport("mobile"), Desktop -> onViewport("desktop")', () => {
+    const onViewport = vi.fn()
+    const { unmount } = render(<TopBar {...baseProps({ status: 'draft', locked: false, onViewport })} />)
+    fireEvent.click(screen.getByRole('button', { name: 'More actions' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Mobile' }))
+    expect(onViewport).toHaveBeenCalledWith('mobile')
+    unmount()
+
+    onViewport.mockClear()
+    render(<TopBar {...baseProps({ status: 'draft', locked: false, viewport: 'mobile', onViewport })} />)
+    fireEvent.click(screen.getByRole('button', { name: 'More actions' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Desktop' }))
+    expect(onViewport).toHaveBeenCalledWith('desktop')
+  })
+
+  it('Open print view opens the tokenized print URL in a new tab', () => {
+    const open = vi.fn()
+    const spy = vi.spyOn(window, 'open').mockImplementation(open)
+    try {
+      render(<TopBar {...baseProps({ status: 'draft', locked: false, token: 'tok-123' })} />)
+      fireEvent.click(screen.getByRole('button', { name: 'More actions' }))
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Open print view' }))
+
+      expect(open).toHaveBeenCalledTimes(1)
+      const [url, target] = open.mock.calls[0]
+      expect(url).toContain('tok-123')
+      expect(url).toContain('/print')
+      expect(target).toBe('_blank')
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  it('busy disables the gated overflow items: Save as template, Delete (draft) and Void proposal (sent)', () => {
     const onDelete = vi.fn()
     const onVoid = vi.fn()
     const { rerender } = render(
