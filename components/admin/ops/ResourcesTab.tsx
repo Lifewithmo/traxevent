@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -15,7 +15,13 @@ import type { VariantProps } from 'class-variance-authority'
 interface ResourcesTabProps {
   orgId: string
   isAdmin: boolean
+  // Ledger state lives in CatalogClient, not here: tabs are kept mounted, so a
+  // cost entered on this tab would otherwise never reach the package that needs
+  // it, the KPI band, or the health rail until a full page reload. Lifting it
+  // also keeps `packages` live, which is what makes the in-use delete guard
+  // below actually binding for packages created in the same session.
   resources: OpsResource[]
+  setResources: Dispatch<SetStateAction<OpsResource[]>>
   packages: WorkPackage[]
 }
 
@@ -32,8 +38,10 @@ const KIND_TONE: Record<ResourceKind, Tone> = {
   serialized: 'pending',
 }
 
-export function ResourcesTab({ orgId, isAdmin, resources: initial, packages }: ResourcesTabProps) {
-  const [resources, setResources] = useState(initial)
+const AFFORDANCE =
+  'rounded text-xs font-medium text-[var(--link)] hover:underline outline-none focus-visible:ring-3 focus-visible:ring-ring/50'
+
+export function ResourcesTab({ orgId, isAdmin, resources, setResources, packages }: ResourcesTabProps) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [name, setName] = useState('')
@@ -42,6 +50,8 @@ export function ResourcesTab({ orgId, isAdmin, resources: initial, packages }: R
   const [unitCost, setUnitCost] = useState('')
   const [pendingDelete, setPendingDelete] = useState<OpsResource | null>(null)
   const nameRef = useRef<HTMLInputElement>(null)
+  const unitRefs = useRef<Record<string, HTMLInputElement | null>>({})
+  const costRefs = useRef<Record<string, HTMLInputElement | null>>({})
 
   // A resource referenced by any package line must not be deletable (handoff:
   // deleting in-use catalog entries breaks re-derive and closeout).
@@ -65,6 +75,20 @@ export function ResourcesTab({ orgId, isAdmin, resources: initial, packages }: R
       setError(err instanceof Error ? err.message : 'Failed to add')
     } finally {
       setSaving(false)
+    }
+  }
+
+  // `null` is not "omit" here: lib/ops/resources.ts turns a null field into a
+  // FieldValue.delete(), which is the only way to clear one — omitting it means
+  // "leave it alone". Clearing the unit also re-resolves `dimension` server-side.
+  async function handleUnitChange(r: OpsResource, value: string) {
+    const unit = value.trim() === '' ? null : value.trim()
+    if (unit === (r.unit ?? null)) return
+    try {
+      await updateResource(orgId, r.id, { unit })
+      setResources((prev) => prev.map((x) => (x.id === r.id ? { ...x, unit: unit ?? undefined } : x)))
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to save')
     }
   }
 
@@ -107,13 +131,42 @@ export function ResourcesTab({ orgId, isAdmin, resources: initial, packages }: R
               <tr key={r.id} className="border-b border-border last:border-0">
                 <td className="py-2 font-medium">{r.name}</td>
                 <td><StatusPill tone={KIND_TONE[r.kind]}>{r.kind}</StatusPill></td>
-                <td>{r.unit ?? '—'}</td>
+                <td>
+                  {isAdmin ? (
+                    <div className="flex items-center gap-2">
+                      <Input
+                        aria-label={`Unit for ${r.name}`}
+                        placeholder="oz, each"
+                        className="w-20"
+                        ref={(el) => { unitRefs.current[r.id] = el }}
+                        defaultValue={r.unit ?? ''}
+                        onBlur={(e) => handleUnitChange(r, e.target.value)}
+                      />
+                      {r.unit === undefined && r.unit_cost !== undefined && (
+                        // A unit cost with no unit is dropped from every
+                        // materials figure (catalog-costing.ts needs both), so
+                        // this gap silently costs money. Name it, and put the
+                        // fix one click away.
+                        <button
+                          type="button"
+                          className={AFFORDANCE}
+                          onClick={() => unitRefs.current[r.id]?.focus()}
+                        >
+                          + Add unit
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    r.unit ?? '—'
+                  )}
+                </td>
                 <td>
                   {isAdmin ? (
                     <div className="flex items-center gap-2">
                       <Input
                         aria-label={`Unit cost for ${r.name}`}
                         type="number" step="0.01" className="w-24"
+                        ref={(el) => { costRefs.current[r.id] = el }}
                         defaultValue={r.unit_cost ?? ''}
                         onBlur={(e) => handleCostChange(r, e.target.value)}
                       />
@@ -122,7 +175,15 @@ export function ResourcesTab({ orgId, isAdmin, resources: initial, packages }: R
                       ) : r.kind === 'consumable' ? (
                         // Only consumable costs feed the costing engine, so an
                         // unpriced one is a gap worth naming rather than a blank.
-                        <span className="text-xs text-[var(--link)]">Add cost</span>
+                        // Copper belongs on something you can act on, so this is
+                        // a real button that puts the caret in the cost field.
+                        <button
+                          type="button"
+                          className={AFFORDANCE}
+                          onClick={() => costRefs.current[r.id]?.focus()}
+                        >
+                          + Add cost
+                        </button>
                       ) : (
                         <span className="text-muted-foreground">—</span>
                       )}
@@ -150,12 +211,12 @@ export function ResourcesTab({ orgId, isAdmin, resources: initial, packages }: R
               <tr>
                 <td colSpan={5}>
                   <EmptyState
-                    title="No resources yet"
+                    title="No ingredients or equipment yet"
                     description="Beans, milk, cups, machines — everything a package draws on."
                     action={
                       isAdmin ? (
                         <Button size="sm" onClick={() => nameRef.current?.focus()}>
-                          Add your first resource
+                          Add your first ingredient
                         </Button>
                       ) : undefined
                     }
@@ -200,7 +261,7 @@ export function ResourcesTab({ orgId, isAdmin, resources: initial, packages }: R
       <ConfirmDialog
         open={pendingDelete !== null}
         onOpenChange={(open) => { if (!open) setPendingDelete(null) }}
-        title={pendingDelete ? `Delete ${pendingDelete.name}?` : 'Delete resource?'}
+        title={pendingDelete ? `Delete ${pendingDelete.name}?` : 'Delete this item?'}
         description="It leaves the catalog for good. Packages already using it can't be deleted, so nothing in flight breaks."
         confirmLabel="Delete"
         destructive
