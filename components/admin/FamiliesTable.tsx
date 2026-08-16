@@ -1,11 +1,12 @@
 'use client'
 
 import type { Family } from '@/lib/types'
+import { FAMILY_TONE, FAMILY_LABEL } from '@/lib/event-ui'
 import { StatusPill } from '@/components/ui/status-pill'
+import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
+import { EmptyState } from '@/components/ui/empty-state'
 import { BulkToolbar } from '@/components/admin/BulkToolbar'
-
-const FAMILY_TONE = { pending: 'pending', confirmed: 'confirmed', waitlisted: 'alert', cancelled: 'neutral' } as const
-const FAMILY_LABEL = { pending: 'Pending', confirmed: 'Confirmed', waitlisted: 'Waitlist', cancelled: 'Cancelled' } as const
 
 const STATUS_FILTERS = [
   { key: 'all', label: 'All' },
@@ -80,37 +81,34 @@ export function FamiliesTable({
   return (
     <div className="flex flex-col h-full">
       {/* Search + filter bar */}
-      <div className="flex items-center gap-3 px-4 py-3 bg-gray-50 border-b border-gray-200">
-        <input
+      <div className="flex flex-wrap items-center gap-3 px-4 py-3 bg-muted/50 border-b border-border">
+        <Input
           type="text"
           placeholder="Search families, emails…"
           value={search}
           onChange={e => onSearchChange(e.target.value)}
-          className="flex-1 px-3 py-1.5 text-sm border border-gray-200 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-purple-300"
+          className="flex-1 min-w-40 bg-background"
         />
-        <div className="flex gap-1">
+        <div className="flex flex-wrap gap-1">
           {STATUS_FILTERS.map(({ key, label }) => (
             <button
               key={key}
               type="button"
+              aria-pressed={statusFilter === key}
               onClick={() => onStatusFilterChange(key)}
-              className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors ${
+              className={`rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
                 statusFilter === key
-                  ? 'bg-purple-100 text-purple-700 border border-purple-300'
-                  : 'bg-white text-gray-500 border border-gray-200 hover:border-purple-200'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-muted text-muted-foreground hover:text-foreground'
               }`}
             >
               {label} ({counts[key as keyof typeof counts]})
             </button>
           ))}
         </div>
-        <button
-          type="button"
-          onClick={() => onExport()}
-          className="px-3 py-1.5 text-sm border border-gray-200 rounded-md bg-white text-gray-600 hover:border-purple-300 transition-colors"
-        >
+        <Button variant="outline" size="sm" onClick={() => onExport()}>
           Export all
-        </button>
+        </Button>
       </div>
 
       {/* Bulk toolbar */}
@@ -124,71 +122,74 @@ export function FamiliesTable({
       />
 
       {/* Table */}
-      <div className="flex-1 overflow-y-auto">
-        {/* Header */}
-        <div className="grid grid-cols-[28px_1fr_140px_110px_90px_60px] gap-2 px-4 py-2 bg-gray-50 border-b border-gray-200 text-xs font-semibold text-gray-400 uppercase tracking-wide">
-          <input
-            type="checkbox"
-            checked={allFilteredSelected}
-            onChange={handleToggleAll}
-            className="accent-purple-600"
-          />
-          <span>Family</span>
-          <span>Campers</span>
-          <span>Status</span>
-          <span>Balance</span>
-          <span />
-        </div>
-
-        {filtered.length === 0 && (
-          <div className="px-4 py-12 text-center text-sm text-gray-400">
-            {search
-              ? 'No families match your search'
-              : `No ${statusFilter === 'all' ? '' : statusFilter + ' '}registrations`}
+      <div className="flex-1 overflow-y-auto overflow-x-auto">
+        <div className="min-w-[560px]">
+          {/* Header */}
+          <div className="grid grid-cols-[28px_1fr_110px_90px_60px] gap-2 px-4 py-2 bg-muted/50 border-b border-border text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+            <input
+              type="checkbox"
+              checked={allFilteredSelected}
+              onChange={handleToggleAll}
+              className="accent-primary"
+            />
+            <span>Family</span>
+            <span>Status</span>
+            <span>Balance</span>
+            <span />
           </div>
-        )}
 
-        {filtered.map(f => {
-          const balance = (f.amount_due ?? 0) - (f.amount_paid ?? 0)
-          return (
-            <div
-              key={f.id}
-              onClick={() => onSelectFamily(f.id)}
-              className={`grid grid-cols-[28px_1fr_140px_110px_90px_60px] gap-2 px-4 py-2.5 border-b border-gray-100 text-sm items-center cursor-pointer transition-colors ${
-                selectedFamilyId === f.id ? 'bg-purple-50' : 'hover:bg-purple-50/40'
-              }`}
-            >
-              <input
-                type="checkbox"
-                checked={selectedIds.has(f.id)}
-                onChange={e => {
-                  e.stopPropagation()
-                  onToggleRow(f.id)
-                }}
-                onClick={e => e.stopPropagation()}
-                className="accent-purple-600"
-              />
-              <div>
-                <div className="font-semibold text-gray-900">
-                  {f.last_name}, {f.first_name}
-                </div>
-                <div className="text-xs text-gray-400">{f.email}</div>
-              </div>
-              <div className="text-gray-500 text-xs truncate">—</div>
-              <div>
-                <StatusPill tone={FAMILY_TONE[f.registration_status]}>{FAMILY_LABEL[f.registration_status]}</StatusPill>
-              </div>
+          {filtered.length === 0 && (
+            <EmptyState
+              className="py-12"
+              title={
+                search
+                  ? 'No families match your search'
+                  : `No ${statusFilter === 'all' ? '' : statusFilter + ' '}registrations`
+              }
+            />
+          )}
+
+          {filtered.map(f => {
+            const balance = (f.amount_due ?? 0) - (f.amount_paid ?? 0)
+            return (
               <div
-                className={`font-semibold text-sm ${
-                  balance > 0 ? 'text-red-600' : 'text-gray-700'
+                key={f.id}
+                onClick={() => onSelectFamily(f.id)}
+                className={`grid grid-cols-[28px_1fr_110px_90px_60px] gap-2 px-4 py-2.5 border-b border-border/60 text-sm items-center cursor-pointer transition-colors ${
+                  selectedFamilyId === f.id ? 'bg-primary/5' : 'hover:bg-muted/50'
                 }`}
               >
-                {balance > 0 ? `$${balance.toFixed(0)}` : '—'}
+                <input
+                  type="checkbox"
+                  checked={selectedIds.has(f.id)}
+                  onChange={e => {
+                    e.stopPropagation()
+                    onToggleRow(f.id)
+                  }}
+                  onClick={e => e.stopPropagation()}
+                  className="accent-primary"
+                />
+                <div>
+                  <div className="font-semibold text-foreground">
+                    {f.last_name}, {f.first_name}
+                  </div>
+                  <div className="text-xs text-muted-foreground">{f.email}</div>
+                </div>
+                <div>
+                  <StatusPill tone={FAMILY_TONE[f.registration_status]}>{FAMILY_LABEL[f.registration_status]}</StatusPill>
+                </div>
+                <div
+                  className={`font-semibold text-sm ${
+                    balance > 0 ? 'text-destructive' : 'text-foreground'
+                  }`}
+                >
+                  {balance > 0 ? `$${balance.toFixed(0)}` : '—'}
+                </div>
+                <div className="text-xs font-semibold text-primary">View</div>
               </div>
-              <div className="text-xs font-semibold text-purple-600">View</div>
-            </div>
-          )
-        })}
+            )
+          })}
+        </div>
       </div>
     </div>
   )

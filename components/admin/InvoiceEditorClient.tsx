@@ -1,13 +1,16 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Trash2 } from 'lucide-react'
+import { MoreHorizontal, Receipt, Trash2, Wallet } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Badge } from '@/components/ui/badge'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { EmptyState } from '@/components/ui/empty-state'
+import { Menu, MenuContent, MenuItem, MenuTrigger } from '@/components/ui/menu'
+import { StatusPill } from '@/components/ui/status-pill'
 import {
   updateInvoice, sendInvoice, voidInvoice, deleteInvoice, recordPayment,
 } from '@/actions/invoices'
@@ -17,7 +20,8 @@ import {
   lineItemSubtotal, linesSubtotal, amountPaid,
   invoiceDiscountAmount, invoiceTaxAmount, invoiceAmountDue,
 } from '@/lib/invoices'
-import { INVOICE_LIFECYCLE_LABELS, resolveTipsEnabled } from '@/lib/invoice-status'
+import { invoicePill } from '@/lib/invoice-presentation'
+import { derivePaymentStatus, deriveAging, resolveTipsEnabled } from '@/lib/invoice-status'
 import type {
   NormalizedInvoice, InvoiceLineItem, InvoiceDiscount, InvoiceSourceRef, OrgBranding,
 } from '@/lib/types'
@@ -128,6 +132,13 @@ export function InvoiceEditorClient({
   const [copied, setCopied] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [sendOpen, setSendOpen] = useState(false)
+  const [confirmVoid, setConfirmVoid] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const payAmountRef = useRef<HTMLInputElement>(null)
+  // Belt and braces behind <ConfirmDialog>'s own guard. A state flag cannot do
+  // this job: two activations inside one commit window share the same closure, so
+  // both would read the pre-click value. A ref flips synchronously.
+  const destructiveInFlight = useRef(false)
 
   const [payAmount, setPayAmount] = useState('')
   const [payMethod, setPayMethod] = useState('')
@@ -223,8 +234,11 @@ export function InvoiceEditorClient({
     }
   }
 
+  // Both destructive paths are gated by <ConfirmDialog> at the bottom of the
+  // tree, not by window.confirm — these run only after the operator committed.
   async function handleVoid() {
-    if (!confirm('Void this invoice? This cannot be undone.')) return
+    if (destructiveInFlight.current) return
+    destructiveInFlight.current = true
     setVoiding(true); setError(null); setNotice(null)
     try {
       await voidInvoice(orgId, invoice.id)
@@ -232,18 +246,23 @@ export function InvoiceEditorClient({
       router.refresh()
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to void')
-    } finally { setVoiding(false) }
+    } finally { setVoiding(false); destructiveInFlight.current = false }
   }
 
   async function handleDelete() {
-    if (!confirm('Delete this invoice? This cannot be undone.')) return
+    if (destructiveInFlight.current) return
+    destructiveInFlight.current = true
     setDeleting(true); setError(null); setNotice(null)
     try {
       await deleteInvoice(orgId, invoice.id)
+      // The guard is deliberately left armed on success: the route is changing and
+      // this tree is unmounting, so a second delete could only race a record that
+      // is already gone and setState on a component on its way out.
       router.push(`/${orgSlug}/leads/${leadId}`)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to delete')
       setDeleting(false)
+      destructiveInFlight.current = false
     }
   }
 
@@ -293,18 +312,60 @@ export function InvoiceEditorClient({
   const showTaxRow = !locked || taxAmt > 0
   const note = balanceNote({ balance, paid, total: totalDue, dueDate: dueDate || undefined, isDraft, isVoid })
 
+  // One pill, driven by money state rather than lifecycle: every sent invoice
+  // used to read the same neutral "Sent" whether it was paid, half-paid, or
+  // ninety days late. Derived from the *edited* figures for the same reason the
+  // balance is — a mid-edit disagreement between the two would be nonsense.
+  const now = new Date()
+  const pill = invoicePill({
+    lifecycle: invoice.lifecycle,
+    payment: derivePaymentStatus(
+      { total: totalDue, applied: paid, lifecycle: invoice.lifecycle, dueDate: dueDate || undefined },
+      now,
+    ),
+    aging: deriveAging({ dueDate: dueDate || undefined, balance, lifecycle: invoice.lifecycle }, now),
+  })
+
+  // Destructive actions live in the overflow; the trigger is pointless with
+  // neither of them available (a voided invoice can be neither voided nor deleted).
+  const canVoid = !isDraft && !isVoid
+  const canDelete = isDraft
+  // Moving Void/Delete into the overflow moved their in-flight labels in there
+  // with them, so the toolbar read as completely idle for the whole request.
+  // This is the always-visible half of that cue; the trigger is locked shut below.
+  const destructiveBusyLabel = voiding ? 'Voiding…' : deleting ? 'Deleting…' : null
+
+  // Shared by the empty state and the below-the-table controls so an empty
+  // invoice offers exactly one of each button, not two.
+  function addRowControls(className: string) {
+    return (
+      <div className={`flex flex-wrap gap-2 no-print ${className}`}>
+        <Button size="sm" onClick={() => setPickerOpen(true)}>Add from catalog</Button>
+        <Button size="sm" variant="outline" onClick={addRow}>Add blank line</Button>
+      </div>
+    )
+  }
+
   const orgName = branding?.display_name
   const heading = invoice.number ?? '№ assigned when sent'
 
   return (
-    <div className="mx-auto max-w-3xl p-6 xl:grid xl:max-w-6xl xl:grid-cols-[minmax(0,1fr)_320px] xl:gap-8">
+    // The rail cannot open at `lg`. Tailwind breakpoints are viewport-based but
+    // `main` is not: at a 1024px viewport the md:w-56 sidebar leaves main 800px,
+    // so p-6 → 752, minus a 320px rail and its gap → a 400px document column, of
+    // which px-10 takes 80 — against a line-item table whose fixed tracks and gaps
+    // need 448px before the description column gets a single pixel. Even a 260px
+    // rail only reaches 388. 1200px is the first viewport where the two-column
+    // layout leaves the description room (116px), so that is where it opens; below
+    // it the document widens instead, which is what closed the dead gutter.
+    <div className="mx-auto max-w-3xl p-6 lg:max-w-5xl xl:max-w-6xl min-[1200px]:grid min-[1200px]:grid-cols-[minmax(0,1fr)_260px] min-[1200px]:gap-6 xl:grid-cols-[minmax(0,1fr)_320px] xl:gap-8">
       <div>
         {/* Action bar — primary action lives with the document, destructive actions are subordinate */}
         <div className="mb-4 flex flex-wrap items-center gap-2 no-print">
           <Link href={`/${orgSlug}/leads/${leadId}`} className="text-sm text-muted-foreground hover:underline">
             ← Back to lead
           </Link>
-          <Badge variant="secondary">{INVOICE_LIFECYCLE_LABELS[invoice.lifecycle]}</Badge>
+          <StatusPill tone={pill.tone}>{pill.label}</StatusPill>
           <div className="ml-auto flex flex-wrap items-center gap-2">
             {!isVoid && !editing && (
               <Button variant="outline" size="sm" onClick={() => setEditing(true)}>Edit invoice</Button>
@@ -322,18 +383,35 @@ export function InvoiceEditorClient({
                 {showLink ? 'Send update' : 'Send invoice'}
               </Button>
             )}
+            {/* Stays outside the overflow: a MenuItem closes the menu on click,
+                which would swallow the "Copied!" confirmation entirely. */}
             {showLink && (
               <Button variant="ghost" size="sm" onClick={handleCopy}>{copied ? 'Copied!' : 'Copy link'}</Button>
             )}
-            {!isDraft && !isVoid && (
-              <Button variant="ghost" size="sm" onClick={handleVoid} disabled={busy}>
-                {voiding ? 'Voiding…' : 'Void'}
-              </Button>
+            {destructiveBusyLabel && (
+              <span className="text-xs text-muted-foreground">{destructiveBusyLabel}</span>
             )}
-            {isDraft && (
-              <Button variant="ghost" size="sm" onClick={handleDelete} disabled={busy}>
-                {deleting ? 'Deleting…' : 'Delete'}
-              </Button>
+            {(canVoid || canDelete) && (
+              <Menu>
+                <MenuTrigger
+                  disabled={busy}
+                  render={<Button variant="ghost" size="icon-sm" aria-label="More actions" />}
+                >
+                  <MoreHorizontal />
+                </MenuTrigger>
+                <MenuContent>
+                  {canVoid && (
+                    <MenuItem disabled={busy} onClick={() => setConfirmVoid(true)}>
+                      {voiding ? 'Voiding…' : 'Void invoice'}
+                    </MenuItem>
+                  )}
+                  {canDelete && (
+                    <MenuItem disabled={busy} onClick={() => setConfirmDelete(true)}>
+                      {deleting ? 'Deleting…' : 'Delete invoice'}
+                    </MenuItem>
+                  )}
+                </MenuContent>
+              </Menu>
             )}
           </div>
         </div>
@@ -404,7 +482,19 @@ export function InvoiceEditorClient({
           {/* Line items — a table at md+, stacked blocks below it */}
           <div className="mt-6">
             {lineItems.length === 0 ? (
-              <p className="py-4 text-sm text-muted-foreground">No line items yet — add one below.</p>
+              // The CTA rides inside the empty state rather than sitting in the
+              // block below it: a locked invoice used to be told to "add one
+              // below" while the controls it pointed at were not rendered.
+              <EmptyState
+                icon={<Receipt className="size-4" />}
+                title="No line items yet"
+                description={
+                  locked
+                    ? 'This invoice carries no charges.'
+                    : 'Pull a priced item from the catalog, or type a line by hand.'
+                }
+                action={locked ? undefined : addRowControls('justify-center')}
+              />
             ) : (
               <>
                 <div className="hidden grid-cols-[minmax(0,1fr)_4rem_7rem_7rem_5rem_2.5rem] gap-2 border-b pb-2 text-xs text-muted-foreground md:grid">
@@ -494,12 +584,7 @@ export function InvoiceEditorClient({
               </>
             )}
 
-            {!locked && (
-              <div className="mt-3 flex flex-wrap gap-2 no-print">
-                <Button size="sm" onClick={() => setPickerOpen(true)}>Add from catalog</Button>
-                <Button size="sm" variant="outline" onClick={addRow}>Add blank line</Button>
-              </div>
-            )}
+            {!locked && lineItems.length > 0 && addRowControls('mt-3')}
           </div>
 
           {/* Totals — supporting lines stay quiet so the balance can be seen */}
@@ -632,12 +717,28 @@ export function InvoiceEditorClient({
       </div>
 
       {/* Subordinate rail: payments and history. No cards, quieter type. */}
-      <aside className="mt-8 no-print xl:mt-0">
+      <aside className="mt-8 no-print min-[1200px]:mt-0">
         <section>
           <h2 className="font-mono text-[10px] font-bold tracking-[0.1em] text-muted-foreground uppercase">Payments</h2>
 
           {invoice.payments.length === 0 ? (
-            <p className="mt-2 text-sm text-muted-foreground">No payments recorded yet.</p>
+            <EmptyState
+              className="px-0 py-4"
+              icon={<Wallet className="size-4" />}
+              title="No payments yet"
+              description={
+                isVoid
+                  ? 'This invoice was voided, so nothing can be collected against it.'
+                  : 'Log cash, card, or transfer as it lands so the balance stays true.'
+              }
+              action={
+                isVoid ? undefined : (
+                  <Button size="sm" variant="outline" onClick={() => payAmountRef.current?.focus()}>
+                    Record the first payment
+                  </Button>
+                )
+              }
+            />
           ) : (
             <ul className="mt-2 space-y-1.5">
               {invoice.payments.map((p, i) => (
@@ -662,7 +763,7 @@ export function InvoiceEditorClient({
               <div className="flex flex-wrap gap-2">
                 <div className="w-24 space-y-1">
                   <Label htmlFor="payAmount" className="text-xs">Amount</Label>
-                  <Input id="payAmount" type="number" value={payAmount} onChange={(e) => setPayAmount(e.target.value)} placeholder="0.00" className="h-8" />
+                  <Input ref={payAmountRef} id="payAmount" type="number" value={payAmount} onChange={(e) => setPayAmount(e.target.value)} placeholder="0.00" className="h-8" />
                 </div>
                 <div className="w-28 space-y-1">
                   <Label htmlFor="payMethod" className="text-xs">Method</Label>
@@ -703,6 +804,24 @@ export function InvoiceEditorClient({
         )}
       </aside>
 
+      <ConfirmDialog
+        open={confirmVoid}
+        onOpenChange={setConfirmVoid}
+        title="Void this invoice?"
+        description="This cannot be undone."
+        confirmLabel="Void invoice"
+        onConfirm={handleVoid}
+        destructive
+      />
+      <ConfirmDialog
+        open={confirmDelete}
+        onOpenChange={setConfirmDelete}
+        title="Delete this invoice?"
+        description="This cannot be undone."
+        confirmLabel="Delete invoice"
+        onConfirm={handleDelete}
+        destructive
+      />
       <InvoiceCatalogPicker orgId={orgId} open={pickerOpen} onOpenChange={setPickerOpen} onPick={handlePick} />
       <SendInvoiceDialog
         open={sendOpen}

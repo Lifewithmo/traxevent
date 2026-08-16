@@ -63,8 +63,36 @@ describe('buildMoneyOverview', () => {
 
   it('returns zeroed totals and no overdue rows for an empty list', () => {
     const o = buildMoneyOverview([], NOW)
-    expect(o).toMatchObject({ outstanding: 0, overdue: 0, overdueCount: 0, paidThisMonth: 0 })
+    expect(o).toMatchObject({ outstanding: 0, openCount: 0, overdue: 0, overdueCount: 0, paidThisMonth: 0 })
     expect(o.overdueInvoices).toEqual([])
+  })
+
+  it('counts exactly the invoices that make up outstanding', () => {
+    // openCount exists so a caller can label the dollar figure without
+    // re-deciding what "open" means. It must describe the SAME set: sent, with
+    // money still owed — drafts, voids and fully paid invoices are not open.
+    const o = buildMoneyOverview(
+      [
+        inv({ id: 'owed' }),
+        inv({ id: 'partial', payments: [{ amount: 40, recorded_at: '2026-08-10' }] } as Partial<NormalizedInvoice> & { id: string }),
+        inv({ id: 'paid', payments: [{ amount: 100, recorded_at: '2026-08-10' }] } as Partial<NormalizedInvoice> & { id: string }),
+        inv({ id: 'draft', lifecycle: 'draft' }),
+        inv({ id: 'void', lifecycle: 'void' }),
+      ],
+      NOW,
+    )
+    expect(o.outstanding).toBe(160) // 100 + 60
+    expect(o.openCount).toBe(2)
+  })
+
+  it('leaves an overpaid invoice out of both outstanding and openCount', () => {
+    const o = buildMoneyOverview(
+      [inv({ id: 'over', payments: [{ amount: 150, recorded_at: '2026-08-10' }] } as Partial<NormalizedInvoice> & { id: string })],
+      NOW,
+    )
+    // A negative balance must not net against other invoices, nor read as open.
+    expect(o.outstanding).toBe(0)
+    expect(o.openCount).toBe(0)
   })
 
   it('returns the overdue invoices themselves, most overdue first', () => {

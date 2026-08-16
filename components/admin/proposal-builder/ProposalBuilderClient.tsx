@@ -33,6 +33,10 @@ import type {
   ProposalStatus,
 } from '@/lib/types'
 
+// Stays toFixed(2), deliberately: this feeds the "Client sees:" strip and the
+// send dialog, both of which claim to show the customer's figure. The customer
+// document renders prices through ProposalPricing's own toFixed(2), so adopting
+// the separator-style shared formatter here would make the claim false.
 const money = (n: number) => `$${n.toFixed(2)}`
 
 export function ProposalBuilderClient({
@@ -261,15 +265,20 @@ export function ProposalBuilderClient({
         busy={busy}
       />
 
+      {/* z-[60], not z-50: TopBar's overflow Menu portals to document.body at
+          z-50 and opens align="end" — directly over this region. Equal z-index
+          plus later-in-DOM means the menu would paint over the toast, hiding
+          the very message a user re-opens the menu to act on (e.g. a failed
+          Void). The toast has to outrank the portal. */}
       <div
         aria-live="polite"
         aria-atomic="true"
-        className="pointer-events-none fixed right-4 top-16 z-50 flex w-full max-w-sm flex-col gap-2"
+        className="pointer-events-none fixed right-4 top-16 z-[60] flex w-full max-w-sm flex-col gap-2"
       >
         {flash && (
           <div
             role="status"
-            className="pointer-events-auto flex items-start justify-between gap-2 rounded-md border bg-white px-3 py-2 text-sm shadow-lg"
+            className="pointer-events-auto flex items-start justify-between gap-2 rounded-md border bg-popover px-3 py-2 text-sm text-popover-foreground shadow-lg"
           >
             <span>{flash}</span>
             <button
@@ -286,14 +295,14 @@ export function ProposalBuilderClient({
           <div
             key={i}
             role="status"
-            className="pointer-events-auto rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800 shadow-lg"
+            className="pointer-events-auto rounded-md border border-[var(--warn-border)] bg-[var(--warn-bg)] px-3 py-2 text-sm text-[var(--warn-fg)] shadow-lg"
           >
             {a}
           </div>
         ))}
       </div>
 
-      <main className="flex-1 overflow-y-auto bg-gray-100 px-6 py-8">
+      <main className="flex-1 overflow-y-auto bg-muted px-6 py-8">
         {voided && (
           <Card className="mx-auto mb-4 max-w-3xl border-destructive/50 bg-destructive/10">
             <CardContent className="pt-6">
@@ -304,7 +313,7 @@ export function ProposalBuilderClient({
           </Card>
         )}
         {locked && !voided && (
-          <Card className="mx-auto mb-4 max-w-3xl border-amber-500/50 bg-amber-500/10">
+          <Card className="mx-auto mb-4 max-w-3xl border-[var(--warn-border)] bg-[var(--warn-bg)]">
             <CardContent className="pt-6">
               <p className="text-sm font-medium">
                 This proposal is signed and locked. Create a new version to make changes.
@@ -313,9 +322,16 @@ export function ProposalBuilderClient({
           </Card>
         )}
 
+        {/* The paper is the customer's document, not app chrome: it stays
+            literal white (--warm-0) in dark mode — bg-card would invert it.
+            The INK has to be pinned for the same reason. ProposalTheme sets no
+            text colour, so without text-[var(--warm-950)] the document copy
+            inherits --foreground from <body>, which .dark turns near-white:
+            invisible on a permanently-white sheet. Everything below inherits
+            from here, and the canvases pin their own --warm-* steps on top. */}
         <ProposalTheme
           branding={branding}
-          className={`mx-auto rounded-lg bg-white p-8 shadow-sm ${viewport === 'mobile' ? 'max-w-sm' : 'max-w-3xl'}`}
+          className={`mx-auto rounded-lg bg-[var(--warm-0)] p-8 text-[var(--warm-950)] shadow-sm ${viewport === 'mobile' ? 'max-w-sm' : 'max-w-3xl'}`}
         >
           <BlockCanvas
             blocks={blocks}
@@ -356,7 +372,7 @@ export function ProposalBuilderClient({
           </div>
         </ProposalTheme>
 
-        <div className="sticky bottom-0 mx-auto mt-6 max-w-3xl rounded-t-lg border bg-white/95 px-6 py-3 backdrop-blur">
+        <div className="sticky bottom-0 mx-auto mt-6 max-w-3xl rounded-t-lg border bg-card/95 px-6 py-3 backdrop-blur">
           <div className="flex items-center justify-between">
             <p className="text-sm font-semibold">Client sees: {rangeLabel}</p>
             {draft.deposit && (

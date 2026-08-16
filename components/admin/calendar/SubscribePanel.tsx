@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { Button } from '@/components/ui/button'
 import { CALENDAR_KINDS, CALENDAR_KIND_LABELS, type CalendarKind } from '@/lib/calendar'
 
 const STEPS: Array<{ app: string; steps: string }> = [
@@ -51,13 +52,9 @@ export function SubscribePanel({ url }: { url: string }) {
           <code className="min-w-0 flex-1 truncate rounded border border-border bg-background px-2 py-1.5 text-xs">
             {feedUrl}
           </code>
-          <button
-            type="button"
-            onClick={copy}
-            className="shrink-0 rounded bg-foreground px-2.5 py-1.5 text-xs font-medium text-background"
-          >
+          <Button size="sm" onClick={copy}>
             {copied ? 'Copied' : 'Copy'}
-          </button>
+          </Button>
         </div>
         <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
           Read-only. Your calendar app decides how often it refreshes — Outlook is usually within a few hours, Google
@@ -83,9 +80,11 @@ export function SubscribePanel({ url }: { url: string }) {
         {['Microsoft Outlook', 'Google Calendar'].map((name) => (
           <div key={name} className="mt-1.5 flex items-center justify-between rounded border border-border/60 px-2.5 py-1.5 opacity-50">
             <span className="text-xs">{name}</span>
-            <button type="button" disabled className="rounded border border-border px-2 py-0.5 text-[11px]">
+            {/* The row is already muted to 50%; the Button's own disabled:opacity-50
+                would compound to 25% and make it fainter than the label beside it. */}
+            <Button variant="outline" size="xs" disabled className="disabled:opacity-100">
               Connect
-            </button>
+            </Button>
           </div>
         ))}
         <p className="mt-1.5 text-[11px] text-muted-foreground">

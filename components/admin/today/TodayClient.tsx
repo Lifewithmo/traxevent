@@ -1,6 +1,7 @@
 'use client'
 
 import { TodayQueue } from '@/components/admin/today/TodayQueue'
+import { TodayKpiBand } from '@/components/admin/today/TodayKpiBand'
 import { AgendaRail } from '@/components/admin/today/AgendaRail'
 import { buildMoves, moveCount, type Agenda } from '@/lib/today-moves'
 import { todayYmd } from '@/lib/opportunity-detail'
@@ -25,7 +26,7 @@ export function TodayClient({ orgId, orgSlug, data, agenda }: TodayClientProps) 
   })
 
   return (
-    <div className="flex min-h-screen">
+    <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col md:flex-row">
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline justify-between gap-3 border-b border-border px-5 py-3">
           <div className="flex items-baseline gap-3">
@@ -43,6 +44,7 @@ export function TodayClient({ orgId, orgSlug, data, agenda }: TodayClientProps) 
             </p>
           </div>
         </div>
+        <TodayKpiBand tiles={data.tiles} eventsToday={eventsToday} />
         <TodayQueue orgId={orgId} orgSlug={orgSlug} data={data} />
       </div>
       <AgendaRail orgSlug={orgSlug} agenda={agenda} />

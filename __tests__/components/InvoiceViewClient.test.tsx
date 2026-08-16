@@ -59,6 +59,73 @@ describe('InvoiceViewClient', () => {
     expect(screen.queryByText('Paid')).not.toBeInTheDocument()
   })
 
+  // --- shared-kit / token invariants ---
+
+  // The hand-rolled chip used bg-emerald-100/text-emerald-800. globals.css re-grades
+  // the stock palette, so it *looked* on-brand in light mode while having no .dark
+  // override at all. Pin it to the kit pill so it cannot regress to raw palette classes.
+  it('renders the Paid chip as the kit StatusPill on status tokens, not raw palette classes', () => {
+    render(<InvoiceViewClient invoice={inv({ amount_paid: 100, balance: 0 })} />)
+    const pill = screen.getByText('Paid')
+    expect(pill.dataset.slot).toBe('status-pill')
+    expect(pill.className).toContain('var(--status-confirmed-bg)')
+    expect(pill.className).not.toContain('emerald-100')
+  })
+
+  // bg-white left the sheet light while the text tokens flipped — unreadable in dark
+  // mode. bg-card is what the admin editor's identical sheet uses.
+  it('paints the invoice sheet on the card token so dark mode is readable', () => {
+    const { container } = render(<InvoiceViewClient invoice={inv({})} />)
+    const sheet = container.querySelector('.invoice-document')
+    expect(sheet?.className).toMatch(/\bbg-card\b/)
+    // Prefix-aware: a plain substring/word-boundary match would also match the
+    // print-scoped `print:bg-white` (a "print:" prefix still leaves a `\b`
+    // boundary right before "bg-white"), so split into class tokens and check
+    // the unprefixed literal is absent rather than matching a substring.
+    const classes = sheet?.className.split(/\s+/) ?? []
+    expect(classes).not.toContain('bg-white')
+  })
+
+  // The sheet's screen background (bg-card) and default text colour both flip
+  // under dark mode, but printed/PDF output should always be white paper with
+  // dark ink — mirroring the print:bg-white already on the page chrome around
+  // the sheet. Without this, a dark-mode print either paints the sheet near-black
+  // (if the browser prints backgrounds) or leaves near-white text on white paper.
+  it('forces the sheet to white paper with dark text when printed, regardless of theme', () => {
+    const { container } = render(<InvoiceViewClient invoice={inv({})} />)
+    const sheet = container.querySelector('.invoice-document')
+    const classes = sheet?.className.split(/\s+/) ?? []
+    expect(classes).toContain('print:bg-white')
+    expect(classes).toContain('print:text-black')
+  })
+
+  // At 375px the from-column and the number-column were jammed side by side, wrapping
+  // both. jsdom cannot measure, so pin the mechanism: the header stacks below md and
+  // its columns can shrink.
+  it('stacks the header columns below md and lets them shrink', () => {
+    const { container } = render(
+      <InvoiceViewClient invoice={inv({ from: { name: 'BrewTrax', address: '1 Keg Ln' } })} />,
+    )
+    const header = container.querySelector('header')
+    expect(header?.className).toMatch(/max-md:flex-col/)
+    // Right-ragged wrapped text reads badly on a narrow screen.
+    expect(header?.lastElementChild?.className).toMatch(/max-md:text-left/)
+    for (const col of Array.from(header?.children ?? [])) {
+      expect(col.className).toMatch(/min-w-0/)
+    }
+  })
+
+  it('renders every totals figure with tabular numerals so the column aligns', () => {
+    const { container } = render(
+      <InvoiceViewClient
+        invoice={inv({ discount_amount: 10, tax_amount: 5, amount_paid: 40, balance: 55 })}
+      />,
+    )
+    const figures = Array.from(container.querySelectorAll('dl dd'))
+    expect(figures.length).toBeGreaterThan(1)
+    for (const dd of figures) expect(dd.className).toMatch(/tabular-nums/)
+  })
+
   // --- composition invariants (screen-composition checklist) ---
 
   it('renders the balance figure exactly once, with the right value', () => {

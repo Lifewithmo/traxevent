@@ -1,31 +1,58 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Badge } from '@/components/ui/badge'
+import { StatusPill, type pillVariants } from '@/components/ui/status-pill'
+import { EmptyState } from '@/components/ui/empty-state'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { createResource, updateResource, deleteResource } from '@/actions/resources'
+import { resolveDimension } from '@/lib/ops/units'
 import { formatMoney } from '@/lib/utils'
 import type { OpsResource, WorkPackage, ResourceKind } from '@/lib/types'
+import type { VariantProps } from 'class-variance-authority'
 
 interface ResourcesTabProps {
   orgId: string
   isAdmin: boolean
+  // Ledger state lives in CatalogClient, not here: tabs are kept mounted, so a
+  // cost entered on this tab would otherwise never reach the package that needs
+  // it, the KPI band, or the health rail until a full page reload. Lifting it
+  // also keeps `packages` live, which is what makes the in-use delete guard
+  // below actually binding for packages created in the same session.
   resources: OpsResource[]
+  setResources: Dispatch<SetStateAction<OpsResource[]>>
   packages: WorkPackage[]
 }
 
+type Tone = NonNullable<VariantProps<typeof pillVariants>['tone']>
+
 const KINDS: ResourceKind[] = ['consumable', 'reusable', 'serialized']
 
-export function ResourcesTab({ orgId, isAdmin, resources: initial, packages }: ResourcesTabProps) {
-  const [resources, setResources] = useState(initial)
+// One gray badge for every kind reads as "no state at all". Kinds behave
+// differently at closeout — consumables are spent, reusables come home,
+// serialized units are tracked individually — so they get differing tones.
+const KIND_TONE: Record<ResourceKind, Tone> = {
+  consumable: 'neutral',
+  reusable: 'confirmed',
+  serialized: 'pending',
+}
+
+const AFFORDANCE =
+  'rounded text-xs font-medium text-[var(--link)] hover:underline outline-none focus-visible:ring-3 focus-visible:ring-ring/50'
+
+export function ResourcesTab({ orgId, isAdmin, resources, setResources, packages }: ResourcesTabProps) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [name, setName] = useState('')
   const [kind, setKind] = useState<ResourceKind>('consumable')
   const [unit, setUnit] = useState('')
   const [unitCost, setUnitCost] = useState('')
+  const [pendingDelete, setPendingDelete] = useState<OpsResource | null>(null)
+  const nameRef = useRef<HTMLInputElement>(null)
+  const unitRefs = useRef<Record<string, HTMLInputElement | null>>({})
+  const costRefs = useRef<Record<string, HTMLInputElement | null>>({})
 
   // A resource referenced by any package line must not be deletable (handoff:
   // deleting in-use catalog entries breaks re-derive and closeout).
@@ -52,19 +79,65 @@ export function ResourcesTab({ orgId, isAdmin, resources: initial, packages }: R
     }
   }
 
+  // Both inline editors are uncontrolled (defaultValue + onBlur + an equality
+  // guard), and this tab is never remounted — so a rejected write would leave
+  // the typed-but-unsaved value sitting in the DOM for the rest of the session,
+  // reading as saved. Put the persisted value back by hand when a write fails.
+  function restoreInput(ref: HTMLInputElement | null | undefined, persisted: string) {
+    if (ref) ref.value = persisted
+  }
+
+  // `null` is not "omit" here: lib/ops/resources.ts turns a null field into a
+  // FieldValue.delete(), which is the only way to clear one — omitting it means
+  // "leave it alone". Clearing the unit also re-resolves `dimension` server-side.
+  async function handleUnitChange(r: OpsResource, value: string) {
+    const unit = value.trim() === '' ? null : value.trim()
+    // Error/`saving` are cleared at the request boundary, not before the guard:
+    // tabbing through an untouched field starts no write, so it must not
+    // dismiss a warning about an edit that really did fail.
+    if (unit === (r.unit ?? null)) return
+    setSaving(true); setError(null)
+    try {
+      await updateResource(orgId, r.id, { unit })
+      // updateResource resolves to void, so the server's re-derived `dimension`
+      // never comes back — mirror it exactly. lib/ops/resources.ts:71-73 calls
+      // `resolveDimension({ unit: updates.unit ?? undefined })`: only the unit
+      // is passed, because resolveDimension returns any dimension it is handed
+      // (units.ts:50) and passing the old one would just echo it back. Skip
+      // this and the client keeps a stale dimension all session; since tabs are
+      // kept mounted, unitOptionsForResource then offers the wrong dimension's
+      // units on the packages tab and convert() drops the line as a gap.
+      setResources((prev) =>
+        prev.map((x) =>
+          x.id === r.id
+            ? { ...x, unit: unit ?? undefined, dimension: resolveDimension({ unit: unit ?? undefined }) }
+            : x
+        )
+      )
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to save')
+      restoreInput(unitRefs.current[r.id], r.unit ?? '')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   async function handleCostChange(r: OpsResource, value: string) {
     const unit_cost = value === '' ? null : Number(value)
     if (unit_cost === (r.unit_cost ?? null)) return
+    setSaving(true); setError(null)
     try {
       await updateResource(orgId, r.id, { unit_cost })
       setResources((prev) => prev.map((x) => (x.id === r.id ? { ...x, unit_cost: unit_cost ?? undefined } : x)))
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to save')
+      restoreInput(costRefs.current[r.id], r.unit_cost !== undefined ? String(r.unit_cost) : '')
+    } finally {
+      setSaving(false)
     }
   }
 
   async function handleDelete(r: OpsResource) {
-    if (!confirm(`Delete ${r.name}?`)) return
     setSaving(true); setError(null)
     try {
       await deleteResource(orgId, r.id)
@@ -78,65 +151,129 @@ export function ResourcesTab({ orgId, isAdmin, resources: initial, packages }: R
 
   return (
     <div className="space-y-6">
-      {error && <p className="text-sm text-red-600">{error}</p>}
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="text-left text-gray-500 border-b">
-            <th className="py-2">Name</th><th>Kind</th><th>Unit</th><th>Unit cost</th><th />
-          </tr>
-        </thead>
-        <tbody>
-          {resources.map((r) => (
-            <tr key={r.id} className="border-b last:border-0">
-              <td className="py-2 font-medium">{r.name}</td>
-              <td><Badge variant="secondary">{r.kind}</Badge></td>
-              <td>{r.unit ?? '—'}</td>
-              <td>
-                {isAdmin ? (
-                  <div className="flex items-center gap-2">
-                    <Input
-                      aria-label={`Unit cost for ${r.name}`}
-                      type="number" step="0.01" className="w-24"
-                      defaultValue={r.unit_cost ?? ''}
-                      onBlur={(e) => handleCostChange(r, e.target.value)}
-                    />
-                    {r.unit_cost !== undefined && <span>{formatMoney(r.unit_cost)}</span>}
-                  </div>
-                ) : r.unit_cost !== undefined ? formatMoney(r.unit_cost) : '—'}
-              </td>
-              <td className="text-right">
-                {isAdmin && (
-                  <Button
-                    variant="ghost" size="sm"
-                    aria-label={`Delete ${r.name}`}
-                    disabled={saving || inUse.has(r.id)}
-                    title={inUse.has(r.id) ? 'In use by a package — remove it from the package first' : undefined}
-                    onClick={() => handleDelete(r)}
-                  >
-                    Delete
-                  </Button>
-                )}
-              </td>
+      {error && <p className="text-sm text-destructive">{error}</p>}
+      {/* Five columns don't fit a phone; scroll the ledger, not the page. */}
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-muted-foreground border-b border-border">
+              <th className="py-2">Name</th><th>Kind</th><th>Unit</th><th>Unit cost</th><th />
             </tr>
-          ))}
-          {resources.length === 0 && (
-            <tr><td colSpan={5} className="py-6 text-center text-gray-500">No resources yet. Add beans, milk, cups, machines…</td></tr>
-          )}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {resources.map((r) => (
+              <tr key={r.id} className="border-b border-border last:border-0">
+                <td className="py-2 font-medium">{r.name}</td>
+                <td><StatusPill tone={KIND_TONE[r.kind]}>{r.kind}</StatusPill></td>
+                <td>
+                  {isAdmin ? (
+                    <div className="flex items-center gap-2">
+                      <Input
+                        aria-label={`Unit for ${r.name}`}
+                        placeholder="oz, each"
+                        className="w-20"
+                        ref={(el) => { unitRefs.current[r.id] = el }}
+                        defaultValue={r.unit ?? ''}
+                        onBlur={(e) => handleUnitChange(r, e.target.value)}
+                      />
+                      {r.unit === undefined && r.unit_cost !== undefined && (
+                        // A unit cost with no unit is dropped from every
+                        // materials figure (catalog-costing.ts needs both), so
+                        // this gap silently costs money. Name it, and put the
+                        // fix one click away.
+                        <button
+                          type="button"
+                          className={AFFORDANCE}
+                          onClick={() => unitRefs.current[r.id]?.focus()}
+                        >
+                          + Add unit
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    r.unit ?? '—'
+                  )}
+                </td>
+                <td>
+                  {isAdmin ? (
+                    <div className="flex items-center gap-2">
+                      <Input
+                        aria-label={`Unit cost for ${r.name}`}
+                        type="number" step="0.01" className="w-24"
+                        ref={(el) => { costRefs.current[r.id] = el }}
+                        defaultValue={r.unit_cost ?? ''}
+                        onBlur={(e) => handleCostChange(r, e.target.value)}
+                      />
+                      {r.unit_cost !== undefined ? (
+                        <span>{formatMoney(r.unit_cost)}</span>
+                      ) : r.kind === 'consumable' ? (
+                        // Only consumable costs feed the costing engine, so an
+                        // unpriced one is a gap worth naming rather than a blank.
+                        // Copper belongs on something you can act on, so this is
+                        // a real button that puts the caret in the cost field.
+                        <button
+                          type="button"
+                          className={AFFORDANCE}
+                          onClick={() => costRefs.current[r.id]?.focus()}
+                        >
+                          + Add cost
+                        </button>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </div>
+                  ) : r.unit_cost !== undefined ? formatMoney(r.unit_cost) : '—'}
+                </td>
+                <td className="text-right">
+                  {isAdmin && (
+                    // Deliberately NOT a menu item: the disabled state IS the
+                    // in-use guard, and it has to stay visible on the row.
+                    <Button
+                      variant="ghost" size="sm"
+                      aria-label={`Delete ${r.name}`}
+                      disabled={saving || inUse.has(r.id)}
+                      title={inUse.has(r.id) ? 'In use by a package — remove it from the package first' : undefined}
+                      onClick={() => setPendingDelete(r)}
+                    >
+                      Delete
+                    </Button>
+                  )}
+                </td>
+              </tr>
+            ))}
+            {resources.length === 0 && (
+              <tr>
+                <td colSpan={5}>
+                  <EmptyState
+                    title="No ingredients or equipment yet"
+                    description="Beans, milk, cups, machines — everything a package draws on."
+                    action={
+                      isAdmin ? (
+                        <Button size="sm" onClick={() => nameRef.current?.focus()}>
+                          Add your first ingredient
+                        </Button>
+                      ) : undefined
+                    }
+                  />
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
 
       {isAdmin && (
-        <div className="flex items-end gap-3 flex-wrap border-t pt-4">
+        <div className="flex items-end gap-3 flex-wrap border-t border-border pt-4">
           <div>
             <Label htmlFor="res-name">Name</Label>
-            <Input id="res-name" value={name} onChange={(e) => setName(e.target.value)} />
+            <Input id="res-name" ref={nameRef} value={name} onChange={(e) => setName(e.target.value)} />
           </div>
           <div>
             <Label htmlFor="res-kind">Kind</Label>
             <select
               id="res-kind" value={kind}
               onChange={(e) => setKind(e.target.value as ResourceKind)}
-              className="block h-9 rounded-md border border-gray-300 px-2 text-sm"
+              className="block h-9 rounded-md border border-border bg-background px-2 text-sm"
             >
               {KINDS.map((k) => (
                 <option key={k} value={k}>{k.charAt(0).toUpperCase() + k.slice(1)}</option>
@@ -154,6 +291,17 @@ export function ResourcesTab({ orgId, isAdmin, resources: initial, packages }: R
           <Button onClick={handleAdd} disabled={saving || !name.trim()}>Add resource</Button>
         </div>
       )}
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => { if (!open) setPendingDelete(null) }}
+        title={pendingDelete ? `Delete ${pendingDelete.name}?` : 'Delete this item?'}
+        description="It leaves the catalog for good. Packages already using it can't be deleted, so nothing in flight breaks."
+        confirmLabel="Delete"
+        destructive
+        pending={saving}
+        onConfirm={async () => { if (pendingDelete) await handleDelete(pendingDelete) }}
+      />
     </div>
   )
 }

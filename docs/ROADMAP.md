@@ -145,6 +145,24 @@ EventTrax pivot (neutralization, multi-brand, ops core). Detailed designs live i
   drop↔market pickup linkage → registration retirement R2. Manual browser
   walkthrough of the occasion flows still owed.
 
+- **Track 2 module level-up rollout** (PRs #90–#95, merged 2026-08-16) — the
+  Client Cockpit's shared UI kit rolled across the app, module by module:
+  Client Cockpit + kit extraction (#90), Today (#91), Vendors ledger (#92),
+  Invoices money surface (#93), Calendar dashboard (#94), and **Events &
+  Delivery (#95)** — the biggest module: a shared event spine in
+  `[eventSlug]/layout.tsx` (sticky identity header, route-backed section tabs
+  via `lib/event-nav.ts` — dead Teams/Budget 404 links removed, KPI band fed
+  by the `lib/event-spine.ts` aggregator gated on `allowedEventPages`),
+  all 12 leaves recomposed onto the kit (orphan h1/max-w columns gone,
+  `window.confirm`/`prompt` → kit Dialogs incl. guardian pickup, StatusPill
+  statuses, EmptyStates, families purple-era retokenization + slide-over
+  focus management), and the org events home as a grouped ledger with an
+  honest KPI band. Playbook:
+  `superpowers/plans/2026-08-15-module-levelup-playbook.md`. Remaining
+  modules: Sales Pipeline, Proposals collections, Catalog/Packages (in
+  flight); then the Signal palette sweep closes Track 2. Live authenticated
+  walkthroughs owed per module.
+
 ## In flight
 
 - **Proposal templates** (branch `claude/proposal-templates`) — org-owned

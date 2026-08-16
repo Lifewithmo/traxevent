@@ -6,6 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { StatTile } from '@/components/ui/stat-tile'
+import { StatusPill } from '@/components/ui/status-pill'
 import { saveActuals, getCloseoutSummary, completeCloseout } from '@/actions/event-ops'
 import { generateCloseoutInvoice } from '@/actions/invoices'
 import { formatMoney } from '@/lib/utils'
@@ -91,17 +93,14 @@ export function CloseoutClient(props: CloseoutClientProps) {
   }
 
   return (
-    <div className="p-6 max-w-3xl space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Closeout — {props.eventName}</h1>
-        {completed && <p className="text-sm font-medium text-green-700 mt-1">Closeout complete.</p>}
-      </div>
-      {error && <p className="text-sm text-red-600">{error}</p>}
+    <div className="p-5 max-w-4xl space-y-6">
+      {completed && <StatusPill tone="confirmed">Closeout complete.</StatusPill>}
+      {error && <p className="text-sm text-destructive">{error}</p>}
 
       <Card>
         <CardHeader>
           <CardTitle className="text-base">1 · Record actuals</CardTitle>
-          <p className="text-sm text-gray-500">Pre-filled with planned quantities — adjust to what you actually used.</p>
+          <p className="text-sm text-muted-foreground">Pre-filled with planned quantities — adjust to what you actually used.</p>
         </CardHeader>
         <CardContent className="space-y-3">
           {plan.shopping_list.map((i) => (
@@ -113,7 +112,7 @@ export function CloseoutClient(props: CloseoutClientProps) {
                 value={qtyUsed[i.resource_id] ?? ''}
                 onChange={(e) => setQtyUsed((prev) => ({ ...prev, [i.resource_id]: e.target.value }))}
               />
-              <span className="text-xs text-gray-500">{i.unit ?? ''} (planned {i.qty})</span>
+              <span className="text-xs text-muted-foreground">{i.unit ?? ''} (planned {i.qty})</span>
             </div>
           ))}
           <div className="flex gap-3 flex-wrap">
@@ -138,7 +137,7 @@ export function CloseoutClient(props: CloseoutClientProps) {
         <CardHeader><CardTitle className="text-base">2 · Margin vs plan</CardTitle></CardHeader>
         <CardContent>
           {props.summaryError && !summary ? (
-            <div className="text-sm text-red-700">
+            <div className="text-sm text-destructive">
               <p className="font-medium">{props.summaryError}</p>
               <p className="mt-1">
                 A package on this plan was deleted from the catalog. Restore it in the catalog (same name and lines)
@@ -146,17 +145,30 @@ export function CloseoutClient(props: CloseoutClientProps) {
               </p>
             </div>
           ) : summary ? (
-            <table className="text-sm w-full max-w-md">
-              <tbody>
-                <tr><td className="py-1 text-gray-500">Revenue (packages + sales)</td><td className="text-right font-medium">{formatMoney(summary.revenue)}</td></tr>
-                <tr><td className="py-1 text-gray-500">Planned consumable cost</td><td className="text-right">{formatMoney(summary.planned_consumable_cost)}</td></tr>
-                <tr><td className="py-1 text-gray-500">Actual consumable cost</td><td className="text-right">{formatMoney(summary.actual_consumable_cost)}</td></tr>
-                <tr className="border-t"><td className="py-1 text-gray-500">Planned margin</td><td className="text-right">{formatMoney(summary.planned_margin)}</td></tr>
-                <tr><td className="py-1 font-medium">Actual margin</td><td className="text-right font-bold">{formatMoney(summary.actual_margin)}</td></tr>
-              </tbody>
-            </table>
+            <div className="space-y-3">
+              <div className="grid grid-cols-3 gap-2.5 max-[700px]:grid-cols-1">
+                <StatTile label="Revenue" value={formatMoney(summary.revenue)} tone="money" note="Packages + sales" />
+                <StatTile
+                  label="Actual margin"
+                  value={formatMoney(summary.actual_margin)}
+                  tone={summary.actual_margin < 0 ? 'alert' : 'money'}
+                />
+                <StatTile label="Planned margin" value={formatMoney(summary.planned_margin)} />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Consumables: planned{' '}
+                <span className="font-medium tabular-nums text-foreground">{formatMoney(summary.planned_consumable_cost)}</span>
+                {' '}· actual{' '}
+                <span className="font-medium tabular-nums text-foreground">{formatMoney(summary.actual_consumable_cost)}</span>
+              </p>
+              {summary.cost_gaps && summary.cost_gaps.length > 0 && (
+                <p className="rounded-lg border border-[var(--warn-border)] bg-[var(--warn-bg)] px-3 py-2 text-sm text-[var(--warn-fg)]">
+                  Planned cost omits {summary.cost_gaps.length} resource(s) with no unit conversion: {summary.cost_gaps.join(', ')}
+                </p>
+              )}
+            </div>
           ) : (
-            <p className="text-sm text-gray-500">Save actuals to see the margin summary.</p>
+            <p className="text-sm text-muted-foreground">Save actuals to see the margin summary.</p>
           )}
         </CardContent>
       </Card>
@@ -164,14 +176,14 @@ export function CloseoutClient(props: CloseoutClientProps) {
       <Card>
         <CardHeader>
           <CardTitle className="text-base">3 · Complete</CardTitle>
-          <p className="text-sm text-gray-500">The event isn&apos;t complete until closeout is done.</p>
+          <p className="text-sm text-muted-foreground">The event isn&apos;t complete until closeout is done.</p>
         </CardHeader>
         <CardContent>
           {props.isAdmin && !completed && (
             <Button onClick={handleComplete} disabled={saving || !hasActuals}>Complete closeout</Button>
           )}
-          {!props.isAdmin && !completed && <p className="text-sm text-gray-500">An admin completes the closeout.</p>}
-          {completed && <p className="text-sm text-green-700">Done. Generate the final invoice below.</p>}
+          {!props.isAdmin && !completed && <p className="text-sm text-muted-foreground">An admin completes the closeout.</p>}
+          {completed && <StatusPill tone="confirmed">Done. Generate the final invoice below.</StatusPill>}
         </CardContent>
       </Card>
 
@@ -179,7 +191,7 @@ export function CloseoutClient(props: CloseoutClientProps) {
         <Card>
           <CardHeader>
             <CardTitle className="text-base">4 · Generate final invoice</CardTitle>
-            <p className="text-sm text-gray-500">One line per package at catalog price, as a draft in the invoicing module. Margin numbers stay internal.</p>
+            <p className="text-sm text-muted-foreground">One line per package at catalog price, as a draft in the invoicing module. Margin numbers stay internal.</p>
           </CardHeader>
           <CardContent className="flex items-end gap-2">
             {props.linkedLead ? (
@@ -189,13 +201,13 @@ export function CloseoutClient(props: CloseoutClientProps) {
             ) : (
               <div>
                 {props.linkBroken && (
-                  <p role="status" className="mb-1 text-sm text-amber-700">
+                  <p role="status" className="mb-1 text-sm text-[var(--warn-fg)]">
                     The opportunity this job came from no longer exists — pick who to bill.
                   </p>
                 )}
                 <Label htmlFor="co-lead">Bill to</Label>
                 <select id="co-lead" value={leadId} onChange={(e) => setLeadId(e.target.value)}
-                  className="block h-9 rounded-md border border-gray-300 px-2 text-sm min-w-48">
+                  className="block h-8 rounded-lg border border-input bg-transparent px-2 text-sm min-w-48">
                   <option value="">Pick a client…</option>
                   {props.leads.map((l) => <option key={l.id} value={l.id}>{l.name}{l.organization ? ` — ${l.organization}` : ''}</option>)}
                 </select>

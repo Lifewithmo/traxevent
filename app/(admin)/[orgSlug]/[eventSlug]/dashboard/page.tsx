@@ -1,8 +1,8 @@
 import { requireEvent } from '@/lib/auth/guards'
-import { resolveEnabledModules } from '@/lib/industry-packs'
 import { kindOf } from '@/lib/occasions/kind'
 import { getSeriesCore } from '@/lib/occasions/series'
 import { MarketDayOverview } from '@/components/admin/occasions/MarketDayOverview'
+import { EmptyState } from '@/components/ui/empty-state'
 
 export default async function DashboardPage({
   params,
@@ -17,28 +17,16 @@ export default async function DashboardPage({
     return <MarketDayOverview orgSlug={orgSlug} event={event} series={series} />
   }
 
-  const enabledModules = resolveEnabledModules(org.industry_pack_id)
-  const rosterEnabled = enabledModules.includes('attendee-roster')
-
+  // Identity, tabs, and the KPI band (countdown/registrations/readiness/
+  // balance — including expected headcount) all live in the spine rendered by
+  // the event layout; the dashboard body itself has nothing to show yet.
   return (
-    <div className="p-6">
-      <h1 className="text-2xl font-bold mb-2">Dashboard</h1>
-      <p className="text-gray-500 text-sm">
-        {orgSlug} / {eventSlug}
-      </p>
-
-      {!rosterEnabled && (
-        <div className="mt-4 p-4 bg-white rounded-lg border inline-block">
-          <p className="text-xs text-muted-foreground uppercase tracking-wide">Expected headcount</p>
-          <p className="text-2xl font-bold">
-            {event.headcount != null ? event.headcount : 'Not set'}
-          </p>
-        </div>
-      )}
-
-      <div className="mt-8 p-6 bg-white rounded-lg border text-center text-gray-400">
-        Camp feature pages (families, assignments, teams, budget, itinerary, communicate)
-        are coming in Phase 1b.
+    <div className="p-5">
+      <div className="rounded-xl border border-border bg-card py-8">
+        <EmptyState
+          title="Event workspace"
+          description="Work this job from the tabs above. Teams and budget tools arrive in Phase 1b."
+        />
       </div>
     </div>
   )

@@ -28,6 +28,7 @@ export function FamiliesClient({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   // Optimistic status updates for instant UI feedback
   const [statusOverrides, setStatusOverrides] = useState<Record<string, Family['registration_status']>>({})
+  const [error, setError] = useState<string | null>(null)
 
   const displayFamilies = families.map(f =>
     statusOverrides[f.id] ? { ...f, registration_status: statusOverrides[f.id] } : f
@@ -66,6 +67,7 @@ export function FamiliesClient({
   ) {
     const overrides: Record<string, Family['registration_status']> = {}
     ids.forEach(id => (overrides[id] = status))
+    setError(null)
     setStatusOverrides(prev => ({ ...prev, ...overrides }))
     setSelectedIds(new Set())
     try {
@@ -77,11 +79,12 @@ export function FamiliesClient({
         ids.forEach(id => delete next[id])
         return next
       })
-      alert('Failed to update status. Please try again.')
+      setError('Failed to update status. Please try again.')
     }
   }
 
   async function handleExport(ids?: string[]) {
+    setError(null)
     try {
       const csv = await buildFamiliesCsvAction(orgId, eventId, ids)
       const blob = new Blob([csv], { type: 'text/csv' })
@@ -92,12 +95,28 @@ export function FamiliesClient({
       a.click()
       URL.revokeObjectURL(url)
     } catch {
-      alert('Export failed. Please try again.')
+      setError('Export failed. Please try again.')
     }
   }
 
   return (
     <div className="flex flex-col h-full relative">
+      {error && (
+        <div
+          role="alert"
+          className="flex items-center gap-2 px-4 py-2 text-sm border-b bg-[var(--danger-bg)] border-[var(--danger-border)] text-[var(--danger-text)]"
+        >
+          <span className="flex-1">{error}</span>
+          <button
+            type="button"
+            aria-label="Dismiss"
+            onClick={() => setError(null)}
+            className="text-xs font-semibold hover:opacity-70 transition-opacity"
+          >
+            ✕
+          </button>
+        </div>
+      )}
       <FamiliesTable
         families={displayFamilies}
         search={search}

@@ -1,10 +1,11 @@
 'use client'
 
 import { useState } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { EmptyState } from '@/components/ui/empty-state'
 import { instantiateOpsPlan } from '@/actions/event-ops'
 import { formatMoney } from '@/lib/utils'
 import { SITE_NEED_OPTIONS as SITE_NEEDS } from '@/lib/ops/derive'
@@ -13,6 +14,8 @@ import type { OpsPlan, WorkPackage } from '@/lib/types'
 interface OpsSetupProps {
   orgId: string
   eventId: string
+  /** Enables the packages-page link in the empty state when the caller has it. */
+  orgSlug?: string
   packages: WorkPackage[]
   eventStart: string
   industryPackId?: string
@@ -20,7 +23,7 @@ interface OpsSetupProps {
   onCreated: (plan: OpsPlan) => void
 }
 
-export function OpsSetup({ orgId, eventId, packages, eventStart, industryPackId, defaultGuests, onCreated }: OpsSetupProps) {
+export function OpsSetup({ orgId, eventId, orgSlug, packages, eventStart, industryPackId, defaultGuests, onCreated }: OpsSetupProps) {
   const [selected, setSelected] = useState<string[]>([])
   const [guests, setGuests] = useState(defaultGuests ? String(defaultGuests) : '')
   const [serviceStart, setServiceStart] = useState('')
@@ -55,15 +58,15 @@ export function OpsSetup({ orgId, eventId, packages, eventStart, industryPackId,
   }
 
   return (
-    <Card className="mt-4">
-      <CardHeader>
-        <CardTitle className="text-base">Set up this event&apos;s ops plan</CardTitle>
-        <p className="text-sm text-gray-500">
+    <section className="overflow-hidden rounded-xl border border-border bg-card shadow-xs">
+      <header className="border-b border-border px-3 py-2">
+        <h4 className="text-[13px] font-semibold">Set up this event&apos;s ops plan</h4>
+      </header>
+      <div className="space-y-4 p-3">
+        <p className="text-sm text-muted-foreground">
           Packages and guest count drive the shopping list, packing list, deadlines, and checklists.
           Packages can&apos;t be changed after setup yet — pick carefully.
         </p>
-      </CardHeader>
-      <CardContent className="space-y-4">
         <div className="space-y-1">
           <p className="text-sm font-medium">Packages</p>
           {packages.map((p) => (
@@ -74,12 +77,20 @@ export function OpsSetup({ orgId, eventId, packages, eventStart, industryPackId,
                 checked={selected.includes(p.id)}
                 onChange={(e) => setSelected((prev) => e.target.checked ? [...prev, p.id] : prev.filter((id) => id !== p.id))}
               />
-              {p.name} <span className="text-gray-500">{formatMoney(p.price)}</span>
-              {p.max_guests !== undefined && <span className="text-gray-400 text-xs">up to {p.max_guests}</span>}
+              {p.name} <span className="text-muted-foreground">{formatMoney(p.price)}</span>
+              {p.max_guests !== undefined && <span className="text-xs text-muted-foreground">up to {p.max_guests}</span>}
             </label>
           ))}
           {packages.length === 0 && (
-            <p className="text-sm text-gray-500">No packages in your catalog yet — create one under Menu Packages first.</p>
+            <EmptyState
+              title="No packages in your catalog yet"
+              description="Create one under Menu Packages first."
+              action={orgSlug ? (
+                <Button variant="outline" size="sm" nativeButton={false} render={<Link href={`/${orgSlug}/packages`} />}>
+                  Open Menu Packages
+                </Button>
+              ) : undefined}
+            />
           )}
         </div>
         <div className="flex gap-3 flex-wrap">
@@ -116,11 +127,11 @@ export function OpsSetup({ orgId, eventId, packages, eventStart, industryPackId,
           <Label htmlFor="ops-notes">Notes</Label>
           <Input id="ops-notes" value={notes} onChange={(e) => setNotes(e.target.value)} />
         </div>
-        {error && <p className="text-sm text-red-600">{error}</p>}
+        {error && <p className="text-sm text-destructive">{error}</p>}
         <Button onClick={handleCreate} disabled={saving || selected.length === 0 || !guests || !Number.isFinite(Number(guests)) || Number(guests) <= 0}>
           Set up ops plan
         </Button>
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   )
 }

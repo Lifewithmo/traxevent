@@ -21,9 +21,9 @@ export default async function EventPeoplePage({
   ])
 
   return (
-    <>
+    <div className="p-5 space-y-6">
       <EventPeopleClient orgId={orgId} eventId={eventId} people={people} templates={templates} />
       <VolunteerHoursClient orgId={orgId} eventId={eventId} volunteers={people.filter((p) => p.kind === 'volunteer')} entries={hours} />
-    </>
+    </div>
   )
 }

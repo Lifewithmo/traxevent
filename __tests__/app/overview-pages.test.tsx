@@ -65,6 +65,133 @@ describe('Catalog overview page', () => {
     render(await CatalogPage({ params }))
     expect(screen.getByText('Expiring within 60 days')).toBeInTheDocument()
   })
+
+  it('renders the package, vendor, and form counts as KPI figures', async () => {
+    catalogOverview.mockResolvedValue({
+      expiring: [],
+      vendorCount: 7,
+      formCount: 3,
+      complianceCount: 1,
+      packageCount: 4,
+    })
+    const { container } = render(await CatalogPage({ params }))
+    const tileText = Array.from(container.querySelectorAll('[data-slot="stat-tile"]')).map((t) => t.textContent)
+    expect(tileText.some((t) => t?.includes('Packages') && t?.includes('4'))).toBe(true)
+    expect(tileText.some((t) => t?.includes('Vendors') && t?.includes('7'))).toBe(true)
+    expect(tileText.some((t) => t?.includes('Forms') && t?.includes('3'))).toBe(true)
+  })
+
+  it('offers a single CTA to packages from the empty state', async () => {
+    catalogOverview.mockResolvedValue({
+      expiring: [],
+      vendorCount: 0,
+      formCount: 0,
+      complianceCount: 0,
+      packageCount: 0,
+    })
+    render(await CatalogPage({ params }))
+    expect(screen.getByRole('link', { name: 'Add packages' })).toHaveAttribute('href', '/acme/packages')
+  })
+
+  it('flags a single already-expired document with singular copy and an alert tone', async () => {
+    catalogOverview.mockResolvedValue({
+      expiring: [{ id: 'd1', name: 'COI', daysLeft: -1 }],
+      vendorCount: 1,
+      formCount: 0,
+      complianceCount: 1,
+      packageCount: 0,
+    })
+    render(await CatalogPage({ params }))
+    expect(screen.getByText('1 already expired')).toBeInTheDocument()
+    expect(screen.getByText('expired 1 day ago')).toBeInTheDocument()
+    const pill = screen.getByText('expired 1 day ago').closest('[data-slot="status-pill"]')
+    expect(pill).toHaveClass('bg-[var(--status-alert-bg)]')
+  })
+
+  it('pluralises multiple already-expired days', async () => {
+    catalogOverview.mockResolvedValue({
+      expiring: [{ id: 'd1', name: 'COI', daysLeft: -3 }],
+      vendorCount: 1,
+      formCount: 0,
+      complianceCount: 1,
+      packageCount: 0,
+    })
+    render(await CatalogPage({ params }))
+    expect(screen.getByText('1 already expired')).toBeInTheDocument()
+    expect(screen.getByText('expired 3 days ago')).toBeInTheDocument()
+  })
+
+  it('renders a mixed list of expired and expiring-soon documents together', async () => {
+    catalogOverview.mockResolvedValue({
+      expiring: [
+        { id: 'd1', name: 'Liquor License', daysLeft: -2 },
+        { id: 'd2', name: 'COI', daysLeft: 10 },
+      ],
+      vendorCount: 1,
+      formCount: 0,
+      complianceCount: 2,
+      packageCount: 0,
+    })
+    render(await CatalogPage({ params }))
+    expect(screen.getByText('1 already expired')).toBeInTheDocument()
+    expect(screen.getByText('Liquor License')).toBeInTheDocument()
+    expect(screen.getByText('expired 2 days ago')).toBeInTheDocument()
+    expect(screen.getByText('COI')).toBeInTheDocument()
+    expect(screen.getByText('10 days left')).toBeInTheDocument()
+  })
+
+  it('renders every expiring document even when there are more than three', async () => {
+    catalogOverview.mockResolvedValue({
+      expiring: [
+        { id: 'd1', name: 'Doc One', daysLeft: 5 },
+        { id: 'd2', name: 'Doc Two', daysLeft: 10 },
+        { id: 'd3', name: 'Doc Three', daysLeft: 15 },
+        { id: 'd4', name: 'Doc Four', daysLeft: 20 },
+        { id: 'd5', name: 'Doc Five', daysLeft: 25 },
+      ],
+      vendorCount: 1,
+      formCount: 0,
+      complianceCount: 5,
+      packageCount: 0,
+    })
+    render(await CatalogPage({ params }))
+    // Regression guard: RelatedRecordCard defaults to a 3-row preview: without
+    // an explicit previewLimit, documents 4 and 5 would silently vanish and
+    // the "View all" overflow line would render inert (no link, no onClick).
+    expect(screen.getByText('Doc One')).toBeInTheDocument()
+    expect(screen.getByText('Doc Two')).toBeInTheDocument()
+    expect(screen.getByText('Doc Three')).toBeInTheDocument()
+    expect(screen.getByText('Doc Four')).toBeInTheDocument()
+    expect(screen.getByText('Doc Five')).toBeInTheDocument()
+    expect(screen.queryByText(/View all/)).not.toBeInTheDocument()
+  })
+
+  it('links every expiring document row to compliance', async () => {
+    catalogOverview.mockResolvedValue({
+      expiring: [{ id: 'd1', name: 'COI', daysLeft: 12 }],
+      vendorCount: 1,
+      formCount: 0,
+      complianceCount: 1,
+      packageCount: 0,
+    })
+    render(await CatalogPage({ params }))
+    expect(screen.getByText('COI').closest('a')).toHaveAttribute('href', '/acme/compliance')
+  })
+
+  it('renders the house header bar with a subhead', async () => {
+    catalogOverview.mockResolvedValue({
+      expiring: [],
+      vendorCount: 2,
+      formCount: 3,
+      complianceCount: 0,
+      packageCount: 4,
+    })
+    render(await CatalogPage({ params }))
+    expect(screen.getByRole('heading', { name: 'Catalog', level: 1 })).toBeInTheDocument()
+    expect(screen.getByText(/4 packages/)).toBeInTheDocument()
+    expect(screen.getByText(/2 vendors/)).toBeInTheDocument()
+    expect(screen.getByText(/3 forms/)).toBeInTheDocument()
+  })
 })
 
 describe('Money overview page', () => {

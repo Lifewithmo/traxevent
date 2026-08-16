@@ -13,12 +13,8 @@ export function MarketDayOverview({
   series: EventSeries | null
 }) {
   return (
-    <div className="p-6 max-w-2xl">
-      <p className="text-xs uppercase tracking-wide text-muted-foreground">Market day</p>
-      <h1 className="text-2xl font-bold">{event.name}</h1>
-      <p className="mt-1 text-sm text-muted-foreground">{event.event_start}</p>
-
-      <div className="mt-6 grid gap-4 sm:grid-cols-2">
+    <div className="p-5 max-w-2xl">
+      <div className="grid gap-4 sm:grid-cols-2">
         <div className="rounded-lg border bg-white p-4">
           <p className="text-xs uppercase tracking-wide text-muted-foreground">Location</p>
           <p className="mt-1 font-medium">{event.location?.name ?? 'Not set'}</p>

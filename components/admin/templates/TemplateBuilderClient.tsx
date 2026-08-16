@@ -123,20 +123,30 @@ export function TemplateBuilderClient({
       />
 
       <div aria-live="polite" aria-atomic="true" className="pointer-events-none fixed right-4 top-16 z-50 flex w-full max-w-sm flex-col gap-2">
+        {/* bg-popover (not bg-white) so the toast surface follows the theme;
+            the copy keeps text-destructive rather than popover-foreground. */}
         {error && (
-          <div role="status" className="pointer-events-auto rounded-md border border-destructive/50 bg-white px-3 py-2 text-sm text-destructive shadow-lg">
+          <div role="status" className="pointer-events-auto rounded-md border border-destructive/50 bg-popover px-3 py-2 text-sm text-destructive shadow-lg">
             {error}
           </div>
         )}
         {adjustments.map((a, i) => (
-          <div key={i} role="status" className="pointer-events-auto rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800 shadow-lg">
+          <div key={i} role="status" className="pointer-events-auto rounded-md border border-[var(--warn-border)] bg-[var(--warn-bg)] px-3 py-2 text-sm text-[var(--warn-fg)] shadow-lg">
             {a}
           </div>
         ))}
       </div>
 
-      <main className="flex-1 overflow-y-auto bg-gray-100 px-6 py-8">
-        <ProposalTheme branding={branding} className="mx-auto max-w-3xl rounded-lg bg-white p-8 shadow-sm">
+      <main className="flex-1 overflow-y-auto bg-muted px-6 py-8">
+        {/* The paper is the customer's document, so it stays white in dark mode —
+            --warm-0 is the literal white token. Do NOT use bg-card, which inverts. */}
+        {/* The ink is pinned for the same reason as the sheet: ProposalTheme sets
+            no text colour, so without this the document inherits --foreground and
+            renders near-white on white paper in dark mode. */}
+        <ProposalTheme
+          branding={branding}
+          className="mx-auto max-w-3xl rounded-lg bg-[var(--warm-0)] p-8 text-[var(--warm-950)] shadow-sm"
+        >
           <BlockCanvas
             blocks={blocks}
             onChange={(next) => update({ blocks: next })}
@@ -163,7 +173,7 @@ export function TemplateBuilderClient({
           </div>
         </ProposalTheme>
 
-        <div className="sticky bottom-0 mx-auto mt-6 max-w-3xl rounded-t-lg border bg-white/95 px-6 py-3 backdrop-blur">
+        <div className="sticky bottom-0 mx-auto mt-6 max-w-3xl rounded-t-lg border bg-card/95 px-6 py-3 backdrop-blur">
           <p className="text-sm font-semibold">Client would see: {rangeLabel}</p>
         </div>
       </main>

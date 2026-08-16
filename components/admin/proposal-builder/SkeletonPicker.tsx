@@ -12,7 +12,15 @@ import { createProposalFromTemplate } from '@/actions/proposal-templates'
 import { PROPOSAL_SKELETONS, type SkeletonKey } from '@/lib/proposals/skeletons'
 import type { ProposalTemplate } from '@/lib/types'
 
-// Miniature "thumbnail" strokes suggesting each skeleton's shape.
+// Miniature "thumbnail" strokes suggesting each skeleton's shape. The warm-*
+// steps are a deliberate contrast ladder (800 → 200) that keeps the wireframe
+// legible; collapsing them onto bg-muted/bg-border would flatten it.
+//
+// COLOUR RULE — the thumbnail is a miniature of the proposal's fixed-white
+// paper, so its panel is pinned to the same fixed --warm-* ramp as the strokes
+// it contains. A theme-aware panel (bg-muted) under fixed strokes inverts the
+// ladder in dark mode — dark strokes on a dark panel — and the wireframe reads
+// as noise. The card chrome around it is app UI and stays theme-aware.
 const THUMBS: Record<SkeletonKey, string[]> = {
   full: ['title', 'text', 'head', 'text', 'image', 'tiers'],
   quick: ['title', 'text', 'tiers'],
@@ -22,17 +30,17 @@ const THUMBS: Record<SkeletonKey, string[]> = {
 
 function ThumbRow({ kind }: { kind: string }) {
   switch (kind) {
-    case 'title': return <div className="h-2 w-2/3 rounded bg-gray-800" />
-    case 'head': return <div className="h-1.5 w-1/2 rounded bg-gray-600" />
-    case 'text': return <div className="h-1 w-full rounded bg-gray-300" />
-    case 'image': return <div className="h-6 w-full rounded bg-gray-200" />
-    case 'quote': return <div className="ml-2 h-1.5 w-3/4 rounded border-l-2 border-gray-400 bg-gray-200" />
+    case 'title': return <div className="h-2 w-2/3 rounded bg-[var(--warm-800)]" />
+    case 'head': return <div className="h-1.5 w-1/2 rounded bg-[var(--warm-600)]" />
+    case 'text': return <div className="h-1 w-full rounded bg-[var(--warm-300)]" />
+    case 'image': return <div className="h-6 w-full rounded bg-[var(--warm-200)]" />
+    case 'quote': return <div className="ml-2 h-1.5 w-3/4 rounded border-l-2 border-[var(--warm-400)] bg-[var(--warm-200)]" />
     case 'tiers':
       return (
         <div className="flex gap-1">
-          <div className="h-5 flex-1 rounded bg-gray-200" />
-          <div className="h-5 flex-1 rounded bg-gray-300" />
-          <div className="h-5 flex-1 rounded bg-gray-200" />
+          <div className="h-5 flex-1 rounded bg-[var(--warm-200)]" />
+          <div className="h-5 flex-1 rounded bg-[var(--warm-300)]" />
+          <div className="h-5 flex-1 rounded bg-[var(--warm-200)]" />
         </div>
       )
     default: return null
@@ -109,7 +117,7 @@ export function SkeletonPicker({
                 type="button"
                 disabled={creating !== null}
                 onClick={() => pickTemplate(t)}
-                className="flex flex-col rounded-lg border border-gray-200 p-4 text-left transition hover:border-gray-400 hover:shadow-sm disabled:opacity-50"
+                className="flex flex-col rounded-lg border border-border p-4 text-left transition hover:border-ring hover:shadow-sm disabled:opacity-50"
               >
                 <span className="font-medium">
                   {creating === `tpl:${t.id}` ? 'Creating…' : t.name}
@@ -140,12 +148,12 @@ export function SkeletonPicker({
             type="button"
             disabled={creating !== null}
             onClick={() => pick(s.key)}
-            className="flex flex-col rounded-lg border border-gray-200 p-4 text-left transition hover:border-gray-400 hover:shadow-sm disabled:opacity-50"
+            className="flex flex-col rounded-lg border border-border p-4 text-left transition hover:border-ring hover:shadow-sm disabled:opacity-50"
           >
-            <div className="mb-3 flex h-28 w-full flex-col justify-start gap-1.5 rounded border border-gray-100 bg-gray-50 p-3">
+            <div className="mb-3 flex h-28 w-full flex-col justify-start gap-1.5 rounded border border-[var(--warm-200)] bg-[var(--warm-50)] p-3">
               {THUMBS[s.key].map((kind, i) => <ThumbRow key={i} kind={kind} />)}
               {s.key === 'blank' && (
-                <span className="m-auto text-2xl text-gray-300">+</span>
+                <span className="m-auto text-2xl text-[var(--warm-300)]">+</span>
               )}
             </div>
             <span className="font-medium">{creating === s.key ? 'Creating…' : s.name}</span>

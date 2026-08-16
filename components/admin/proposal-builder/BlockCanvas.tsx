@@ -6,9 +6,20 @@
 // menu, and a per-block handle offering drag reorder plus keyboard-accessible
 // Move up / Move down / Delete (drag is never the only path). Placeholder
 // blocks render greyed and lose their flag on first human edit.
+//
+// COLOUR RULE — this whole file paints inside <ProposalTheme>, whose sheet is
+// bg-[var(--warm-0)]: permanently white in BOTH themes (--warm-* has no .dark
+// override). So the ink on it is pinned to the fixed --warm-* ramp rather than
+// the theme-aware semantic tokens. text-foreground / text-muted-foreground /
+// border-border / bg-muted all invert under .dark and would paint near-white
+// body copy on white paper. The pinned values also match the customer's
+// renderer (components/proposals/ProposalDocument.tsx) class for class — same
+// --warm-700 body copy, same --warm-500 secondary — which is what makes this
+// canvas WYSIWYG rather than merely similar.
 import { useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
+import { EmptyState } from '@/components/ui/empty-state'
 import { InlineText } from '@/components/admin/proposal-builder/InlineText'
 import type { ProposalBlock as PlaceholderBlock } from '@/lib/types'
 import type { ProposalBlockType } from '@/lib/types'
@@ -108,7 +119,7 @@ export function BlockCanvas({
     if (disabled) return null
     return (
       <div className="group relative -my-2 flex h-6 items-center justify-center opacity-0 transition-opacity focus-within:opacity-100 hover:opacity-100">
-        <div className="absolute inset-x-0 top-1/2 border-t border-dashed border-gray-200" aria-hidden="true" />
+        <div className="absolute inset-x-0 top-1/2 border-t border-dashed border-[var(--warm-200)]" aria-hidden="true" />
         <Button
           type="button"
           size="sm"
@@ -120,7 +131,7 @@ export function BlockCanvas({
           +
         </Button>
         {menuAt === index && (
-          <div className="absolute top-7 z-20 flex gap-1 rounded-md border bg-white p-1 shadow-md">
+          <div className="absolute top-7 z-20 flex gap-1 rounded-md border border-[var(--warm-200)] bg-[var(--warm-0)] p-1 text-[var(--warm-950)] shadow-md">
             {BLOCK_TYPES.map(({ type, label }) => (
               <Button key={type} type="button" size="sm" variant="ghost" onClick={() => insertAt(index, type)}>
                 {label}
@@ -141,19 +152,21 @@ export function BlockCanvas({
           draggable
           onDragStart={() => { dragIndex.current = index }}
           aria-label="Drag to reorder"
-          className="cursor-grab rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+          className="cursor-grab rounded p-1 text-[var(--warm-400)] hover:bg-[var(--warm-100)] hover:text-[var(--warm-600)]"
         >
           ⠿
         </button>
         <button type="button" aria-label="Move up" disabled={index === 0}
           onClick={() => move(index, -1)}
-          className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 disabled:opacity-30">↑</button>
+          className="rounded p-1 text-[var(--warm-400)] hover:bg-[var(--warm-100)] hover:text-[var(--warm-600)] disabled:opacity-30">↑</button>
         <button type="button" aria-label="Move down" disabled={index === blocks.length - 1}
           onClick={() => move(index, 1)}
-          className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 disabled:opacity-30">↓</button>
+          className="rounded p-1 text-[var(--warm-400)] hover:bg-[var(--warm-100)] hover:text-[var(--warm-600)] disabled:opacity-30">↓</button>
+        {/* Error ink is pinned too: --destructive inverts to a pale red that
+            reads ~3.2:1 on the fixed-white sheet. #a33b28 is its light value. */}
         <button type="button" aria-label="Delete block"
           onClick={() => remove(index)}
-          className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-red-600">✕</button>
+          className="rounded p-1 text-[var(--warm-400)] hover:bg-[var(--warm-100)] hover:text-[#a33b28]">✕</button>
       </div>
     )
   }
@@ -169,7 +182,7 @@ export function BlockCanvas({
         type="button"
         size="sm"
         variant="ghost"
-        className="absolute right-0 top-0 z-10 text-xs text-gray-400 opacity-0 transition-opacity focus-within:opacity-100 group-hover/block:opacity-100"
+        className="absolute right-0 top-0 z-10 text-xs text-[var(--warm-400)] opacity-0 transition-opacity focus-within:opacity-100 group-hover/block:opacity-100"
         onClick={onFillWithAi}
       >
         Fill with AI
@@ -200,7 +213,7 @@ export function BlockCanvas({
         )
       case 'paragraph':
         return (
-          <p className="mb-4 leading-relaxed text-gray-700">
+          <p className="mb-4 leading-relaxed text-[var(--warm-700)]">
             <InlineText value={ph ? '' : block.text} disabled={disabled} multiline
               placeholder={ph ? block.text : 'Write something…'}
               ariaLabel={`Paragraph ${index + 1}`} onCommit={(text) => patch(block.id, { text })} />
@@ -209,7 +222,7 @@ export function BlockCanvas({
       case 'list': {
         const Tag = block.ordered ? 'ol' : 'ul'
         return (
-          <Tag className={`mb-4 ${block.ordered ? 'list-decimal' : 'list-disc'} pl-6 text-gray-700`}>
+          <Tag className={`mb-4 ${block.ordered ? 'list-decimal' : 'list-disc'} pl-6 text-[var(--warm-700)]`}>
             {block.items.map((item, i) => (
               <li key={i} className="mb-1">
                 <InlineText value={ph ? '' : item} disabled={disabled}
@@ -224,7 +237,7 @@ export function BlockCanvas({
             ))}
             {!disabled && (
               <li className="list-none">
-                <button type="button" className="text-xs text-gray-400 hover:text-gray-600"
+                <button type="button" className="text-xs text-[var(--warm-400)] hover:text-[var(--warm-600)]"
                   onClick={() => patch(block.id, { items: [...block.items, ''] })}>
                   + Add line
                 </button>
@@ -241,7 +254,7 @@ export function BlockCanvas({
               <img src={block.url} alt={block.alt ?? ''} className="w-full rounded-md" />
             ) : (
               <label
-                className="flex h-40 w-full cursor-pointer flex-col items-center justify-center rounded-md border-2 border-dashed text-sm text-gray-400"
+                className="flex h-40 w-full cursor-pointer flex-col items-center justify-center rounded-md border-2 border-dashed text-sm text-[var(--warm-400)]"
                 style={{ borderColor: 'var(--proposal-secondary, #d1d5db)' }}
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={(e) => {
@@ -264,7 +277,7 @@ export function BlockCanvas({
                 />
               </label>
             )}
-            <figcaption className="mt-2 text-sm text-gray-500">
+            <figcaption className="mt-2 text-sm text-[var(--warm-500)]">
               <InlineText value={block.caption ?? ''} disabled={disabled} placeholder="Add a caption"
                 ariaLabel={`Image ${index + 1} caption`}
                 onCommit={(caption) => patch(block.id, { caption: caption || undefined })} />
@@ -276,12 +289,12 @@ export function BlockCanvas({
         )
       case 'testimonial':
         return (
-          <blockquote className="mb-6 border-l-4 pl-4 italic text-gray-700"
+          <blockquote className="mb-6 border-l-4 pl-4 italic text-[var(--warm-700)]"
             style={{ borderColor: 'var(--proposal-secondary, #d1d5db)' }}>
             <InlineText value={ph ? '' : block.quote} disabled={disabled} multiline
               placeholder={ph ? block.quote : 'Customer quote'}
               ariaLabel={`Testimonial ${index + 1}`} onCommit={(quote) => patch(block.id, { quote })} />
-            <cite className="text-sm not-italic text-gray-500">
+            <cite className="text-sm not-italic text-[var(--warm-500)]">
               <InlineText value={block.attribution ?? ''} disabled={disabled} placeholder="— Attribution"
                 ariaLabel={`Testimonial ${index + 1} attribution`}
                 onCommit={(attribution) => patch(block.id, { attribution: attribution || undefined })} />
@@ -294,7 +307,7 @@ export function BlockCanvas({
   return (
     <div>
       {hero}
-      {uploadError && <p role="alert" className="mb-2 text-sm text-red-600">{uploadError}</p>}
+      {uploadError && <p role="alert" className="mb-2 text-sm text-[#a33b28]">{uploadError}</p>}
       {divider(0)}
       {blocks.map((block, index) => (
         <div key={block.id}>
@@ -315,9 +328,15 @@ export function BlockCanvas({
         </div>
       ))}
       {blocks.length === 0 && !disabled && (
-        <p className="py-8 text-center text-sm text-gray-400">
-          No content yet — use the + button to add your first section.
-        </p>
+        // EmptyState hardcodes text-foreground/text-muted-foreground inside the
+        // kit component, which invert in dark mode — and this sits on the paper,
+        // which never does. className only reaches the outer div, so the ink is
+        // pinned through it. Same warm-ramp rule as the rest of this canvas.
+        <EmptyState
+          title="No content yet"
+          description="Use the + button to add your first section."
+          className="[&_p:first-of-type]:text-[var(--warm-950)] [&_p:last-of-type]:text-[var(--warm-500)]"
+        />
       )}
     </div>
   )

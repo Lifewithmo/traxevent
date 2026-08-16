@@ -6,10 +6,20 @@
 // tier price toggles a round-number override, and a member picker composes
 // tiers from the shared line-item pool. Legacy tiers (no item_ids) render
 // read-only; the upgrade-on-open adapter runs in the builder client.
+//
+// COLOUR RULE — this whole file paints inside <ProposalTheme>, whose sheet is
+// bg-[var(--warm-0)]: permanently white in BOTH themes (--warm-* has no .dark
+// override). So the ink on it is pinned to the fixed --warm-* ramp rather than
+// the theme-aware semantic tokens, which invert under .dark and would paint
+// near-white type on white paper. The pinned values also match the customer's
+// renderer (components/proposals/ProposalPricing.tsx) class for class — same
+// --warm-950 tier names, --warm-700 includes, --warm-500 qty/price — which is
+// what makes this canvas WYSIWYG rather than merely similar.
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { StatusPill } from '@/components/ui/status-pill'
 import { InlineText } from '@/components/admin/proposal-builder/InlineText'
 import { ItemPopover } from '@/components/admin/proposal-builder/ItemPopover'
 import { packagePrice } from '@/lib/proposals'
@@ -102,16 +112,16 @@ export function PricingCanvas({
     const rowKey = `${ariaPrefix}:${id}`
     return (
       <li key={id} className="relative flex items-center justify-between gap-2 py-1 text-sm">
-        <span className="flex-1 text-gray-700">
+        <span className="flex-1 text-[var(--warm-700)]">
           <InlineText value={item.description} disabled={disabled} ariaLabel={`${ariaPrefix} description`}
             onCommit={(description) => updateItem(id, { description })} />
         </span>
         {disabled ? (
-          <span className="text-gray-500">{item.quantity} × {money(item.unit_price)}</span>
+          <span className="text-[var(--warm-500)]">{item.quantity} × {money(item.unit_price)}</span>
         ) : (
           <button
             type="button"
-            className="rounded px-1 text-gray-500 hover:bg-gray-100"
+            className="rounded px-1 text-[var(--warm-500)] hover:bg-[var(--warm-100)]"
             aria-label={`${item.quantity} × ${money(item.unit_price)}${item.unit ? ` per ${item.unit}` : ''}`}
             onClick={() => setPopover({ kind: 'item', itemId: id, rowKey })}
           >
@@ -137,7 +147,7 @@ export function PricingCanvas({
       <div
         key={pkg.id}
         data-testid={`tier-${pkg.id}`}
-        className="relative rounded-lg border border-gray-200 p-4"
+        className="relative rounded-lg border border-[var(--warm-200)] p-4"
       >
         {pkg.recommended && (
           <span
@@ -150,7 +160,7 @@ export function PricingCanvas({
             Recommended
           </span>
         )}
-        <p className="font-semibold text-gray-900">
+        <p className="font-semibold text-[var(--warm-950)]">
           <InlineText value={pkg.name} disabled={disabled || legacy} ariaLabel={`Tier ${pkg.name} name`}
             onCommit={(name) => updatePackage(pkg.id, { name })} />
         </p>
@@ -163,21 +173,29 @@ export function PricingCanvas({
           <button
             type="button"
             aria-label="Set package price"
-            className="mt-2 rounded text-lg font-bold hover:bg-gray-50"
+            className="mt-2 rounded text-lg font-bold hover:bg-[var(--warm-50)]"
             style={{ color: 'var(--proposal-accent, #111827)' }}
             onClick={() => setPopover({ kind: 'price', pkgId: pkg.id })}
           >
             {money(computed)}
           </button>
         )}
+        {/* Kept as the kit StatusPill — measured in a browser, its inline-flex
+            box does NOT move this row: the price beside it is an inline-block
+            <button> whose text-lg/mt-2 margin box is 36px against the pill's
+            20px, so the pill sits entirely inside the existing line box and
+            the tier card stays 94px whether or not the override is set. (The
+            legacy/disabled branch renders the price as a block <p>, so the
+            pill drops to its own line there — but that branch cannot set or
+            clear an override, so nothing can jitter.) The tone's palette IS
+            pinned: --status-pending-* has a .dark override, and this pill
+            lives on the permanently-white sheet. These are its light values. */}
         {overridden && (
-          <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800">
-            Overridden
-          </span>
+          <StatusPill tone="pending" className="ml-2 bg-[#fbeed2] text-[#7d5a18]">Overridden</StatusPill>
         )}
 
         {popover?.kind === 'price' && popover.pkgId === pkg.id && (
-          <div className="absolute z-30 mt-1 w-56 space-y-2 rounded-md border bg-white p-3 shadow-lg">
+          <div className="absolute z-30 mt-1 w-56 space-y-2 rounded-md border border-[var(--warm-200)] bg-[var(--warm-0)] p-3 text-[var(--warm-950)] shadow-lg">
             <div className="space-y-1">
               <Label htmlFor="pkg-price">Package price</Label>
               <Input
@@ -197,12 +215,12 @@ export function PricingCanvas({
 
         {legacy ? (
           <>
-            <ul className="mt-3 space-y-1 text-sm text-gray-700">
+            <ul className="mt-3 space-y-1 text-sm text-[var(--warm-700)]">
               {pkg.includes.map((line, i) => (
                 <li key={i} className="flex gap-2"><span aria-hidden="true">✓</span><span>{line}</span></li>
               ))}
             </ul>
-            <p className="mt-3 text-xs text-gray-400">
+            <p className="mt-3 text-xs text-[var(--warm-400)]">
               Legacy package — opens for editing after the one-time upgrade to itemized pricing.
             </p>
           </>
@@ -227,8 +245,8 @@ export function PricingCanvas({
               </div>
             )}
             {popover?.kind === 'members' && popover.pkgId === pkg.id && (
-              <div className="absolute z-30 mt-1 w-64 space-y-1 rounded-md border bg-white p-3 shadow-lg">
-                <p className="text-xs font-medium text-gray-500">Members of {pkg.name}</p>
+              <div className="absolute z-30 mt-1 w-64 space-y-1 rounded-md border border-[var(--warm-200)] bg-[var(--warm-0)] p-3 text-[var(--warm-950)] shadow-lg">
+                <p className="text-xs font-medium text-[var(--warm-500)]">Members of {pkg.name}</p>
                 {lineItems.filter((i) => i.id && i.optional !== true).map((item) => {
                   const id = item.id as string
                   const isMember = (pkg.item_ids ?? []).includes(id)
@@ -274,9 +292,9 @@ export function PricingCanvas({
             {!disabled && packages.length < 3 && (
               <div
                 data-testid="add-tier-slot"
-                className="flex min-h-32 flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-300 p-4"
+                className="flex min-h-32 flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-[var(--warm-300)] p-4"
               >
-                <p className="text-sm font-medium text-gray-500">
+                <p className="text-sm font-medium text-[var(--warm-500)]">
                   {packages.length === 0 ? 'Give the customer a choice' : `Tier ${packages.length + 1}`}
                 </p>
                 <Button type="button" size="sm" variant="outline" onClick={() => addTier(false)}>
