@@ -2,7 +2,7 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/lib/utils"
 
 const avatarVariants = cva(
-  "inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full font-semibold text-white select-none",
+  "inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full font-semibold text-[var(--warm-0)] select-none",
   {
     variants: {
       size: { sm: "size-7 text-[11px]", md: "size-9 text-sm", lg: "size-12 text-base" },
@@ -27,7 +27,7 @@ function Avatar({
   name, src, size, className,
 }: { name: string; src?: string; className?: string } & VariantProps<typeof avatarVariants>) {
   return (
-    <span data-slot="avatar" className={cn(avatarVariants({ size }), className)} style={{ backgroundColor: bgFor(name) }} aria-label={name}>
+    <span data-slot="avatar" role="img" className={cn(avatarVariants({ size }), className)} style={{ backgroundColor: bgFor(name) }} aria-label={name}>
       {src ? <img src={src} alt="" className="size-full object-cover" /> : initialsOf(name)}
     </span>
   )
