@@ -145,7 +145,32 @@ EventTrax pivot (neutralization, multi-brand, ops core). Detailed designs live i
   drop↔market pickup linkage → registration retirement R2. Manual browser
   walkthrough of the occasion flows still owed.
 
-- **Track 2 module level-up rollout** (PRs #90–#95, merged 2026-08-16) — the
+- **Track 2 module level-up rollout — COMPLETE** (PRs #90–#100, merged
+  2026-08-16) — every operator-facing module now runs on the shared UI kit.
+  Closing the rollout: **Proposals collections (#98)**, **Catalog / Packages
+  (#99)** and **Sales Pipeline (#100)** — the pipeline module had zero kit
+  usage at the start (the playbook's "already-compliant exemplar" claim was
+  refuted at the implementation level: `PipelineStatsHeader` hand-rolled its
+  own `Kpi`/`KpiLabel` and re-implemented `KpiBand`'s grid string). It gained
+  the cockpit spine on opportunity detail, five hand-rolled popovers collapsed
+  into one kit `Menu` (two were a11y bugs — a fake `role="dialog"` popover and
+  a popover with no role), toned countdowns and money figures on the list and
+  board, and drag-and-drop's first automated coverage.
+  #100 also fixed the repo-wide dark-mode blocker: both admin shells hardcoded
+  `bg-gray-50`, measured at 49 WCAG AA text failures over the four Pipeline
+  surfaces alone (money at 2.0, group headers and task titles at 1.02); one
+  token drops all four to zero. Dark mode is still unreachable by navigation —
+  nothing applies `.dark` or reads `prefers-color-scheme` — so wiring a theme
+  toggle is the remaining piece.
+  Still owed: the **Signal palette sweep** closes Track 2; live authenticated
+  walkthroughs per module (board drag-and-drop is the highest-risk uncovered
+  surface); `?focus=lost` is never stripped from the URL, so a reload re-opens
+  the destructive dialog and a second confirm overwrites the recorded
+  `LostReason`; `--status-neutral-fg` on `--status-neutral-bg` measures 4.46:1
+  against a 4.5 requirement at 12px; and `KpiBand` collapses on a viewport
+  query rather than container width, so it goes 4-up inside narrow columns.
+
+- **Track 2 rollout, first six modules** (PRs #90–#95, merged 2026-08-16) — the
   Client Cockpit's shared UI kit rolled across the app, module by module:
   Client Cockpit + kit extraction (#90), Today (#91), Vendors ledger (#92),
   Invoices money surface (#93), Calendar dashboard (#94), and **Events &
@@ -158,10 +183,8 @@ EventTrax pivot (neutralization, multi-brand, ops core). Detailed designs live i
   statuses, EmptyStates, families purple-era retokenization + slide-over
   focus management), and the org events home as a grouped ledger with an
   honest KPI band. Playbook:
-  `superpowers/plans/2026-08-15-module-levelup-playbook.md`. Remaining
-  modules: Sales Pipeline, Proposals collections, Catalog/Packages (in
-  flight); then the Signal palette sweep closes Track 2. Live authenticated
-  walkthroughs owed per module.
+  `superpowers/plans/2026-08-15-module-levelup-playbook.md`. The remaining
+  three modules shipped in #98–#100 — see the entry above.
 
 ## In flight
 
