@@ -23,7 +23,7 @@ export function ItemPopover({
   onClose: () => void
 }) {
   return (
-    <div className="absolute z-30 mt-1 w-56 space-y-2 rounded-md border bg-white p-3 shadow-lg">
+    <div className="absolute z-30 mt-1 w-56 space-y-2 rounded-md border bg-popover p-3 text-popover-foreground shadow-lg">
       <div className="space-y-1">
         <Label htmlFor="item-qty">Quantity</Label>
         <Input id="item-qty" type="number" value={String(item.quantity)}

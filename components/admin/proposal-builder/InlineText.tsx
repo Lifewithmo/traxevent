@@ -86,7 +86,7 @@ export function InlineText({
           begin()
         }
       }}
-      className={`block cursor-text ${empty ? 'text-gray-400' : ''} ${className}`}
+      className={`block cursor-text ${empty ? 'text-muted-foreground' : ''} ${className}`}
     >
       {empty
         ? <span>{placeholder ?? ' '}</span>

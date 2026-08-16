@@ -10,6 +10,7 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { StatusPill } from '@/components/ui/status-pill'
 import { InlineText } from '@/components/admin/proposal-builder/InlineText'
 import { ItemPopover } from '@/components/admin/proposal-builder/ItemPopover'
 import { packagePrice } from '@/lib/proposals'
@@ -102,16 +103,16 @@ export function PricingCanvas({
     const rowKey = `${ariaPrefix}:${id}`
     return (
       <li key={id} className="relative flex items-center justify-between gap-2 py-1 text-sm">
-        <span className="flex-1 text-gray-700">
+        <span className="flex-1 text-foreground">
           <InlineText value={item.description} disabled={disabled} ariaLabel={`${ariaPrefix} description`}
             onCommit={(description) => updateItem(id, { description })} />
         </span>
         {disabled ? (
-          <span className="text-gray-500">{item.quantity} × {money(item.unit_price)}</span>
+          <span className="text-muted-foreground">{item.quantity} × {money(item.unit_price)}</span>
         ) : (
           <button
             type="button"
-            className="rounded px-1 text-gray-500 hover:bg-gray-100"
+            className="rounded px-1 text-muted-foreground hover:bg-muted"
             aria-label={`${item.quantity} × ${money(item.unit_price)}${item.unit ? ` per ${item.unit}` : ''}`}
             onClick={() => setPopover({ kind: 'item', itemId: id, rowKey })}
           >
@@ -137,7 +138,7 @@ export function PricingCanvas({
       <div
         key={pkg.id}
         data-testid={`tier-${pkg.id}`}
-        className="relative rounded-lg border border-gray-200 p-4"
+        className="relative rounded-lg border border-border p-4"
       >
         {pkg.recommended && (
           <span
@@ -150,7 +151,7 @@ export function PricingCanvas({
             Recommended
           </span>
         )}
-        <p className="font-semibold text-gray-900">
+        <p className="font-semibold text-foreground">
           <InlineText value={pkg.name} disabled={disabled || legacy} ariaLabel={`Tier ${pkg.name} name`}
             onCommit={(name) => updatePackage(pkg.id, { name })} />
         </p>
@@ -163,7 +164,7 @@ export function PricingCanvas({
           <button
             type="button"
             aria-label="Set package price"
-            className="mt-2 rounded text-lg font-bold hover:bg-gray-50"
+            className="mt-2 rounded text-lg font-bold hover:bg-muted"
             style={{ color: 'var(--proposal-accent, #111827)' }}
             onClick={() => setPopover({ kind: 'price', pkgId: pkg.id })}
           >
@@ -171,13 +172,11 @@ export function PricingCanvas({
           </button>
         )}
         {overridden && (
-          <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800">
-            Overridden
-          </span>
+          <StatusPill tone="pending" className="ml-2">Overridden</StatusPill>
         )}
 
         {popover?.kind === 'price' && popover.pkgId === pkg.id && (
-          <div className="absolute z-30 mt-1 w-56 space-y-2 rounded-md border bg-white p-3 shadow-lg">
+          <div className="absolute z-30 mt-1 w-56 space-y-2 rounded-md border bg-popover p-3 text-popover-foreground shadow-lg">
             <div className="space-y-1">
               <Label htmlFor="pkg-price">Package price</Label>
               <Input
@@ -197,12 +196,12 @@ export function PricingCanvas({
 
         {legacy ? (
           <>
-            <ul className="mt-3 space-y-1 text-sm text-gray-700">
+            <ul className="mt-3 space-y-1 text-sm text-foreground">
               {pkg.includes.map((line, i) => (
                 <li key={i} className="flex gap-2"><span aria-hidden="true">✓</span><span>{line}</span></li>
               ))}
             </ul>
-            <p className="mt-3 text-xs text-gray-400">
+            <p className="mt-3 text-xs text-muted-foreground">
               Legacy package — opens for editing after the one-time upgrade to itemized pricing.
             </p>
           </>
@@ -227,8 +226,8 @@ export function PricingCanvas({
               </div>
             )}
             {popover?.kind === 'members' && popover.pkgId === pkg.id && (
-              <div className="absolute z-30 mt-1 w-64 space-y-1 rounded-md border bg-white p-3 shadow-lg">
-                <p className="text-xs font-medium text-gray-500">Members of {pkg.name}</p>
+              <div className="absolute z-30 mt-1 w-64 space-y-1 rounded-md border bg-popover p-3 text-popover-foreground shadow-lg">
+                <p className="text-xs font-medium text-muted-foreground">Members of {pkg.name}</p>
                 {lineItems.filter((i) => i.id && i.optional !== true).map((item) => {
                   const id = item.id as string
                   const isMember = (pkg.item_ids ?? []).includes(id)
@@ -274,9 +273,9 @@ export function PricingCanvas({
             {!disabled && packages.length < 3 && (
               <div
                 data-testid="add-tier-slot"
-                className="flex min-h-32 flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-300 p-4"
+                className="flex min-h-32 flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-border p-4"
               >
-                <p className="text-sm font-medium text-gray-500">
+                <p className="text-sm font-medium text-muted-foreground">
                   {packages.length === 0 ? 'Give the customer a choice' : `Tier ${packages.length + 1}`}
                 </p>
                 <Button type="button" size="sm" variant="outline" onClick={() => addTier(false)}>

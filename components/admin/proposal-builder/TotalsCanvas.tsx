@@ -58,10 +58,10 @@ export function TotalsCanvas({
     : 'None'
 
   return (
-    <section className="space-y-3 rounded-lg border border-gray-200 p-4">
+    <section className="space-y-3 rounded-lg border border-border p-4">
       <div className="flex items-center justify-between">
-        <span className="text-sm text-gray-500">Total</span>
-        <span className="text-2xl font-bold text-gray-900">{moneySpan(range)}</span>
+        <span className="text-sm text-muted-foreground">Total</span>
+        <span className="text-2xl font-bold text-foreground">{moneySpan(range)}</span>
       </div>
 
       {/* Discount — one popover reused by both the set row (button) and the
@@ -72,29 +72,29 @@ export function TotalsCanvas({
         <div className="relative">
           {disabled ? (
             <div className="flex items-center justify-between text-sm">
-              <span className="text-gray-500">Discount</span>
-              <span className="text-gray-900">{discountText}</span>
+              <span className="text-muted-foreground">Discount</span>
+              <span className="text-foreground">{discountText}</span>
             </div>
           ) : discount ? (
             <button
               type="button"
-              className="flex w-full items-center justify-between rounded px-1 text-sm hover:bg-gray-50"
+              className="flex w-full items-center justify-between rounded px-1 text-sm hover:bg-muted"
               onClick={() => setPopover(popover === 'discount' ? null : 'discount')}
             >
-              <span className="text-gray-500">Discount</span>
-              <span className="text-gray-900">{discountText}</span>
+              <span className="text-muted-foreground">Discount</span>
+              <span className="text-foreground">{discountText}</span>
             </button>
           ) : (
             <button
               type="button"
-              className="text-sm text-gray-500 hover:text-gray-700"
+              className="text-sm text-muted-foreground hover:text-foreground"
               onClick={() => setPopover(popover === 'discount' ? null : 'discount')}
             >
               + Add discount
             </button>
           )}
           {popover === 'discount' && !disabled && (
-            <div className="absolute right-0 z-30 mt-1 w-64 space-y-2 rounded-md border bg-white p-3 shadow-lg">
+            <div className="absolute right-0 z-30 mt-1 w-64 space-y-2 rounded-md border bg-popover p-3 text-popover-foreground shadow-lg">
               <div className="space-y-1">
                 <Label htmlFor="discountType">Discount</Label>
                 <select
@@ -139,29 +139,29 @@ export function TotalsCanvas({
         <div className="relative">
           {disabled ? (
             <div className="flex items-center justify-between text-sm">
-              <span className="text-gray-500">Tax</span>
-              <span className="text-gray-900">{taxText}</span>
+              <span className="text-muted-foreground">Tax</span>
+              <span className="text-foreground">{taxText}</span>
             </div>
           ) : draft.tax_rate != null ? (
             <button
               type="button"
-              className="flex w-full items-center justify-between rounded px-1 text-sm hover:bg-gray-50"
+              className="flex w-full items-center justify-between rounded px-1 text-sm hover:bg-muted"
               onClick={() => setPopover(popover === 'tax' ? null : 'tax')}
             >
-              <span className="text-gray-500">Tax</span>
-              <span className="text-gray-900">{taxText}</span>
+              <span className="text-muted-foreground">Tax</span>
+              <span className="text-foreground">{taxText}</span>
             </button>
           ) : (
             <button
               type="button"
-              className="text-sm text-gray-500 hover:text-gray-700"
+              className="text-sm text-muted-foreground hover:text-foreground"
               onClick={() => setPopover(popover === 'tax' ? null : 'tax')}
             >
               + Add tax
             </button>
           )}
           {popover === 'tax' && !disabled && (
-            <div className="absolute right-0 z-30 mt-1 w-64 space-y-2 rounded-md border bg-white p-3 shadow-lg">
+            <div className="absolute right-0 z-30 mt-1 w-64 space-y-2 rounded-md border bg-popover p-3 text-popover-foreground shadow-lg">
               <div className="space-y-1">
                 <Label htmlFor="taxRate">Tax rate (%)</Label>
                 <Input
@@ -187,21 +187,21 @@ export function TotalsCanvas({
         <div className="relative">
           {disabled ? (
             <div className="flex items-center justify-between text-sm">
-              <span className="text-gray-500">Deposit due</span>
-              <span className="text-gray-900">{depositText}</span>
+              <span className="text-muted-foreground">Deposit due</span>
+              <span className="text-foreground">{depositText}</span>
             </div>
           ) : (
             <button
               type="button"
-              className="flex w-full items-center justify-between rounded px-1 text-sm hover:bg-gray-50"
+              className="flex w-full items-center justify-between rounded px-1 text-sm hover:bg-muted"
               onClick={() => setPopover(popover === 'deposit' ? null : 'deposit')}
             >
-              <span className="text-gray-500">Deposit due</span>
-              <span className="text-gray-900">{depositText}</span>
+              <span className="text-muted-foreground">Deposit due</span>
+              <span className="text-foreground">{depositText}</span>
             </button>
           )}
           {popover === 'deposit' && !disabled && (
-            <div className="absolute right-0 z-30 mt-1 w-64 space-y-2 rounded-md border bg-white p-3 shadow-lg">
+            <div className="absolute right-0 z-30 mt-1 w-64 space-y-2 rounded-md border bg-popover p-3 text-popover-foreground shadow-lg">
               <div className="space-y-1">
                 <Label htmlFor="depositType">Deposit</Label>
                 <select
@@ -283,8 +283,8 @@ export function TotalsCanvas({
       {disabled ? (
         draft.expires_at && (
           <div className="flex items-center justify-between text-sm">
-            <span className="text-gray-500">Expiry</span>
-            <span className="text-gray-900">{draft.expires_at}</span>
+            <span className="text-muted-foreground">Expiry</span>
+            <span className="text-foreground">{draft.expires_at}</span>
           </div>
         )
       ) : showExpiryInput ? (
@@ -311,7 +311,7 @@ export function TotalsCanvas({
       ) : (
         <button
           type="button"
-          className="text-sm text-gray-500 hover:text-gray-700"
+          className="text-sm text-muted-foreground hover:text-foreground"
           onClick={() => setExpiryEditing(true)}
         >
           + Add expiry
@@ -323,7 +323,7 @@ export function TotalsCanvas({
         <div className="space-y-1 border-t pt-3">
           <Label htmlFor="propNotes">Notes for the client</Label>
           {disabled ? (
-            <p className="text-sm text-gray-700">{draft.notes}</p>
+            <p className="text-sm text-foreground">{draft.notes}</p>
           ) : (
             <textarea
               id="propNotes"
@@ -343,7 +343,7 @@ export function TotalsCanvas({
         <div className="space-y-1 border-t pt-3">
           <Label htmlFor="propTerms">Terms</Label>
           {disabled ? (
-            <p className="text-sm text-gray-700">{draft.terms}</p>
+            <p className="text-sm text-foreground">{draft.terms}</p>
           ) : (
             <>
               <textarea
@@ -353,7 +353,7 @@ export function TotalsCanvas({
                 placeholder="Legal terms the client agrees to when signing. Seeded from Branding → Proposal terms."
                 className="flex min-h-16 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               />
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-muted-foreground">
                 Shown above the signature box; covered by the client's e-signature.
               </p>
             </>
