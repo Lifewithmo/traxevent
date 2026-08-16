@@ -162,9 +162,20 @@ export function OpportunityActionsMenu({ orgId, orgSlug, lead, onWon, onDone }: 
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Delete this opportunity?</DialogTitle>
+            {/* Says what `deleteLead` ACTUALLY does. It is one
+                `leadsRef(orgId).doc(leadId).delete()` (actions/leads.ts:138-141)
+                — there is no cascade anywhere in the repo. Tasks live in a
+                subcollection (lib/crm/tasks.ts:4) and Firestore never deletes
+                subcollections with their parent; proposals and invoices are
+                TOP-LEVEL collections filtered by lead_id (lib/crm/invoices.ts:33),
+                so they survive: still live, still sendable, still counted in AR.
+                The earlier copy promised the cascade, which is how an operator
+                deletes a lost lead carrying a $5,000 unpaid invoice believing
+                the invoice went with it. Do not restore that claim without the
+                server-side cascade to back it. */}
             <DialogDescription>
-              “{opportunityTitle(lead)}” and everything attached to it — tasks, proposals, invoices, activity —
-              go with it. This cannot be undone.
+              “{opportunityTitle(lead)}” disappears from the pipeline. Proposals and invoices already created
+              from it are NOT deleted — void them first if you want them gone. This cannot be undone.
             </DialogDescription>
           </DialogHeader>
           {error && <p role="alert" className="text-sm text-destructive">{error}</p>}

@@ -58,18 +58,23 @@ function round2(n: number): number {
 }
 
 export function opportunityRollup(i: OpportunityRollupInput): OpportunityRollup {
-  // Liveness predicate: not void AND still carrying a positive balance — the
-  // same set the invoice attachment chip counts (lib/opportunity-detail.ts:166-167).
-  // Deliberately NOT customerAR() from lib/crm/ar-rollup.ts, which counts only
-  // lifecycle === 'sent' and would silently disagree with the unpaid-invoice
-  // count this page has always shown for drafts.
+  // Collectability predicate: `sent` AND still carrying a positive balance.
+  //
+  // `sent` is the only lifecycle where money is actually owed — a draft has not
+  // been asked for yet and a void was withdrawn — so this is the SAME set as
+  // `isCollectable` (lib/money-overview.ts), `customerAR` (lib/crm/ar-rollup.ts)
+  // and the "Open balance" footer LeadInvoicesClient renders in this page's own
+  // rail (LeadInvoicesClient.tsx:102-104). It has to be: both figures carry the
+  // identical label ~400px apart on one screen. Counting drafts here told the
+  // operator "OPEN BALANCE $5,000 · past due" beside an Invoices card reading
+  // "Open balance $0.00" — money overdue on an invoice the client never got.
   //
   // The `> 0` half is load-bearing, not incidental: invoiceBalance() is
   // amountDue - amountPaid and goes NEGATIVE when an invoice is overpaid (a
   // real state — derivePaymentStatus returns 'overpaid', lib/invoice-status.ts:28).
   // Without it a credit balance would silently subtract from what the customer
   // owes on OTHER invoices. Pinned by the overpaid tests.
-  const live = i.invoices.filter((v) => v.lifecycle !== 'void' && invoiceBalance(v) > 0)
+  const live = i.invoices.filter((v) => v.lifecycle === 'sent' && invoiceBalance(v) > 0)
   const openTasks = i.tasks.filter((t) => !t.done)
 
   return {

@@ -4,23 +4,10 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { Card, CardContent } from '@/components/ui/card'
 import { Avatar } from '@/components/ui/avatar'
-import { Button, buttonVariants } from '@/components/ui/button'
+import { Button } from '@/components/ui/button'
 import { StatusPill } from '@/components/ui/status-pill'
-import { Phone, Mail, ChevronDown } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { ChevronDown } from 'lucide-react'
 import type { Customer, Lead } from '@/lib/types'
-
-/**
- * Kit button SKIN on a real anchor, rather than `<Button render={<a/>}>`.
- *
- * Base UI's Button owns button semantics: left native it warns and stamps
- * `type="button"` onto the anchor, and with `nativeButton={false}` it stamps
- * `role="button"`, which tells a screen reader that a `mailto:` is a button and
- * drops the label children on the floor. A mailto/tel IS a link. Consuming the
- * kit's exported `buttonVariants` keeps the styling identical and the semantics
- * honest.
- */
-const contactActionClass = cn(buttonVariants({ variant: 'outline', size: 'sm' }))
 
 interface ContactCardProps {
   orgSlug: string
@@ -41,12 +28,22 @@ interface ContactCardProps {
 }
 
 /**
- * Who this deal is with, and the two ways to reach them.
+ * Who this deal is with.
  *
- * Identity only: no figures (they're on the KPI band) and no editable facts
- * (they're in FactsGrid). Everything past name/company/contact is behind the
- * More disclosure, because on a spine this strip is the thing the operator
- * reads past, not the thing they stop on.
+ * Identity ONLY: no figures (they're on the KPI band), no editable facts
+ * (they're in FactsGrid) and — since P5 built the sticky header — no Email/Call
+ * buttons either. The header renders Avatar + name + Email + Call and is sticky,
+ * so its pair is on screen at every scroll position; a second pair here put two
+ * identically-named "Email" links and two "Call" links in the links rotor at
+ * once. OpportunityActionsMenu.tsx:46-48 already states the intended split
+ * ("Email/Call stay outside as header buttons") — this card is the identity, the
+ * portal link and the disclosure.
+ *
+ * The disclosure carries ONLY what is not already on the card face: tags and
+ * notes. It used to repeat the email and phone the contact line above it
+ * prints, so expanding "More" revealed nothing new — and when there were no
+ * tags or notes it revealed an empty list, which is why the toggle is now gated
+ * on there being something to disclose.
  */
 // `variant` and `pastBookings` are accepted (see the interface) and deliberately
 // not destructured — nothing in here reads them.
@@ -62,6 +59,7 @@ export function ContactCard({ orgSlug, customer, lead, portalAction }: ContactCa
   const tags = customer?.tags ?? lead.tags ?? []
   const notes = customer?.notes
   const contactLine = [email, phone].filter(Boolean).join(' · ')
+  const hasMore = tags.length > 0 || Boolean(notes)
 
   return (
     <Card>
@@ -74,27 +72,19 @@ export function ContactCard({ orgSlug, customer, lead, portalAction }: ContactCa
             {company && <p className="truncate text-sm text-muted-foreground">{company}</p>}
           </div>
           <div className="flex shrink-0 flex-wrap items-center gap-2">
-            {email && (
-              <a href={`mailto:${email}`} aria-label="Email" className={contactActionClass}>
-                <Mail /> Email
-              </a>
-            )}
-            {phone && (
-              <a href={`tel:${phone}`} aria-label="Call" className={contactActionClass}>
-                <Phone /> Call
-              </a>
-            )}
             {portalAction}
-            <Button
-              variant="ghost"
-              size="sm"
-              aria-label={expanded ? 'Collapse contact' : 'Expand contact'}
-              aria-expanded={expanded}
-              onClick={() => setExpanded((v) => !v)}
-            >
-              {expanded ? 'Less' : 'More'}
-              <ChevronDown className={`transition-transform ${expanded ? 'rotate-180' : ''}`} />
-            </Button>
+            {hasMore && (
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-label={expanded ? 'Collapse contact' : 'Expand contact'}
+                aria-expanded={expanded}
+                onClick={() => setExpanded((v) => !v)}
+              >
+                {expanded ? 'Less' : 'More'}
+                <ChevronDown className={`transition-transform ${expanded ? 'rotate-180' : ''}`} />
+              </Button>
+            )}
             {customer && (
               <Link href={`/${orgSlug}/clients/${customer.id}`} className="text-xs text-primary hover:underline">
                 View customer
@@ -102,17 +92,19 @@ export function ContactCard({ orgSlug, customer, lead, portalAction }: ContactCa
             )}
           </div>
         </div>
-        {expanded && (
-          <dl className="space-y-1.5 border-t border-border pt-3 text-sm">
-            {email && <div className="flex justify-between gap-2"><dt className="text-muted-foreground">Email</dt><dd className="truncate">{email}</dd></div>}
-            {phone && <div className="flex justify-between gap-2"><dt className="text-muted-foreground">Phone</dt><dd>{phone}</dd></div>}
+        {/* A plain <div>, not the <dl> this used to be: with the Email/Phone
+            rows gone there are no dt/dd pairs left, and a definition list whose
+            only children are a pill row and a paragraph is invalid markup that
+            a screen reader announces as an empty list. */}
+        {hasMore && expanded && (
+          <div className="space-y-1.5 border-t border-border pt-3 text-sm">
             {tags.length > 0 && (
               <div className="flex flex-wrap gap-1 pt-1">
                 {tags.map((t) => <StatusPill key={t} tone="neutral">{t}</StatusPill>)}
               </div>
             )}
             {notes && <p className="pt-1 text-muted-foreground">{notes}</p>}
-          </dl>
+          </div>
         )}
       </CardContent>
     </Card>

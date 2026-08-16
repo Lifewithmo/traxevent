@@ -120,6 +120,15 @@ describe('convertBlockReason', () => {
   })
   it('is ready to mark won once a proposal is accepted', () => {
     const r = convertBlockReason({ stage: 'proposal', proposals: [{ status: 'accepted' }] })
-    expect(r).toEqual({ ready: false, message: 'Ready — mark the deal won to convert.' })
+    expect(r).toEqual({ ready: false, blocker: 'not_won', message: 'Ready — mark the deal won to convert.' })
+  })
+
+  // `ready` is false for BOTH non-won cases, so the convert card cannot tell
+  // "sign a proposal" from "mark it won" without this — and a card that cannot
+  // tell them apart can only offer a disabled button.
+  it('names which blocker it is, so the card can offer the matching live CTA', () => {
+    expect(convertBlockReason({ stage: 'closed_won', proposals: [] }).blocker).toBe('none')
+    expect(convertBlockReason({ stage: 'proposal', proposals: [{ status: 'sent' }] }).blocker).toBe('unsigned_proposal')
+    expect(convertBlockReason({ stage: 'proposal', proposals: [{ status: 'accepted' }] }).blocker).toBe('not_won')
   })
 })

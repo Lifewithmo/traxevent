@@ -124,18 +124,36 @@ export function bannerContent(health: OppHealth, o: BannerInput): BannerContent 
   }
 }
 
+/**
+ * WHICH thing is standing between this opportunity and a scheduled job.
+ *
+ * `message` alone cannot say: both non-ready cases return `ready: false`, so a
+ * consumer wanting to offer the forward move had to match on the prose. The
+ * convert card renders a different live CTA per blocker — "Mark won" when the
+ * only thing missing is the win, a route to the proposals when the signature
+ * is — so the discriminant is part of the contract, not a display detail.
+ */
+export type ConvertBlocker =
+  | 'none'                // already won: convertible now
+  | 'unsigned_proposal'   // no accepted (= signed) proposal yet
+  | 'not_won'             // signed, but the deal has not been marked won
+
 /** Why the convert card is blocked (or what would unblock it) short of closed_won. */
 export function convertBlockReason(i: {
   stage: LeadStage
   proposals: Pick<Proposal, 'status'>[]
   guestCount?: number
-}): { ready: boolean; message: string } {
-  if (i.stage === 'closed_won') return { ready: true, message: '' }
+}): { ready: boolean; blocker: ConvertBlocker; message: string } {
+  if (i.stage === 'closed_won') return { ready: true, blocker: 'none', message: '' }
   // Signing IS accepting (signProposal writes status + signature together),
   // so an accepted proposal is a signed document — no separate contract gate.
   if (!i.proposals.some((p) => p.status === 'accepted')) {
     const guests = i.guestCount != null ? ` and ${i.guestCount} guests` : ''
-    return { ready: false, message: `Blocked: no signed proposal yet. Signed acceptance carries the accepted package${guests} into Events.` }
+    return {
+      ready: false,
+      blocker: 'unsigned_proposal',
+      message: `Blocked: no signed proposal yet. Signed acceptance carries the accepted package${guests} into Events.`,
+    }
   }
-  return { ready: false, message: 'Ready — mark the deal won to convert.' }
+  return { ready: false, blocker: 'not_won', message: 'Ready — mark the deal won to convert.' }
 }

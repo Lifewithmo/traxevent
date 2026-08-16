@@ -47,11 +47,13 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ org
     .map((p) => ({ id: p.id, title: p.title ?? '' }))
 
   const pastBookings = customerLeads.filter((l) => l.stage === 'closed_won' && l.id !== lead.id).length
-  const blockReason = convertBlockReason({
+  // Both halves of one call: the message the card prints and WHICH blocker it
+  // is, which decides the live CTA the card offers under it.
+  const convertBlock = convertBlockReason({
     stage: lead.stage,
     proposals,
     guestCount: lead.guest_count,
-  }).message
+  })
 
   return (
     <OpportunityDetailClient
@@ -68,7 +70,8 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ org
       vendors={vendors}
       acceptedProposals={acceptedProposals}
       pastBookings={pastBookings}
-      convertBlockReason={blockReason}
+      convertBlockReason={convertBlock.message}
+      convertBlocker={convertBlock.blocker}
       today={today}
       calendarItems={calendarItems}
     />

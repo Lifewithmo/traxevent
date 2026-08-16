@@ -82,6 +82,14 @@ export const TasksPanel = forwardRef<TasksPanelHandle, TasksPanelProps>(function
   }, [composerOpen])
 
   async function handleAdd() {
+    // Re-entrancy guard, matching EditableFact.commit() (FactsGrid.tsx:74-82).
+    // `busy` was set but only ever consulted by the Add BUTTON's `disabled`;
+    // the Enter path at onKeyDown bypassed it, and `title` is not cleared until
+    // the await resolves, so held/repeated Enter inside one createTask round
+    // trip wrote the task once PER KEYPRESS. Unlike a duplicate updateLead this
+    // is not idempotent: the operator gets N copies of the task, and they then
+    // drive the overdue count, the KPI band and NextActionBanner.
+    if (busy) return
     if (!title.trim()) return
     setBusy(true); setError(null)
     try {

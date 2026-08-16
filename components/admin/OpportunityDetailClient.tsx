@@ -31,12 +31,13 @@ import { MarkLostDialog } from '@/components/admin/opportunity/MarkLostDialog'
 import { OpportunityActionsMenu } from '@/components/admin/opportunity/OpportunityActionsMenu'
 import { OpportunityKpiBand } from '@/components/admin/opportunity/OpportunityKpiBand'
 import { TasksPanel, type TasksPanelHandle } from '@/components/admin/opportunity/TasksPanel'
-import { ConvertToWorkCard } from '@/components/admin/opportunity/ConvertToWorkCard'
+import { ConvertToWorkCard, PROPOSALS_ANCHOR } from '@/components/admin/opportunity/ConvertToWorkCard'
 import { LeadProposalsClient } from '@/components/admin/LeadProposalsClient'
 import { LeadInvoicesClient } from '@/components/admin/LeadInvoicesClient'
 import { LeadVendorsClient } from '@/components/admin/LeadVendorsClient'
 import type { ActivityEvent, Customer, Event, Lead, NormalizedInvoice, Proposal, Task, Vendor } from '@/lib/types'
 import type { EventType } from '@/lib/event-types'
+import type { ConvertBlocker } from '@/lib/opportunity-detail'
 import type { CalendarItem } from '@/lib/calendar'
 
 interface OpportunityDetailClientProps {
@@ -54,6 +55,7 @@ interface OpportunityDetailClientProps {
   acceptedProposals: { id: string; title: string }[]
   pastBookings?: number
   convertBlockReason?: string
+  convertBlocker?: ConvertBlocker
   today: string
   calendarItems: CalendarItem[]
 }
@@ -110,11 +112,21 @@ function QuickFactDialog({
 
   async function save() {
     if (!fact) return
+    // Re-entrancy guard, matching EditableFact.commit() (FactsGrid.tsx:74-82).
+    // The Save Button is `disabled={saving}` but the Enter path at onKeyDown
+    // below bypasses it, and `value` is not cleared until after the await — so
+    // held/repeated Enter fired updateLead, and then router.refresh(), once per
+    // keypress. The two new inline-edit surfaces must not disagree about this.
+    if (saving) return
     setSaving(true); setError(null)
     try {
       if (fact === 'value') {
         const parsed = Number(value)
         if (value.trim() === '' || Number.isNaN(parsed)) { setError('Enter a number.'); return }
+        // A typo'd "-500" saved silently and then propagated untinted into the
+        // board column sums, the list group rollups and this page's own
+        // "Est. value" tile, where money(-500) renders "$-500" in money green.
+        if (parsed < 0) { setError('Enter a positive amount.'); return }
         await updateLead(orgId, leadId, { estimated_value: parsed })
       } else {
         // Emptiness is not date-ness. Save persists `value` directly, so the
@@ -144,6 +156,8 @@ function QuickFactDialog({
           <Input
             id="qf-input"
             type={fact === 'value' ? 'number' : 'date'}
+            min={fact === 'value' ? '0' : undefined}
+            step={fact === 'value' ? '0.01' : undefined}
             value={value}
             onChange={(e) => setValue(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') void save() }}
@@ -173,10 +187,16 @@ function QuickFactDialog({
  *
  * ORDER, which is not the schema's: who and where it stands (header) → what to
  * do next (banner) → is it worth it and how urgent (band) → what is queued
- * (tasks) → what has happened (timeline). Reference material an operator
- * consults rather than decides from — contact, the convert gate, facts, dates,
- * related records — sits in the rail at 2/5 width. Below lg no `grid-cols-*`
- * applies, so the rail folds under the spine in DOM order automatically.
+ * (tasks) → what has happened (timeline) → the two things you DO about it
+ * (proposals, invoices). Reference material an operator consults rather than
+ * decides from — contact, the convert gate, facts, dates, vendors — sits in the
+ * rail at 2/5 width. Below lg no `grid-cols-*` applies, so the rail folds under
+ * the spine in DOM order automatically.
+ *
+ * The split is by ROLE, not by record kind: proposals and invoices are related
+ * records but an operator acts on them (send the proposal, bill the deal), so
+ * they belong beside the decision. Sorting by kind is what left the rail
+ * carrying seven stacked panels against a spine half its height.
  *
  * Deliberately NOT here: a prose story lede under the band. The banner already
  * IS this screen's sentence (heading + "last touch N days ago" detail), and its
@@ -184,7 +204,7 @@ function QuickFactDialog({
  * ledes stacked would render the same facts twice — see buildClientStory on the
  * Clients cockpit, where the header carries no equivalent narrative.
  */
-export function OpportunityDetailClient({ orgId, orgSlug, lead, customer, tasks, activity, job, eventTypes, proposals, invoices, vendors, acceptedProposals, pastBookings = 0, convertBlockReason, today, calendarItems }: OpportunityDetailClientProps) {
+export function OpportunityDetailClient({ orgId, orgSlug, lead, customer, tasks, activity, job, eventTypes, proposals, invoices, vendors, acceptedProposals, pastBookings = 0, convertBlockReason, convertBlocker, today, calendarItems }: OpportunityDetailClientProps) {
   const searchParams = useSearchParams()
   const [convertOpen, setConvertOpen] = useState(searchParams.get('convert') === '1')
   /**
@@ -271,8 +291,16 @@ export function OpportunityDetailClient({ orgId, orgSlug, lead, customer, tasks,
           clears each pane's automatic minimum size so it can actually shrink
           into it. Verified at 375 / 1024 / 1080 / 1440. */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
-        {/* Spine: the decision and its evidence. */}
-        <div className="min-w-0 space-y-4 lg:col-span-3">
+        {/* Spine: the decision and its evidence.
+            Proposals and invoices live HERE, not in the rail, and that is a
+            correction: the rail unconditionally stacked seven panels (~1,200px)
+            beside a fresh inquiry's ~460px spine, so the 60% column dead-ended
+            into ~700px of nothing — R3 inverted, only rotated. These two are
+            also the only related-record panes an operator ACTS on (send the
+            proposal, bill the deal), so they are decisions, not reference, and
+            below lg they now fold above the reference cards instead of under
+            five of them. */}
+        <div data-slot="cockpit-spine" className="min-w-0 space-y-4 lg:col-span-3">
           <OpportunityKpiBand
             rollup={rollup}
             eventDate={lead.event_date}
@@ -281,12 +309,25 @@ export function OpportunityDetailClient({ orgId, orgSlug, lead, customer, tasks,
           />
           <TasksPanel ref={taskInputRef} orgId={orgId} leadId={lead.id} tasks={tasks} />
           <ActivityTimeline orgId={orgId} parentType="opportunity" parentId={lead.id} activity={activity} />
+          {/* `scroll-mt-24` clears the sticky header: without it the blocked
+              convert card's "Go to proposals" anchor lands with the card's own
+              title underneath it. */}
+          <div id={PROPOSALS_ANCHOR} className="scroll-mt-24">
+            <LeadProposalsClient orgId={orgId} orgSlug={orgSlug} leadId={lead.id} proposals={proposals} />
+          </div>
+          <LeadInvoicesClient
+            orgId={orgId}
+            orgSlug={orgSlug}
+            leadId={lead.id}
+            invoices={invoices}
+            acceptedProposals={acceptedProposals}
+          />
         </div>
 
         {/* Working rail: reference, not decision. Convert sits second because on
             a won deal it is the only forward move left, and burying it under the
             related-record cards puts it off the bottom of a folded mobile page. */}
-        <aside className="min-w-0 space-y-4 lg:col-span-2">
+        <aside data-slot="cockpit-rail" className="min-w-0 space-y-4 lg:col-span-2">
           <ContactCard
             orgSlug={orgSlug}
             customer={customer}
@@ -303,18 +344,29 @@ export function OpportunityDetailClient({ orgId, orgSlug, lead, customer, tasks,
             eventTypes={eventTypes}
             open={convertOpen}
             blockReason={convertBlockReason}
+            blocker={convertBlocker}
           />
           <FactsGrid orgId={orgId} orgSlug={orgSlug} lead={lead} customer={customer} />
           <DatesPanel orgId={orgId} orgSlug={orgSlug} lead={lead} today={today} initialItems={calendarItems} />
-          <LeadProposalsClient orgId={orgId} orgSlug={orgSlug} leadId={lead.id} proposals={proposals} />
-          <LeadInvoicesClient
-            orgId={orgId}
-            orgSlug={orgSlug}
-            leadId={lead.id}
-            invoices={invoices}
-            acceptedProposals={acceptedProposals}
-          />
-          <LeadVendorsClient orgId={orgId} leadId={lead.id} vendors={vendors} />
+          {/* LeadVendorsClient hard-codes its KpiBand to `grid-cols-3` with a
+              max-[420px] escape hatch — a VIEWPORT query, which never fires when
+              the viewport is wide and only the COLUMN is narrow. In the rail
+              that band gets ~103px of content per tile (1152 max-w − 48 padding
+              → 208/track → 432 for col-span-2 → 400 inside CardContent → 126.7
+              per track → 103 inside the tile's p-3), and a 20px semibold
+              tabular-nums "$12,500.00" does not fit: grid-cols-3 is
+              minmax(0,1fr), so the figure overflows rather than widening its
+              track. Overridden at the CALL SITE because the Vendors module is
+              main's file and not this branch's to edit.
+
+              No `min-[1400px]` restore: the page is `max-w-6xl`, so the rail is
+              432px at EVERY viewport above 1200 — a wider window never buys
+              those tiles a single pixel. Owed follow-up on the Vendors module:
+              make that band container-driven (@container) instead of
+              viewport-driven, then this override can go. */}
+          <div className="[&_[data-slot=kpi-band]]:grid-cols-1">
+            <LeadVendorsClient orgId={orgId} leadId={lead.id} vendors={vendors} />
+          </div>
         </aside>
       </div>
 

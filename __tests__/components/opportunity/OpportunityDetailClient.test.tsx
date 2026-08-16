@@ -28,7 +28,17 @@ vi.mock('@/actions/calendar', () => ({ listCalendarRange: vi.fn().mockResolvedVa
 vi.mock('@/actions/client-portal', () => ({ ensureClientPortalToken: vi.fn() }))
 
 import { OpportunityDetailClient } from '@/components/admin/OpportunityDetailClient'
-import type { Lead } from '@/lib/types'
+import type { Lead, NormalizedInvoice } from '@/lib/types'
+
+// Only the fields the money helpers and the invoice pills read.
+function invoice(p: Partial<NormalizedInvoice>): NormalizedInvoice {
+  return {
+    id: 'i1', org_id: 'o1', lead_id: 'l1', token: 'tok', type: 'final', lifecycle: 'sent',
+    delivery: 'not_sent', accounting: 'not_connected', dispute: 'none',
+    line_items: [{ description: 'Cart', quantity: 1, unit_price: 5000 }],
+    payments: [], created_at: '2026-01-01T00:00:00.000Z', ...p,
+  } as NormalizedInvoice
+}
 
 const lead: Lead = { id: 'l1', name: 'Ada Wedding', stage: 'proposal', created_at: '' }
 const titledLead: Lead = { id: 'l2', name: 'Dana Kim', title: 'Riverside gala', stage: 'proposal', created_at: '' }
@@ -284,6 +294,167 @@ describe('OpportunityDetailClient', () => {
 
       const dateDialog = await openFact('+ Add date', /event date/i)
       expect(within(dateDialog).queryByRole('alert')).toBeNull()
+    })
+
+    // The Save button is disabled while saving, but the Enter path bypassed it
+    // and `value` is not cleared until the await resolves — so held Enter wrote
+    // the lead once per keypress and fired a router.refresh() for each.
+    // FactsGrid guards the identical case one file away.
+    it('writes once however many times Enter is pressed during the save', async () => {
+      let settle: () => void = () => {}
+      updateLead.mockImplementationOnce(() => new Promise<void>((res) => { settle = res }))
+      render(<OpportunityDetailClient {...base} lead={lead} />)
+      const dialog = await openFact('+ Add value', /estimated value/i)
+      const input = within(dialog).getByLabelText('Estimated value')
+      fireEvent.change(input, { target: { value: '500' } })
+
+      fireEvent.keyDown(input, { key: 'Enter' })
+      fireEvent.keyDown(input, { key: 'Enter' })
+      fireEvent.keyDown(input, { key: 'Enter' })
+
+      expect(updateLead).toHaveBeenCalledTimes(1)
+      settle()
+      await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1))
+      expect(updateLead).toHaveBeenCalledTimes(1)
+    })
+
+    // money(-500) renders "$-500" in the money-green token on this page's own
+    // tile, and the figure feeds the board column sums and the list rollups.
+    it('refuses a negative estimated value instead of banking it', async () => {
+      render(<OpportunityDetailClient {...base} lead={lead} />)
+      const dialog = await openFact('+ Add value', /estimated value/i)
+      fill(dialog, 'Estimated value', '-500')
+      save(dialog)
+      expect(await within(dialog).findByRole('alert')).toHaveTextContent('Enter a positive amount.')
+      expect(updateLead).not.toHaveBeenCalled()
+    })
+  })
+
+  /**
+   * The Critical: the KPI band and the rail's invoices card print the SAME
+   * label, "Open balance", ~400px apart. The band computed it as
+   * `lifecycle !== 'void'` and LeadInvoicesClient (main's file, the invoice
+   * module of record) as `lifecycle === 'sent'`, so every draft with a balance
+   * was counted by one and excluded by the other. No test could catch it while
+   * every composed case passed `invoices: []` and RelatedRecordCard only
+   * renders its footer when rows exist.
+   */
+  describe('the two "Open balance" figures on this page', () => {
+    function bandOpenBalance(container: HTMLElement): string {
+      const band = container.querySelector('[data-slot="kpi-band"]') as HTMLElement
+      const tile = within(band).getByText('Open balance').closest('[data-slot="stat-tile"]') as HTMLElement
+      return tile.textContent ?? ''
+    }
+    function invoicesFooter(): string {
+      // The card's own footer row, not the tile: same label, its own money format.
+      const labels = screen.getAllByText('Open balance')
+      const footer = labels.find((el) => el.closest('[data-slot="stat-tile"]') === null)
+      return footer?.parentElement?.textContent ?? ''
+    }
+
+    it('agrees with the invoices card on a never-sent draft, past its due date', () => {
+      const { container } = render(
+        <OpportunityDetailClient
+          {...base}
+          lead={lead}
+          invoices={[invoice({ lifecycle: 'draft', due_date: '2026-08-01' })]}
+        />
+      )
+      // Nothing is owed: the client has never been handed this invoice.
+      expect(bandOpenBalance(container)).toContain('$0')
+      expect(bandOpenBalance(container)).toContain('nothing outstanding')
+      expect(bandOpenBalance(container)).not.toContain('past due')
+      expect(bandOpenBalance(container)).not.toContain('5,000')
+      expect(invoicesFooter()).toContain('$0.00')
+    })
+
+    it('agrees with the invoices card when a sent invoice sits beside the draft', () => {
+      const { container } = render(
+        <OpportunityDetailClient
+          {...base}
+          lead={lead}
+          invoices={[
+            invoice({ id: 'i1', lifecycle: 'draft' }),
+            invoice({ id: 'i2', lifecycle: 'sent', line_items: [{ description: 'Bar', quantity: 1, unit_price: 1200 }] }),
+          ]}
+        />
+      )
+      // Same figure, two formatters: money() on the tile ("$1,200") and money2()
+      // in the invoice module ("$1200.00"). The formatter divergence is logged
+      // as a separate minor against files this branch does not own; what matters
+      // here is that both derive from the same invoice set.
+      expect(bandOpenBalance(container)).toContain('$1,200')
+      expect(invoicesFooter()).toContain('1200.00')
+      expect(invoicesFooter()).not.toContain('6200')
+    })
+  })
+
+  /**
+   * P5 built the sticky header and P6 kept ContactCard's buttons; neither saw
+   * the other's file. On any opportunity with an email and a phone that put two
+   * identically-named "Email" links and two "Call" links on screen at once,
+   * both in the links rotor.
+   */
+  it('offers exactly one Email and one Call control on the whole page', () => {
+    render(
+      <OpportunityDetailClient
+        {...base}
+        lead={{ ...lead, email: 'ada@x.com', phone: '5551234' }}
+      />
+    )
+    expect(document.querySelectorAll('a[href^="mailto:"]')).toHaveLength(1)
+    expect(document.querySelectorAll('a[href^="tel:"]')).toHaveLength(1)
+  })
+
+  /**
+   * R3. The rail stacked seven panels beside a spine that, on a fresh inquiry,
+   * is a KPI band plus two near-empty cards — a 656px column of nothing next to
+   * a 1,200px single-file stack. Proposals and invoices are the two related
+   * panes an operator ACTS on, so they belong with the decision.
+   */
+  describe('the spine/rail split', () => {
+    it('puts the panes an operator acts on in the spine, not the reference rail', () => {
+      const { container } = render(<OpportunityDetailClient {...base} lead={lead} />)
+      const spine = container.querySelector('[data-slot="cockpit-spine"]') as HTMLElement
+      const rail = container.querySelector('[data-slot="cockpit-rail"]') as HTMLElement
+
+      expect(within(spine).getByText('Proposals')).toBeInTheDocument()
+      expect(within(spine).getByText('Invoices')).toBeInTheDocument()
+      expect(within(rail).queryByText('Proposals')).toBeNull()
+      expect(within(rail).queryByText('Invoices')).toBeNull()
+      // Reference stays in the rail.
+      expect(within(rail).getByText('Details')).toBeInTheDocument()
+    })
+
+    // The blocked convert card's "Go to proposals" is a fragment link, so its
+    // target id has to actually exist on the page it is rendered in.
+    it('gives the proposals pane the id the blocked convert card links to', () => {
+      const { container } = render(<OpportunityDetailClient {...base} lead={lead} />)
+      const anchorTarget = container.querySelector('#lead-proposals') as HTMLElement
+      expect(anchorTarget).not.toBeNull()
+      expect(within(anchorTarget).getByText('Proposals')).toBeInTheDocument()
+    })
+
+    // LeadVendorsClient (main's file) hard-codes a 3-up money band whose only
+    // escape hatch is a max-[420px] VIEWPORT query — which never fires when the
+    // window is wide and only the 432px rail column is narrow. Overridden at the
+    // call site because that module is not this branch's to edit. jsdom cannot
+    // measure, so this pins the override's presence, not the pixels; a browser
+    // pass at 1024/1280/1440 is still owed.
+    it('overrides the vendors money band to one column inside the narrow rail', () => {
+      const { container } = render(<OpportunityDetailClient {...base} lead={lead} />)
+      const rail = container.querySelector('[data-slot="cockpit-rail"]') as HTMLElement
+      const band = rail.querySelector('[data-slot="kpi-band"]') as HTMLElement
+      expect(band).not.toBeNull()
+      // The generated class name is full of CSS metacharacters, so walk the
+      // ancestors rather than trying to escape it into a selector.
+      let ancestor: HTMLElement | null = band
+      let overridden = false
+      while (ancestor && ancestor !== rail.parentElement) {
+        if (ancestor.className.includes('[&_[data-slot=kpi-band]]:grid-cols-1')) overridden = true
+        ancestor = ancestor.parentElement
+      }
+      expect(overridden).toBe(true)
     })
   })
 })

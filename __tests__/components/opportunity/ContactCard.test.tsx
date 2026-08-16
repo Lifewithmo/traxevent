@@ -17,7 +17,7 @@ describe('ContactCard', () => {
     expect(screen.getByText('Ada Lovelace')).toBeInTheDocument()
     expect(screen.getByText('Analytical Co')).toBeInTheDocument()
     expect(screen.getByText('AL')).toBeInTheDocument() // kit Avatar monogram
-    expect(screen.getByRole('link', { name: /email/i })).toHaveAttribute('href', 'mailto:ada@x.com')
+    expect(screen.getByText('ada@x.com · 5551234')).toBeInTheDocument()
   })
 
   it('falls back to lead contact when no customer', () => {
@@ -26,12 +26,37 @@ describe('ContactCard', () => {
     expect(screen.getByText('Fallback Co')).toBeInTheDocument()
   })
 
-  it('expands to reveal details', () => {
+  // The sticky header (OpportunityDetailClient.tsx:238-247) renders Email and
+  // Call and never scrolls away. A second pair here put two identically-named
+  // "Email" links and two "Call" links on screen simultaneously, both in the
+  // links rotor with the same accessible name.
+  it('leaves Email and Call to the sticky header', () => {
     const customer: Customer = { id: 'c1', name: 'Ada', email: 'ada@x.com', phone: '5551234', created_at: '' }
     render(<ContactCard orgSlug="acme" customer={customer} lead={lead} variant="strip" />)
-    expect(screen.queryByText('5551234')).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /^email$/i })).toBeNull()
+    expect(screen.queryByRole('link', { name: /^call$/i })).toBeNull()
+    expect(document.querySelector('a[href^="mailto:"]')).toBeNull()
+    expect(document.querySelector('a[href^="tel:"]')).toBeNull()
+    // The addresses themselves stay — this card is the identity.
+    expect(screen.getByText('ada@x.com · 5551234')).toBeInTheDocument()
+  })
+
+  // The disclosure used to restate the email and phone printed on the card face
+  // two lines above it, so "More" revealed nothing the operator could not
+  // already see — and with no tags and no notes it revealed an empty list.
+  it('discloses only what is not already on the card face, and hides the toggle when there is none', () => {
+    const bare: Customer = { id: 'c1', name: 'Ada', email: 'ada@x.com', phone: '5551234', created_at: '' }
+    const { rerender } = render(<ContactCard orgSlug="acme" customer={bare} lead={lead} variant="strip" />)
+    expect(screen.queryByRole('button', { name: /expand/i })).toBeNull()
+
+    rerender(
+      <ContactCard orgSlug="acme" customer={{ ...bare, notes: 'Allergic to shellfish' }} lead={lead} variant="strip" />
+    )
     fireEvent.click(screen.getByRole('button', { name: /expand/i }))
-    expect(screen.getByText('5551234')).toBeInTheDocument()
+    expect(screen.getByText('Allergic to shellfish')).toBeInTheDocument()
+    // One occurrence each: the contact line, not a second copy inside "More".
+    expect(screen.getAllByText(/5551234/)).toHaveLength(1)
+    expect(screen.getAllByText(/ada@x\.com/)).toHaveLength(1)
   })
 
   it('links to the customer record when one is linked', () => {

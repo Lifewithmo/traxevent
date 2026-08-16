@@ -20,24 +20,53 @@ describe('FactsGrid', () => {
 
   it('offers "+ Add" affordances for unset facts and never renders an em dash', () => {
     render(<FactsGrid {...props} />)
-    expect(screen.getByRole('button', { name: '+ Add Event date' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '+ Add Guest count' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '+ Add Event type' })).toBeInTheDocument()
     expect(screen.queryByText('—')).toBeNull()
   })
 
   it('renders a set fact as a click-to-edit value, not a dash', () => {
-    render(<FactsGrid {...props} lead={{ ...lead, event_date: '2026-09-12', event_type: 'Wedding' }} />)
-    expect(screen.getByRole('button', { name: 'Sep 12, 2026' })).toBeInTheDocument()
+    render(<FactsGrid {...props} lead={{ ...lead, guest_count: 150, event_type: 'Wedding' }} />)
+    expect(screen.getByRole('button', { name: '150 guests' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Wedding' })).toBeInTheDocument()
     expect(screen.queryByText('—')).toBeNull()
   })
 
   it('opens an inline input on the field itself, without swapping out the whole card', () => {
     render(<FactsGrid {...props} />)
-    fireEvent.click(screen.getByRole('button', { name: '+ Add Event date' }))
-    expect(screen.getByLabelText('Event date')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '+ Add Guest count' }))
+    expect(screen.getByLabelText('Guest count')).toBeInTheDocument()
     // The other facts stay put — the card did not reflow into a form.
     expect(screen.getByRole('button', { name: '+ Add Event type' })).toBeInTheDocument()
+  })
+
+  // The event date is a figure on OpportunityKpiBand, whose "+ Add date" tile
+  // action opens QuickFactDialog and writes the same `event_date`. Keeping it
+  // here too shipped TWO editors for one field and printed the same date twice
+  // under two labels on one screen — the exact thing the estimated-value note
+  // in this file's docblock forbids.
+  it('does not render or edit the event date — the KPI band owns it', () => {
+    const { rerender } = render(<FactsGrid {...props} />)
+    expect(screen.queryByRole('button', { name: '+ Add Event date' })).toBeNull()
+    expect(screen.queryByText('Event date')).toBeNull()
+
+    rerender(<FactsGrid {...props} lead={{ ...lead, event_date: '2026-09-12' }} />)
+    expect(screen.queryByText('Sep 12, 2026')).toBeNull()
+    expect(screen.queryByText('2026-09-12')).toBeNull()
+  })
+
+  // router.refresh() returns before the RSC payload lands, so the committed
+  // value is held locally for a whole round trip. Held RAW it read "150" and
+  // then flipped to "150 guests" — a formatter the card applies to the prop but
+  // not to its own optimistic value.
+  it('formats the held value while the refreshed prop is in flight', async () => {
+    render(<FactsGrid {...props} />)
+    fireEvent.click(screen.getByRole('button', { name: '+ Add Guest count' }))
+    const input = screen.getByLabelText('Guest count')
+    fireEvent.change(input, { target: { value: '150' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(await screen.findByRole('button', { name: '150 guests' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '150' })).toBeNull()
   })
 
   it('reverts on Escape without calling the action', () => {

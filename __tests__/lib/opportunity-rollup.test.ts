@@ -69,7 +69,14 @@ describe('opportunityRollup', () => {
     expect(opportunityRollup({ ...base, lead: lead({ estimated_value: 0 }) }).estValue).toBe(0)
   })
 
-  it('open balance EXCLUDES void invoices and INCLUDES a draft that still carries a balance', () => {
+  // INVERTED, deliberately. This test used to pin `openBalance` at 1500 —
+  // counting the draft — on the stated rationale that it matched the invoice
+  // attachment chip in lib/opportunity-detail.ts. That function no longer
+  // exists (deleted this increment), and the figure sits under the same
+  // "Open balance" label as LeadInvoicesClient's footer in the same page's
+  // rail, which counts `lifecycle === 'sent'` only. Two different numbers under
+  // one label is the bug; the invoice module is the record of truth.
+  it('open balance counts only SENT invoices — a draft has not been asked for yet', () => {
     const r = opportunityRollup({
       ...base,
       invoices: [
@@ -78,9 +85,29 @@ describe('opportunityRollup', () => {
         inv({ id: 'void', lifecycle: 'void', line_items: [{ description: 'x', quantity: 1, unit_price: 900 }] }),
       ],
     })
-    // Deliberately NOT customerAR() (which counts lifecycle === 'sent' only):
-    // the opportunity page has always shown drafts with a balance as open.
-    expect(r.openBalance).toBe(1500)
+    expect(r.openBalance).toBe(1000)
+    // The two numbers this must never be again: 1500 counts the draft, 2400
+    // counts the void as well.
+    expect(r.openBalance).not.toBe(1500)
+  })
+
+  // The concrete failure the reviewer reported: one never-sent draft for $5,000
+  // due yesterday rendered "OPEN BALANCE $5,000 · past due" in destructive tone
+  // beside an Invoices card reading "Open balance $0.00".
+  it('a draft past its due date is neither open nor overdue', () => {
+    const r = opportunityRollup({
+      ...base,
+      invoices: [
+        inv({
+          id: 'never-sent',
+          lifecycle: 'draft',
+          due_date: '2026-08-14',
+          line_items: [{ description: 'x', quantity: 1, unit_price: 5000 }],
+        }),
+      ],
+    })
+    expect(r.openBalance).toBe(0)
+    expect(r.overdueBalance).toBe(0)
   })
 
   it('excludes a fully paid invoice from the open balance', () => {

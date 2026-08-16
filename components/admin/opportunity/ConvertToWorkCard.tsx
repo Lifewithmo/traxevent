@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -9,13 +10,22 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { RelatedRecordCard, type RelatedRow } from '@/components/ui/related-record-card'
 import { StatusPill } from '@/components/ui/status-pill'
-import { convertOpportunityToWork } from '@/actions/leads'
+import { convertOpportunityToWork, setLeadStage } from '@/actions/leads'
 import { eventCreateFieldsFromType, DEFAULT_EVENT_TYPE_ID } from '@/lib/event-types'
 import type { EventType } from '@/lib/event-types'
 import { opportunityTitle } from '@/lib/leads'
+import type { ConvertBlocker } from '@/lib/opportunity-detail'
 import { EVENT_KIND_LABELS } from '@/lib/occasions/kind'
 import { shortDate } from '@/lib/pipeline-presentation'
 import type { Event, Lead, EventKind } from '@/lib/types'
+
+/**
+ * The id OpportunityDetailClient stamps on the proposals pane, so the blocked
+ * empty state can send the operator to the control that unblocks it. Shared as
+ * a constant because the anchor and its target are in different files and a
+ * typo'd fragment fails silently.
+ */
+export const PROPOSALS_ANCHOR = 'lead-proposals'
 
 interface ConvertToWorkCardProps {
   orgId: string
@@ -25,6 +35,13 @@ interface ConvertToWorkCardProps {
   eventTypes: EventType[]
   open?: boolean
   blockReason?: string
+  /**
+   * WHICH blocker `blockReason` is describing. The empty state's CTA has to be
+   * the move its own description names, and the two non-won blockers name
+   * different moves. Defaults to the honest fallback: with no discriminant the
+   * card cannot claim the deal is one click from won.
+   */
+  blocker?: ConvertBlocker
 }
 
 /**
@@ -32,10 +49,11 @@ interface ConvertToWorkCardProps {
  *
  * Three mutually exclusive states, each a kit surface rather than the bespoke
  * one-line strips they replace: the job exists (a related record), the deal
- * cannot convert yet (an empty with the reason), or it can (an empty with the
- * single CTA). Only the last opens a form, and only on request.
+ * cannot convert yet (an empty naming the reason AND the move that clears it),
+ * or it can (an empty with the single CTA). Only the last opens a form, and
+ * only on request.
  */
-export function ConvertToWorkCard({ orgId, orgSlug, lead, job, eventTypes, open: openProp = false, blockReason }: ConvertToWorkCardProps) {
+export function ConvertToWorkCard({ orgId, orgSlug, lead, job, eventTypes, open: openProp = false, blockReason, blocker }: ConvertToWorkCardProps) {
   const router = useRouter()
   const [open, setOpen] = useState(openProp)
   const [name, setName] = useState(opportunityTitle(lead))
@@ -44,10 +62,43 @@ export function ConvertToWorkCard({ orgId, orgSlug, lead, job, eventTypes, open:
   const [eventTypeId, setEventTypeId] = useState<string>(DEFAULT_EVENT_TYPE_ID)
   const [headcount, setHeadcount] = useState(lead.guest_count != null ? String(lead.guest_count) : '')
   const [saving, setSaving] = useState(false)
+  const [winning, setWinning] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Winning from the header (StageMenu) flips the prop after mount.
-  useEffect(() => { if (openProp) setOpen(true) }, [openProp])
+  /**
+   * Seed the form from the CURRENT lead, every time it is opened.
+   *
+   * These three fields used to be `useState(...)` initialisers only, and this
+   * card never unmounts — it renders one of four branches on a page that
+   * `router.refresh()`es constantly. So: open a won deal with no event date →
+   * "Won, but not on the calendar" → set the date from the KPI band's "+ Add
+   * date" → refresh lands `lead.event_date` → click "Convert to work" and the
+   * Date field is EMPTY with "Schedule job" disabled and nothing saying why.
+   * Same for a title corrected through "Edit all details", and for guest count.
+   */
+  function openForm() {
+    setName(opportunityTitle(lead))
+    setDate(lead.event_date ?? '')
+    setHeadcount(lead.guest_count != null ? String(lead.guest_count) : '')
+    setError(null)
+    setOpen(true)
+  }
+
+  /**
+   * Winning from the header actions menu flips `openProp` after mount.
+   *
+   * Adjusted during render rather than in an effect (the pattern QuickFactDialog
+   * and EditableFact both use): an effect would paint the closed card first and
+   * re-seed on a second commit, and `react-hooks/set-state-in-effect` rejects it
+   * — this file carried one of the repo's pre-existing violations for exactly
+   * that call. Keyed on the TRANSITION, so a later `lead` change cannot clobber
+   * a half-typed override.
+   */
+  const [lastOpenProp, setLastOpenProp] = useState(openProp)
+  if (openProp !== lastOpenProp) {
+    setLastOpenProp(openProp)
+    if (openProp) openForm()
+  }
 
   // A linked job stays visible no matter what the opportunity's stage does
   // later (e.g. moved back to `proposal` as a correction) — otherwise the
@@ -72,20 +123,72 @@ export function ConvertToWorkCard({ orgId, orgSlug, lead, job, eventTypes, open:
         // are supplied rather than shipping a dead control on an unreachable path.
         emptyTitle="Not scheduled yet"
         emptyCtaLabel="Convert to work"
-        onEmptyCta={() => setOpen(true)}
+        onEmptyCta={openForm}
       />
     )
   }
 
-  // Not won yet: keep the destination visible and say what unblocks it.
+  async function handleMarkWon() {
+    if (winning) return
+    setWinning(true); setError(null)
+    try {
+      await setLeadStage(orgId, lead.id, 'closed_won')
+      // Latch the form open, seeded from the lead as it stands right now
+      // (winning changes the stage, not the title/date/guest count). The card
+      // keeps rendering this blocked branch until the refreshed `lead` arrives
+      // with `closed_won` — at which point the scheduler is already open, so
+      // the operator lands one click from a scheduled job rather than back on
+      // "Won, but not on the calendar".
+      openForm()
+      router.refresh()
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Could not mark this won')
+    } finally {
+      setWinning(false)
+    }
+  }
+
+  /**
+   * Not won yet: keep the destination visible, say what unblocks it, and offer
+   * THAT MOVE.
+   *
+   * The CTA slot used to hold `<Button disabled>Convert to work</Button>` — a
+   * permanently dead control under a description that names a live next step
+   * ("Ready — mark the deal won to convert."). Every other empty in the module
+   * offers a working control; this was the one that did not. The move differs
+   * per blocker, which is why `blocker` is a prop:
+   *   - not_won            → mark it won (and drop into the scheduler)
+   *   - unsigned_proposal  → the signature is the blocker, so point at the
+   *                          proposals card rather than mint a THIRD "New
+   *                          proposal" button on a page that already has two.
+   * Unknown blocker → no action at all. A missing CTA is honest; a dead one is
+   * not.
+   */
   if (lead.stage !== 'closed_won') {
     return (
       <section className="rounded-xl border border-border bg-card shadow-xs">
         <EmptyState
           title="Not scheduled yet"
           description={blockReason ?? 'Mark the deal won to convert.'}
-          action={<Button size="sm" disabled>Convert to work</Button>}
+          action={
+            blocker === 'not_won' ? (
+              <Button size="sm" disabled={winning} onClick={handleMarkWon}>
+                {winning ? 'Marking won…' : 'Mark won'}
+              </Button>
+            ) : blocker === 'unsigned_proposal' ? (
+              <Button
+                size="sm"
+                variant="outline"
+                nativeButton={false}
+                role="link"
+                render={<Link href={`#${PROPOSALS_ANCHOR}`} />}
+              >
+                Go to proposals
+              </Button>
+            ) : undefined
+          }
         />
+        {error && <p className="px-4 pb-4 text-center text-sm text-destructive" role="alert">{error}</p>}
       </section>
     )
   }
@@ -115,7 +218,7 @@ export function ConvertToWorkCard({ orgId, orgSlug, lead, job, eventTypes, open:
         <EmptyState
           title="Won, but not on the calendar"
           description="Convert it into a job to plan packages, staffing and delivery."
-          action={<Button size="sm" onClick={() => setOpen(true)}>Convert to work</Button>}
+          action={<Button size="sm" onClick={openForm}>Convert to work</Button>}
         />
       </section>
     )

@@ -2,9 +2,11 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const convertOpportunityToWork = vi.hoisted(() => vi.fn())
+const setLeadStage = vi.hoisted(() => vi.fn())
 const routerPush = vi.hoisted(() => vi.fn())
-vi.mock('@/actions/leads', () => ({ convertOpportunityToWork }))
-vi.mock('next/navigation', () => ({ useRouter: () => ({ push: routerPush, refresh: vi.fn() }) }))
+const routerRefresh = vi.hoisted(() => vi.fn())
+vi.mock('@/actions/leads', () => ({ convertOpportunityToWork, setLeadStage }))
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push: routerPush, refresh: routerRefresh }) }))
 
 import { ConvertToWorkCard } from '@/components/admin/opportunity/ConvertToWorkCard'
 import { getEventType } from '@/lib/event-types'
@@ -18,16 +20,95 @@ describe('ConvertToWorkCard', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     convertOpportunityToWork.mockResolvedValue({ id: 'e1', slug: 'nguyen-wedding-2026' } as Event)
+    setLeadStage.mockResolvedValue(undefined)
   })
 
-  it('shows the block reason with a disabled button for an opportunity that is not won', () => {
+  it('shows the block reason for an opportunity that is not won', () => {
     render(<ConvertToWorkCard
       {...props}
       lead={{ ...won, stage: 'proposal' } as Lead}
-      blockReason="Blocked: no accepted proposal yet. Acceptance carries the package into Events."
+      blocker="unsigned_proposal"
+      blockReason="Blocked: no signed proposal yet. Signed acceptance carries the accepted package into Events."
     />)
-    expect(screen.getByText(/no accepted proposal yet/i)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /convert to work/i })).toBeDisabled()
+    expect(screen.getByText(/no signed proposal yet/i)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /convert to work/i })).toBeNull()
+  })
+
+  // R4: an empty state's action slot is for the move its description names.
+  // This one used to hold `<Button disabled>Convert to work</Button>` — the one
+  // empty in the module whose only control could never do anything, under a
+  // description that names a live next step.
+  describe('the blocked empty state offers the move it names', () => {
+    function blocked(blocker: 'unsigned_proposal' | 'not_won', blockReason: string) {
+      render(<ConvertToWorkCard
+        {...props}
+        lead={{ ...won, stage: 'proposal' } as Lead}
+        blocker={blocker}
+        blockReason={blockReason}
+      />)
+    }
+
+    it('never leaves a disabled control as the only action', () => {
+      blocked('not_won', 'Ready — mark the deal won to convert.')
+      for (const el of screen.getAllByRole('button')) expect(el).not.toBeDisabled()
+    })
+
+    it('marks the deal won and drops straight into the scheduler', async () => {
+      const notWon = { ...won, stage: 'proposal' } as Lead
+      const { rerender } = render(<ConvertToWorkCard
+        {...props}
+        lead={notWon}
+        blocker="not_won"
+        blockReason="Ready — mark the deal won to convert."
+      />)
+      fireEvent.click(screen.getByRole('button', { name: 'Mark won' }))
+      await waitFor(() => expect(setLeadStage).toHaveBeenCalledWith('o1', 'l1', 'closed_won'))
+      await waitFor(() => expect(routerRefresh).toHaveBeenCalled())
+      // router.refresh() re-renders the tree with the won stage; the latch
+      // survives it, so the operator lands in the scheduler and not back on
+      // "Won, but not on the calendar" with another button to press.
+      rerender(<ConvertToWorkCard {...props} lead={won} blocker="none" />)
+      expect(await screen.findByLabelText('Job name')).toHaveValue('Nguyen Wedding')
+      expect(screen.getByLabelText('Date')).toHaveValue('2026-09-12')
+    })
+
+    it('says why when marking won is rejected, instead of failing silently', async () => {
+      setLeadStage.mockRejectedValueOnce(new Error('offline'))
+      blocked('not_won', 'Ready — mark the deal won to convert.')
+      fireEvent.click(screen.getByRole('button', { name: 'Mark won' }))
+      expect(await screen.findByRole('alert')).toHaveTextContent('offline')
+      expect(screen.queryByLabelText('Job name')).toBeNull()
+    })
+
+    it('points at the proposals pane when the signature is what is missing', () => {
+      blocked('unsigned_proposal', 'Blocked: no signed proposal yet.')
+      // A route to the control that unblocks it, NOT a third "New proposal"
+      // button on a page whose proposals card already carries two.
+      expect(screen.getByRole('link', { name: /go to proposals/i })).toHaveAttribute('href', '#lead-proposals')
+      expect(screen.queryByRole('button', { name: /new proposal/i })).toBeNull()
+    })
+
+    it('offers no action at all rather than a dead one when the blocker is unknown', () => {
+      render(<ConvertToWorkCard {...props} lead={{ ...won, stage: 'proposal' } as Lead} />)
+      expect(screen.getByText(/mark the deal won to convert/i)).toBeInTheDocument()
+      expect(screen.queryByRole('button')).toBeNull()
+    })
+  })
+
+  // The card never unmounts — it renders one of four branches on a page that
+  // router.refresh()es constantly — so fields seeded only at mount went stale.
+  // Reachable path: a won deal with no event date, the operator adds the date
+  // from the KPI band, the refreshed lead lands, and the scheduler still opens
+  // with an EMPTY date and "Schedule job" disabled, saying nothing about why.
+  it('re-seeds the form from the refreshed lead each time it is opened', () => {
+    const dateless = { ...won, event_date: undefined, title: 'Old title' } as Lead
+    const { rerender } = render(<ConvertToWorkCard {...props} lead={dateless} />)
+    rerender(<ConvertToWorkCard {...props} lead={{ ...dateless, event_date: '2026-09-12', title: 'Nguyen Wedding', guest_count: 60 } as Lead} />)
+    fireEvent.click(screen.getByRole('button', { name: /convert to work/i }))
+    expect(screen.getByLabelText('Date')).toHaveValue('2026-09-12')
+    expect(screen.getByLabelText('Job name')).toHaveValue('Nguyen Wedding')
+    expect(screen.getByLabelText('Headcount')).toHaveValue(60)
+    expect(screen.getByRole('button', { name: /^schedule job$/i })).not.toBeDisabled()
   })
 
   it('opens the form immediately when the open prop is set', () => {

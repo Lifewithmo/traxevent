@@ -46,6 +46,29 @@ describe('TasksPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: /complete/i }))
     await waitFor(() => expect(completeTask).toHaveBeenCalledWith('o1', 'l1', 't1'))
   })
+
+  // The Add BUTTON is `disabled={busy}`, but the Enter path called handleAdd()
+  // directly and handleAdd only tested `!title.trim()` — and `title` is not
+  // cleared until the await resolves. Repeat-Enter inside one round trip
+  // therefore created a task per keypress. Not idempotent server-side:
+  // createTask mints a fresh id every call.
+  it('creates ONE task however many times Enter is pressed during the write', async () => {
+    let resolveCreate: (v: unknown) => void = () => {}
+    createTask.mockImplementationOnce(() => new Promise((res) => { resolveCreate = res }))
+    render(<TasksPanel orgId="o1" leadId="l1" tasks={[]} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Add a task' }))
+    const input = screen.getByPlaceholderText(/add a task/i)
+    fireEvent.change(input, { target: { value: 'Call caterer' } })
+
+    fireEvent.keyDown(input, { key: 'Enter' })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    expect(createTask).toHaveBeenCalledTimes(1)
+    resolveCreate({})
+    await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1))
+    expect(createTask).toHaveBeenCalledTimes(1)
+  })
 })
 
 describe('TasksPanel composer', () => {

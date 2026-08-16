@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { OpportunityDetailsForm } from '@/components/admin/opportunity/OpportunityDetailsForm'
 import { updateLead } from '@/actions/leads'
-import { shortDate } from '@/lib/pipeline-presentation'
 import type { LeadUpdate } from '@/lib/crm/leads'
 import type { Customer, Lead } from '@/lib/types'
 
@@ -25,21 +24,26 @@ interface FactsGridProps {
  * module-locally and does not export it. The Clients module is frozen this
  * increment, so it cannot be hoisted into shared code; if it ever is, delete
  * this copy. Divergences from the original, both deliberate:
- *   - `display` is separate from `value`, so a stored `2026-09-12` can read as
- *     "Sep 12, 2026" while the input still edits the raw YMD.
+ *   - `format` is separate from `value`, so a stored `150` can read as
+ *     "150 guests" while the input still edits the raw number.
  *   - `onSave` rejections surface instead of escaping as an unhandled rejection
  *     from the blur handler, which would have silently eaten the operator's edit.
  *   - A committed value is held locally until the refreshed prop lands (see
  *     `saved`), and commit() is re-entrancy guarded, so Enter cannot double-write.
  */
 function EditableFact({
-  label, value, display, inputType, onSave,
+  label, value, format, inputType, onSave,
 }: {
   label: string
   /** The raw editable value. Empty string means unset. */
   value: string
-  /** What the operator reads when the fact is set. Defaults to `value`. */
-  display?: string
+  /**
+   * How the raw value READS. Applied to the held post-commit value too, not
+   * just the prop — otherwise a formatted fact flashed its raw form for the
+   * whole RSC round trip after Enter ("150" then "150 guests"), which is a
+   * second format for a fact on the card the module standardised.
+   */
+  format?: (v: string) => string
   inputType?: 'text' | 'date' | 'number'
   onSave: (next: string) => Promise<void>
 }) {
@@ -130,7 +134,7 @@ function EditableFact({
       ) : current ? (
         <dd className="mt-0.5">
           <button type="button" onClick={startEditing} className="text-left text-sm font-medium text-foreground hover:underline">
-            {saved?.to ?? display ?? value}
+            {format ? format(current) : current}
           </button>
         </dd>
       ) : (
@@ -154,10 +158,15 @@ function EditableFact({
  *     correction. The full form survives as an explicit "Edit all details"
  *     escape hatch — the only route to title/contact/notes, which have no
  *     business on a four-fact card.
- *   - Estimated value is NOT here. It is a figure on OpportunityKpiBand, with
- *     its own "+ Add value"; rendering it twice would make the card and the band
- *     argue about which one is the source of truth. Guest count stays, because
- *     the band has no tile for it and it drives headcount on conversion.
+ *   - Estimated value and event date are NOT here. Both are figures on
+ *     OpportunityKpiBand, each with its own "+ Add" affordance writing the same
+ *     field; rendering either twice makes the card and the band argue about
+ *     which one is the source of truth, and the date was worse than the value —
+ *     it shipped TWO competing editors for one field (a modal on the tile, an
+ *     inline input here) and printed "Sep 12, 2026" twice under two labels.
+ *     "Edit all details" remains the escape hatch for changing a set date.
+ *     Guest count and event type stay: the band has no tile for either, and
+ *     guest count drives headcount on conversion.
  */
 export function FactsGrid({ orgId, orgSlug, lead, customer }: FactsGridProps) {
   const router = useRouter()
@@ -203,14 +212,7 @@ export function FactsGrid({ orgId, orgSlug, lead, customer }: FactsGridProps) {
       <div aria-live="polite" aria-atomic="true">
         {error && <p role="alert" className="px-3 pt-2 text-sm text-destructive">{error}</p>}
       </div>
-      <dl className="grid grid-cols-2 gap-x-4 gap-y-3 p-3 sm:grid-cols-3">
-        <EditableFact
-          label="Event date"
-          value={lead.event_date ?? ''}
-          display={lead.event_date ? shortDate(lead.event_date) : undefined}
-          inputType="date"
-          onSave={(v) => save({ event_date: opt(v) })}
-        />
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-3 p-3">
         <EditableFact
           label="Event type"
           value={lead.event_type ?? ''}
@@ -219,7 +221,7 @@ export function FactsGrid({ orgId, orgSlug, lead, customer }: FactsGridProps) {
         <EditableFact
           label="Guest count"
           value={guestCount}
-          display={guestCount ? `${guestCount} guests` : undefined}
+          format={(v) => `${v} guests`}
           inputType="number"
           onSave={(v) => {
             const trimmed = v.trim()

@@ -124,6 +124,23 @@ describe('OpportunityActionsMenu', () => {
     expect(within(dialog).queryByText(/Dana Kim/)).toBeNull()
   })
 
+  // `deleteLead` deletes ONE document. Tasks are a subcollection (Firestore
+  // leaves those behind) and proposals/invoices are top-level collections
+  // filtered by lead_id, so they all survive the delete. A dialog that promises
+  // otherwise is how an operator bins a lost lead carrying a live $5,000
+  // invoice believing the invoice went with it.
+  it('does not promise a cascade the server does not perform', () => {
+    mount({ id: 'l2', title: 'Riverside gala' })
+    openMenu()
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }))
+    const copy = within(screen.getByRole('dialog')).getByText(/Riverside gala/).textContent ?? ''
+    expect(copy).not.toMatch(/everything attached/i)
+    expect(copy).toMatch(/NOT deleted/)
+    expect(copy).toMatch(/invoices/i)
+    // The one promise that IS true of a single-document delete.
+    expect(copy).toMatch(/cannot be undone/i)
+  })
+
   it('opens the mark-lost dialog from the menu', () => {
     mount()
     openMenu()
