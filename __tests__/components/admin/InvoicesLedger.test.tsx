@@ -1,5 +1,5 @@
 import { render, screen, within } from '@testing-library/react'
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }),
@@ -108,6 +108,27 @@ describe('InvoicesKpiBand', () => {
     expect(screen.getByText('nothing past due')).toBeInTheDocument()
     expect(screen.getByText('1 open invoice')).toBeInTheDocument()
   })
+
+  it('agrees with the ledger about what is overdue when both share one clock', () => {
+    // An invoice due exactly on the clock's date: due TODAY, not yet late. This
+    // is the case that flips if the band and the ledger read the clock
+    // separately across UTC midnight.
+    const boundary = [inv({ id: 'edge', number: 'INV-EDGE', due_date: '2026-08-16', line_items: [li(700)] })]
+    const groups = buildInvoiceLedger(boundary, NOW)
+    render(<InvoicesKpiBand invoices={boundary} now={NOW} />)
+
+    expect(groups.map((g) => g.key)).toEqual(['due_soon'])
+    expect(screen.getByText('nothing past due')).toBeInTheDocument()
+    expect(screen.getByText('1 open invoice')).toBeInTheDocument()
+
+    // One day later BOTH move, together.
+    const nextDay = new Date('2026-08-17T00:00:00.000Z')
+    const later = buildInvoiceLedger(boundary, nextDay)
+    render(<InvoicesKpiBand invoices={boundary} now={nextDay} />)
+    expect(later.map((g) => g.key)).toEqual(['overdue'])
+    expect(later[0].total).toBe(700)
+    expect(screen.getByText('1 invoice past due')).toBeInTheDocument()
+  })
 })
 
 describe('InvoicesLedger', () => {
@@ -190,29 +211,109 @@ describe('InvoicesLedger', () => {
 
 describe('/invoices route — admin-only numbering must not throw the page', () => {
   const params = Promise.resolve({ orgSlug: 'acme' })
+  let errorSpy: ReturnType<typeof vi.spyOn>
 
   beforeEach(() => {
     // listAllInvoices returns bare invoices; the "Job" column is joined on from
     // listLeads, so the lead names here deliberately differ from the fixture's.
     listAllInvoicesMock.mockResolvedValue(FIXTURE)
     listLeadsMock.mockResolvedValue(FIXTURE.map((r) => ({ id: r.lead_id, name: `Job ${r.number}` })))
+    errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
   })
 
-  it('still renders the ledger for a non-admin member', async () => {
-    // getInvoiceNumbering calls assertOrgAdmin. Reading invoices only needs
-    // membership, so the rejection must degrade to "no numbering control" —
-    // it used to reject the whole Promise.all and blow up the route.
-    getInvoiceNumberingMock.mockRejectedValue(new Error('Admin access required'))
+  afterEach(() => {
+    errorSpy.mockRestore()
+  })
+
+  // The literal strings lib/auth/assert.ts throws — not a paraphrase. A test
+  // pinning an invented message ("Admin access required") would pass whether or
+  // not the catch is narrowed, which is exactly what it must not do.
+  it.each(['Forbidden', 'Unauthorized'])(
+    'degrades silently for a member denied with %s',
+    async (message) => {
+      // getInvoiceNumbering calls assertOrgAdmin. Reading invoices only needs
+      // membership, so the rejection must degrade to "no numbering control" —
+      // it used to reject the whole Promise.all and blow up the route.
+      getInvoiceNumberingMock.mockRejectedValue(new Error(message))
+      render(await InvoicesPage({ params }))
+      expect(screen.getByRole('heading', { name: 'Invoices' })).toBeInTheDocument()
+      expect(screen.getAllByTestId('invoice-ledger-row')).toHaveLength(5)
+      expect(screen.getByText('Job INV-1001')).toBeInTheDocument() // lead name, joined on
+      expect(screen.queryByRole('button', { name: /Numbering/ })).not.toBeInTheDocument()
+      // A permission answer is the expected path — it must NOT pollute the logs.
+      expect(errorSpy).not.toHaveBeenCalled()
+    },
+  )
+
+  it('logs — but still renders — when numbering fails for a non-permission reason', async () => {
+    // An owner IS allowed to see this control. If the counter read blows up,
+    // the page must not take the route down, but swallowing it silently leaves
+    // the control mysteriously absent with no diagnostic trail.
+    const boom = new Error('5 NOT_FOUND: no entity to update')
+    getInvoiceNumberingMock.mockRejectedValue(boom)
     render(await InvoicesPage({ params }))
+
     expect(screen.getByRole('heading', { name: 'Invoices' })).toBeInTheDocument()
     expect(screen.getAllByTestId('invoice-ledger-row')).toHaveLength(5)
-    expect(screen.getByText('Job INV-1001')).toBeInTheDocument() // lead name, joined on
     expect(screen.queryByRole('button', { name: /Numbering/ })).not.toBeInTheDocument()
+    expect(errorSpy).toHaveBeenCalledTimes(1)
+    expect(errorSpy.mock.calls[0]).toContain(boom)
+  })
+
+  it('does not mistake a non-Error rejection for a permission denial', async () => {
+    getInvoiceNumberingMock.mockRejectedValue('Forbidden') // a bare string, not an Error
+    render(await InvoicesPage({ params }))
+    expect(screen.getByRole('heading', { name: 'Invoices' })).toBeInTheDocument()
+    expect(errorSpy).toHaveBeenCalledTimes(1)
   })
 
   it('keeps the numbering control mounted for an admin', async () => {
     getInvoiceNumberingMock.mockResolvedValue({ prefix: 'INV-', next_number: 1006 })
     render(await InvoicesPage({ params }))
     expect(screen.getByRole('button', { name: /Numbering/ })).toBeInTheDocument()
+    expect(errorSpy).not.toHaveBeenCalled()
+  })
+
+  it('reads the clock exactly once, so the KPI band and the ledger cannot disagree', async () => {
+    getInvoiceNumberingMock.mockResolvedValue({ prefix: 'INV-', next_number: 1006 })
+    const RealDate = Date
+    let noArgConstructions = 0
+    // A Proxy keeps Date.now/parse and `instanceof Date` intact; only the
+    // zero-arg constructor — "what time is it right now" — is counted, and it
+    // straddles UTC midnight so a second read lands on the next day.
+    const instants = ['2026-08-16T23:59:59.999Z', '2026-08-17T00:00:00.000Z']
+    vi.stubGlobal(
+      'Date',
+      new Proxy(RealDate, {
+        construct(target, args) {
+          if (args.length === 0) {
+            const iso = instants[Math.min(noArgConstructions, instants.length - 1)]
+            noArgConstructions += 1
+            return new target(iso)
+          }
+          return new target(...(args as [string]))
+        },
+      }),
+    )
+    try {
+      // An invoice due 08-16: due TODAY on the first instant, one day LATE on
+      // the second. Under two independent clocks the tiles and the ledger split.
+      listAllInvoicesMock.mockResolvedValue([
+        inv({ id: 'edge', number: 'INV-EDGE', due_date: '2026-08-16', line_items: [li(700)] }),
+      ])
+      listLeadsMock.mockResolvedValue([{ id: 'lead-edge', name: 'Edge Job' }])
+
+      const page = await InvoicesPage({ params })
+      expect(noArgConstructions).toBe(1)
+      render(page)
+
+      // Belt and braces: whichever instant won, both surfaces must tell the
+      // same story about it.
+      const tileSaysOverdue = screen.queryByText('nothing past due') === null
+      const ledgerSaysOverdue = screen.queryByText(/^Overdue · /) !== null
+      expect(tileSaysOverdue).toBe(ledgerSaysOverdue)
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 })

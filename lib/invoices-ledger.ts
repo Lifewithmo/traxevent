@@ -4,6 +4,10 @@ import type {
 import { invoiceAmountDue, amountPaid } from '@/lib/invoices'
 import { derivePaymentStatus, deriveAging, INVOICE_TYPE_LABELS } from '@/lib/invoice-status'
 import { invoicePill, type InvoicePill } from '@/lib/invoice-presentation'
+// Both helpers live in money-overview because that is the rollup this ledger
+// has to agree with; keeping local copies here meant two definitions of "how
+// late is this?" that could drift apart unnoticed.
+import { daysPastDue, round2 } from '@/lib/money-overview'
 
 /**
  * A row as the org-wide invoices page loads it. `clientName` comes from
@@ -57,18 +61,6 @@ const GROUP_ORDER: { key: LedgerGroupKey; label: string }[] = [
 ]
 
 const OVERDUE_BUCKETS: InvoiceAgingBucket[] = ['d1_30', 'd31_60', 'd61_90', 'd90_plus']
-
-const DAY_MS = 86_400_000
-
-function round2(n: number): number {
-  return Math.round(n * 100) / 100
-}
-
-function daysPastDue(dueDate: string, now: Date): number {
-  const due = new Date(dueDate.slice(0, 10) + 'T00:00:00Z').getTime()
-  const today = new Date(now.toISOString().slice(0, 10) + 'T00:00:00Z').getTime()
-  return Math.round((today - due) / DAY_MS)
-}
 
 function classify(
   lifecycle: InvoiceLifecycle,

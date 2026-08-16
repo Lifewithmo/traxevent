@@ -126,17 +126,33 @@ describe('buildInvoiceLedger — money', () => {
       inv({ id: 'late1', due_date: '2026-07-01', line_items: [li(500)], payments: [pay(200)] }),
       inv({ id: 'late2', due_date: '2026-06-01', line_items: [li(250)] }),
       inv({ id: 'soon', due_date: '2026-08-18', line_items: [li(400)] }),
-      // Drafts sum the TOTAL — nothing has been asked for yet, so there is no balance story.
+      // Drafts sum the TOTAL — nothing has been asked for yet, so there is no
+      // balance story. `d3` carries a payment on purpose: without one, total
+      // and balance are identical for every draft and this assertion passes
+      // under the wrong picker.
       inv({ id: 'd1', lifecycle: 'draft', line_items: [li(1000)] }),
       inv({ id: 'd2', lifecycle: 'draft', line_items: [li(250.5)] }),
+      inv({ id: 'd3', lifecycle: 'draft', line_items: [li(400)], payments: [pay(150)] }),
       // Settled sums what was actually COLLECTED; a void collected nothing.
       inv({ id: 'paid', line_items: [li(300)], payments: [pay(300)] }),
       inv({ id: 'void', lifecycle: 'void', line_items: [li(9999)] }),
     ]
     expect(group(rows, 'overdue')!.total).toBe(550) // 300 + 250
     expect(group(rows, 'due_soon')!.total).toBe(400)
-    expect(group(rows, 'drafts')!.total).toBe(1250.5)
+    // 1000 + 250.5 + 400 billed. Would be 1500.5 if drafts summed BALANCE, and
+    // 150 if they summed what was collected.
+    expect(group(rows, 'drafts')!.total).toBe(1650.5)
     expect(group(rows, 'settled')!.total).toBe(300)
+  })
+
+  it('rounds each group total to cents rather than leaking float dust', () => {
+    // 10.10 + 20.20 === 30.299999999999997 in IEEE-754. Group totals accumulate
+    // across rows, so the sum — not just each row — has to be rounded.
+    const rows = [
+      inv({ id: 'a', lifecycle: 'draft', line_items: [li(10.1)] }),
+      inv({ id: 'b', lifecycle: 'draft', line_items: [li(20.2)] }),
+    ]
+    expect(group(rows, 'drafts')!.total).toBe(30.3)
   })
 
   it('carries an overpayment through as a negative balance', () => {
