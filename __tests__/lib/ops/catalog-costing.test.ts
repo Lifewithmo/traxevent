@@ -18,6 +18,23 @@ const withSyrup: OpsResource[] = [
   { id: 'res-syrup', name: 'Simple syrup', kind: 'consumable', unit_cost: 2.0, created_at: 't' },
 ]
 
+// UI-reachable shape: a custom free-text display unit ('bag') carries a unit_cost,
+// so the line IS admitted to the arithmetic — but resolveDimension falls back to
+// 'count' for a non-universal unit, so unitOptionsForResource offers 'each'/'dozen'
+// in the line's unit selector and NEITHER converts to 'bag'. Nothing legacy about
+// it: it is what the dropdown hands an operator.
+const withCustomUnit: OpsResource[] = [
+  ...resources,
+  { id: 'res-coldbrew', name: 'Cold brew concentrate', kind: 'consumable', unit: 'bag', unit_cost: 9.5, created_at: 't' },
+]
+
+// A negative unit_cost is not schema-blocked, and negative dollars of "materials"
+// is never a figure worth rendering.
+const withNegativeCost: OpsResource[] = [
+  ...resources,
+  { id: 'res-negcost', name: 'Miscounted syrup', kind: 'consumable', unit: 'oz', unit_cost: -0.55, created_at: 't' },
+]
+
 const pkg = (over: Partial<WorkPackage>): WorkPackage => ({
   id: 'wp1', name: 'Espresso Bar', price: 1200, lines: [], created_at: 't', ...over,
 })
@@ -57,8 +74,9 @@ describe('computeCatalogCosting', () => {
       lines: [{ kind: 'consumable', resource_id: 'res-napkins', qty_per_guest: 2 }],
     })
     const [result] = computeCatalogCosting([p], resources)
+    // gaps names the ingredient even though nothing was priced — the verdict IS the gap list.
     expect(result).toEqual({
-      id: 'wp-uncosted', price: 1200, costed: false, materials: 0, gaps: [], reason: 'no-costed-ingredient',
+      id: 'wp-uncosted', price: 1200, costed: false, materials: 0, gaps: ['Napkins'], reason: 'no-costed-ingredient',
     })
   })
 
@@ -77,16 +95,21 @@ describe('computeCatalogCosting', () => {
     })
   })
 
-  it('surfaces the resource name in gaps when a costed line has no conversion path, without failing costed status', () => {
-    // mirrors __tests__/lib/ops/derive.test.ts:167-172 — 'shot' has no bridge for res-beans
+  it('is uncosted, not $0.00, when the only costable line has no conversion path', () => {
+    // mirrors __tests__/lib/ops/derive.test.ts:167-172 — 'shot' has no bridge for res-beans.
+    // res-beans HAS unit_cost + unit, so it is admitted to the arithmetic, but
+    // 2 shot/guest × 100 = 200 shot cannot convert to 'oz' → contributes $0.
+    // The sum is therefore $0 with every line in gaps: an absence of a figure,
+    // not a $0.00 the card can render next to "excludes labor".
     const p = pkg({
       id: 'wp-gap',
       max_guests: 100,
       lines: [{ kind: 'consumable', resource_id: 'res-beans', qty_per_guest: { qty: 2, unit: 'shot' } }],
     })
     const [result] = computeCatalogCosting([p], resources)
-    expect(result.costed).toBe(true)
-    expect(result.basis).toBe(100)
+    expect(result.costed).toBe(false)
+    expect(result.reason).toBe('no-costed-ingredient')
+    expect(result.basis).toBeUndefined()
     expect(result.materials).toBe(0)
     expect(result.gaps).toEqual(['Espresso beans'])
   })
@@ -213,10 +236,101 @@ describe('computeCatalogCosting', () => {
     })
     const [result] = computeCatalogCosting([p], withSyrup)
     // Nothing priceable: the old code saw syrup's unit_cost and reported
-    // 0.5 × 40 × $2.00 = $40 as a complete figure.
+    // 0.5 × 40 × $2.00 = $40 as a complete figure. All three are named, in line
+    // order, by resource name or raw id when the resource does not resolve.
     expect(result).toEqual({
-      id: 'wp-none-costable', price: 1200, costed: false, materials: 0, gaps: [], reason: 'no-costed-ingredient',
+      id: 'wp-none-costable', price: 1200, costed: false, materials: 0,
+      gaps: ['Napkins', 'res-ghost', 'Simple syrup'], reason: 'no-costed-ingredient',
     })
+  })
+
+  it('is uncosted when a custom-unit resource is priced against a line unit the dropdown offers but cannot convert', () => {
+    // The verified UI repro. 'Cold brew concentrate' is unit 'bag' @ $9.50/bag, so
+    // it passes the unit_cost + unit admission check. The line was entered as
+    // '1 each × guests' because 'each' is what the selector offers for a custom
+    // unit (dimension falls back to 'count').
+    // 1 each/guest × 50 guests = 50 each; convert(50 each → bag) has no path
+    // (no bridge, 'bag' is not universal) → $0 contributed, resource named in gaps.
+    // Sum = $0 with the only line in gaps → uncosted. Before this fix the card
+    // rendered "Materials $0.00 · at 50 guests · excludes labor  [1 not costed]".
+    const p = pkg({
+      id: 'wp-bag',
+      name: 'Each Bar',
+      max_guests: 50,
+      lines: [{ kind: 'consumable', resource_id: 'res-coldbrew', qty_per_guest: { qty: 1, unit: 'each' } }],
+    })
+    const [result] = computeCatalogCosting([p], withCustomUnit)
+    expect(result).toEqual({
+      id: 'wp-bag', price: 1200, costed: false, materials: 0,
+      gaps: ['Cold brew concentrate'], reason: 'no-costed-ingredient',
+    })
+    expect(result.basis).toBeUndefined()
+  })
+
+  it('stays costed on a partial figure when only SOME costable lines fail conversion', () => {
+    // Only an all-zero collapse flips to uncosted. Here one admitted line converts
+    // and one does not, so there is a real (understated) figure to show.
+    // cups:     1 each/guest × 100 guests = 100 each × $0.12/each = $12 exactly.
+    // coldbrew: 1 each/guest × 100 guests = 100 each → no path to 'bag' → $0, named.
+    // materials = $12 + $0 = $12.
+    const p = pkg({
+      id: 'wp-partial-conversion',
+      max_guests: 100,
+      lines: [
+        { kind: 'consumable', resource_id: 'res-cups', qty_per_guest: 1 },
+        { kind: 'consumable', resource_id: 'res-coldbrew', qty_per_guest: { qty: 1, unit: 'each' } },
+      ],
+    })
+    const [result] = computeCatalogCosting([p], withCustomUnit)
+    expect(result).toEqual({
+      id: 'wp-partial-conversion', price: 1200, costed: true, basis: 100,
+      materials: 12, gaps: ['Cold brew concentrate'],
+    })
+  })
+
+  it('never reports negative materials, or costed, for a negative unit_cost', () => {
+    // 1 oz/guest × 100 guests = 100 oz × -$0.55/oz = -$55.00000000000001.
+    // Unguarded that is a costed package advertising negative materials.
+    const p = pkg({
+      id: 'wp-negcost',
+      max_guests: 100,
+      lines: [{ kind: 'consumable', resource_id: 'res-negcost', qty_per_guest: 1 }],
+    })
+    const [result] = computeCatalogCosting([p], withNegativeCost)
+    expect(result.costed).toBe(false)
+    expect(result.reason).toBe('no-costed-ingredient')
+    expect(result.materials).toBe(0)
+    expect(result.materials).toBeGreaterThanOrEqual(0)
+  })
+
+  it('never reports negative materials, or costed, for a negative qty_per_guest', () => {
+    // -1 oz/guest × 100 guests = -100 oz × $0.55/oz = -$55.00000000000001.
+    const p = pkg({
+      id: 'wp-negqty',
+      max_guests: 100,
+      lines: [{ kind: 'consumable', resource_id: 'res-beans', qty_per_guest: -1 }],
+    })
+    const [result] = computeCatalogCosting([p], resources)
+    expect(result.costed).toBe(false)
+    expect(result.materials).toBe(0)
+    expect(result.materials).toBeGreaterThanOrEqual(0)
+  })
+
+  it('names every excluded ingredient in gaps on the no-costed-ingredient branch', () => {
+    // Nothing is priceable, so there is no arithmetic — but the operator still
+    // needs to know WHICH ingredients to price. Empty gaps here contradicted the
+    // module's own "name every excluded ingredient" contract.
+    const p = pkg({
+      id: 'wp-name-gaps',
+      max_guests: 25,
+      lines: [
+        { kind: 'consumable', resource_id: 'res-napkins', qty_per_guest: 1 },   // no unit_cost
+        { kind: 'consumable', resource_id: 'res-ghost', qty_per_guest: 1 },     // dangling id
+      ],
+    })
+    const [result] = computeCatalogCosting([p], resources)
+    expect(result.reason).toBe('no-costed-ingredient')
+    expect(result.gaps).toEqual(['Napkins', 'res-ghost'])
   })
 
   it('keeps packages independent and in input order', () => {

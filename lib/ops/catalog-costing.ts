@@ -34,6 +34,18 @@
 //     arbitrarily-scaled number is worse than no number.
 // A package is only costed against a positive `max_guests`; 0 or negative
 // capacity yields `no-capacity`, never a $0 or negative figure.
+//
+// Admitting a line to the arithmetic is NOT the same as pricing it. A line whose
+// resource has both `unit_cost` and `unit` still fails if the LINE's own unit has
+// no conversion path to that cost unit — `computeCloseoutSummary` names it in
+// `cost_gaps` and adds 0. When EVERY admitted line lands in gaps, the sum is 0
+// and the package is not costed at all, so the final figure is what decides:
+// a non-positive `materials` is `no-costed-ingredient`, never a rendered $0.00.
+// This is UI-reachable, not just legacy data — a resource with a custom display
+// unit ('bag') resolves to dimension `count`, so its line unit selector offers
+// 'each'/'dozen', neither of which converts to 'bag'. It also closes the negative
+// door: a negative `unit_cost` or `qty_per_guest` can only ever produce a
+// negative figure, and a negative "materials" is not a number worth showing.
 import type { OpsResource, WorkPackage, WorkPackageLine } from '@/lib/types'
 import { computeCloseoutSummary } from '@/lib/ops/derive'
 
@@ -46,11 +58,12 @@ export interface PackageCosting {
   price: number
   costed: boolean          // false => caller renders an em dash, NEVER "$0.00"
   basis?: number           // guests used (p.max_guests); undefined when not costed
-  materials: number        // CONSUMABLES ONLY — excludes labor and equipment
+  materials: number        // CONSUMABLES ONLY — excludes labor and equipment. Always > 0 when costed, always 0 otherwise.
   /** Ingredients EXCLUDED from this figure — `materials` understates by whatever
    *  they cost. Union of lines that could not be priced (dangling resource, no
    *  unit_cost, or a unit_cost with no unit) and costed lines with no conversion
-   *  path. Resource name, or the raw resource_id when the resource is missing. */
+   *  path. Resource name, or the raw resource_id when the resource is missing.
+   *  Populated on `no-costed-ingredient` too: that verdict IS the gap list. */
   gaps: string[]
   reason?: UncostedReason  // why costed === false
 }
@@ -73,7 +86,9 @@ export function computeCatalogCosting(packages: WorkPackage[], resources: OpsRes
       else excluded.push(res?.name ?? line.resource_id)
     }
     if (costable.length === 0) {
-      return { id: p.id, price: p.price, costed: false, materials: 0, gaps: [], reason: 'no-costed-ingredient' }
+      // Name them even here: "no costed ingredient" is a claim ABOUT these lines,
+      // and the contract is that every excluded ingredient is named.
+      return { id: p.id, price: p.price, costed: false, materials: 0, gaps: excluded, reason: 'no-costed-ingredient' }
     }
     // 0 or negative capacity scales every per-guest contribution to $0 (or below) —
     // the same "reads as free" trap as an uncosted package, by another door.
@@ -87,14 +102,15 @@ export function computeCatalogCosting(packages: WorkPackage[], resources: OpsRes
       actual_consumables: [],
       sales: 0,
     })
-    return {
-      id: p.id,
-      price: p.price,
-      costed: true,
-      basis: p.max_guests,
-      materials: summary.planned_consumable_cost,
-      gaps: [...new Set([...excluded, ...(summary.cost_gaps ?? [])])],
+    const materials = summary.planned_consumable_cost
+    const gaps = [...new Set([...excluded, ...(summary.cost_gaps ?? [])])]
+    // Every admitted line failed conversion (or priced to nothing/below): the sum
+    // is 0 or negative, which is an absence of a figure, not a figure of zero.
+    // Only an all-or-nothing collapse flips this — a partial sum stays costed.
+    if (!(materials > 0)) {
+      return { id: p.id, price: p.price, costed: false, materials: 0, gaps, reason: 'no-costed-ingredient' }
     }
+    return { id: p.id, price: p.price, costed: true, basis: p.max_guests, materials, gaps }
   })
 }
 
