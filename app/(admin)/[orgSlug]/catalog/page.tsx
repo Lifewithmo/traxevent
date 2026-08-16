@@ -89,10 +89,16 @@ export default async function CatalogPage({ params }: { params: Promise<{ orgSlu
 
           {o.expiring.length > 0 && (
             <div className="mt-4">
+              {/* previewLimit is set to the full row count: every expiring/expired
+                  document must render here, none silently truncated behind the
+                  card's default 3-row preview. emptyTitle/emptyCtaLabel are
+                  required by RelatedRecordCard's props but unreachable in this
+                  branch (rows.length can never be 0 when o.expiring.length > 0). */}
               <RelatedRecordCard
                 title="Expiring documents"
                 count={o.expiring.length}
                 rows={expiringRows}
+                previewLimit={o.expiring.length}
                 emptyTitle="No documents expiring"
                 emptyCtaLabel="View compliance"
               />
