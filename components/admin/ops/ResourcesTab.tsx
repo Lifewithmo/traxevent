@@ -204,7 +204,7 @@ export function ResourcesTab({ orgId, isAdmin, resources: initial, packages }: R
         description="It leaves the catalog for good. Packages already using it can't be deleted, so nothing in flight breaks."
         confirmLabel="Delete"
         destructive
-        busy={saving}
+        pending={saving}
         onConfirm={async () => { if (pendingDelete) await handleDelete(pendingDelete) }}
       />
     </div>

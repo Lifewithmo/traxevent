@@ -479,7 +479,7 @@ export function PackagesTab({ orgId, isAdmin, packages: initial, resources, temp
             description={DELETE_WARNING}
             confirmLabel="Delete"
             destructive
-            busy={saving}
+            pending={saving}
             onConfirm={() => handleDelete(pendingDelete)}
           />
         )}

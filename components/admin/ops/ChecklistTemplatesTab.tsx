@@ -169,7 +169,7 @@ export function ChecklistTemplatesTab({ orgId, isAdmin, templates: initial, ownT
         description="Packages that attach it will simply stop including it on new events."
         confirmLabel="Delete"
         destructive
-        busy={saving}
+        pending={saving}
         onConfirm={async () => { if (pendingDelete) await handleDelete(pendingDelete) }}
       />
     </div>

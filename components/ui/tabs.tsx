@@ -4,6 +4,16 @@ import { Tabs as BaseTabs } from "@base-ui/react/tabs"
 
 import { cn } from "@/lib/utils"
 
+// Stateful sub-surface tabs: underline treatment, client state, and panels that
+// can stay mounted. Use this when switching must NOT lose in-progress work —
+// Catalog's package draft dies on a remount, which is why `keepMounted` exists.
+//
+// Not the same brick as `components/ui/tab-links.tsx`. TabLinks is a pill
+// segmented control over `<Link>`s: URL-driven, Server-Component-safe, and used
+// for FILTERING a view (Calendar's kind filter). Underline = "different
+// sub-surfaces of this module"; pill = "same surface, narrower slice". Pick by
+// which of those two things you mean, not by which file you found first.
+
 function Tabs({ ...props }: BaseTabs.Root.Props) {
   return <BaseTabs.Root data-slot="tabs" {...props} />
 }
