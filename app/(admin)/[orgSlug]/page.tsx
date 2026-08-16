@@ -1,15 +1,23 @@
 import { getOrgBySlug } from '@/actions/orgs'
-import { DEFAULT_EVENT_TYPE_ID, resolveTerminology } from '@/lib/event-types'
 import { listEvents } from '@/actions/events'
 import { listDepartments } from '@/actions/departments'
 import { listSeries } from '@/actions/series'
-import { kindOf, EVENT_KIND_LABELS } from '@/lib/occasions/kind'
+import { kindOf } from '@/lib/occasions/kind'
+import { EVENT_STATUS_TONE, EVENT_STATUS_LABEL, formatEventDateRange } from '@/lib/event-ui'
+import { todayYmd } from '@/lib/opportunity-detail'
+import { formatMoney } from '@/lib/utils'
 import { redirect } from 'next/navigation'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { DuplicateEventButton } from '@/components/admin/DuplicateEventButton'
+import { KpiBand } from '@/components/ui/kpi-band'
+import { StatTile } from '@/components/ui/stat-tile'
+import { StatusPill } from '@/components/ui/status-pill'
+import { EmptyState } from '@/components/ui/empty-state'
+import { DuplicateEventMenu } from '@/components/admin/DuplicateEventButton'
+import { CalendarDays } from 'lucide-react'
 import Link from 'next/link'
+
+const SECTION_HEADING = 'mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground'
 
 export default async function OrgHomePage({
   params,
@@ -29,104 +37,147 @@ export default async function OrgHomePage({
   const clientJobs = events.filter((e) => kindOf(e) === 'client_job')
   const marketDays = events.filter((e) => kindOf(e) === 'market_day')
 
-  const renderCard = (event: typeof events[number]) => (
-    <Card key={event.id} className="hover:shadow-md transition-shadow h-full flex flex-col">
-      <Link href={`/${orgSlug}/${event.slug}/dashboard`} className="block cursor-pointer">
-        <CardHeader>
-          <CardTitle className="text-base">{event.name}</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center gap-2 flex-wrap">
-            <Badge variant="outline">{event.year}</Badge>
-            <Badge variant={event.status === 'active' ? 'default' : 'secondary'}>
-              {event.status}
-            </Badge>
-            <Badge variant="outline">{resolveTerminology(event.event_type_id ?? DEFAULT_EVENT_TYPE_ID, event.event_type_terminology).eventLabel}</Badge>
-            <Badge variant="outline">{EVENT_KIND_LABELS[kindOf(event)]}</Badge>
-          </div>
-          <p className="mt-2 text-xs text-muted-foreground">
-            {event.event_start} → {event.event_end}
-          </p>
-        </CardContent>
+  const today = todayYmd()
+  const upcoming = events.filter((e) => e.event_start >= today)
+  const nextStart = upcoming.length > 0
+    ? upcoming.reduce((min, e) => (e.event_start < min ? e.event_start : min), upcoming[0].event_start)
+    : null
+  const bookedValue =
+    clientJobs.reduce((sum, e) => sum + (e.payment_amount ?? 0), 0) +
+    marketDays.reduce((sum, e) => sum + (e.booth_fee ?? 0), 0)
+
+  const renderRow = (event: (typeof events)[number], showYear: boolean) => {
+    const meta = [
+      formatEventDateRange(event.event_start, event.event_end),
+      event.headcount ? `${event.headcount} guests` : null,
+    ]
+      .filter(Boolean)
+      .join(' · ')
+    return (
+      <Link
+        key={event.id}
+        href={`/${orgSlug}/${event.slug}/dashboard`}
+        className="flex items-center gap-3 rounded-lg px-3 py-2 hover:bg-muted/50"
+      >
+        <span className="min-w-0 flex-1 truncate text-sm font-medium">{event.name}</span>
+        <StatusPill tone={EVENT_STATUS_TONE[event.status]}>{EVENT_STATUS_LABEL[event.status]}</StatusPill>
+        <span className="whitespace-nowrap text-xs text-muted-foreground">{meta}</span>
+        {showYear && <Badge variant="outline">{event.year}</Badge>}
+        <DuplicateEventMenu orgId={org.id} orgSlug={orgSlug} sourceEventId={event.id} sourceName={event.name} />
       </Link>
-      <CardContent className="pt-0 mt-auto">
-        <DuplicateEventButton orgId={org.id} orgSlug={orgSlug} sourceEventId={event.id} sourceName={event.name} />
-      </CardContent>
-    </Card>
-  )
+    )
+  }
+
+  // Chronological within each group (fetch order is created_at); the year chip
+  // appears only when a group spans multiple years and so needs disambiguating.
+  const renderGroup = (groupEvents: typeof events) => {
+    const sorted = [...groupEvents].sort((a, b) => a.event_start.localeCompare(b.event_start))
+    const showYear = new Set(sorted.map((e) => e.year)).size > 1
+    return (
+      <div className="divide-y divide-border rounded-xl border border-border bg-card">
+        {sorted.map((e) => renderRow(e, showYear))}
+      </div>
+    )
+  }
+
+  const unassigned = clientJobs.filter((c) => !c.department_id || !departments.some((d) => d.id === c.department_id))
+  const standalone = marketDays.filter((e) => !e.series_id)
 
   return (
-    <div className="p-6">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">{org.name}</h1>
-        <Link href={`/${orgSlug}/new`}>
-          <Button>New event</Button>
-        </Link>
+    <div className="mx-auto w-full max-w-7xl">
+      <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-3">
+        <div className="flex items-baseline gap-3">
+          <h1 className="text-base font-semibold">Events</h1>
+          <p className="text-xs text-muted-foreground">
+            {clientJobs.length} client job{clientJobs.length === 1 ? '' : 's'}
+            {' · '}
+            {marketDays.length} market day{marketDays.length === 1 ? '' : 's'}
+          </p>
+        </div>
+        <Button render={<Link href={`/${orgSlug}/new`} />}>New event</Button>
       </div>
 
       {events.length === 0 ? (
-        <div className="text-center py-16 text-muted-foreground">
-          <p className="text-lg font-medium">No events yet</p>
-          <p className="mt-1 text-sm">Create your first event to get started.</p>
-          <Link href={`/${orgSlug}/new`} className="mt-4 inline-block">
-            <Button>Create an event</Button>
-          </Link>
-        </div>
+        <EmptyState
+          className="py-16"
+          icon={<CalendarDays />}
+          title="No events yet"
+          description="Create your first event to get started."
+          action={<Button render={<Link href={`/${orgSlug}/new`} />}>Create an event</Button>}
+        />
       ) : (
         <>
-          {clientJobs.length > 0 && (
-            <section>
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground mb-3">Client jobs</h2>
-              {departments.length === 0 ? (
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  {clientJobs.map(renderCard)}
-                </div>
-              ) : (
-                <div className="space-y-8">
-                  {departments.map((dept) => {
-                    const deptEvents = clientJobs.filter((c) => c.department_id === dept.id)
-                    if (deptEvents.length === 0) return null
-                    return (
-                      <section key={dept.id}>
-                        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground mb-3">{dept.name}</h2>
-                        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{deptEvents.map(renderCard)}</div>
+          <div className="px-5 pt-4">
+            <KpiBand>
+              <StatTile
+                label="Upcoming"
+                value={String(upcoming.length)}
+                note={nextStart ? formatEventDateRange(nextStart) : undefined}
+              />
+              <StatTile label="Client jobs" value={String(clientJobs.length)} />
+              <StatTile label="Market days" value={String(marketDays.length)} />
+              <StatTile
+                label="Booked value"
+                value={formatMoney(bookedValue)}
+                tone="money"
+                note="contracts + booth fees"
+              />
+            </KpiBand>
+          </div>
+
+          <div className="space-y-8 px-5 py-5">
+            {clientJobs.length > 0 && (
+              <section>
+                <h2 className={SECTION_HEADING}>Client jobs</h2>
+                {departments.length === 0 ? (
+                  renderGroup(clientJobs)
+                ) : (
+                  <div className="space-y-6">
+                    {departments.map((dept) => {
+                      const deptEvents = clientJobs.filter((c) => c.department_id === dept.id)
+                      if (deptEvents.length === 0) return null
+                      return (
+                        <section key={dept.id}>
+                          <h2 className={SECTION_HEADING}>{dept.name}</h2>
+                          {renderGroup(deptEvents)}
+                        </section>
+                      )
+                    })}
+                    {unassigned.length > 0 && (
+                      <section>
+                        <h2 className={SECTION_HEADING}>Unassigned</h2>
+                        {renderGroup(unassigned)}
                       </section>
+                    )}
+                  </div>
+                )}
+              </section>
+            )}
+
+            {marketDays.length > 0 && (
+              <section>
+                <h2 className={SECTION_HEADING}>Market days</h2>
+                <div className="space-y-6">
+                  {seriesList.map((s) => {
+                    const seriesDays = marketDays.filter((e) => e.series_id === s.id)
+                    if (seriesDays.length === 0) return null
+                    return (
+                      <div key={s.id}>
+                        <Link
+                          href={`/${orgSlug}/series/${s.id}`}
+                          className={`${SECTION_HEADING} block hover:text-foreground`}
+                        >
+                          {s.name}
+                        </Link>
+                        {renderGroup(seriesDays)}
+                      </div>
                     )
                   })}
-                  {(() => {
-                    const unassigned = clientJobs.filter((c) => !c.department_id || !departments.some((d) => d.id === c.department_id))
-                    if (unassigned.length === 0) return null
-                    return (
-                      <section>
-                        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground mb-3">Unassigned</h2>
-                        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{unassigned.map(renderCard)}</div>
-                      </section>
-                    )
-                  })()}
+                  {standalone.length > 0 && renderGroup(standalone)}
                 </div>
-              )}
-            </section>
-          )}
-          {marketDays.length > 0 && (
-            <section className="mt-8">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground mb-3">Market days</h2>
-              {seriesList.map((s) => {
-                const seriesDays = marketDays.filter((e) => e.series_id === s.id)
-                if (seriesDays.length === 0) return null
-                return (
-                  <div key={s.id} className="mb-6">
-                    <Link href={`/${orgSlug}/series/${s.id}`} className="text-sm font-medium underline">{s.name}</Link>
-                    <div className="mt-2 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{seriesDays.map(renderCard)}</div>
-                  </div>
-                )
-              })}
-              {(() => {
-                const standalone = marketDays.filter((e) => !e.series_id)
-                if (standalone.length === 0) return null
-                return <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{standalone.map(renderCard)}</div>
-              })()}
-            </section>
-          )}
+              </section>
+            )}
+          </div>
         </>
       )}
     </div>
