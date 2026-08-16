@@ -34,9 +34,14 @@ export default async function CatalogPage({ params }: { params: Promise<{ orgSlu
         ? `${expired.length} already expired`
         : 'Expiring within 60 days'
 
+  // Each row must be a real link — an expiring COI you cannot click through to
+  // is inert. There is no per-document detail route, so every row points at
+  // the compliance list, same as CalendarAttentionRail's rows point at their
+  // source record.
   const expiringRows: RelatedRow[] = o.expiring.map((d) => ({
     id: d.id,
     title: d.name,
+    href: `/${orgSlug}/compliance`,
     badge: (
       <StatusPill tone={d.daysLeft < 0 ? 'alert' : 'pending'}>
         {d.daysLeft < 0
@@ -47,12 +52,18 @@ export default async function CatalogPage({ params }: { params: Promise<{ orgSlu
   }))
 
   return (
-    <div className="mx-auto w-full max-w-7xl p-6">
-      <h1 className="text-xl font-semibold">Catalog</h1>
+    <div className="mx-auto w-full max-w-7xl">
+      <div className="flex items-baseline justify-between gap-3 border-b border-border px-5 py-3">
+        <h1 className="text-base font-semibold">Catalog</h1>
+        <p className="text-xs text-muted-foreground">
+          {o.packageCount} {packagesLabel.toLowerCase()} · {o.vendorCount} {o.vendorCount === 1 ? 'vendor' : 'vendors'} ·{' '}
+          {o.formCount} {o.formCount === 1 ? 'form' : 'forms'}
+        </p>
+      </div>
 
       {empty ? (
         <>
-          <div className="mt-5">
+          <div className="px-5 py-4">
             <EmptyState
               title="Nothing in your catalog yet"
               description={`What you sell and who helps you deliver it — packages, vendors, forms, and the documents that have to stay current. Start with ${packagesLabel.toLowerCase()}.`}
@@ -65,35 +76,33 @@ export default async function CatalogPage({ params }: { params: Promise<{ orgSlu
           </div>
           {/* A brand-new org lands here first; prose with no way onward is the
               one state where this page must still navigate. */}
-          <div className="flex flex-wrap gap-x-6 gap-y-2 pt-4 text-sm">
+          <div className="flex flex-wrap gap-x-6 gap-y-2 px-5 pb-4 text-sm">
             {links.map((l) => (
-              <Link key={l.href} href={l.href} className="underline">{l.label}</Link>
+              <Link key={l.href} href={l.href} className="text-[var(--link)] hover:underline">{l.label}</Link>
             ))}
           </div>
         </>
       ) : (
         <>
-          <div className="mt-5">
-            <KpiBand>
-              <StatTile label={packagesLabel} value={String(o.packageCount)} />
-              <StatTile label="Vendors" value={String(o.vendorCount)} />
-              <StatTile label="Forms" value={String(o.formCount)} />
-              <StatTile
-                label="Documents"
-                value={String(o.expiring.length)}
-                tone={expired.length > 0 ? 'alert' : 'default'}
-                note={documentsNote}
-              />
-            </KpiBand>
-          </div>
+          <KpiBand inset>
+            <StatTile label={packagesLabel} value={String(o.packageCount)} />
+            <StatTile label="Vendors" value={String(o.vendorCount)} />
+            <StatTile label="Forms" value={String(o.formCount)} />
+            <StatTile
+              label="Documents"
+              value={String(o.expiring.length)}
+              tone={expired.length > 0 ? 'alert' : 'default'}
+              note={documentsNote}
+            />
+          </KpiBand>
 
           {o.expiring.length > 0 && (
-            <div className="mt-4">
+            <div className="px-5 py-4">
               {/* previewLimit is set to the full row count: every expiring/expired
                   document must render here, none silently truncated behind the
-                  card's default 3-row preview. emptyTitle/emptyCtaLabel are
-                  required by RelatedRecordCard's props but unreachable in this
-                  branch (rows.length can never be 0 when o.expiring.length > 0). */}
+                  card's default 3-row preview. emptyTitle is required by
+                  RelatedRecordCard's props but unreachable in this branch
+                  (rows.length can never be 0 when o.expiring.length > 0). */}
               <RelatedRecordCard
                 title="Expiring documents"
                 count={o.expiring.length}
@@ -105,9 +114,9 @@ export default async function CatalogPage({ params }: { params: Promise<{ orgSlu
             </div>
           )}
 
-          <div className="flex flex-wrap gap-x-6 gap-y-2 pt-4 text-sm">
+          <div className="flex flex-wrap gap-x-6 gap-y-2 px-5 py-4 text-sm">
             {links.map((l) => (
-              <Link key={l.href} href={l.href} className="underline">{l.label}</Link>
+              <Link key={l.href} href={l.href} className="text-[var(--link)] hover:underline">{l.label}</Link>
             ))}
           </div>
         </>

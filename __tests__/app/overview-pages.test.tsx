@@ -165,6 +165,33 @@ describe('Catalog overview page', () => {
     expect(screen.getByText('Doc Five')).toBeInTheDocument()
     expect(screen.queryByText(/View all/)).not.toBeInTheDocument()
   })
+
+  it('links every expiring document row to compliance', async () => {
+    catalogOverview.mockResolvedValue({
+      expiring: [{ id: 'd1', name: 'COI', daysLeft: 12 }],
+      vendorCount: 1,
+      formCount: 0,
+      complianceCount: 1,
+      packageCount: 0,
+    })
+    render(await CatalogPage({ params }))
+    expect(screen.getByText('COI').closest('a')).toHaveAttribute('href', '/acme/compliance')
+  })
+
+  it('renders the house header bar with a subhead', async () => {
+    catalogOverview.mockResolvedValue({
+      expiring: [],
+      vendorCount: 2,
+      formCount: 3,
+      complianceCount: 0,
+      packageCount: 4,
+    })
+    render(await CatalogPage({ params }))
+    expect(screen.getByRole('heading', { name: 'Catalog', level: 1 })).toBeInTheDocument()
+    expect(screen.getByText(/4 packages/)).toBeInTheDocument()
+    expect(screen.getByText(/2 vendors/)).toBeInTheDocument()
+    expect(screen.getByText(/3 forms/)).toBeInTheDocument()
+  })
 })
 
 describe('Money overview page', () => {
