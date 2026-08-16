@@ -2,6 +2,12 @@
 
 // Popover for a line item's numbers (spec §4: click the qty/price → popover
 // with quantity, unit price, unit). Deliberately dumb: parent owns state.
+//
+// COLOUR RULE — this popover is anchored on <ProposalTheme>'s sheet, which is
+// bg-[var(--warm-0)]: permanently white in both themes. Its surface and ink are
+// pinned to the fixed --warm-* ramp; bg-popover/text-popover-foreground invert
+// under .dark and would float a near-black card on white paper. See
+// BlockCanvas's COLOUR RULE header.
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -23,7 +29,7 @@ export function ItemPopover({
   onClose: () => void
 }) {
   return (
-    <div className="absolute z-30 mt-1 w-56 space-y-2 rounded-md border bg-popover p-3 text-popover-foreground shadow-lg">
+    <div className="absolute z-30 mt-1 w-56 space-y-2 rounded-md border border-[var(--warm-200)] bg-[var(--warm-0)] p-3 text-[var(--warm-950)] shadow-lg">
       <div className="space-y-1">
         <Label htmlFor="item-qty">Quantity</Label>
         <Input id="item-qty" type="number" value={String(item.quantity)}

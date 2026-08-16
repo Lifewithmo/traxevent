@@ -7,6 +7,13 @@
 // that used to live in RightRail.tsx; the patch shapes below (especially the
 // deposit "None" clearing deposit_gate/deposit_terms together) are copied
 // verbatim from that file's semantics so autosave behavior doesn't change.
+//
+// COLOUR RULE — this whole file paints inside <ProposalTheme>, whose sheet is
+// bg-[var(--warm-0)]: permanently white in BOTH themes (--warm-* has no .dark
+// override). So the ink on it is pinned to the fixed --warm-* ramp rather than
+// the theme-aware semantic tokens, which invert under .dark and would paint
+// near-white type — and near-black popovers — on white paper. See BlockCanvas's
+// COLOUR RULE header for the full rationale.
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -58,10 +65,10 @@ export function TotalsCanvas({
     : 'None'
 
   return (
-    <section className="space-y-3 rounded-lg border border-border p-4">
+    <section className="space-y-3 rounded-lg border border-[var(--warm-200)] p-4">
       <div className="flex items-center justify-between">
-        <span className="text-sm text-muted-foreground">Total</span>
-        <span className="text-2xl font-bold text-foreground">{moneySpan(range)}</span>
+        <span className="text-sm text-[var(--warm-500)]">Total</span>
+        <span className="text-2xl font-bold text-[var(--warm-950)]">{moneySpan(range)}</span>
       </div>
 
       {/* Discount — one popover reused by both the set row (button) and the
@@ -72,29 +79,29 @@ export function TotalsCanvas({
         <div className="relative">
           {disabled ? (
             <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Discount</span>
-              <span className="text-foreground">{discountText}</span>
+              <span className="text-[var(--warm-500)]">Discount</span>
+              <span className="text-[var(--warm-950)]">{discountText}</span>
             </div>
           ) : discount ? (
             <button
               type="button"
-              className="flex w-full items-center justify-between rounded px-1 text-sm hover:bg-muted"
+              className="flex w-full items-center justify-between rounded px-1 text-sm hover:bg-[var(--warm-50)]"
               onClick={() => setPopover(popover === 'discount' ? null : 'discount')}
             >
-              <span className="text-muted-foreground">Discount</span>
-              <span className="text-foreground">{discountText}</span>
+              <span className="text-[var(--warm-500)]">Discount</span>
+              <span className="text-[var(--warm-950)]">{discountText}</span>
             </button>
           ) : (
             <button
               type="button"
-              className="text-sm text-muted-foreground hover:text-foreground"
+              className="text-sm text-[var(--warm-500)] hover:text-[var(--warm-700)]"
               onClick={() => setPopover(popover === 'discount' ? null : 'discount')}
             >
               + Add discount
             </button>
           )}
           {popover === 'discount' && !disabled && (
-            <div className="absolute right-0 z-30 mt-1 w-64 space-y-2 rounded-md border bg-popover p-3 text-popover-foreground shadow-lg">
+            <div className="absolute right-0 z-30 mt-1 w-64 space-y-2 rounded-md border border-[var(--warm-200)] bg-[var(--warm-0)] p-3 text-[var(--warm-950)] shadow-lg">
               <div className="space-y-1">
                 <Label htmlFor="discountType">Discount</Label>
                 <select
@@ -139,29 +146,29 @@ export function TotalsCanvas({
         <div className="relative">
           {disabled ? (
             <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Tax</span>
-              <span className="text-foreground">{taxText}</span>
+              <span className="text-[var(--warm-500)]">Tax</span>
+              <span className="text-[var(--warm-950)]">{taxText}</span>
             </div>
           ) : draft.tax_rate != null ? (
             <button
               type="button"
-              className="flex w-full items-center justify-between rounded px-1 text-sm hover:bg-muted"
+              className="flex w-full items-center justify-between rounded px-1 text-sm hover:bg-[var(--warm-50)]"
               onClick={() => setPopover(popover === 'tax' ? null : 'tax')}
             >
-              <span className="text-muted-foreground">Tax</span>
-              <span className="text-foreground">{taxText}</span>
+              <span className="text-[var(--warm-500)]">Tax</span>
+              <span className="text-[var(--warm-950)]">{taxText}</span>
             </button>
           ) : (
             <button
               type="button"
-              className="text-sm text-muted-foreground hover:text-foreground"
+              className="text-sm text-[var(--warm-500)] hover:text-[var(--warm-700)]"
               onClick={() => setPopover(popover === 'tax' ? null : 'tax')}
             >
               + Add tax
             </button>
           )}
           {popover === 'tax' && !disabled && (
-            <div className="absolute right-0 z-30 mt-1 w-64 space-y-2 rounded-md border bg-popover p-3 text-popover-foreground shadow-lg">
+            <div className="absolute right-0 z-30 mt-1 w-64 space-y-2 rounded-md border border-[var(--warm-200)] bg-[var(--warm-0)] p-3 text-[var(--warm-950)] shadow-lg">
               <div className="space-y-1">
                 <Label htmlFor="taxRate">Tax rate (%)</Label>
                 <Input
@@ -187,21 +194,21 @@ export function TotalsCanvas({
         <div className="relative">
           {disabled ? (
             <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Deposit due</span>
-              <span className="text-foreground">{depositText}</span>
+              <span className="text-[var(--warm-500)]">Deposit due</span>
+              <span className="text-[var(--warm-950)]">{depositText}</span>
             </div>
           ) : (
             <button
               type="button"
-              className="flex w-full items-center justify-between rounded px-1 text-sm hover:bg-muted"
+              className="flex w-full items-center justify-between rounded px-1 text-sm hover:bg-[var(--warm-50)]"
               onClick={() => setPopover(popover === 'deposit' ? null : 'deposit')}
             >
-              <span className="text-muted-foreground">Deposit due</span>
-              <span className="text-foreground">{depositText}</span>
+              <span className="text-[var(--warm-500)]">Deposit due</span>
+              <span className="text-[var(--warm-950)]">{depositText}</span>
             </button>
           )}
           {popover === 'deposit' && !disabled && (
-            <div className="absolute right-0 z-30 mt-1 w-64 space-y-2 rounded-md border bg-popover p-3 text-popover-foreground shadow-lg">
+            <div className="absolute right-0 z-30 mt-1 w-64 space-y-2 rounded-md border border-[var(--warm-200)] bg-[var(--warm-0)] p-3 text-[var(--warm-950)] shadow-lg">
               <div className="space-y-1">
                 <Label htmlFor="depositType">Deposit</Label>
                 <select
@@ -283,8 +290,8 @@ export function TotalsCanvas({
       {disabled ? (
         draft.expires_at && (
           <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">Expiry</span>
-            <span className="text-foreground">{draft.expires_at}</span>
+            <span className="text-[var(--warm-500)]">Expiry</span>
+            <span className="text-[var(--warm-950)]">{draft.expires_at}</span>
           </div>
         )
       ) : showExpiryInput ? (
@@ -311,7 +318,7 @@ export function TotalsCanvas({
       ) : (
         <button
           type="button"
-          className="text-sm text-muted-foreground hover:text-foreground"
+          className="text-sm text-[var(--warm-500)] hover:text-[var(--warm-700)]"
           onClick={() => setExpiryEditing(true)}
         >
           + Add expiry
@@ -323,7 +330,7 @@ export function TotalsCanvas({
         <div className="space-y-1 border-t pt-3">
           <Label htmlFor="propNotes">Notes for the client</Label>
           {disabled ? (
-            <p className="text-sm text-foreground">{draft.notes}</p>
+            <p className="text-sm text-[var(--warm-700)]">{draft.notes}</p>
           ) : (
             <textarea
               id="propNotes"
@@ -343,7 +350,7 @@ export function TotalsCanvas({
         <div className="space-y-1 border-t pt-3">
           <Label htmlFor="propTerms">Terms</Label>
           {disabled ? (
-            <p className="text-sm text-foreground">{draft.terms}</p>
+            <p className="text-sm text-[var(--warm-700)]">{draft.terms}</p>
           ) : (
             <>
               <textarea
@@ -353,7 +360,7 @@ export function TotalsCanvas({
                 placeholder="Legal terms the client agrees to when signing. Seeded from Branding → Proposal terms."
                 className="flex min-h-16 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               />
-              <p className="text-xs text-muted-foreground">
+              <p className="text-xs text-[var(--warm-500)]">
                 Shown above the signature box; covered by the client's e-signature.
               </p>
             </>

@@ -261,10 +261,15 @@ export function ProposalBuilderClient({
         busy={busy}
       />
 
+      {/* z-[60], not z-50: TopBar's overflow Menu portals to document.body at
+          z-50 and opens align="end" — directly over this region. Equal z-index
+          plus later-in-DOM means the menu would paint over the toast, hiding
+          the very message a user re-opens the menu to act on (e.g. a failed
+          Void). The toast has to outrank the portal. */}
       <div
         aria-live="polite"
         aria-atomic="true"
-        className="pointer-events-none fixed right-4 top-16 z-50 flex w-full max-w-sm flex-col gap-2"
+        className="pointer-events-none fixed right-4 top-16 z-[60] flex w-full max-w-sm flex-col gap-2"
       >
         {flash && (
           <div
@@ -314,10 +319,15 @@ export function ProposalBuilderClient({
         )}
 
         {/* The paper is the customer's document, not app chrome: it stays
-            literal white (--warm-0) in dark mode. bg-card would invert it. */}
+            literal white (--warm-0) in dark mode — bg-card would invert it.
+            The INK has to be pinned for the same reason. ProposalTheme sets no
+            text colour, so without text-[var(--warm-950)] the document copy
+            inherits --foreground from <body>, which .dark turns near-white:
+            invisible on a permanently-white sheet. Everything below inherits
+            from here, and the canvases pin their own --warm-* steps on top. */}
         <ProposalTheme
           branding={branding}
-          className={`mx-auto rounded-lg bg-[var(--warm-0)] p-8 shadow-sm ${viewport === 'mobile' ? 'max-w-sm' : 'max-w-3xl'}`}
+          className={`mx-auto rounded-lg bg-[var(--warm-0)] p-8 text-[var(--warm-950)] shadow-sm ${viewport === 'mobile' ? 'max-w-sm' : 'max-w-3xl'}`}
         >
           <BlockCanvas
             blocks={blocks}

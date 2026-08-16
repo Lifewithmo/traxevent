@@ -15,6 +15,12 @@ import type { ProposalTemplate } from '@/lib/types'
 // Miniature "thumbnail" strokes suggesting each skeleton's shape. The warm-*
 // steps are a deliberate contrast ladder (800 → 200) that keeps the wireframe
 // legible; collapsing them onto bg-muted/bg-border would flatten it.
+//
+// COLOUR RULE — the thumbnail is a miniature of the proposal's fixed-white
+// paper, so its panel is pinned to the same fixed --warm-* ramp as the strokes
+// it contains. A theme-aware panel (bg-muted) under fixed strokes inverts the
+// ladder in dark mode — dark strokes on a dark panel — and the wireframe reads
+// as noise. The card chrome around it is app UI and stays theme-aware.
 const THUMBS: Record<SkeletonKey, string[]> = {
   full: ['title', 'text', 'head', 'text', 'image', 'tiers'],
   quick: ['title', 'text', 'tiers'],
@@ -144,10 +150,10 @@ export function SkeletonPicker({
             onClick={() => pick(s.key)}
             className="flex flex-col rounded-lg border border-border p-4 text-left transition hover:border-ring hover:shadow-sm disabled:opacity-50"
           >
-            <div className="mb-3 flex h-28 w-full flex-col justify-start gap-1.5 rounded border border-border bg-muted p-3">
+            <div className="mb-3 flex h-28 w-full flex-col justify-start gap-1.5 rounded border border-[var(--warm-200)] bg-[var(--warm-50)] p-3">
               {THUMBS[s.key].map((kind, i) => <ThumbRow key={i} kind={kind} />)}
               {s.key === 'blank' && (
-                <span className="m-auto text-2xl text-muted-foreground/60">+</span>
+                <span className="m-auto text-2xl text-[var(--warm-300)]">+</span>
               )}
             </div>
             <span className="font-medium">{creating === s.key ? 'Creating…' : s.name}</span>
