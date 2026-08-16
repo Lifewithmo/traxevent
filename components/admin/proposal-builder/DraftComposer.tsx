@@ -113,7 +113,7 @@ function ComposerBody({
       </Button>
 
       {state.status === 'error' && (
-        <p role="alert" className="text-sm text-red-600">{state.message}</p>
+        <p role="alert" className="text-sm text-destructive">{state.message}</p>
       )}
 
       {state.status === 'streaming' && (
@@ -129,7 +129,7 @@ function ComposerBody({
           {state.draft.rationale && <p className="text-xs text-muted-foreground">{state.draft.rationale}</p>}
           <SuggestedPackages packages={state.draft.suggested_packages} />
           {state.draft.adjustments.map((a, i) => (
-            <p key={i} className="text-xs text-amber-700">{a}</p>
+            <p key={i} className="text-xs text-[var(--warn-fg)]">{a}</p>
           ))}
           <div className="flex gap-2">
             <Button type="button" size="sm" onClick={() => fill(state.draft.blocks)}

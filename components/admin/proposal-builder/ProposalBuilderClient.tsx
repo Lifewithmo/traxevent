@@ -269,7 +269,7 @@ export function ProposalBuilderClient({
         {flash && (
           <div
             role="status"
-            className="pointer-events-auto flex items-start justify-between gap-2 rounded-md border bg-white px-3 py-2 text-sm shadow-lg"
+            className="pointer-events-auto flex items-start justify-between gap-2 rounded-md border bg-popover px-3 py-2 text-sm text-popover-foreground shadow-lg"
           >
             <span>{flash}</span>
             <button
@@ -286,14 +286,14 @@ export function ProposalBuilderClient({
           <div
             key={i}
             role="status"
-            className="pointer-events-auto rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800 shadow-lg"
+            className="pointer-events-auto rounded-md border border-[var(--warn-border)] bg-[var(--warn-bg)] px-3 py-2 text-sm text-[var(--warn-fg)] shadow-lg"
           >
             {a}
           </div>
         ))}
       </div>
 
-      <main className="flex-1 overflow-y-auto bg-gray-100 px-6 py-8">
+      <main className="flex-1 overflow-y-auto bg-muted px-6 py-8">
         {voided && (
           <Card className="mx-auto mb-4 max-w-3xl border-destructive/50 bg-destructive/10">
             <CardContent className="pt-6">
@@ -304,7 +304,7 @@ export function ProposalBuilderClient({
           </Card>
         )}
         {locked && !voided && (
-          <Card className="mx-auto mb-4 max-w-3xl border-amber-500/50 bg-amber-500/10">
+          <Card className="mx-auto mb-4 max-w-3xl border-[var(--warn-border)] bg-[var(--warn-bg)]">
             <CardContent className="pt-6">
               <p className="text-sm font-medium">
                 This proposal is signed and locked. Create a new version to make changes.
@@ -313,9 +313,11 @@ export function ProposalBuilderClient({
           </Card>
         )}
 
+        {/* The paper is the customer's document, not app chrome: it stays
+            literal white (--warm-0) in dark mode. bg-card would invert it. */}
         <ProposalTheme
           branding={branding}
-          className={`mx-auto rounded-lg bg-white p-8 shadow-sm ${viewport === 'mobile' ? 'max-w-sm' : 'max-w-3xl'}`}
+          className={`mx-auto rounded-lg bg-[var(--warm-0)] p-8 shadow-sm ${viewport === 'mobile' ? 'max-w-sm' : 'max-w-3xl'}`}
         >
           <BlockCanvas
             blocks={blocks}
@@ -356,7 +358,7 @@ export function ProposalBuilderClient({
           </div>
         </ProposalTheme>
 
-        <div className="sticky bottom-0 mx-auto mt-6 max-w-3xl rounded-t-lg border bg-white/95 px-6 py-3 backdrop-blur">
+        <div className="sticky bottom-0 mx-auto mt-6 max-w-3xl rounded-t-lg border bg-card/95 px-6 py-3 backdrop-blur">
           <div className="flex items-center justify-between">
             <p className="text-sm font-semibold">Client sees: {rangeLabel}</p>
             {draft.deposit && (

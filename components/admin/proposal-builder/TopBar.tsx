@@ -5,12 +5,13 @@
 // (Send/Copy link), and an overflow menu for everything else (print view,
 // viewport toggle, void/delete).
 import Link from 'next/link'
-import { useEffect, useRef, useState } from 'react'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Menu, MenuTrigger, MenuContent, MenuItem } from '@/components/ui/menu'
+import { StatusPill, pillVariants } from '@/components/ui/status-pill'
 import { InlineText } from '@/components/admin/proposal-builder/InlineText'
 import type { SaveStatus } from '@/components/admin/proposal-builder/useDraftAutosave'
-import { PROPOSAL_STATUS_LABELS } from '@/lib/proposals'
+import { PROPOSAL_STATUS_LABELS, PROPOSAL_STATUS_TONE } from '@/lib/proposals'
+import { cn } from '@/lib/utils'
 import type { ProposalStatus } from '@/lib/types'
 
 export type Viewport = 'desktop' | 'mobile'
@@ -67,27 +68,13 @@ export function TopBar({
   onSaveAsTemplate?: () => void
   busy?: boolean
 }) {
-  const [menuOpen, setMenuOpen] = useState(false)
-  const menuRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!menuOpen) return
-    function onMouseDown(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setMenuOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', onMouseDown)
-    return () => document.removeEventListener('mousedown', onMouseDown)
-  }, [menuOpen])
-
   const canSend = status === 'draft' && !locked
   const canCopyLink = status === 'sent' || status === 'accepted'
   const canVoid = status !== 'draft' && status !== 'voided'
   const canDelete = status === 'draft'
 
   return (
-    <div className="sticky top-0 z-40 border-b bg-white/95 backdrop-blur">
+    <div className="sticky top-0 z-40 border-b bg-card/95 backdrop-blur">
       <div className="flex flex-wrap items-center gap-3 px-6 py-3">
         <Link href={`/${orgSlug}/leads/${leadId}`} className="text-sm text-muted-foreground hover:underline">
           ←
@@ -101,7 +88,7 @@ export function TopBar({
             disabled={locked}
           />
         </div>
-        <Badge variant="secondary">{PROPOSAL_STATUS_LABELS[status]}</Badge>
+        <StatusPill tone={PROPOSAL_STATUS_TONE[status]}>{PROPOSAL_STATUS_LABELS[status]}</StatusPill>
 
         {saveStatus && (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -113,10 +100,13 @@ export function TopBar({
         )}
 
         {placeholderCount > 0 && onPlaceholderChip && (
+          // Stays a <button> (StatusPill renders a bare <span> with no render
+          // escape hatch) but wears the pill's tokens, so the one clickable
+          // element keeps both its affordance and the shared status colors.
           <button
             type="button"
             onClick={onPlaceholderChip}
-            className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800"
+            className={cn(pillVariants({ tone: 'pending' }))}
           >
             {placeholderCount} placeholder{placeholderCount === 1 ? '' : 's'}
           </button>
@@ -133,112 +123,33 @@ export function TopBar({
           <Button size="sm" onClick={onCopyLink} disabled={busy}>Copy client link</Button>
         )}
 
-        <div className="relative" ref={menuRef}>
-          <Button
-            size="sm"
-            variant="outline"
-            aria-label="More actions"
-            aria-haspopup="menu"
-            aria-expanded={menuOpen}
-            onClick={() => setMenuOpen((v) => !v)}
-          >
+        <Menu>
+          <MenuTrigger render={<Button size="sm" variant="outline" aria-label="More actions" />}>
             ⋯
-          </Button>
-          {menuOpen && (
-            <div
-              role="menu"
-              className="absolute right-0 z-50 mt-1 w-48 space-y-1 rounded-md border bg-white p-1 shadow-lg"
-            >
-              <Button
-                type="button"
-                role="menuitem"
-                size="sm"
-                variant="ghost"
-                className="w-full justify-start"
-                onClick={() => {
-                  window.open(`/proposals/${token}/print`, '_blank')
-                  setMenuOpen(false)
-                }}
-              >
-                Open print view
-              </Button>
-              {onSaveAsTemplate && (
-                <Button
-                  type="button"
-                  role="menuitem"
-                  size="sm"
-                  variant="ghost"
-                  className="w-full justify-start"
-                  disabled={busy}
-                  onClick={() => {
-                    onSaveAsTemplate()
-                    setMenuOpen(false)
-                  }}
-                >
-                  Save as template
-                </Button>
-              )}
-              <Button
-                type="button"
-                role="menuitem"
-                size="sm"
-                variant="ghost"
-                className="w-full justify-start"
-                onClick={() => {
-                  onViewport('desktop')
-                  setMenuOpen(false)
-                }}
-              >
-                Desktop
-              </Button>
-              <Button
-                type="button"
-                role="menuitem"
-                size="sm"
-                variant="ghost"
-                className="w-full justify-start"
-                onClick={() => {
-                  onViewport('mobile')
-                  setMenuOpen(false)
-                }}
-              >
-                Mobile
-              </Button>
-              {canVoid && onVoid && (
-                <Button
-                  type="button"
-                  role="menuitem"
-                  size="sm"
-                  variant="ghost"
-                  className="w-full justify-start text-destructive"
-                  disabled={busy}
-                  onClick={() => {
-                    onVoid()
-                    setMenuOpen(false)
-                  }}
-                >
-                  Void proposal
-                </Button>
-              )}
-              {canDelete && onDelete && (
-                <Button
-                  type="button"
-                  role="menuitem"
-                  size="sm"
-                  variant="ghost"
-                  className="w-full justify-start text-destructive"
-                  disabled={busy}
-                  onClick={() => {
-                    onDelete()
-                    setMenuOpen(false)
-                  }}
-                >
-                  Delete
-                </Button>
-              )}
-            </div>
-          )}
-        </div>
+          </MenuTrigger>
+          <MenuContent className="w-48">
+            <MenuItem onClick={() => window.open(`/proposals/${token}/print`, '_blank')}>
+              Open print view
+            </MenuItem>
+            {onSaveAsTemplate && (
+              <MenuItem disabled={busy} onClick={onSaveAsTemplate}>
+                Save as template
+              </MenuItem>
+            )}
+            <MenuItem onClick={() => onViewport('desktop')}>Desktop</MenuItem>
+            <MenuItem onClick={() => onViewport('mobile')}>Mobile</MenuItem>
+            {canVoid && onVoid && (
+              <MenuItem disabled={busy} className="text-destructive" onClick={onVoid}>
+                Void proposal
+              </MenuItem>
+            )}
+            {canDelete && onDelete && (
+              <MenuItem disabled={busy} className="text-destructive" onClick={onDelete}>
+                Delete
+              </MenuItem>
+            )}
+          </MenuContent>
+        </Menu>
       </div>
     </div>
   )
