@@ -4,7 +4,8 @@ import { notFound } from 'next/navigation'
 import { adminDb } from '@/lib/firebase-admin'
 import { listAllVendors } from '@/actions/vendors'
 import { listLeads } from '@/actions/leads'
-import { AllVendorsTable, type VendorRow } from '@/components/admin/AllVendorsTable'
+import { VendorsLedger } from '@/components/admin/vendors/VendorsLedger'
+import type { VendorLedgerRow } from '@/lib/vendors'
 
 export default async function VendorsPage({
   params,
@@ -17,6 +18,6 @@ export default async function VendorsPage({
   const orgId = orgSnap.docs[0].id
   const [vendors, leads] = await Promise.all([listAllVendors(orgId), listLeads(orgId)])
   const nameByLead = new Map<string, string>(leads.map((l) => [l.id, l.name]))
-  const rows: VendorRow[] = vendors.map((v) => ({ ...v, clientName: nameByLead.get(v.lead_id) ?? '' }))
-  return <AllVendorsTable orgSlug={orgSlug} rows={rows} />
+  const rows: VendorLedgerRow[] = vendors.map((v) => ({ ...v, clientName: nameByLead.get(v.lead_id) ?? '' }))
+  return <VendorsLedger orgSlug={orgSlug} rows={rows} />
 }
