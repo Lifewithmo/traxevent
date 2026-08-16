@@ -38,7 +38,10 @@ export default async function ClientsLayout({
     // main (in the parent org layout) is `h-screen` worth of stretched, scrollable
     // box — see AdminSidebar's `h-screen sticky top-0` — so h-full here fills that
     // exactly. The rail and the detail pane each scroll independently.
-    <div className="flex h-full min-h-0">
+    // Below md: stacked (ClientQueueRail's own mobile bar sits above the detail
+    // pane; the rail itself goes off-canvas — see ClientQueueRail), mirroring
+    // the org layout's `max-md:flex-col` around AdminSidebar.
+    <div className="flex h-full min-h-0 max-md:flex-col">
       <ClientQueueRail orgSlug={orgSlug} rows={rows} />
       <div className="min-w-0 flex-1 overflow-y-auto">{children}</div>
     </div>

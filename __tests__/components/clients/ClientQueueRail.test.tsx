@@ -101,6 +101,9 @@ describe('ClientQueueRail', () => {
 
   it('shows the group count in the header', () => {
     render(<ClientQueueRail orgSlug="acme" rows={rows} />)
-    expect(screen.getByText('3')).toBeInTheDocument()
+    // Two "3"s exist now: the in-flow header (md+) and the mobile bar's own
+    // count (md:hidden) — both are in the DOM regardless of viewport, since
+    // the mobile/desktop split is CSS-only.
+    expect(screen.getAllByText('3').length).toBeGreaterThan(0)
   })
 })

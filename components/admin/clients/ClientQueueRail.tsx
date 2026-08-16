@@ -1,12 +1,22 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Avatar } from '@/components/ui/avatar'
 import { StatusPill } from '@/components/ui/status-pill'
 import { cn } from '@/lib/utils'
 import { lastEventLabel, type ClientGroup, type ClientRow } from '@/lib/crm/client-list'
+
+// Mirrors AdminSidebar's mobile hamburger/close glyphs (components/layout/AdminSidebar.tsx)
+// so the queue rail's off-canvas drawer reads as the same pattern.
+function MenuIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden focusable="false">
+      <path d="M3 5h14M3 10h14M3 15h14" />
+    </svg>
+  )
+}
 
 interface ClientQueueRailProps {
   orgSlug: string
@@ -102,6 +112,24 @@ export function ClientQueueRail({ orgSlug, rows }: ClientQueueRailProps) {
   const selectedId = (pathname ?? '').split('/').filter(Boolean).pop()
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<FilterKey>('all')
+  // Below md the rail is an off-canvas drawer (mirrors AdminSidebar, see
+  // components/layout/AdminSidebar.tsx) rather than an in-flow 304px column.
+  // Deliberately NOT persisted: a drawer should always open closed.
+  const [mobileOpen, setMobileOpen] = useState(false)
+
+  // Picking a client is the drawer's implicit dismiss.
+  useEffect(() => {
+    setMobileOpen(false)
+  }, [pathname])
+
+  useEffect(() => {
+    if (!mobileOpen) return
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setMobileOpen(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [mobileOpen])
 
   const visible = useMemo(
     () => rows.filter((r) => matchesFilter(r, filter) && matchesSearch(r, query)),
@@ -119,7 +147,45 @@ export function ClientQueueRail({ orgSlug, rows }: ClientQueueRailProps) {
   )
 
   return (
-    <div className="flex h-full w-[304px] shrink-0 flex-col bg-sidebar">
+    <>
+      {/* Mobile bar: the only queue-rail chrome that takes layout space below md
+          (mirrors AdminSidebar's own mobile bar). Hidden from md up. */}
+      <div className="flex items-center gap-3 border-b border-sidebar-border bg-sidebar px-4 py-3 text-sidebar-foreground md:hidden">
+        <button
+          type="button"
+          onClick={() => setMobileOpen(true)}
+          aria-label="Open client list"
+          aria-expanded={mobileOpen}
+          aria-controls="client-queue-rail"
+          className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-card"
+        >
+          <MenuIcon />
+        </button>
+        <span className="text-sm font-semibold">
+          Clients <span className="font-normal text-muted-foreground">{rows.length}</span>
+        </span>
+      </div>
+
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/40 md:hidden"
+          onClick={() => setMobileOpen(false)}
+          aria-hidden
+        />
+      )}
+
+      <div
+        id="client-queue-rail"
+        className={cn(
+          'flex h-full w-[304px] shrink-0 flex-col bg-sidebar',
+          // Below md: off-canvas drawer, out of flow so the detail pane gets
+          // full width. `max-md:fixed` overrides nothing here (the rail has no
+          // `sticky` of its own), matching AdminSidebar's `<aside>` treatment.
+          'max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-50 max-md:w-[280px]',
+          'max-md:transition-transform max-md:duration-200',
+          mobileOpen ? 'max-md:translate-x-0' : 'max-md:-translate-x-full'
+        )}
+      >
       <div className="flex items-center justify-between gap-2 border-b border-sidebar-border px-4 py-3">
         <div className="flex items-baseline gap-2">
           <h2 className="text-sm font-semibold text-sidebar-foreground">Clients</h2>
@@ -180,6 +246,7 @@ export function ClientQueueRail({ orgSlug, rows }: ClientQueueRailProps) {
           ))
         )}
       </div>
-    </div>
+      </div>
+    </>
   )
 }

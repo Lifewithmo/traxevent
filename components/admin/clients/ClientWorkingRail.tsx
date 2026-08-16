@@ -287,6 +287,9 @@ export function ClientWorkingRail({ orgId, orgSlug, customer, opportunities, inv
     <aside className="space-y-4 lg:col-span-2">
       <MetadataCard orgId={orgId} customer={customer} />
 
+      {/* Empty context blocks (no rows, just an empty-state CTA) hide below md —
+          they're a "here's how to add one" invitation that costs real scroll
+          distance on a phone screen queued behind the record itself. */}
       <RelatedRecordCard
         title="Jobs"
         count={jobRows.length}
@@ -294,6 +297,7 @@ export function ClientWorkingRail({ orgId, orgSlug, customer, opportunities, inv
         emptyTitle="No jobs yet"
         emptyCtaLabel="Book a job"
         onEmptyCta={() => setCreatingJob(true)}
+        className={jobRows.length === 0 ? 'max-md:hidden' : undefined}
       />
 
       <RelatedRecordCard
@@ -303,6 +307,7 @@ export function ClientWorkingRail({ orgId, orgSlug, customer, opportunities, inv
         emptyTitle="No proposals yet"
         emptyCtaLabel="Draft one"
         onEmptyCta={goToNewProposal}
+        className={proposalRows.length === 0 ? 'max-md:hidden' : undefined}
       />
 
       <RelatedRecordCard
@@ -313,6 +318,7 @@ export function ClientWorkingRail({ orgId, orgSlug, customer, opportunities, inv
         emptyCtaLabel="Create invoice"
         onEmptyCta={goToInvoices}
         footer={invoiceFooter}
+        className={invoiceRows.length === 0 ? 'max-md:hidden' : undefined}
       />
 
       <NewOpportunityForm orgId={orgId} open={creatingJob} onClose={() => setCreatingJob(false)} customer={customer} />

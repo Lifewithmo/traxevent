@@ -58,6 +58,9 @@ export function ClientCockpit({ orgId, orgSlug, customer, opportunities, notes, 
         onNewProposal={goToNewProposal}
       />
 
+      {/* Below lg this is a single implicit grid column (no `grid-cols-*` applies
+          until lg:), so the working rail — second in DOM order — folds under
+          the spine automatically; only lg: introduces the two-pane split. */}
       <div className="grid gap-4 lg:grid-cols-5">
         {/* Left: the record */}
         <div className="space-y-4 lg:col-span-3">
