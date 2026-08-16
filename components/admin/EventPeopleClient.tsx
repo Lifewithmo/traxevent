@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -112,6 +112,10 @@ export function EventPeopleClient({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [removeTarget, setRemoveTarget] = useState<EventPerson | null>(null)
+
+  // Last non-null target — keeps the dialog description stable while the close animation plays.
+  const lastRemoveTarget = useRef(removeTarget)
+  if (removeTarget !== null) lastRemoveTarget.current = removeTarget
 
   const [kind, setKind] = useState<EventPersonKind>('volunteer')
   const [name, setName] = useState('')
@@ -335,7 +339,9 @@ export function EventPeopleClient({
           <DialogHeader>
             <DialogTitle>Remove this person from the event?</DialogTitle>
             <DialogDescription>
-              {removeTarget ? `${removeTarget.name} will be removed from this event's roster and lose page access.` : ''}
+              {lastRemoveTarget.current
+                ? `${lastRemoveTarget.current.name} will be removed from this event's roster and lose page access.`
+                : ''}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

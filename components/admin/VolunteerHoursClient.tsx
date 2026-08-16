@@ -153,7 +153,7 @@ export function VolunteerHoursClient({ orgId, eventId, volunteers, entries: init
                       <TableCell className="px-4 font-medium">{e.person_name}</TableCell>
                       <TableCell className="px-4">{e.date}</TableCell>
                       <TableCell className="px-4 text-right">{e.hours}</TableCell>
-                      <TableCell className="px-4 text-muted-foreground">{e.note ?? ''}</TableCell>
+                      <TableCell className="px-4 whitespace-normal text-muted-foreground">{e.note ?? ''}</TableCell>
                       <TableCell className="px-4 text-right">
                         <Button size="sm" variant="outline" onClick={() => handleDelete(e.id)} disabled={saving}>Remove</Button>
                       </TableCell>

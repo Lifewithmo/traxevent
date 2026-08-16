@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -50,6 +50,10 @@ export function CheckinClient({
   const [error, setError] = useState<string | null>(null)
   const [checkoutTarget, setCheckoutTarget] = useState<{ member: EventMember; record: CheckinRecord } | null>(null)
   const [guardianName, setGuardianName] = useState('')
+
+  // Last non-null target — keeps the dialog description stable while the close animation plays.
+  const lastCheckoutTarget = useRef(checkoutTarget)
+  if (checkoutTarget !== null) lastCheckoutTarget.current = checkoutTarget
 
   const byMember = new Map(checkins.map((c) => [c.member_id, c]))
 
@@ -214,7 +218,9 @@ export function CheckinClient({
             <DialogTitle>Who is picking up this child?</DialogTitle>
             <DialogDescription>
               A guardian name is required to check out
-              {checkoutTarget ? ` ${checkoutTarget.member.first_name} ${checkoutTarget.member.last_name}` : ' a child'}.
+              {lastCheckoutTarget.current
+                ? ` ${lastCheckoutTarget.current.member.first_name} ${lastCheckoutTarget.current.member.last_name}`
+                : ' a child'}.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-1">
@@ -223,7 +229,7 @@ export function CheckinClient({
               id="guardianName"
               value={guardianName}
               onChange={(e) => setGuardianName(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') confirmGuardianCheckOut() }}
+              onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) confirmGuardianCheckOut() }}
               autoFocus
             />
           </div>

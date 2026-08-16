@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -66,6 +66,10 @@ export function AssignmentsClient({
   const [slotError, setSlotError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<AssignmentSlot | null>(null)
+
+  // Last non-null target — keeps the dialog description stable while the close animation plays.
+  const lastDeleteTarget = useRef(deleteTarget)
+  if (deleteTarget !== null) lastDeleteTarget.current = deleteTarget
 
   // Auto-assign state
   const [autoAssigning, setAutoAssigning] = useState(false)
@@ -374,7 +378,7 @@ export function AssignmentsClient({
           <div className="flex items-center justify-end gap-3">
             <div aria-live="polite" aria-atomic="true">
               {autoAssignResult && (
-                <span className="text-sm text-[var(--money-green)]">{autoAssignResult}</span>
+                <span className="text-sm text-[var(--status-confirmed-fg)]">{autoAssignResult}</span>
               )}
             </div>
             <Button
@@ -443,8 +447,8 @@ export function AssignmentsClient({
           <DialogHeader>
             <DialogTitle>Delete this {slotLabel.toLowerCase()}?</DialogTitle>
             <DialogDescription>
-              {deleteTarget
-                ? `"${deleteTarget.name}" will be deleted and any registrants assigned to it become unassigned.`
+              {lastDeleteTarget.current
+                ? `"${lastDeleteTarget.current.name}" will be deleted and any registrants assigned to it become unassigned.`
                 : ''}
             </DialogDescription>
           </DialogHeader>
