@@ -1,17 +1,20 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { EmptyState } from '@/components/ui/empty-state'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { RelatedRecordCard, type RelatedRow } from '@/components/ui/related-record-card'
+import { StatusPill } from '@/components/ui/status-pill'
 import { convertOpportunityToWork } from '@/actions/leads'
 import { eventCreateFieldsFromType, DEFAULT_EVENT_TYPE_ID } from '@/lib/event-types'
 import type { EventType } from '@/lib/event-types'
 import { opportunityTitle } from '@/lib/leads'
 import { EVENT_KIND_LABELS } from '@/lib/occasions/kind'
+import { shortDate } from '@/lib/pipeline-presentation'
 import type { Event, Lead, EventKind } from '@/lib/types'
 
 interface ConvertToWorkCardProps {
@@ -24,6 +27,14 @@ interface ConvertToWorkCardProps {
   blockReason?: string
 }
 
+/**
+ * "Is this deal a scheduled job yet, and if not, what is stopping me?"
+ *
+ * Three mutually exclusive states, each a kit surface rather than the bespoke
+ * one-line strips they replace: the job exists (a related record), the deal
+ * cannot convert yet (an empty with the reason), or it can (an empty with the
+ * single CTA). Only the last opens a form, and only on request.
+ */
 export function ConvertToWorkCard({ orgId, orgSlug, lead, job, eventTypes, open: openProp = false, blockReason }: ConvertToWorkCardProps) {
   const router = useRouter()
   const [open, setOpen] = useState(openProp)
@@ -42,21 +53,40 @@ export function ConvertToWorkCard({ orgId, orgSlug, lead, job, eventTypes, open:
   // later (e.g. moved back to `proposal` as a correction) — otherwise the
   // job would be orphaned from its opportunity until it is re-won.
   if (job) {
+    const rows: RelatedRow[] = [{
+      id: job.id,
+      title: job.name,
+      // `event_start` is a bare YYYY-MM-DD on this path (lib/crm/convert.ts:72).
+      subtitle: job.event_start ? shortDate(job.event_start) : 'delivery planning',
+      badge: <StatusPill tone="confirmed">Scheduled</StatusPill>,
+      href: `/${orgSlug}/${job.slug}/ops`,
+    }]
     return (
-      <div className="rounded-md border border-border px-3 py-2 text-sm">
-        Scheduled as <span className="font-medium">{job.name}</span>.{' '}
-        <Link href={`/${orgSlug}/${job.slug}/ops`} className="underline">View job →</Link>
-      </div>
+      <RelatedRecordCard
+        title="Scheduled job"
+        count={1}
+        rows={rows}
+        // This card cannot be empty — it only renders when `job` is non-null —
+        // but emptyTitle/emptyCtaLabel are required props, and onEmptyCta is
+        // optional while the empty Button renders unconditionally, so all three
+        // are supplied rather than shipping a dead control on an unreachable path.
+        emptyTitle="Not scheduled yet"
+        emptyCtaLabel="Convert to work"
+        onEmptyCta={() => setOpen(true)}
+      />
     )
   }
 
   // Not won yet: keep the destination visible and say what unblocks it.
   if (lead.stage !== 'closed_won') {
     return (
-      <div className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2">
-        <p className="text-sm text-muted-foreground">{blockReason ?? 'Mark the deal won to convert.'}</p>
-        <Button size="sm" disabled>Convert to work</Button>
-      </div>
+      <section className="rounded-xl border border-border bg-card shadow-xs">
+        <EmptyState
+          title="Not scheduled yet"
+          description={blockReason ?? 'Mark the deal won to convert.'}
+          action={<Button size="sm" disabled>Convert to work</Button>}
+        />
+      </section>
     )
   }
 
@@ -81,10 +111,13 @@ export function ConvertToWorkCard({ orgId, orgSlug, lead, job, eventTypes, open:
 
   if (!open) {
     return (
-      <div className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2">
-        <p className="text-sm">This opportunity is won but not scheduled.</p>
-        <Button size="sm" onClick={() => setOpen(true)}>Convert to work</Button>
-      </div>
+      <section className="rounded-xl border border-border bg-card shadow-xs">
+        <EmptyState
+          title="Won, but not on the calendar"
+          description="Convert it into a job to plan packages, staffing and delivery."
+          action={<Button size="sm" onClick={() => setOpen(true)}>Convert to work</Button>}
+        />
+      </section>
     )
   }
 

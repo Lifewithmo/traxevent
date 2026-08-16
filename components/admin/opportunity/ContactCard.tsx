@@ -3,167 +3,112 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { Card, CardContent } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
+import { Avatar } from '@/components/ui/avatar'
+import { Button, buttonVariants } from '@/components/ui/button'
+import { StatusPill } from '@/components/ui/status-pill'
 import { Phone, Mail, ChevronDown } from 'lucide-react'
-import { initials } from '@/lib/opportunity-detail'
+import { cn } from '@/lib/utils'
 import type { Customer, Lead } from '@/lib/types'
+
+/**
+ * Kit button SKIN on a real anchor, rather than `<Button render={<a/>}>`.
+ *
+ * Base UI's Button owns button semantics: left native it warns and stamps
+ * `type="button"` onto the anchor, and with `nativeButton={false}` it stamps
+ * `role="button"`, which tells a screen reader that a `mailto:` is a button and
+ * drops the label children on the floor. A mailto/tel IS a link. Consuming the
+ * kit's exported `buttonVariants` keeps the styling identical and the semantics
+ * honest.
+ */
+const contactActionClass = cn(buttonVariants({ variant: 'outline', size: 'sm' }))
 
 interface ContactCardProps {
   orgSlug: string
   customer: Customer | null
   lead: Lead
+  /**
+   * Vestigial. ContactCard renders one layout; the prop survives so callers
+   * (and P5's spine) keep compiling while the two tasks land in either order.
+   */
   variant?: 'strip'
+  /**
+   * Still accepted, deliberately NOT rendered — the returning-client count is a
+   * figure on OpportunityKpiBand now. It used to be concatenated into a
+   * `truncate`d subtitle where a long company name could clip it away entirely.
+   */
   pastBookings?: number
   portalAction?: React.ReactNode
 }
 
-export function ContactCard({ orgSlug, customer, lead, variant, pastBookings = 0, portalAction }: ContactCardProps) {
+/**
+ * Who this deal is with, and the two ways to reach them.
+ *
+ * Identity only: no figures (they're on the KPI band) and no editable facts
+ * (they're in FactsGrid). Everything past name/company/contact is behind the
+ * More disclosure, because on a spine this strip is the thing the operator
+ * reads past, not the thing they stop on.
+ */
+// `variant` and `pastBookings` are accepted (see the interface) and deliberately
+// not destructured — nothing in here reads them.
+export function ContactCard({ orgSlug, customer, lead, portalAction }: ContactCardProps) {
   const [expanded, setExpanded] = useState(false)
 
+  // `Lead.name` is required, so `name` is always a string — Avatar dereferences
+  // it unguarded and must never be handed undefined.
   const name = customer?.name ?? lead.name
   const company = customer?.company ?? lead.organization
   const email = customer?.email ?? lead.email
   const phone = customer?.phone ?? lead.phone
   const tags = customer?.tags ?? lead.tags ?? []
   const notes = customer?.notes
-
-  if (variant === 'strip') {
-    const contactLine = [email, phone].filter(Boolean).join(' · ')
-    const returning = pastBookings > 0
-      ? `returning client (${pastBookings} past event${pastBookings === 1 ? '' : 's'})`
-      : null
-    const companyLine = [company, returning].filter(Boolean).join(' · ')
-    return (
-      <Card>
-        <CardContent className="space-y-3 p-4">
-          <div className="flex flex-wrap items-center gap-3">
-            <div
-              aria-hidden
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-semibold"
-            >
-              {initials(name)}
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="truncate font-medium">{name}</p>
-              {contactLine && <p className="truncate text-sm text-muted-foreground">{contactLine}</p>}
-              {companyLine && <p className="truncate text-sm text-muted-foreground">{companyLine}</p>}
-            </div>
-            <div className="flex shrink-0 items-center gap-2">
-              {email && (
-                <a
-                  href={`mailto:${email}`}
-                  aria-label="Email"
-                  className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-border px-3 text-sm hover:bg-muted"
-                >
-                  <Mail className="h-4 w-4" /> Email
-                </a>
-              )}
-              {phone && (
-                <a
-                  href={`tel:${phone}`}
-                  aria-label="Call"
-                  className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-border px-3 text-sm hover:bg-muted"
-                >
-                  <Phone className="h-4 w-4" /> Call
-                </a>
-              )}
-              {portalAction}
-              <button
-                type="button"
-                aria-label={expanded ? 'Collapse contact' : 'Expand contact'}
-                aria-expanded={expanded}
-                onClick={() => setExpanded((v) => !v)}
-                className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-              >
-                {expanded ? 'Less' : 'More'}
-                <ChevronDown className={`h-3.5 w-3.5 transition-transform ${expanded ? 'rotate-180' : ''}`} />
-              </button>
-              {customer && (
-                <Link href={`/${orgSlug}/clients/${customer.id}`} className="text-xs underline text-muted-foreground hover:text-foreground">
-                  View customer
-                </Link>
-              )}
-            </div>
-          </div>
-          {expanded && (
-            <dl className="space-y-1.5 border-t border-border pt-3 text-sm">
-              {email && <div className="flex justify-between gap-2"><dt className="text-muted-foreground">Email</dt><dd className="truncate">{email}</dd></div>}
-              {phone && <div className="flex justify-between gap-2"><dt className="text-muted-foreground">Phone</dt><dd>{phone}</dd></div>}
-              {tags.length > 0 && (
-                <div className="flex flex-wrap gap-1 pt-1">
-                  {tags.map((t) => <Badge key={t} variant="secondary">{t}</Badge>)}
-                </div>
-              )}
-              {notes && <p className="pt-1 text-muted-foreground">{notes}</p>}
-            </dl>
-          )}
-        </CardContent>
-      </Card>
-    )
-  }
+  const contactLine = [email, phone].filter(Boolean).join(' · ')
 
   return (
     <Card>
-      <CardContent className="p-4 space-y-3">
-        <div className="flex items-start gap-3">
-          <div
-            aria-hidden
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-semibold"
-          >
-            {initials(name)}
-          </div>
+      <CardContent className="space-y-3 p-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <Avatar name={name} size="lg" />
           <div className="min-w-0 flex-1">
             <p className="truncate font-medium">{name}</p>
+            {contactLine && <p className="truncate text-sm text-muted-foreground">{contactLine}</p>}
             {company && <p className="truncate text-sm text-muted-foreground">{company}</p>}
           </div>
-        </div>
-
-        <div className="flex gap-2">
-          {email && (
-            <a
-              href={`mailto:${email}`}
-              aria-label="Email"
-              className="inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md border border-border text-sm hover:bg-muted"
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            {email && (
+              <a href={`mailto:${email}`} aria-label="Email" className={contactActionClass}>
+                <Mail /> Email
+              </a>
+            )}
+            {phone && (
+              <a href={`tel:${phone}`} aria-label="Call" className={contactActionClass}>
+                <Phone /> Call
+              </a>
+            )}
+            {portalAction}
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label={expanded ? 'Collapse contact' : 'Expand contact'}
+              aria-expanded={expanded}
+              onClick={() => setExpanded((v) => !v)}
             >
-              <Mail className="h-4 w-4" /> Email
-            </a>
-          )}
-          {phone && (
-            <a
-              href={`tel:${phone}`}
-              aria-label="Call"
-              className="inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md border border-border text-sm hover:bg-muted"
-            >
-              <Phone className="h-4 w-4" /> Call
-            </a>
-          )}
+              {expanded ? 'Less' : 'More'}
+              <ChevronDown className={`transition-transform ${expanded ? 'rotate-180' : ''}`} />
+            </Button>
+            {customer && (
+              <Link href={`/${orgSlug}/clients/${customer.id}`} className="text-xs text-primary hover:underline">
+                View customer
+              </Link>
+            )}
+          </div>
         </div>
-
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            aria-label={expanded ? 'Collapse contact' : 'Expand contact'}
-            aria-expanded={expanded}
-            onClick={() => setExpanded((v) => !v)}
-            className="flex flex-1 items-center justify-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-          >
-            {expanded ? 'Less' : 'More'}
-            <ChevronDown className={`h-3.5 w-3.5 transition-transform ${expanded ? 'rotate-180' : ''}`} />
-          </button>
-          {customer && (
-            <Link href={`/${orgSlug}/clients/${customer.id}`} className="text-xs underline text-muted-foreground hover:text-foreground">
-              View customer
-            </Link>
-          )}
-        </div>
-
         {expanded && (
           <dl className="space-y-1.5 border-t border-border pt-3 text-sm">
             {email && <div className="flex justify-between gap-2"><dt className="text-muted-foreground">Email</dt><dd className="truncate">{email}</dd></div>}
             {phone && <div className="flex justify-between gap-2"><dt className="text-muted-foreground">Phone</dt><dd>{phone}</dd></div>}
             {tags.length > 0 && (
               <div className="flex flex-wrap gap-1 pt-1">
-                {tags.map((t) => <Badge key={t} variant="secondary">{t}</Badge>)}
+                {tags.map((t) => <StatusPill key={t} tone="neutral">{t}</StatusPill>)}
               </div>
             )}
             {notes && <p className="pt-1 text-muted-foreground">{notes}</p>}

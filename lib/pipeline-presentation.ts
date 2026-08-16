@@ -64,12 +64,25 @@ export const VENDOR_TONE: Record<VendorStatus, Tone> = {
 }
 
 /**
- * The cockpit money convention: thousands separator, no cents. Matches
- * ClientKpiBand.tsx:12. Deliberately NOT lib/utils.ts `formatMoney`, which
- * renders `$1234.50` (no separator) and is pinned by the ops/catalog tests.
+ * The cockpit money convention: thousands separator; cents ONLY when the amount
+ * actually has them. Matches ClientKpiBand.tsx:12 for the round KPI figures it
+ * was written for, and stays honest on the billing surfaces that also use it.
+ *
+ * The `Number.isInteger` switch is load-bearing. Bare `toLocaleString()` caps at
+ * three fraction digits but sets no MINIMUM, so a $1,200.50 invoice balance
+ * renders "$1,200.5" — a mislabelled amount of money on a billing pane. Pinning
+ * minimumFractionDigits to 2 unconditionally would instead turn every KPI tile
+ * into "$12,000.00" and crowd the band. So: whole amounts stay whole, fractional
+ * amounts get exactly two places.
+ *
+ * Deliberately NOT lib/utils.ts `formatMoney`, which renders `$1234.50` (no
+ * separator) and is pinned by the ops/catalog tests.
  */
 export function money(n: number): string {
-  return `$${n.toLocaleString()}`
+  return `$${n.toLocaleString('en-US', {
+    minimumFractionDigits: Number.isInteger(n) ? 0 : 2,
+    maximumFractionDigits: 2,
+  })}`
 }
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']

@@ -41,17 +41,21 @@ describe('ConvertToWorkCard', () => {
     expect(screen.getByLabelText('Headcount')).toHaveValue(60)
   })
 
+  // The linked job is a RelatedRecordCard row now: the whole row is the link, so
+  // its accessible name is the job name (plus its pill), not the old "View job →"
+  // anchor text.
   it('links to the job instead of offering conversion when one exists', () => {
     const job = { id: 'e1', slug: 'nguyen-wedding-2026', name: 'Nguyen Wedding' } as Event
     render(<ConvertToWorkCard {...props} job={job} />)
-    expect(screen.getByRole('link', { name: /view job/i })).toHaveAttribute('href', '/acme/nguyen-wedding-2026/ops')
+    expect(screen.getByRole('link', { name: /Nguyen Wedding/ })).toHaveAttribute('href', '/acme/nguyen-wedding-2026/ops')
+    expect(screen.getByText('Scheduled')).toHaveClass('bg-[var(--status-confirmed-bg)]')
     expect(screen.queryByRole('button', { name: /convert to work/i })).not.toBeInTheDocument()
   })
 
   it('keeps showing the linked job even after the stage moves off closed_won', () => {
     const job = { id: 'e1', slug: 'nguyen-wedding-2026', name: 'Nguyen Wedding' } as Event
     render(<ConvertToWorkCard {...props} lead={{ ...won, stage: 'proposal' } as Lead} job={job} />)
-    expect(screen.getByRole('link', { name: /view job/i })).toHaveAttribute('href', '/acme/nguyen-wedding-2026/ops')
+    expect(screen.getByRole('link', { name: /Nguyen Wedding/ })).toHaveAttribute('href', '/acme/nguyen-wedding-2026/ops')
   })
 
   it('prefills the form from the opportunity', () => {

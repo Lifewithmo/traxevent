@@ -1,10 +1,11 @@
 'use client'
 
 import { useState } from 'react'
-import Link from 'next/link'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
+import { RelatedRecordCard, type RelatedRow } from '@/components/ui/related-record-card'
+import { StatusPill } from '@/components/ui/status-pill'
+import { money, PROPOSAL_TONE } from '@/lib/pipeline-presentation'
 import { proposalDisplayRange, PROPOSAL_STATUS_LABELS } from '@/lib/proposals'
 import type { Proposal } from '@/lib/types'
 
@@ -15,72 +16,87 @@ interface LeadProposalsClientProps {
   proposals: Proposal[]
 }
 
-const money = (n: number) => `$${n.toFixed(2)}`
+/** Rows shown before the operator asks for the rest. */
+const PREVIEW = 3
 
+/**
+ * "Where does the offer stand, and can I get the link out?"
+ *
+ * The deciding value per row is the price, so it is the right-hand figure in
+ * money tone; status carries its own per-state tone rather than the one gray
+ * badge every status used to share.
+ *
+ * The per-row "Copy client link" button is gone, not lost: the builder this row
+ * opens already owns that control (ProposalBuilderClient.tsx:145). On the row it
+ * was a peer-weight button competing with the row itself for the click, on every
+ * row, for a link that only means anything once the proposal is sent.
+ */
+
+/**
+ * The "so what" under a row. Deliberately not the status label — the pill
+ * already says that — but the thing that decides whether to chase: a sent
+ * proposal the client has never opened is a different problem from one they read
+ * and went quiet on.
+ */
+function proposalNote(p: Proposal, ranged: boolean): string | undefined {
+  if (p.status === 'sent') return p.first_opened_at ? 'opened by client' : 'not opened yet'
+  if (ranged) return 'range across packages'
+  return undefined
+}
 export function LeadProposalsClient({ orgSlug, leadId, proposals }: LeadProposalsClientProps) {
-  const [copied, setCopied] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const router = useRouter()
+  const [showAll, setShowAll] = useState(false)
 
-  async function handleCopy(token: string) {
-    setError(null)
-    try {
-      await navigator.clipboard.writeText(`${window.location.origin}/proposals/${token}`)
-      setCopied(token)
-    } catch {
-      setError('Could not copy link.')
+  const rows: RelatedRow[] = proposals.map((p) => {
+    const { min, max } = proposalDisplayRange(p)
+    return {
+      id: p.id,
+      title: p.title || 'Untitled proposal',
+      subtitle: proposalNote(p, min !== max),
+      badge: <StatusPill tone={PROPOSAL_TONE[p.status]}>{PROPOSAL_STATUS_LABELS[p.status]}</StatusPill>,
+      amount: min === max ? money(min) : `${money(min)}–${money(max)}`,
+      amountTone: 'money',
+      href: `/${orgSlug}/leads/${leadId}/proposals/${p.id}`,
     }
+  })
+
+  const visible = showAll ? rows : rows.slice(0, PREVIEW)
+  const newProposalHref = `/${orgSlug}/leads/${leadId}/proposals/new`
+
+  function goToNew() {
+    router.push(newProposalHref)
   }
 
   return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader className="flex-row items-center justify-between space-y-0">
-          <CardTitle className="text-base">Proposals</CardTitle>
-          <Link
-            href={`/${orgSlug}/leads/${leadId}/proposals/new`}
-            className="inline-flex h-8 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-          >
-            New proposal
-          </Link>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div aria-live="polite" aria-atomic="true">
-            {error && <p className="text-sm text-destructive">{error}</p>}
+    <RelatedRecordCard
+      title="Proposals"
+      count={rows.length}
+      rows={visible}
+      // The kit's own overflow line ("View all N →", related-record-card.tsx:53)
+      // is a non-interactive <p> styled as a link, and it renders the moment
+      // rows.length exceeds previewLimit. Pinning previewLimit to what we
+      // actually pass keeps it from ever firing; the real control is in `footer`.
+      previewLimit={visible.length || 1}
+      newLabel="+ New"
+      onNew={goToNew}
+      emptyTitle="No proposals yet"
+      emptyCtaLabel="Draft a proposal"
+      onEmptyCta={goToNew}
+      footer={
+        rows.length > PREVIEW ? (
+          <div className="border-t border-border px-3 py-1.5 text-center">
+            <Button variant="link" size="xs" onClick={() => setShowAll((v) => !v)}>
+              {showAll ? 'Show fewer' : `Show all ${rows.length}`}
+            </Button>
           </div>
-
-          {proposals.length === 0 && (
-            <p className="text-sm text-muted-foreground">No proposals yet.</p>
-          )}
-
-          {proposals.map((p) => {
-            const { min, max } = proposalDisplayRange(p)
-            return (
-              <div key={p.id} className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2">
-                <div className="flex-1 space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium">{p.title || 'Untitled proposal'}</span>
-                    <Badge variant="secondary">{PROPOSAL_STATUS_LABELS[p.status]}</Badge>
-                  </div>
-                  <p className="text-xs text-muted-foreground">{min === max ? money(min) : `${money(min)}–${money(max)}`}</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  {p.status !== 'draft' && (
-                    <Button size="sm" variant="outline" onClick={() => handleCopy(p.token)}>
-                      {copied === p.token ? 'Copied!' : 'Copy client link'}
-                    </Button>
-                  )}
-                  <Link
-                    href={`/${orgSlug}/leads/${leadId}/proposals/${p.id}`}
-                    className="inline-flex h-7 items-center rounded-md border border-border bg-background px-2.5 text-[0.8rem] font-medium hover:bg-muted"
-                  >
-                    Edit
-                  </Link>
-                </div>
-              </div>
-            )
-          })}
-        </CardContent>
-      </Card>
-    </div>
+        ) : undefined
+      }
+      // NOT hidden below md when empty. The R8 "suppress supplementary context
+      // on a phone" idiom applies to context — a card whose EmptyState CTA is
+      // the ONLY route to /leads/[leadId]/proposals/new on this screen is the
+      // affordance, and hiding it leaves a brand-new opportunity (the most
+      // common state, and the one where drafting a proposal is the whole point)
+      // with no way to start one on a phone.
+    />
   )
 }

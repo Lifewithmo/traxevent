@@ -1,13 +1,18 @@
 'use client'
 
 import { useState } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog'
+import { EmptyState } from '@/components/ui/empty-state'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Badge } from '@/components/ui/badge'
+import { StatusPill } from '@/components/ui/status-pill'
+import { PipelineStatTile } from '@/components/admin/pipeline/PipelineStatTile'
 import { createVendor, updateVendor, deleteVendor } from '@/actions/vendors'
 import { VENDOR_STATUSES, VENDOR_STATUS_LABELS, confirmedVendorCost, totalVendorCost } from '@/lib/vendors'
+import { money, VENDOR_TONE } from '@/lib/pipeline-presentation'
 import type { Vendor, VendorStatus } from '@/lib/types'
 
 interface LeadVendorsClientProps {
@@ -16,13 +21,26 @@ interface LeadVendorsClientProps {
   vendors: Vendor[]
 }
 
-const money = (n: number) => `$${n.toFixed(2)}`
-
+/**
+ * "Who is supplying this job, and what is it costing me?"
+ *
+ * This pane keeps a bespoke surface rather than moving onto RelatedRecordCard:
+ * that card has no per-row action slot, and every row here owns two — a status
+ * change and a delete. It matches the card's chrome exactly so the three
+ * document panes read as siblings.
+ *
+ * The deciding numbers were already computed and thrown away — `confirmedVendorCost`
+ * and `totalVendorCost` were rendered as a 12px gray sentence in the header. They
+ * are figures now: committed spend is the one an operator margins against, so it
+ * carries money tone, and the estimate beside it says how much of it is still
+ * only potential.
+ */
 export function LeadVendorsClient({ orgId, leadId, vendors: initial }: LeadVendorsClientProps) {
   const [vendors, setVendors] = useState<Vendor[]>(initial)
   const [creating, setCreating] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [pendingDelete, setPendingDelete] = useState<Vendor | null>(null)
 
   const [name, setName] = useState('')
   const [service, setService] = useState('')
@@ -36,6 +54,10 @@ export function LeadVendorsClient({ orgId, leadId, vendors: initial }: LeadVendo
   function resetForm() {
     setName(''); setService(''); setContactName(''); setEmail(''); setPhone('')
     setCost(''); setStatus('potential'); setNotes('')
+  }
+
+  function openComposer() {
+    setCreating(true); setError(null)
   }
 
   async function handleCreate() {
@@ -73,8 +95,10 @@ export function LeadVendorsClient({ orgId, leadId, vendors: initial }: LeadVendo
     }
   }
 
-  async function handleDelete(vendor: Vendor) {
-    if (!confirm(`Delete "${vendor.name}"?`)) return
+  async function confirmDelete() {
+    const vendor = pendingDelete
+    if (!vendor) return
+    setPendingDelete(null)
     setSaving(true); setError(null)
     const prev = vendors
     setVendors((p) => p.filter((v) => v.id !== vendor.id))
@@ -86,27 +110,53 @@ export function LeadVendorsClient({ orgId, leadId, vendors: initial }: LeadVendo
     } finally { setSaving(false) }
   }
 
-  return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader className="flex-row items-center justify-between space-y-0">
-          <div className="space-y-1">
-            <CardTitle className="text-base">Vendors</CardTitle>
-            <p className="text-xs text-muted-foreground">
-              Confirmed: {money(confirmedVendorCost(vendors))} · Est. total: {money(totalVendorCost(vendors))}
-            </p>
-          </div>
-          {!creating && (
-            <Button onClick={() => { setCreating(true); setError(null) }}>New vendor</Button>
-          )}
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div aria-live="polite" aria-atomic="true">
-            {error && <p className="text-sm text-destructive">{error}</p>}
-          </div>
+  const confirmed = confirmedVendorCost(vendors)
+  const total = totalVendorCost(vendors)
+  const confirmedCount = vendors.filter((v) => v.status === 'confirmed').length
+  const undecided = Math.round((total - confirmed) * 100) / 100
 
-          {creating && (
-            <div className="space-y-3 rounded-md border border-border p-3">
+  return (
+    <div className="space-y-3">
+      {/* Empty means there is nothing to roll up — two "$0" tiles over an
+          invitation is noise, not a figure band. */}
+      {vendors.length > 0 && (
+        <div className="grid grid-cols-2 gap-2.5">
+          {/* `contents` keeps the tile itself the grid item, so the test hook
+              costs no layout. PipelineStatTile takes className, not arbitrary
+              DOM props. */}
+          <div data-testid="vendor-confirmed-cost" className="contents">
+            <PipelineStatTile
+              label="Committed"
+              value={money(confirmed)}
+              tone="money"
+              note={`${confirmedCount} of ${vendors.length} confirmed`}
+            />
+          </div>
+          <div data-testid="vendor-total-cost" className="contents">
+            <PipelineStatTile
+              label="Est. total"
+              value={money(total)}
+              note={undecided > 0 ? `${money(undecided)} still undecided` : 'all decided'}
+            />
+          </div>
+        </div>
+      )}
+
+      <section className="overflow-hidden rounded-xl border border-border bg-card shadow-xs">
+        <header className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
+          <h4 className="text-[13px] font-semibold">Vendors</h4>
+          {!creating && (
+            <Button variant="ghost" size="xs" onClick={openComposer}>+ New</Button>
+          )}
+        </header>
+
+        <div aria-live="polite" aria-atomic="true">
+          {error && <p className="px-3 pt-2 text-sm text-destructive">{error}</p>}
+        </div>
+
+        {creating && (
+          <div className="space-y-3 border-b border-border p-3">
+            <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1">
                 <Label htmlFor="vName">Name</Label>
                 <Input id="vName" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Blooms & Co." />
@@ -144,59 +194,96 @@ export function LeadVendorsClient({ orgId, leadId, vendors: initial }: LeadVendo
                   ))}
                 </select>
               </div>
-              <div className="space-y-1">
-                <Label htmlFor="vNotes">Notes</Label>
-                <textarea
-                  id="vNotes"
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  placeholder="Optional notes"
-                  className="flex min-h-16 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                />
-              </div>
-              <div className="flex gap-2">
-                <Button onClick={handleCreate} disabled={saving || !name.trim()}>{saving ? 'Saving…' : 'Save'}</Button>
-                <Button variant="outline" onClick={() => { setCreating(false); resetForm() }}>Cancel</Button>
-              </div>
             </div>
-          )}
+            <div className="space-y-1">
+              <Label htmlFor="vNotes">Notes</Label>
+              <textarea
+                id="vNotes"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Optional notes"
+                className="flex min-h-16 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              />
+            </div>
+            <div className="flex gap-2">
+              <Button onClick={handleCreate} disabled={saving || !name.trim()}>{saving ? 'Saving…' : 'Save'}</Button>
+              <Button variant="outline" onClick={() => { setCreating(false); resetForm() }}>Cancel</Button>
+            </div>
+          </div>
+        )}
 
-          {vendors.length === 0 && !creating && (
-            <p className="text-sm text-muted-foreground">No vendors yet.</p>
-          )}
+        {vendors.length === 0 && !creating && (
+          <EmptyState
+            title="No vendors yet"
+            description="Track florists, rentals and staffing here so the job's committed cost stays honest."
+            action={<Button variant="outline" size="sm" onClick={openComposer}>Add a vendor</Button>}
+          />
+        )}
 
-          {vendors.map((v) => (
-            <div key={v.id} className="flex items-start justify-between gap-3 rounded-md border border-border px-3 py-2">
-              <div className="flex-1 space-y-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium">{v.name}</span>
-                  {v.service && <Badge variant="secondary">{v.service}</Badge>}
+        {vendors.map((v) => {
+          const contact = [v.service, v.contact_name, v.email, v.phone].filter(Boolean).join(' · ')
+          return (
+            <div key={v.id} className="flex items-start justify-between gap-3 border-t border-border px-3 py-2 first:border-t-0">
+              <div className="min-w-0 flex-1 space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[13px] font-medium">{v.name}</span>
+                  <StatusPill tone={VENDOR_TONE[v.status]}>{VENDOR_STATUS_LABELS[v.status]}</StatusPill>
                 </div>
-                {(v.contact_name || v.email || v.phone) && (
-                  <p className="text-xs text-muted-foreground">
-                    {[v.contact_name, v.email, v.phone].filter(Boolean).join(' · ')}
-                  </p>
-                )}
-                {v.cost != null && <p className="text-xs text-muted-foreground">{money(v.cost)}</p>}
+                {contact && <p className="truncate text-xs text-muted-foreground">{contact}</p>}
                 {v.notes && <p className="text-xs text-muted-foreground">{v.notes}</p>}
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex shrink-0 items-center gap-2">
+                {v.cost != null && (
+                  <span
+                    data-testid={`vendor-cost-${v.id}`}
+                    className="text-[13px] font-semibold tabular-nums text-[var(--money-green)]"
+                  >
+                    {money(v.cost)}
+                  </span>
+                )}
                 <select
                   value={v.status}
                   onChange={(e) => handleStatusChange(v, e.target.value as VendorStatus)}
                   aria-label={`Status for ${v.name}`}
-                  className="h-8 rounded-md border border-input bg-background px-2 text-sm"
+                  className="h-7 rounded-md border border-input bg-background px-2 text-xs"
                 >
                   {VENDOR_STATUSES.map((s) => (
                     <option key={s} value={s}>{VENDOR_STATUS_LABELS[s]}</option>
                   ))}
                 </select>
-                <Button size="sm" variant="outline" onClick={() => handleDelete(v)} disabled={saving}>Delete</Button>
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  aria-label={`Delete ${v.name}`}
+                  onClick={() => setPendingDelete(v)}
+                  disabled={saving}
+                >
+                  Delete
+                </Button>
               </div>
             </div>
-          ))}
-        </CardContent>
-      </Card>
+          )
+        })}
+
+      </section>
+
+      {/* Kit dialog, not window.confirm: the native prompt is unstyled, blocks
+          the main thread, and cannot say WHICH vendor without string-building a
+          title into it. */}
+      <Dialog open={pendingDelete !== null} onOpenChange={(open) => { if (!open) setPendingDelete(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete this vendor?</DialogTitle>
+            <DialogDescription>
+              {pendingDelete ? `“${pendingDelete.name}” will be removed from this opportunity. This cannot be undone.` : ''}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPendingDelete(null)}>Cancel</Button>
+            <Button variant="destructive" onClick={confirmDelete}>Delete</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

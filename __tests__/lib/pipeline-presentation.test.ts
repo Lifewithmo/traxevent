@@ -73,6 +73,16 @@ describe('money', () => {
     expect(money(0)).toBe('$0')
     expect(money(1234567)).toBe('$1,234,567')
   })
+
+  // money() is on billing surfaces (invoice balances, proposal totals, vendor
+  // cost), not just rounded KPI tiles. Bare toLocaleString() sets no MINIMUM
+  // fraction digits, so $1,200.50 used to render "$1,200.5" — a false statement
+  // about money on a pane whose whole job is what the customer owes.
+  it('keeps both cents on a fractional amount', () => {
+    expect(money(1200.5)).toBe('$1,200.50')
+    expect(money(0.05)).toBe('$0.05')
+    expect(money(1234567.89)).toBe('$1,234,567.89')
+  })
 })
 
 describe('shortDate', () => {
