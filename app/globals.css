@@ -248,6 +248,8 @@
   --status-alert-bg: #3a1f18;    --status-alert-fg: #e6a793;
   --status-neutral-bg: #26201a;  --status-neutral-fg: #a9998a;
   --money-green: #9cbb7c;
+  --money-green-strong: #a6c487;
+  --money-green-border: #3b4f2a;
 }
 
 @layer base {

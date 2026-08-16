@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react'
+import { it, expect } from 'vitest'
 import { Menu, MenuTrigger, MenuContent, MenuItem } from '@/components/ui/menu'
 
 it('renders a trigger and reveals items when opened', async () => {

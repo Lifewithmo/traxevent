@@ -19,9 +19,9 @@ describe('buildClientStory', () => {
     expect(story([]).parts).toEqual([])
   })
 
-  it('leads with the paid history and flags long silence', () => {
+  it('leads with the booked history and flags long silence', () => {
     const s = story([won('a', '2025-01-10', 2000), won('b', '2025-06-10', 500)])
-    expect(s.parts[0]).toBe('2 events since Jan 2025, $2,500 paid')
+    expect(s.parts[0]).toBe('2 events since Jan 2025, $2,500 booked')
     expect(s.parts).toContain('nothing booked in 13 months')
     expect(s.dormant).toBe(true)
   })

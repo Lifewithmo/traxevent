@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react'
+import { it, expect } from 'vitest'
 import { EmptyState } from '@/components/ui/empty-state'
 
 it('renders title, description and an action slot', () => {

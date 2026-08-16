@@ -191,7 +191,14 @@ export function ClientQueueRail({ orgSlug, rows }: ClientQueueRailProps) {
           <h2 className="text-sm font-semibold text-sidebar-foreground">Clients</h2>
           <span className="text-xs text-muted-foreground">{rows.length}</span>
         </div>
-        <button type="button" className="text-xs font-medium text-primary hover:underline">
+        {/* Not wired up yet — no onClick. aria-disabled + title so it doesn't
+            read as a working control until it is. */}
+        <button
+          type="button"
+          aria-disabled="true"
+          title="Add client (coming soon)"
+          className="text-xs font-medium text-primary hover:underline"
+        >
           + Add
         </button>
       </div>
@@ -199,6 +206,7 @@ export function ClientQueueRail({ orgSlug, rows }: ClientQueueRailProps) {
       <div className="px-3 pt-3">
         <input
           type="search"
+          aria-label="Search clients"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search clients…"
