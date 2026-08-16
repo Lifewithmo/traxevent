@@ -4,6 +4,7 @@ import { adminDb } from '@/lib/firebase-admin'
 import { randomBytes } from 'crypto'
 import { generateAccessToken } from '@/lib/tokens'
 import { assertOrgMember, assertOrgAdmin } from '@/lib/auth/assert'
+import { logActivity } from '@/lib/activity'
 import { updateProposalDraftCore } from '@/lib/proposals/draft-core'
 import { MAX_TERMS_CHARS } from '@/lib/proposals/draft'
 import type { ProposalDraftInput } from '@/lib/proposals/draft'
@@ -77,13 +78,23 @@ export async function sendProposal(orgId: string, proposalId: string): Promise<v
   await assertOrgAdmin(orgId)
   const ref = proposalsRef(orgId).doc(proposalId)
   const snap = await ref.get()
-  if (snap?.exists) {
-    const data = snap.data() as Proposal
-    if (data.signature || data.pending_signature) {
+  const proposalBeforeSend = snap?.exists ? (snap.data() as Proposal) : undefined
+  if (proposalBeforeSend) {
+    if (proposalBeforeSend.signature || proposalBeforeSend.pending_signature) {
       throw new Error('This proposal is signed and can no longer be edited')
     }
   }
   await ref.update({ status: 'sent', updated_at: new Date().toISOString() })
+
+  // Best-effort activity log, after the authoritative status write.
+  if (proposalBeforeSend) {
+    await logActivity(orgId, {
+      parent_type: 'opportunity',
+      parent_id: proposalBeforeSend.lead_id,
+      kind: 'proposal',
+      summary: `Proposal sent — ${proposalBeforeSend.title ?? 'Untitled proposal'}`,
+    })
+  }
 
   // Voice capture (redesign spec §4): the sent document's final text becomes
   // few-shot voice material for future AI drafts. Best-effort — a capture
