@@ -17,8 +17,10 @@ const sendInvoiceMock = vi.fn(
   async (_orgId: string, _invoiceId: string, _input: SendInput) => ({ number: 'BRW-1042', emailDelivered: true }),
 )
 const updateInvoiceMock = vi.fn(async (_orgId: string, _invoiceId: string, _updates: UpdatePayload) => {})
+const voidInvoiceMock = vi.fn(async (_orgId: string, _invoiceId: string) => {})
 vi.mock('@/actions/invoices', () => ({
-  voidInvoice: vi.fn(), recordPayment: vi.fn(), deleteInvoice: vi.fn(),
+  recordPayment: vi.fn(), deleteInvoice: vi.fn(),
+  voidInvoice: (...args: Parameters<typeof voidInvoiceMock>) => voidInvoiceMock(...args),
   sendInvoice: (...args: Parameters<typeof sendInvoiceMock>) => sendInvoiceMock(...args),
   updateInvoice: (...args: Parameters<typeof updateInvoiceMock>) => updateInvoiceMock(...args),
 }))
@@ -387,6 +389,153 @@ describe('InvoiceEditorClient — composition invariants', () => {
   it('omits the History disclosure entirely when there are no versions', () => {
     render(<InvoiceEditorClient orgId="org1" orgSlug="s" leadId="l" invoice={sentInvoice({ versions: [] })} />)
     expect(screen.queryByText(/^History$/i)).not.toBeInTheDocument()
+  })
+})
+
+// --- shared UI kit: StatusPill, EmptyState, overflow Menu, ConfirmDialog ---
+describe('InvoiceEditorClient — kit surfaces', () => {
+  const pillOf = (container: HTMLElement) => container.querySelector('[data-slot="status-pill"]')
+
+  it('reads the money state off the pill, not just the lifecycle', () => {
+    const paid = render(
+      <InvoiceEditorClient orgId="org1" orgSlug="s" leadId="l"
+        invoice={sentInvoice({
+          line_items: [{ description: 'x', quantity: 1, unit_price: 100 }],
+          payments: [{ amount: 100, recorded_at: '2026-08-02T00:00:00.000Z' }],
+        })} />,
+    )
+    expect(pillOf(paid.container)).toHaveTextContent('Paid')
+    expect(pillOf(paid.container)?.className).toMatch(/status-confirmed/)
+    paid.unmount()
+
+    const overdue = render(
+      <InvoiceEditorClient orgId="org1" orgSlug="s" leadId="l"
+        invoice={sentInvoice({ due_date: '2020-01-01', line_items: [{ description: 'x', quantity: 1, unit_price: 100 }] })} />,
+    )
+    expect(pillOf(overdue.container)).toHaveTextContent('Overdue')
+    expect(pillOf(overdue.container)?.className).toMatch(/status-alert/)
+    overdue.unmount()
+
+    const partial = render(
+      <InvoiceEditorClient orgId="org1" orgSlug="s" leadId="l"
+        invoice={sentInvoice({
+          line_items: [{ description: 'x', quantity: 1, unit_price: 100 }],
+          payments: [{ amount: 40, recorded_at: '2026-08-02T00:00:00.000Z' }],
+        })} />,
+    )
+    expect(pillOf(partial.container)).toHaveTextContent('Partial')
+    partial.unmount()
+
+    const draft = render(<InvoiceEditorClient orgId="org1" orgSlug="s" leadId="l" invoice={draftInvoice()} />)
+    expect(pillOf(draft.container)).toHaveTextContent('Draft')
+    expect(pillOf(draft.container)?.className).toMatch(/status-neutral/)
+  })
+
+  it('void reads as Void on the pill, never as overdue', () => {
+    const { container } = render(
+      <InvoiceEditorClient orgId="org1" orgSlug="s" leadId="l"
+        invoice={inv({ lifecycle: 'void', due_date: '2020-01-01', line_items: [{ description: 'x', quantity: 1, unit_price: 100 }] })} />,
+    )
+    expect(pillOf(container)).toHaveTextContent('Void')
+  })
+
+  it('the empty line-items state carries its own CTA while editable', () => {
+    const { container } = render(
+      <InvoiceEditorClient orgId="org1" orgSlug="s" leadId="l" invoice={draftInvoice({ line_items: [] })} />,
+    )
+    const empty = container.querySelector('[data-slot="empty-state"]') as HTMLElement
+    expect(empty).toHaveTextContent(/no line items yet/i)
+    expect(within(empty).getByRole('button', { name: /add from catalog/i })).toBeInTheDocument()
+    expect(within(empty).getByRole('button', { name: /add blank line/i })).toBeInTheDocument()
+  })
+
+  // The old copy said "add one below" while the controls it pointed at were
+  // gated on !locked — a locked empty invoice aimed the operator at nothing.
+  it('offers no dead CTA when the empty invoice is locked', () => {
+    render(<InvoiceEditorClient orgId="org1" orgSlug="s" leadId="l" invoice={sentInvoice({ line_items: [] })} />)
+    expect(screen.getByText(/no line items yet/i)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /add from catalog/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /add blank line/i })).not.toBeInTheDocument()
+    expect(screen.queryByText(/add one below/i)).not.toBeInTheDocument()
+  })
+
+  it('the payments empty state points at the amount field, and offers nothing on a void invoice', async () => {
+    const user = userEvent.setup()
+    const { unmount } = render(
+      <InvoiceEditorClient orgId="org1" orgSlug="s" leadId="l"
+        invoice={draftInvoice({ line_items: [{ description: 'x', quantity: 1, unit_price: 100 }] })} />,
+    )
+    expect(screen.getByText(/no payments yet/i)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /record the first payment/i }))
+    expect(screen.getByLabelText('Amount')).toHaveFocus()
+    unmount()
+
+    render(
+      <InvoiceEditorClient orgId="org1" orgSlug="s" leadId="l"
+        invoice={inv({ lifecycle: 'void', line_items: [{ description: 'x', quantity: 1, unit_price: 100 }] })} />,
+    )
+    expect(screen.getByText(/no payments yet/i)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /record the first payment/i })).not.toBeInTheDocument()
+  })
+
+  it('keeps the destructive actions in the overflow, scoped to the lifecycle', async () => {
+    const user = userEvent.setup()
+    const sent = render(
+      <InvoiceEditorClient orgId="org1" orgSlug="s" leadId="l"
+        invoice={sentInvoice({ line_items: [{ description: 'x', quantity: 1, unit_price: 100 }] })} />,
+    )
+    await user.click(screen.getByRole('button', { name: 'More actions' }))
+    expect(await screen.findByRole('menuitem', { name: /void invoice/i })).toBeInTheDocument()
+    expect(screen.queryByRole('menuitem', { name: /delete invoice/i })).not.toBeInTheDocument()
+    sent.unmount()
+
+    const draft = render(<InvoiceEditorClient orgId="org1" orgSlug="s" leadId="l" invoice={draftInvoice()} />)
+    await user.click(screen.getByRole('button', { name: 'More actions' }))
+    expect(await screen.findByRole('menuitem', { name: /delete invoice/i })).toBeInTheDocument()
+    expect(screen.queryByRole('menuitem', { name: /void invoice/i })).not.toBeInTheDocument()
+    draft.unmount()
+
+    // Neither action applies to a voided invoice, so the trigger itself is gone.
+    render(<InvoiceEditorClient orgId="org1" orgSlug="s" leadId="l" invoice={inv({ lifecycle: 'void' })} />)
+    expect(screen.queryByRole('button', { name: 'More actions' })).not.toBeInTheDocument()
+  })
+
+  it('Void goes through an in-app ConfirmDialog, and cancelling voids nothing', async () => {
+    const user = userEvent.setup()
+    voidInvoiceMock.mockClear()
+    // The old guard was window.confirm — unstyled, blocking, and untestable.
+    const nativeConfirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    render(
+      <InvoiceEditorClient orgId="org1" orgSlug="s" leadId="l"
+        invoice={sentInvoice({ line_items: [{ description: 'x', quantity: 1, unit_price: 100 }] })} />,
+    )
+    await user.click(screen.getByRole('button', { name: 'More actions' }))
+    await user.click(await screen.findByRole('menuitem', { name: /void invoice/i }))
+
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByText(/void this invoice\?/i)).toBeInTheDocument()
+    expect(within(dialog).getByText(/cannot be undone/i)).toBeInTheDocument()
+    expect(nativeConfirm).not.toHaveBeenCalled()
+
+    await user.click(within(dialog).getByRole('button', { name: /cancel/i }))
+    expect(voidInvoiceMock).not.toHaveBeenCalled()
+    nativeConfirm.mockRestore()
+  })
+
+  it('confirming the dialog is what actually voids the invoice', async () => {
+    const user = userEvent.setup()
+    voidInvoiceMock.mockClear()
+    render(
+      <InvoiceEditorClient orgId="org1" orgSlug="s" leadId="l"
+        invoice={sentInvoice({ line_items: [{ description: 'x', quantity: 1, unit_price: 100 }] })} />,
+    )
+    await user.click(screen.getByRole('button', { name: 'More actions' }))
+    await user.click(await screen.findByRole('menuitem', { name: /void invoice/i }))
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: /void invoice/i }))
+
+    expect(voidInvoiceMock).toHaveBeenCalledWith('org1', 'inv1')
+    expect(await screen.findByText(/invoice voided/i)).toBeInTheDocument()
   })
 })
 
