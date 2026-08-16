@@ -328,7 +328,15 @@ export function BlockCanvas({
         </div>
       ))}
       {blocks.length === 0 && !disabled && (
-        <EmptyState title="No content yet" description="Use the + button to add your first section." />
+        // EmptyState hardcodes text-foreground/text-muted-foreground inside the
+        // kit component, which invert in dark mode — and this sits on the paper,
+        // which never does. className only reaches the outer div, so the ink is
+        // pinned through it. Same warm-ramp rule as the rest of this canvas.
+        <EmptyState
+          title="No content yet"
+          description="Use the + button to add your first section."
+          className="[&_p:first-of-type]:text-[var(--warm-950)] [&_p:last-of-type]:text-[var(--warm-500)]"
+        />
       )}
     </div>
   )
