@@ -37,7 +37,9 @@ export default async function EventLayout({
           // A roster-less org has no families data at all: reading the empty
           // collection would render "0 registrations" where the band's
           // "Guests expected" fallback belongs, so gate families out here.
-          allowedPages: rosterEnabled ? allowed : allowed.filter((p) => p !== 'families'),
+          // 'reports' also unlocks the families read in the aggregator, so it
+          // must be stripped alongside 'families' or the gate is defeated.
+          allowedPages: rosterEnabled ? allowed : allowed.filter((p) => p !== 'families' && p !== 'reports'),
         })
       : null
 

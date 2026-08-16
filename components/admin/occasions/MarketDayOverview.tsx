@@ -14,7 +14,7 @@ export function MarketDayOverview({
 }) {
   return (
     <div className="p-5 max-w-2xl">
-      <div className="mt-6 grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-4 sm:grid-cols-2">
         <div className="rounded-lg border bg-white p-4">
           <p className="text-xs uppercase tracking-wide text-muted-foreground">Location</p>
           <p className="mt-1 font-medium">{event.location?.name ?? 'Not set'}</p>
