@@ -1,8 +1,11 @@
 'use client'
 
 import type { Family } from '@/lib/types'
-import { StatusBadge } from '@/components/admin/StatusBadge'
+import { StatusPill } from '@/components/ui/status-pill'
 import { BulkToolbar } from '@/components/admin/BulkToolbar'
+
+const FAMILY_TONE = { pending: 'pending', confirmed: 'confirmed', waitlisted: 'alert', cancelled: 'neutral' } as const
+const FAMILY_LABEL = { pending: 'Pending', confirmed: 'Confirmed', waitlisted: 'Waitlist', cancelled: 'Cancelled' } as const
 
 const STATUS_FILTERS = [
   { key: 'all', label: 'All' },
@@ -173,7 +176,7 @@ export function FamiliesTable({
               </div>
               <div className="text-gray-500 text-xs truncate">—</div>
               <div>
-                <StatusBadge status={f.registration_status} />
+                <StatusPill tone={FAMILY_TONE[f.registration_status]}>{FAMILY_LABEL[f.registration_status]}</StatusPill>
               </div>
               <div
                 className={`font-semibold text-sm ${

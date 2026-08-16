@@ -242,6 +242,12 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+
+  --status-confirmed-bg: #22301a; --status-confirmed-fg: #bcd4a6;
+  --status-pending-bg: #382d13;  --status-pending-fg: #e3c07a;
+  --status-alert-bg: #3a1f18;    --status-alert-fg: #e6a793;
+  --status-neutral-bg: #26201a;  --status-neutral-fg: #a9998a;
+  --money-green: #9cbb7c;
 }
 
 @layer base {

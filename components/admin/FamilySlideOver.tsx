@@ -3,11 +3,14 @@
 import { useState, useEffect } from 'react'
 import type { Family, FamilyMember } from '@/lib/types'
 import { getAdminFamily, updateFamilyStatus } from '@/actions/admin-families'
-import { StatusBadge } from '@/components/admin/StatusBadge'
+import { StatusPill } from '@/components/ui/status-pill'
 import { FamilyDetailsTab } from '@/components/admin/tabs/FamilyDetailsTab'
 import { FamilyCampersTab } from '@/components/admin/tabs/FamilyCampersTab'
 import { FamilyPaymentTab } from '@/components/admin/tabs/FamilyPaymentTab'
 import { FamilyNotesTab } from '@/components/admin/tabs/FamilyNotesTab'
+
+const FAMILY_TONE = { pending: 'pending', confirmed: 'confirmed', waitlisted: 'alert', cancelled: 'neutral' } as const
+const FAMILY_LABEL = { pending: 'Pending', confirmed: 'Confirmed', waitlisted: 'Waitlist', cancelled: 'Cancelled' } as const
 
 type Tab = 'details' | 'campers' | 'payment' | 'notes'
 
@@ -109,7 +112,7 @@ export function FamilySlideOver({
                 {family.email} · Registered {new Date(family.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
               </p>
               <div className="mt-1.5">
-                <StatusBadge status={family.registration_status} />
+                <StatusPill tone={FAMILY_TONE[family.registration_status]}>{FAMILY_LABEL[family.registration_status]}</StatusPill>
               </div>
             </div>
           )}
