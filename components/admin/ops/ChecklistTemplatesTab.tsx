@@ -5,7 +5,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Badge } from '@/components/ui/badge'
+import { StatusPill } from '@/components/ui/status-pill'
+import { EmptyState } from '@/components/ui/empty-state'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { createChecklistTemplate, deleteChecklistTemplate } from '@/actions/work-packages'
 import { CHECKLIST_PHASES as PHASES } from '@/lib/ops/derive'
 import type { ChecklistTemplate, ChecklistPhase, ChecklistTemplateStep, EvidenceType } from '@/lib/types'
@@ -19,6 +21,9 @@ interface ChecklistTemplatesTabProps {
 
 const EVIDENCE: EvidenceType[] = ['none', 'photo', 'number']
 
+const SELECT_CLASS =
+  'block h-9 rounded-md border border-border bg-background px-2 text-sm text-foreground'
+
 export function ChecklistTemplatesTab({ orgId, isAdmin, templates: initial, ownTemplateIds: initialOwn }: ChecklistTemplatesTabProps) {
   const [templates, setTemplates] = useState(initial)
   const [ownIds, setOwnIds] = useState(new Set(initialOwn))
@@ -28,6 +33,7 @@ export function ChecklistTemplatesTab({ orgId, isAdmin, templates: initial, ownT
   const [name, setName] = useState('')
   const [phase, setPhase] = useState<ChecklistPhase>('prep')
   const [steps, setSteps] = useState<ChecklistTemplateStep[]>([{ text: '', evidence: 'none' }])
+  const [pendingDelete, setPendingDelete] = useState<ChecklistTemplate | null>(null)
 
   async function handleSave() {
     setSaving(true); setError(null)
@@ -47,7 +53,6 @@ export function ChecklistTemplatesTab({ orgId, isAdmin, templates: initial, ownT
   }
 
   async function handleDelete(t: ChecklistTemplate) {
-    if (!confirm(`Delete "${t.name}"? Packages that attach it will simply stop including it on new events.`)) return
     setSaving(true); setError(null)
     try {
       await deleteChecklistTemplate(orgId, t.id)
@@ -59,32 +64,41 @@ export function ChecklistTemplatesTab({ orgId, isAdmin, templates: initial, ownT
     }
   }
 
+  const isEmpty = templates.length === 0 && !creating
+
   return (
     <div className="space-y-4">
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-destructive">{error}</p>}
       {PHASES.map((ph) => {
         const inPhase = templates.filter((t) => t.phase === ph)
         if (inPhase.length === 0) return null
         return (
           <div key={ph}>
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">{ph}</h3>
+            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{ph}</h3>
             {inPhase.map((t) => (
               <Card key={t.id} className="mb-2">
-                <CardHeader className="flex flex-row items-center justify-between py-3">
-                  <CardTitle className="text-sm">{t.name}</CardTitle>
+                <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 py-3">
+                  <CardTitle className="text-sm text-foreground">{t.name}</CardTitle>
                   <div className="flex items-center gap-2">
-                    <Badge variant="secondary">{ownIds.has(t.id) ? 'Custom' : 'Built-in'}</Badge>
+                    <StatusPill tone={ownIds.has(t.id) ? 'confirmed' : 'neutral'}>
+                      {ownIds.has(t.id) ? 'Custom' : 'Built-in'}
+                    </StatusPill>
                     {isAdmin && ownIds.has(t.id) && (
-                      <Button variant="ghost" size="sm" aria-label={`Delete ${t.name}`} disabled={saving} onClick={() => handleDelete(t)}>
+                      <Button variant="ghost" size="sm" aria-label={`Delete ${t.name}`} disabled={saving} onClick={() => setPendingDelete(t)}>
                         Delete
                       </Button>
                     )}
                   </div>
                 </CardHeader>
                 <CardContent className="py-0 pb-3">
-                  <ol className="text-sm text-gray-700 list-decimal pl-5">
+                  <ol className="list-decimal pl-5 text-sm text-muted-foreground">
                     {t.steps.map((s, i) => (
-                      <li key={i}>{s.text}{s.evidence !== 'none' && <span className="text-xs text-gray-400"> — {s.evidence} evidence</span>}</li>
+                      <li key={i}>
+                        <span className="align-middle text-foreground">{s.text}</span>
+                        {s.evidence !== 'none' && (
+                          <StatusPill tone="neutral" className="ml-2 align-middle">{s.evidence}</StatusPill>
+                        )}
+                      </li>
                     ))}
                   </ol>
                 </CardContent>
@@ -93,17 +107,22 @@ export function ChecklistTemplatesTab({ orgId, isAdmin, templates: initial, ownT
           </div>
         )
       })}
-      {templates.length === 0 && !creating && (
-        <p className="py-6 text-center text-gray-500">No checklists yet.</p>
+
+      {isEmpty && (
+        <EmptyState
+          title="No checklists yet."
+          description="Checklists give the crew a phase-by-phase run of the job — prep through closeout."
+          action={isAdmin ? <Button onClick={() => setCreating(true)}>New checklist</Button> : undefined}
+        />
       )}
 
-      {isAdmin && !creating && <Button onClick={() => setCreating(true)}>New checklist</Button>}
+      {isAdmin && !creating && !isEmpty && <Button onClick={() => setCreating(true)}>New checklist</Button>}
 
       {isAdmin && creating && (
         <Card>
           <CardHeader><CardTitle className="text-base">New checklist</CardTitle></CardHeader>
           <CardContent className="space-y-3">
-            <div className="flex gap-3">
+            <div className="flex flex-wrap gap-3">
               <div>
                 <Label htmlFor="ct-name">Name</Label>
                 <Input id="ct-name" value={name} onChange={(e) => setName(e.target.value)} />
@@ -111,28 +130,28 @@ export function ChecklistTemplatesTab({ orgId, isAdmin, templates: initial, ownT
               <div>
                 <Label htmlFor="ct-phase">Phase</Label>
                 <select id="ct-phase" value={phase} onChange={(e) => setPhase(e.target.value as ChecklistPhase)}
-                  className="block h-9 rounded-md border border-gray-300 px-2 text-sm">
+                  className={SELECT_CLASS}>
                   {PHASES.map((p) => <option key={p} value={p}>{p}</option>)}
                 </select>
               </div>
             </div>
             {steps.map((s, i) => (
-              <div key={i} className="flex items-center gap-2">
+              <div key={i} className="flex flex-wrap items-center gap-2">
                 <Input
-                  aria-label={`Step ${i + 1} text`} className="flex-1"
+                  aria-label={`Step ${i + 1} text`} className="min-w-40 flex-1"
                   value={s.text}
                   onChange={(e) => setSteps((prev) => prev.map((x, idx) => (idx === i ? { ...x, text: e.target.value } : x)))}
                 />
                 <select
                   aria-label={`Step ${i + 1} evidence`} value={s.evidence}
                   onChange={(e) => setSteps((prev) => prev.map((x, idx) => (idx === i ? { ...x, evidence: e.target.value as EvidenceType } : x)))}
-                  className="h-9 rounded-md border border-gray-300 px-2 text-sm"
+                  className={SELECT_CLASS}
                 >
                   {EVIDENCE.map((ev) => <option key={ev} value={ev}>{ev}</option>)}
                 </select>
               </div>
             ))}
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <Button variant="outline" size="sm" onClick={() => setSteps((prev) => [...prev, { text: '', evidence: 'none' }])}>
                 Add step
               </Button>
@@ -142,6 +161,17 @@ export function ChecklistTemplatesTab({ orgId, isAdmin, templates: initial, ownT
           </CardContent>
         </Card>
       )}
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => { if (!open) setPendingDelete(null) }}
+        title={pendingDelete ? `Delete "${pendingDelete.name}"?` : 'Delete checklist?'}
+        description="Packages that attach it will simply stop including it on new events."
+        confirmLabel="Delete"
+        destructive
+        busy={saving}
+        onConfirm={async () => { if (pendingDelete) await handleDelete(pendingDelete) }}
+      />
     </div>
   )
 }

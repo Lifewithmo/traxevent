@@ -23,6 +23,8 @@ const custom: ChecklistTemplate = {
   created_at: '2026-08-05T00:00:00.000Z',
 }
 
+const DELETE_WARNING = 'Packages that attach it will simply stop including it on new events.'
+
 beforeEach(() => vi.clearAllMocks())
 
 describe('ChecklistTemplatesTab', () => {
@@ -52,10 +54,38 @@ describe('ChecklistTemplatesTab', () => {
     }))
   })
 
-  it('deletes a custom template after confirm', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
+  it('deletes a custom template after confirming in the dialog', async () => {
     render(<ChecklistTemplatesTab orgId="o1" isAdmin templates={[custom]} ownTemplateIds={['ct-1']} />)
     fireEvent.click(screen.getByRole('button', { name: 'Delete Van check' }))
+    expect(await screen.findByText(DELETE_WARNING)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
     await waitFor(() => expect(deleteChecklistTemplate).toHaveBeenCalledWith('o1', 'ct-1'))
+  })
+
+  it('cancelling the delete dialog does not delete', async () => {
+    render(<ChecklistTemplatesTab orgId="o1" isAdmin templates={[custom]} ownTemplateIds={['ct-1']} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Delete Van check' }))
+    expect(await screen.findByText('Delete "Van check"?')).toBeInTheDocument()
+    expect(screen.getByText(DELETE_WARNING)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    await waitFor(() => expect(screen.queryByText(DELETE_WARNING)).not.toBeInTheDocument())
+    expect(deleteChecklistTemplate).not.toHaveBeenCalled()
+  })
+
+  it('renders no heading for a phase with no templates', () => {
+    render(<ChecklistTemplatesTab orgId="o1" isAdmin templates={[custom]} ownTemplateIds={['ct-1']} />)
+    expect(screen.getByRole('heading', { name: 'load-out' })).toBeInTheDocument()
+    for (const empty of ['prep', 'setup', 'service-close', 'closeout']) {
+      expect(screen.queryByRole('heading', { name: empty })).not.toBeInTheDocument()
+    }
+  })
+
+  it('offers a single New checklist CTA from the empty state', () => {
+    render(<ChecklistTemplatesTab orgId="o1" isAdmin templates={[]} ownTemplateIds={[]} />)
+    expect(screen.getByText('No checklists yet.')).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'New checklist' })).toHaveLength(1)
+    fireEvent.click(screen.getByRole('button', { name: 'New checklist' }))
+    expect(screen.getByRole('button', { name: 'Save checklist' })).toBeInTheDocument()
+    expect(screen.queryByText('No checklists yet.')).not.toBeInTheDocument()
   })
 })
