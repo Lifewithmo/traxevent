@@ -40,7 +40,8 @@ export async function getEventSpineKpis({ orgId, eventId, event, allowedPages }:
 
   await Promise.all([
     (async () => {
-      if (!allowedPages.includes('families')) return
+      // Reports shows these same figures, so either grant unlocks the read.
+      if (!allowedPages.includes('families') && !allowedPages.includes('reports')) return
       try {
         // Same collection path + query as actions/admin-families.ts getAdminFamilies.
         const snap = await adminDb

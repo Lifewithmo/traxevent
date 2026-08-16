@@ -17,10 +17,12 @@ export function EventSubNav({ orgSlug, eventSlug, items }: EventSubNavProps) {
   const pathname = usePathname()
 
   // Active = the path segment right after the eventSlug matches the item key;
-  // the bare event root (no segment) counts as dashboard.
+  // the bare event root (no segment) counts as dashboard. Derived positionally
+  // (this nav only renders under /{orgSlug}/{eventSlug}/...) so an eventSlug
+  // that equals the orgSlug can't match the wrong segment. Deeper routes
+  // (e.g. ops/closeout) still highlight their section tab.
   const seg = pathname.split('/').filter(Boolean)
-  const slugIdx = seg.indexOf(eventSlug)
-  const activeKey = slugIdx >= 0 ? (seg[slugIdx + 1] ?? 'dashboard') : 'dashboard'
+  const activeKey = seg[2] ?? 'dashboard'
 
   return (
     <nav

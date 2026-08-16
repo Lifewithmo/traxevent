@@ -69,7 +69,7 @@ describe('getEventSpineKpis', () => {
     expect(familiesOrderBy).toHaveBeenCalledWith('created_at', 'desc')
   })
 
-  it('skips the families read entirely when families is not an allowed page', async () => {
+  it('skips the families read entirely when neither families nor reports is an allowed page', async () => {
     const kpis = await getEventSpineKpis({ orgId: 'o1', eventId: 'e1', event: EVENT, allowedPages: ['dashboard', 'ops'] })
 
     expect(kpis.registrations).toBeNull()
@@ -77,6 +77,16 @@ describe('getEventSpineKpis', () => {
     expect(familiesGet).not.toHaveBeenCalled()
     // Ops is still allowed, so readiness survives the gate.
     expect(kpis.readiness).toMatchObject({ pct: 40 })
+  })
+
+  it('allows the families read on a reports-only grant — Reports shows the same figures', async () => {
+    const kpis = await getEventSpineKpis({ orgId: 'o1', eventId: 'e1', event: EVENT, allowedPages: ['dashboard', 'reports'] })
+
+    expect(kpis.registrations).toMatchObject({ total: 3, byStatus: { confirmed: 2, pending: 1 } })
+    expect(kpis.financial).toMatchObject({ totalDue: 1200, totalPaid: 600, outstanding: 600 })
+    // Ops stays gated off for this member.
+    expect(kpis.readiness).toBeNull()
+    expect(planGet).not.toHaveBeenCalled()
   })
 
   it('skips the ops read when ops is not an allowed page', async () => {
