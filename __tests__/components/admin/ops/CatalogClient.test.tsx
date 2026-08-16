@@ -1,24 +1,80 @@
 import { describe, it, expect, vi } from 'vitest'
-import { useState } from 'react'
+import { useState, type Dispatch, type SetStateAction } from 'react'
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import type { OpsResource, WorkPackage } from '@/lib/types'
 
 // The three tabs are owned by other components and pull in server actions; mock
-// them so these assertions isolate the shell (header, KPI band, tab wiring).
-// ResourcesTab is stateful on purpose — it is how the keepMounted test proves
-// that switching tabs preserves React state, not just DOM nodes.
+// them so these assertions isolate the shell (header, KPI band, rail, tab wiring).
+//
+// Two mocks are deliberately more than placeholders:
+//   - PackagesTab calls its injected `setPackages`, and ResourcesTab its
+//     `setResources`. Since the shell owns the datasets, that is the only way to
+//     prove an in-session mutation reaches the band, the rail and the subhead —
+//     the regression guard for the stale-props bug.
+//   - ResourcesTab also holds a local draft, which is how the keepMounted test
+//     proves switching tabs preserves React state, not just DOM nodes.
 vi.mock('@/components/admin/ops/PackagesTab', () => ({
-  PackagesTab: ({ costing }: { costing: unknown[] }) => (
-    <div>packages tab · {costing.length} costed</div>
+  PackagesTab: ({
+    packages,
+    setPackages,
+    costing,
+  }: {
+    packages: WorkPackage[]
+    setPackages: Dispatch<SetStateAction<WorkPackage[]>>
+    costing: unknown[]
+  }) => (
+    <div>
+      <span>
+        packages tab · {packages.length} rows · {costing.length} costed
+      </span>
+      {/* A package with no consumable lines is uncosted by construction, and it
+          is priced high enough to force thousands grouping in the band. */}
+      <button
+        type="button"
+        onClick={() =>
+          setPackages((prev) => [
+            ...prev,
+            {
+              id: 'p3',
+              name: 'Barista Cart',
+              price: 4200,
+              max_guests: 50,
+              lines: [],
+              created_at: '2026-08-01T00:00:00.000Z',
+            },
+          ])
+        }
+      >
+        create package
+      </button>
+    </div>
   ),
 }))
 vi.mock('@/components/admin/ops/ResourcesTab', () => ({
-  ResourcesTab: () => {
+  ResourcesTab: ({
+    resources,
+    setResources,
+  }: {
+    resources: OpsResource[]
+    setResources: Dispatch<SetStateAction<OpsResource[]>>
+  }) => {
     const [draft, setDraft] = useState('')
     return (
       <div>
+        <span>resources tab · {resources.length} rows</span>
         <label htmlFor="draft">Resource draft</label>
         <input id="draft" value={draft} onChange={(e) => setDraft(e.target.value)} />
+        <button
+          type="button"
+          onClick={() =>
+            setResources((prev) =>
+              prev.map((r) => (r.id === 'r2' ? { ...r, unit_cost: 0.25 } : r))
+            )
+          }
+        >
+          cost cups
+        </button>
       </div>
     )
   },
@@ -28,8 +84,6 @@ vi.mock('@/components/admin/ops/ChecklistTemplatesTab', () => ({
 }))
 
 import { CatalogClient } from '@/components/admin/ops/CatalogClient'
-import { computeCatalogCosting } from '@/lib/ops/catalog-costing'
-import type { OpsResource, WorkPackage } from '@/lib/types'
 
 const AT = '2026-08-01T00:00:00.000Z'
 
@@ -47,24 +101,25 @@ const coldBrew: WorkPackage = {
   lines: [{ kind: 'consumable', resource_id: 'r1', qty_per_guest: 0.5 }],
   created_at: AT,
 }
+// No consumable lines => computeCatalogCosting returns costed:false.
+const dryHire: WorkPackage = {
+  id: 'p9', name: 'Dry Hire', price: 150, max_guests: 40, lines: [], created_at: AT,
+}
 
 function renderCatalog(over: {
   title?: string
   packages?: WorkPackage[]
   resources?: OpsResource[]
 } = {}) {
-  const packages = over.packages ?? [espressoBar, coldBrew]
-  const resources = over.resources ?? [beans, cups, machine]
   return render(
     <CatalogClient
       orgId="o1"
       isAdmin
       title={over.title ?? 'Menu Packages'}
-      packages={packages}
-      resources={resources}
+      packages={over.packages ?? [espressoBar, coldBrew]}
+      resources={over.resources ?? [beans, cups, machine]}
       templates={[]}
       ownTemplateIds={[]}
-      costing={computeCatalogCosting(packages, resources)}
     />
   )
 }
@@ -78,6 +133,11 @@ function tile(label: string): HTMLElement {
   const el = within(band as HTMLElement).getByText(label).closest('[data-slot="stat-tile"]')
   if (!el) throw new Error(`no stat tile for label "${label}"`)
   return el as HTMLElement
+}
+
+// The tabs are mocked, so every RelatedRecordCard on screen belongs to the rail.
+function railCards(): NodeListOf<Element> {
+  return document.querySelectorAll('[data-slot="related-record-card"]')
 }
 
 describe('CatalogClient', () => {
@@ -107,10 +167,45 @@ describe('CatalogClient', () => {
     it('renders all four tiles with their labels and values', () => {
       renderCatalog({ title: 'Menu Packages' })
       expect(tile('Menu Packages')).toHaveTextContent('2')
-      expect(tile('Price range')).toHaveTextContent('$600.00–$900.00')
-      expect(tile('Ingredients & equipment')).toHaveTextContent('3')
+      expect(tile('Price range')).toHaveTextContent('$600–$900')
+      expect(tile('Not costed')).toHaveTextContent('0')
+      expect(tile('Not costed')).toHaveTextContent('no materials figure')
       expect(tile('Uncosted ingredients')).toHaveTextContent('1')
-      expect(tile('Uncosted ingredients')).toHaveTextContent('blocks materials cost')
+      expect(tile('Uncosted ingredients')).toHaveTextContent('blocks the materials figure')
+    })
+
+    it('drops the ingredient count tile — the subhead already carries it', () => {
+      renderCatalog()
+      const band = document.querySelector('[data-slot="kpi-band"]') as HTMLElement
+      expect(within(band).queryByText('Ingredients & equipment')).toBeNull()
+      expect(band.querySelectorAll('[data-slot="stat-tile"]')).toHaveLength(4)
+    })
+
+    it('never says "cost" for the materials figure in a tile note', () => {
+      renderCatalog()
+      expect(tile('Uncosted ingredients')).not.toHaveTextContent('blocks materials cost')
+    })
+
+    it('counts packages with no materials figure in the Not costed tile, with the alert tone', () => {
+      renderCatalog({ packages: [espressoBar, dryHire] })
+      const notCosted = tile('Not costed')
+      expect(notCosted).toHaveTextContent('1')
+      expect(notCosted.querySelector('.text-destructive')).not.toBeNull()
+    })
+
+    it('drops the Not costed alert tone when every package has a materials figure', () => {
+      renderCatalog()
+      const notCosted = tile('Not costed')
+      expect(notCosted).toHaveTextContent('0')
+      expect(notCosted.querySelector('.text-destructive')).toBeNull()
+    })
+
+    it('groups thousands in the price range instead of rendering raw two-decimal money', () => {
+      renderCatalog({ packages: [dryHire, { ...coldBrew, price: 4200 }] })
+      const range = tile('Price range')
+      expect(range).toHaveTextContent('$150–$4,200')
+      expect(range).not.toHaveTextContent('$4200')
+      expect(range).not.toHaveTextContent('.00')
     })
 
     it('flags uncosted ingredients with the alert tone', () => {
@@ -131,13 +226,86 @@ describe('CatalogClient', () => {
     it('renders an em dash for the price range of an empty catalog', () => {
       renderCatalog({ packages: [] })
       expect(tile('Price range')).toHaveTextContent('—')
-      expect(tile('Price range')).not.toHaveTextContent('$0.00')
+      expect(tile('Price range')).not.toHaveTextContent('$0')
     })
 
     it('collapses the price range to one figure when every package is the same price', () => {
       renderCatalog({ packages: [espressoBar, { ...coldBrew, price: 900 }] })
-      expect(tile('Price range').textContent).toContain('$900.00')
+      expect(tile('Price range').textContent).toContain('$900')
       expect(tile('Price range').textContent).not.toContain('–')
+    })
+  })
+
+  // The shell owns packages/resources/templates so every surface reads one copy.
+  // Before this, each tab seeded its own useState from a server prop and
+  // `keepMounted` guaranteed it never remounted, so an in-session write was
+  // invisible everywhere else until a full page reload.
+  describe('shared catalog state', () => {
+    it('updates the band, subhead and rail when a tab creates a package', async () => {
+      const user = userEvent.setup()
+      renderCatalog()
+      expect(tile('Menu Packages')).toHaveTextContent('2')
+      expect(tile('Not costed')).toHaveTextContent('0')
+
+      await user.click(screen.getByRole('button', { name: 'create package' }))
+
+      expect(tile('Menu Packages')).toHaveTextContent('3')
+      expect(tile('Price range')).toHaveTextContent('$600–$4,200')
+      expect(tile('Not costed')).toHaveTextContent('1')
+      expect(screen.getByText(/3 packages · 3 ingredients & equipment/)).toBeInTheDocument()
+      // The rail re-derives too: the new package lands in "Not yet costed".
+      expect(screen.getByText('Barista Cart')).toBeInTheDocument()
+    })
+
+    it('re-derives costing for the packages tab when the resources tab costs an ingredient', async () => {
+      const user = userEvent.setup()
+      renderCatalog()
+      expect(tile('Uncosted ingredients')).toHaveTextContent('1')
+
+      await user.click(screen.getByRole('tab', { name: 'Ingredients & Equipment' }))
+      await user.click(screen.getByRole('button', { name: 'cost cups' }))
+
+      expect(tile('Uncosted ingredients')).toHaveTextContent('0')
+      // Sibling tab sees the same array — the cross-tab staleness this fixes.
+      expect(screen.getByText(/packages tab · 2 rows · 2 costed/)).toBeInTheDocument()
+    })
+
+    it('hands every tab the same package list', async () => {
+      const user = userEvent.setup()
+      renderCatalog()
+      await user.click(screen.getByRole('button', { name: 'create package' }))
+      expect(screen.getByText(/packages tab · 3 rows/)).toBeInTheDocument()
+    })
+  })
+
+  describe('health rail', () => {
+    it('is a sibling of the tab set, not of one panel, so it caps every tab', () => {
+      renderCatalog()
+      const rail = document.querySelector('aside')
+      expect(rail).not.toBeNull()
+      // Inside a TabsPanel it only capped the packages tab, leaving the other
+      // two stretched to the full page width.
+      expect(rail!.closest('[data-slot="tabs-panel"]')).toBeNull()
+      expect(rail!.className).toContain('lg:w-72')
+    })
+
+    it('is hidden entirely on a brand-new catalog with no packages and no resources', () => {
+      renderCatalog({ packages: [], resources: [] })
+      // "Every ingredient is costed" beside "No packages yet" is vacuously true
+      // and actively misleading — same guard VendorsLedger applies to its band.
+      expect(railCards()).toHaveLength(0)
+      expect(screen.queryByText('Every ingredient is costed')).toBeNull()
+      expect(screen.queryByText('Every package has a materials figure')).toBeNull()
+    })
+
+    it('appears once there are resources but no packages yet', () => {
+      renderCatalog({ packages: [], resources: [beans] })
+      expect(railCards()).toHaveLength(2)
+    })
+
+    it('appears once there are packages but no resources yet', () => {
+      renderCatalog({ packages: [espressoBar], resources: [] })
+      expect(railCards()).toHaveLength(2)
     })
   })
 
@@ -200,8 +368,8 @@ describe('CatalogClient', () => {
     })
   })
 
-  it('passes computed costing through to the packages tab', () => {
+  it('derives costing in the shell and passes it to the packages tab', () => {
     renderCatalog()
-    expect(screen.getByText(/packages tab · 2 costed/)).toBeInTheDocument()
+    expect(screen.getByText(/packages tab · 2 rows · 2 costed/)).toBeInTheDocument()
   })
 })

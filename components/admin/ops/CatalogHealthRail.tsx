@@ -9,18 +9,19 @@ import type { OpsResource, WorkPackage } from '@/lib/types'
  *  other direction would be a cycle. */
 export const UNCOSTED_REASON_HELP: Record<UncostedReason, string> = {
   'no-capacity': 'Set a max guest count to cost this package',
-  'no-costed-ingredient': 'No ingredient on this package has a unit cost',
+  // Covers two distinct failures on purpose: no ingredient carries a unit cost,
+  // AND every ingredient that does carry one is denominated in a unit the line's
+  // own unit cannot convert to. "has a unit cost" was false in the second case.
+  'no-costed-ingredient': 'No ingredient on this package can be priced yet',
   'no-consumables': 'This package has no consumable ingredients',
 }
 
-// Both cards are read-only summaries of the list beside them, so no `onNew`.
-// An empty one is a "here's how" invitation that costs real scroll on a phone,
+// Both cards are read-only summaries of the list beside them, so no `onNew` and
+// no `onEmptyCta` — RelatedRecordCard renders an empty-state button only when it
+// has a handler to run, so passing neither is all it takes to suppress it.
+// An empty card is a "here's how" invitation that costs real scroll on a phone,
 // so it hides below lg — the same rule ClientWorkingRail applies at md.
-// RelatedRecordCard always renders an empty-state CTA button, but nothing in
-// this rail can act: ingredients live on a sibling tab whose state is local to
-// CatalogClient, unreachable from here. A dead control is worse than none, so
-// the button is suppressed instead of shown.
-const EMPTY_CARD = 'max-lg:hidden [&_[data-slot=empty-state]_button]:hidden'
+const EMPTY_CARD = 'max-lg:hidden'
 
 interface CatalogHealthRailProps {
   packages: WorkPackage[]
@@ -54,7 +55,6 @@ export function CatalogHealthRail({ packages, resources, costing, className }: C
         count={needsCost.length}
         rows={needsCost}
         emptyTitle="Every ingredient is costed"
-        emptyCtaLabel="Add a unit cost"
         className={needsCost.length === 0 ? EMPTY_CARD : undefined}
       />
       <RelatedRecordCard
@@ -62,7 +62,6 @@ export function CatalogHealthRail({ packages, resources, costing, className }: C
         count={notCosted.length}
         rows={notCosted}
         emptyTitle="Every package has a materials figure"
-        emptyCtaLabel="Review packages"
         className={notCosted.length === 0 ? EMPTY_CARD : undefined}
       />
     </aside>
