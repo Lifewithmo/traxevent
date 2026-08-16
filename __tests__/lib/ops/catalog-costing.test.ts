@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { computeCatalogCosting, uncostedConsumables, priceRange } from '@/lib/ops/catalog-costing'
+import { formatMoney } from '@/lib/utils'
 import type { WorkPackage, OpsResource } from '@/lib/types'
 
 const resources: OpsResource[] = [
@@ -33,6 +34,15 @@ const withCustomUnit: OpsResource[] = [
 const withNegativeCost: OpsResource[] = [
   ...resources,
   { id: 'res-negcost', name: 'Miscounted syrup', kind: 'consumable', unit: 'oz', unit_cost: -0.55, created_at: 't' },
+]
+
+// A believable typo: $0.0001 instead of $0.01 on a 1-each-per-guest consumable.
+// Both unit_cost and unit are present, so the line IS admitted to the
+// arithmetic — this is the rendered-cent floor (MIN_RENDERED_MATERIALS), not
+// the "no costable ingredient" gap logic.
+const withMicroCost: OpsResource[] = [
+  ...resources,
+  { id: 'res-micro', name: 'Micro-cost garnish', kind: 'consumable', unit: 'each', unit_cost: 0.0001, created_at: 't' },
 ]
 
 const pkg = (over: Partial<WorkPackage>): WorkPackage => ({
@@ -314,6 +324,104 @@ describe('computeCatalogCosting', () => {
     expect(result.costed).toBe(false)
     expect(result.materials).toBe(0)
     expect(result.materials).toBeGreaterThanOrEqual(0)
+  })
+
+  it('is uncosted, not $0.00, when a costed line totals less than a rendered cent', () => {
+    // M-1 repro: operator types unit_cost $0.0001 instead of $0.01 on a
+    // 1-each-per-guest consumable. materials = 1 × 40 × 0.0001 = 0.004 exactly
+    // (verified: 40 * 0.0001 === 0.004 in IEEE-754, no representation drift).
+    // 0.004 > 0 is true, but formatMoney(0.004) === "$0.00" — the old `> 0`
+    // guard let this masquerade as a costed $0.00 row. It must now fail the
+    // MIN_RENDERED_MATERIALS floor and come back uncosted instead.
+    const p = pkg({
+      id: 'wp-subcent',
+      max_guests: 40,
+      lines: [{ kind: 'consumable', resource_id: 'res-micro', qty_per_guest: 1 }],
+    })
+    const [result] = computeCatalogCosting([p], withMicroCost)
+    expect(result.costed).toBe(false)
+    expect(result.reason).toBe('no-costed-ingredient')
+    expect(result.materials).toBe(0)
+    expect(result.basis).toBeUndefined()
+    // The invariant this whole module exists for: costed:true and a "$0.00"
+    // rendering can never both be true of the same result. Here costed is
+    // false, so the pair does not disagree — but the underlying 0.004 total
+    // (had it leaked through as materials) WOULD have formatted as "$0.00",
+    // which is exactly why it may not leak through.
+    expect(formatMoney(0.004)).toBe('$0.00')
+    expect(result.costed && formatMoney(result.materials) === '$0.00').toBe(false)
+  })
+
+  it('is costed at exactly the rendered-cent floor (materials === 0.005)', () => {
+    // 1 each/guest × 50 guests × $0.0001/each = 0.005 exactly (50 * 0.0001 ===
+    // 0.005 in IEEE-754 — verified, no representation drift at this boundary).
+    // formatMoney rounds 0.005 UP to "$0.01" (n.toFixed(2) rounds the exact
+    // half-cent up here), so this is the smallest total that renders as a real
+    // figure — it must stay costed.
+    const p = pkg({
+      id: 'wp-floor',
+      max_guests: 50,
+      lines: [{ kind: 'consumable', resource_id: 'res-micro', qty_per_guest: 1 }],
+    })
+    const [result] = computeCatalogCosting([p], withMicroCost)
+    expect(result).toEqual({
+      id: 'wp-floor', price: 1200, costed: true, basis: 50, materials: 0.005, gaps: [],
+    })
+    expect(formatMoney(result.materials)).toBe('$0.01')
+  })
+
+  it('is uncosted just below the rendered-cent floor (materials === 0.0049)', () => {
+    // Same line, one fewer guest: 1 each/guest × 49 guests × $0.0001/each =
+    // 0.0049 exactly (49 * 0.0001 === 0.0049 — verified). That is strictly
+    // below the 0.005 floor, so it must NOT be costed, pinning the boundary
+    // on the other side from the previous test.
+    const p = pkg({
+      id: 'wp-below-floor',
+      max_guests: 49,
+      lines: [{ kind: 'consumable', resource_id: 'res-micro', qty_per_guest: 1 }],
+    })
+    const [result] = computeCatalogCosting([p], withMicroCost)
+    expect(result.costed).toBe(false)
+    expect(result.reason).toBe('no-costed-ingredient')
+    expect(result.materials).toBe(0)
+    expect(formatMoney(0.0049)).toBe('$0.00')
+  })
+
+  it('names the excluded line in gaps on the no-capacity branch too', () => {
+    // M-2 repro: max_guests unset, one costable line (beans) and one excluded
+    // line (napkins, no unit_cost). Before the fix this returned `gaps: []`
+    // even though `excluded` had already been computed — napkins vanished from
+    // the pill, then reappeared the moment an operator set a guest count.
+    const p = pkg({
+      id: 'wp-nocap-mixed',
+      lines: [
+        { kind: 'consumable', resource_id: 'res-beans', qty_per_guest: 1 },
+        { kind: 'consumable', resource_id: 'res-napkins', qty_per_guest: 2 },
+      ],
+    })
+    const [result] = computeCatalogCosting([p], resources)
+    expect(result.costed).toBe(false)
+    expect(result.reason).toBe('no-capacity')
+    expect(result.materials).toBe(0)
+    expect(result.basis).toBeUndefined()
+    expect(result.gaps).toEqual(['Napkins'])
+  })
+
+  it('prefers no-capacity over no-costed-ingredient when a package has neither', () => {
+    // Reorder pin: capacity is now checked before "any costable ingredient",
+    // so a package missing both is told the simpler fix (set a guest count)
+    // first. No prior fixture combined both failures, so this reorder did not
+    // flip any existing `reason` expectation — this test exercises the case
+    // that decision now controls, and the excluded line is still named either way.
+    const p = pkg({
+      id: 'wp-neither',
+      lines: [{ kind: 'consumable', resource_id: 'res-napkins', qty_per_guest: 1 }], // no unit_cost, no max_guests
+    })
+    const [result] = computeCatalogCosting([p], resources)
+    expect(result.reason).toBe('no-capacity')
+    expect(result.costed).toBe(false)
+    expect(result.materials).toBe(0)
+    expect(result.gaps).toEqual(['Napkins'])
   })
 
   it('names every excluded ingredient in gaps on the no-costed-ingredient branch', () => {
