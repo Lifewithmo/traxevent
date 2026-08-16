@@ -26,7 +26,7 @@ function TabsTab({ className, ...props }: BaseTabs.Tab.Props) {
     <BaseTabs.Tab
       data-slot="tabs-tab"
       className={cn(
-        "-mb-px border-b-2 border-transparent px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground data-[active]:border-foreground data-[active]:text-foreground",
+        "-mb-px rounded-sm border-b-2 border-transparent px-3 py-2 text-sm font-medium text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 data-[active]:border-foreground data-[active]:text-foreground",
         className
       )}
       {...props}
@@ -47,14 +47,7 @@ function TabsPanel({ className, ...props }: BaseTabs.Panel.Props) {
   )
 }
 
-function TabsIndicator({ className, ...props }: BaseTabs.Indicator.Props) {
-  return (
-    <BaseTabs.Indicator
-      data-slot="tabs-indicator"
-      className={cn(className)}
-      {...props}
-    />
-  )
-}
-
-export { Tabs, TabsList, TabsTab, TabsPanel, TabsIndicator }
+// No TabsIndicator: the active tab draws its own underline via
+// `data-[active]:border-foreground` above. A sliding indicator would have to
+// replace that, not sit alongside it.
+export { Tabs, TabsList, TabsTab, TabsPanel }

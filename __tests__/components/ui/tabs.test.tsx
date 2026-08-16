@@ -71,6 +71,26 @@ describe('Tabs', () => {
     expect(stillMounted.value).toBe('in-progress edit')
   })
 
+  it('gives each tab the house focus-visible ring, not the native outline', () => {
+    render(
+      <Tabs defaultValue="units">
+        <TabsList>
+          <TabsTab value="units">Units</TabsTab>
+          <TabsTab value="recipes">Recipes</TabsTab>
+        </TabsList>
+        <TabsPanel value="units">Units content</TabsPanel>
+      </Tabs>
+    )
+    // Tabs are keyboard-navigable via roving tabindex, so the inactive tab
+    // needs the ring just as much as the active one.
+    for (const name of ['Units', 'Recipes']) {
+      const tab = screen.getByRole('tab', { name })
+      expect(tab).toHaveClass('outline-none')
+      expect(tab).toHaveClass('focus-visible:ring-3')
+      expect(tab).toHaveClass('focus-visible:ring-ring/50')
+    }
+  })
+
   it('wires aria-selected on the selected tab', async () => {
     const { default: userEvent } = await import('@testing-library/user-event')
     const user = userEvent.setup()
