@@ -1,13 +1,18 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { MoreHorizontal, Inbox } from 'lucide-react'
 import { completeTask, createTask, snoozeTask } from '@/actions/tasks'
 import { setLeadWaiting, clearLeadWaiting } from '@/actions/leads'
 import { addDays, todayYmd } from '@/lib/opportunity-detail'
 import { buildMoves, moveCount, type Move, type MoveAction, type MoveGroupBlock } from '@/lib/today-moves'
 import type { TodayData } from '@/lib/today'
+import { Avatar } from '@/components/ui/avatar'
+import { Button } from '@/components/ui/button'
+import { Menu, MenuTrigger, MenuContent, MenuItem } from '@/components/ui/menu'
+import { EmptyState } from '@/components/ui/empty-state'
 
 interface TodayQueueProps {
   orgId: string
@@ -44,24 +49,7 @@ function ActionMenu({
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const ref = useRef<HTMLDivElement>(null)
   const today = todayYmd()
-
-  useEffect(() => {
-    if (!open) return
-    function onDown(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
-    }
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') setOpen(false)
-    }
-    document.addEventListener('mousedown', onDown)
-    document.addEventListener('keydown', onKey)
-    return () => {
-      document.removeEventListener('mousedown', onDown)
-      document.removeEventListener('keydown', onKey)
-    }
-  }, [open])
 
   async function run(action: MoveAction) {
     if (action.kind === 'open') return
@@ -101,64 +89,47 @@ function ActionMenu({
   }
 
   return (
-    <div className="relative shrink-0" ref={ref}>
-      <button
-        type="button"
-        aria-label="Row actions"
-        aria-expanded={open}
-        disabled={busy}
-        onClick={() => setOpen((v) => !v)}
-        className={[
-          'flex h-[22px] w-[22px] items-center justify-center rounded border text-[9px] transition-colors',
-          open ? 'border-foreground bg-foreground text-background' : 'border-border text-muted-foreground hover:bg-muted',
-        ].join(' ')}
-      >
-        ▾
-      </button>
-      {open && (
-        <div className="absolute right-0 top-7 z-20 w-48 rounded-md border border-border bg-background p-1 text-xs shadow-lg">
-          {move.actions.map((a, i) =>
-            a.kind === 'open' ? (
-              <Link
-                key={a.label}
-                href={`/${orgSlug}/leads/${move.leadId}`}
-                className="mt-1 block rounded px-2.5 py-1.5 text-muted-foreground hover:bg-muted"
-              >
-                {a.label}
-              </Link>
-            ) : a.kind === 'pick_date' ? (
-              <label key={a.label} className="block rounded px-2.5 py-1.5 hover:bg-muted">
-                <span>{a.label}</span>
-                <input
-                  type="date"
-                  defaultValue={move.dueDate ?? today}
-                  className="mt-1 w-full rounded border border-border bg-background px-1.5 py-1 text-xs"
-                  onChange={(e) => e.target.value && run({ kind: 'set_due', label: 'Due', dueDate: e.target.value })}
-                />
-              </label>
-            ) : (
-              <button
-                key={a.label}
-                type="button"
-                disabled={busy}
-                onClick={() => run(a)}
-                className={[
-                  'block w-full rounded px-2.5 py-1.5 text-left hover:bg-muted',
-                  i === 0 ? 'bg-muted font-semibold' : '',
-                ].join(' ')}
-              >
-                {a.label}
-              </button>
-            )
-          )}
-          {error && (
-            <p className="px-2.5 py-1.5 text-destructive" role="alert">
-              {error}
-            </p>
-          )}
-        </div>
-      )}
-    </div>
+    <Menu open={open} onOpenChange={setOpen}>
+      <MenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label="Row actions" disabled={busy} />}>
+        <MoreHorizontal />
+      </MenuTrigger>
+      <MenuContent>
+        {move.actions.map((a, i) =>
+          a.kind === 'open' ? (
+            <MenuItem key={a.label} render={<Link href={`/${orgSlug}/leads/${move.leadId}`} />}>
+              {a.label}
+            </MenuItem>
+          ) : a.kind === 'pick_date' ? (
+            // Plain child, not a MenuItem: MenuItem's div + closeOnClick + typeahead
+            // fights a native date input.
+            <label key={a.label} className="block rounded-md px-2 py-1.5 text-sm hover:bg-muted">
+              <span>{a.label}</span>
+              <input
+                type="date"
+                defaultValue={move.dueDate ?? today}
+                className="mt-1 w-full rounded border border-border bg-background px-1.5 py-1 text-xs"
+                onChange={(e) => e.target.value && run({ kind: 'set_due', label: 'Due', dueDate: e.target.value })}
+              />
+            </label>
+          ) : (
+            <MenuItem
+              key={a.label}
+              closeOnClick={false}
+              disabled={busy}
+              onClick={() => run(a)}
+              className={i === 0 ? 'font-semibold' : undefined}
+            >
+              {a.label}
+            </MenuItem>
+          )
+        )}
+        {error && (
+          <p className="px-2.5 py-1.5 text-xs text-destructive" role="alert">
+            {error}
+          </p>
+        )}
+      </MenuContent>
+    </Menu>
   )
 }
 
@@ -171,6 +142,7 @@ function Row({ move, orgId, orgSlug, onRan }: { move: Move; orgId: string; orgSl
         urgent ? 'border-l-2 border-l-destructive' : '',
       ].join(' ')}
     >
+      <Avatar name={move.customer} size="sm" />
       <div className="min-w-0 flex-1">
         <Link href={`/${orgSlug}/leads/${move.leadId}`} className="text-sm font-semibold hover:underline">
           {move.customer}
@@ -187,7 +159,18 @@ export function TodayQueue({ orgId, orgSlug, data }: TodayQueueProps) {
   const blocks = buildMoves(data, todayYmd())
 
   if (moveCount(blocks) === 0) {
-    return <p className="px-5 py-6 text-sm text-muted-foreground">Nothing needs a move today.</p>
+    return (
+      <EmptyState
+        icon={<Inbox />}
+        title="Nothing needs a move today."
+        description="Once a lead needs a next step, it'll show up here."
+        action={
+          <Button variant="outline" size="sm" render={<Link href={`/${orgSlug}/leads`} />}>
+            View pipeline
+          </Button>
+        }
+      />
+    )
   }
 
   return (
