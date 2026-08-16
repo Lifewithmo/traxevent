@@ -3,7 +3,7 @@
 // Settings → Proposal templates: manage the org's template library.
 // Editing happens in the template editor route; this list handles the
 // lifecycle actions (create, rename, duplicate, delete).
-import { useState } from 'react'
+import { useState, type ComponentProps } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
@@ -16,6 +16,28 @@ import {
   deleteProposalTemplate,
 } from '@/actions/proposal-templates'
 import type { ProposalTemplate } from '@/lib/types'
+
+// Both entry points to "create" render through here so the in-flight guard
+// can never drift apart: an unguarded second click during the create
+// round-trip (auth + write) opens a second prompt and orphans a document,
+// since only one of the two ids gets navigated to.
+function NewTemplateButton({
+  busy,
+  onNew,
+  variant,
+  size,
+}: {
+  busy: string | null
+  onNew: () => void
+  variant?: ComponentProps<typeof Button>['variant']
+  size?: ComponentProps<typeof Button>['size']
+}) {
+  return (
+    <Button variant={variant} size={size} onClick={onNew} disabled={busy === 'new'}>
+      New template
+    </Button>
+  )
+}
 
 export function TemplateListClient({
   orgId,
@@ -66,10 +88,13 @@ export function TemplateListClient({
             Reusable proposal documents — content, pricing, and terms. Pick one when creating a proposal.
           </p>
         </div>
-        <Button onClick={handleNew} disabled={busy !== null}>New template</Button>
+        {/* Only the create action gates this button — row work must not freeze it. */}
+        <NewTemplateButton busy={busy} onNew={handleNew} />
       </div>
 
-      <div aria-live="polite" aria-atomic="true">
+      {/* Kept mounted so the live region can announce, but collapsed out of
+          flow while empty — otherwise it eats a second `space-y-4` gap. */}
+      <div aria-live="polite" aria-atomic="true" className={error ? undefined : 'sr-only'}>
         {error && <p className="text-sm text-destructive">{error}</p>}
       </div>
 
@@ -78,11 +103,7 @@ export function TemplateListClient({
           <EmptyState
             title="No templates yet"
             description="Build one from scratch, or open any proposal and choose “Save as template”."
-            action={
-              <Button variant="outline" size="sm" onClick={handleNew}>
-                New template
-              </Button>
-            }
+            action={<NewTemplateButton busy={busy} onNew={handleNew} variant="outline" size="sm" />}
             className="py-10"
           />
         </div>
@@ -97,12 +118,18 @@ export function TemplateListClient({
               <div
                 key={t.id}
                 data-testid={`template-row-${t.id}`}
-                className="flex items-center gap-3 border-b border-border/60 px-4 py-2.5 last:border-b-0"
+                className="flex flex-wrap items-center gap-3 border-b border-border/60 px-4 py-2.5 last:border-b-0"
               >
-                <div className="min-w-0 flex-1">
+                {/* `basis-48` gives the name a real hypothetical width so the
+                    actions wrap below it on narrow viewports instead of
+                    squeezing the primary content toward zero. */}
+                <div className="min-w-0 grow basis-48">
+                  {/* `block` is load-bearing: overflow/text-overflow do not
+                      apply to the inline box `next/link` renders, so a bare
+                      `truncate` here would clip with no ellipsis. */}
                   <Link
                     href={`/${orgSlug}/proposal-templates/${t.id}`}
-                    className="truncate text-sm font-medium underline-offset-4 hover:underline"
+                    className="block truncate text-sm font-medium underline-offset-4 hover:underline"
                   >
                     {t.name}
                   </Link>
@@ -117,12 +144,14 @@ export function TemplateListClient({
                       .join(' · ')}
                   </p>
                 </div>
-                {used > 0 ? (
-                  <StatusPill tone="confirmed">Used {used}×</StatusPill>
-                ) : (
-                  <StatusPill tone="neutral">Unused</StatusPill>
-                )}
-                <div className="flex shrink-0 items-center gap-1">
+                <span className="shrink-0">
+                  {used > 0 ? (
+                    <StatusPill tone="confirmed">Used {used}×</StatusPill>
+                  ) : (
+                    <StatusPill tone="neutral">Unused</StatusPill>
+                  )}
+                </span>
+                <div className="ml-auto flex shrink-0 items-center gap-1">
                   <Button
                     variant="ghost"
                     size="xs"
@@ -146,7 +175,9 @@ export function TemplateListClient({
                   <Button
                     variant="ghost"
                     size="xs"
-                    className="text-destructive"
+                    // `hover:` too — the ghost variant ships `hover:text-foreground`,
+                    // which otherwise drains the red exactly as the pointer lands.
+                    className="text-destructive hover:text-destructive"
                     disabled={rowBusy}
                     onClick={() => {
                       if (!window.confirm(`Delete “${t.name}”? Proposals already created from it are unaffected.`)) return
