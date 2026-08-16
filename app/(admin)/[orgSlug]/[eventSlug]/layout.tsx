@@ -1,5 +1,10 @@
 import { AdminSidebar } from '@/components/layout/AdminSidebar'
+import { EventSpineHeader } from '@/components/admin/events/EventSpineHeader'
+import { EventSubNav } from '@/components/admin/events/EventSubNav'
+import { EventKpiBand } from '@/components/admin/events/EventKpiBand'
 import { requireEvent, allowedEventPages } from '@/lib/auth/guards'
+import { buildEventNav } from '@/lib/event-nav'
+import { getEventSpineKpis } from '@/lib/event-spine'
 import { resolveTerminology } from '@/lib/event-types'
 import { resolveEnabledModules } from '@/lib/industry-packs'
 import { kindOf } from '@/lib/occasions/kind'
@@ -17,6 +22,28 @@ export default async function EventLayout({
   const terminology = resolveTerminology(event.event_type_id, event.event_type_terminology)
   const allowed = allowedEventPages(member, eventId, [...EVENT_PAGES], event.department_id ?? null)
   const enabledModules = resolveEnabledModules(org.industry_pack_id)
+  const kind = kindOf(event)
+
+  const navItems = buildEventNav({ kind, terminology, allowedPages: allowed, enabledModules })
+
+  // Market days skip the band — their MARKET_DAY overview handles its own numbers.
+  const rosterEnabled = enabledModules.includes('attendee-roster')
+  const kpis =
+    kind === 'client_job'
+      ? await getEventSpineKpis({
+          orgId: org.id,
+          eventId,
+          event,
+          // A roster-less org has no families data at all: reading the empty
+          // collection would render "0 registrations" where the band's
+          // "Guests expected" fallback belongs, so gate families out here.
+          allowedPages: rosterEnabled ? allowed : allowed.filter((p) => p !== 'families'),
+        })
+      : null
+
+  // Computed server-side and passed down so countdown math is deterministic
+  // and testable (same UTC day convention as lib/ops/readiness.ts).
+  const today = new Date().toISOString().slice(0, 10)
 
   return (
     // Same shell rule as the org layout: below md the sidebar is a bar plus an
@@ -25,12 +52,21 @@ export default async function EventLayout({
       <AdminSidebar
         orgSlug={orgSlug}
         eventSlug={eventSlug}
-        eventKind={kindOf(event)}
+        eventKind={kind}
         terminology={terminology}
         allowedEventPages={allowed}
         enabledModules={enabledModules}
       />
-      <main className="flex-1 bg-gray-50 overflow-auto">{children}</main>
+      <main className="flex-1 bg-gray-50 overflow-auto">
+        <EventSpineHeader event={event} />
+        <EventSubNav orgSlug={orgSlug} eventSlug={eventSlug} items={navItems} />
+        {kpis && (
+          <div className="px-5 pt-4 print:hidden">
+            <EventKpiBand event={event} kpis={kpis} today={today} />
+          </div>
+        )}
+        {children}
+      </main>
     </div>
   )
 }
