@@ -132,6 +132,20 @@ describe('CalendarAttentionRail', () => {
     expect(screen.getByText(dayLabel('2026-08-20')).className).toContain('text-muted-foreground')
   })
 
+  // The red date exists to say "late" for rows whose pill says something else.
+  // A row already pilled "Past due" must NOT double up — without this the
+  // `reason !== 'overdue'` guard could be deleted and every other test would pass.
+  it('leaves the date muted when the pill already says Past due', () => {
+    render(<CalendarAttentionRail groups={groups} />)
+    expect(screen.getByText(dayLabel('2026-08-10')).className).toContain('text-muted-foreground')
+    expect(screen.getByText(dayLabel('2026-08-10')).className).not.toContain('text-destructive')
+  })
+
+  it('names the rail landmark so it is reachable by landmark navigation', () => {
+    render(<CalendarAttentionRail groups={groups} />)
+    expect(screen.getByRole('complementary', { name: /Needs attention/ })).toBeInTheDocument()
+  })
+
   it('caps a group at previewLimit and says how many are hidden', () => {
     const many: AttentionGroup = {
       key: 'money',

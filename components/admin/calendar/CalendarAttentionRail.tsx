@@ -68,8 +68,16 @@ export function CalendarAttentionRail({ groups, previewLimit = 4 }: CalendarAtte
   const total = groups.reduce((sum, g) => sum + g.entries.length, 0)
 
   return (
-    <aside className="w-full md:w-72 md:shrink-0 border-l border-border bg-muted/40 p-4">
-      <h2 className="flex items-baseline justify-between gap-2 border-b border-border pb-2 font-mono text-[13px] font-bold uppercase tracking-wide">
+    // Named landmark: without this the rail is an anonymous "complementary"
+    // region when navigating by landmark.
+    <aside
+      aria-labelledby="attention-rail-heading"
+      className="w-full md:w-72 md:shrink-0 border-l border-border bg-muted/40 p-4"
+    >
+      <h2
+        id="attention-rail-heading"
+        className="flex items-baseline justify-between gap-2 border-b border-border pb-2 font-mono text-[13px] font-bold uppercase tracking-wide"
+      >
         Needs attention
         {total > 0 ? (
           <span className="font-sans text-xs font-medium normal-case tracking-normal text-muted-foreground">
