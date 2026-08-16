@@ -47,8 +47,11 @@ export function buildClientStory(row: ClientRow, leads: Lead[]): ClientStory {
 
   if (rollup.wonCount > 0) {
     const first = wonDates[0]
+    // totalWonValue is QUOTED won value, not cash collected — the KPI band's
+    // ar.paid is the real "paid" figure. Say "booked" here so the two never
+    // contradict each other.
     parts.push(
-      `${rollup.wonCount} ${rollup.wonCount === 1 ? 'event' : 'events'}${first ? ` since ${monthYear(first)}` : ''}, ${money(rollup.totalWonValue)} paid`
+      `${rollup.wonCount} ${rollup.wonCount === 1 ? 'event' : 'events'}${first ? ` since ${monthYear(first)}` : ''}, ${money(rollup.totalWonValue)} booked`
     )
   }
 

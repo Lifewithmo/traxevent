@@ -157,6 +157,31 @@ export async function POST(req: Request) {
 
         await ref.update(update)
 
+        // Best-effort activity log, after the authoritative write above and
+        // still inside this idempotency guard — a Stripe retry sees
+        // `payment_status === 'deposit_paid'` already and skips this whole
+        // block, so neither call below can double-log.
+        if (orgRef) {
+          if (promotedSigner) {
+            // Webhook-driven signing (before_accept): the after_accept path
+            // signs — and logs — from signProposal instead, well before any
+            // deposit, so the two 'Proposal signed' sources never overlap
+            // for one signature.
+            await logActivity(orgRef.id, {
+              parent_type: 'opportunity',
+              parent_id: proposal.lead_id,
+              kind: 'proposal',
+              summary: 'Proposal signed',
+            })
+          }
+          await logActivity(orgRef.id, {
+            parent_type: 'opportunity',
+            parent_id: proposal.lead_id,
+            kind: 'deposit',
+            summary: 'Deposit paid',
+          })
+        }
+
         if (promotedSigner) {
           // best-effort signed/paid confirmation email for the before_accept
           // path — the after_accept path already sends this from signProposal

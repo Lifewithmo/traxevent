@@ -2,11 +2,13 @@ export const dynamic = 'force-dynamic'
 
 import { notFound } from 'next/navigation'
 import { adminDb } from '@/lib/firebase-admin'
-import { getCustomer, listCustomerOpportunities, listCustomers } from '@/actions/customers'
-import { listLeads } from '@/actions/leads'
+import { getCustomer, listCustomerOpportunities } from '@/actions/customers'
 import { listNotes } from '@/actions/notes'
-import { normalizeTags } from '@/lib/crm/customers'
-import { CustomerDetailClient } from '@/components/admin/CustomerDetailClient'
+import { listActivity } from '@/actions/activity'
+import { listInvoicesByCustomerCore } from '@/lib/crm/invoices'
+import { mergeActivity } from '@/lib/crm/customer-activity'
+import { customerAR } from '@/lib/crm/ar-rollup'
+import { ClientCockpit } from '@/components/admin/clients/ClientCockpit'
 
 export default async function CustomerDetailPage({
   params,
@@ -21,26 +23,29 @@ export default async function CustomerDetailPage({
   const customer = await getCustomer(orgId, customerId)
   if (!customer) notFound()
 
-  const [opportunities, notes, allCustomers, allLeads] = await Promise.all([
+  const [opportunities, notes, invoices, ownActivity] = await Promise.all([
     listCustomerOpportunities(orgId, customerId),
     listNotes(orgId, 'customer', customerId),
-    listCustomers(orgId),
-    listLeads(orgId),
+    listInvoicesByCustomerCore(orgId, customerId),
+    listActivity(orgId, 'customer', customerId),
   ])
-  const orgTags = normalizeTags([
-    ...allCustomers.flatMap((c) => c.tags ?? []),
-    ...allLeads.flatMap((l) => l.tags ?? []),
-  ])
+  const leadActivity = await Promise.all(
+    opportunities.map((l) => listActivity(orgId, 'opportunity', l.id))
+  )
+  const activity = mergeActivity([ownActivity, ...leadActivity])
+  const ar = customerAR(invoices, new Date())
 
   // The rollup/story is derived in the client from opportunities — no prop for it.
   return (
-    <CustomerDetailClient
+    <ClientCockpit
       orgId={orgId}
       orgSlug={orgSlug}
       customer={customer}
       opportunities={opportunities}
       notes={notes}
-      orgTags={orgTags}
+      invoices={invoices}
+      activity={activity}
+      ar={ar}
     />
   )
 }

@@ -4,14 +4,15 @@ import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { StickyNote, ArrowRightLeft, CheckSquare, Mail, FileText, Sparkles, Clock, Briefcase, XCircle, BellRing, ShoppingCart } from 'lucide-react'
+import { StickyNote, ArrowRightLeft, CheckSquare, Mail, FileText, Sparkles, Clock, Briefcase, XCircle, BellRing, ShoppingCart, Send, Receipt, PiggyBank } from 'lucide-react'
 import { createNote } from '@/actions/notes'
 import { formatRelativeTime } from '@/lib/opportunity-detail'
 import type { ActivityEvent } from '@/lib/types'
 
 interface ActivityTimelineProps {
   orgId: string
-  leadId: string
+  parentType: 'customer' | 'opportunity'
+  parentId: string
   activity: ActivityEvent[]
 }
 
@@ -27,9 +28,12 @@ const KIND_ICON = {
   lost: XCircle,
   nudge: BellRing,
   order: ShoppingCart,
+  proposal: Send,
+  invoice: Receipt,
+  deposit: PiggyBank,
 } as const
 
-export function ActivityTimeline({ orgId, leadId, activity }: ActivityTimelineProps) {
+export function ActivityTimeline({ orgId, parentType, parentId, activity }: ActivityTimelineProps) {
   const router = useRouter()
   const [body, setBody] = useState('')
   const [busy, setBusy] = useState(false)
@@ -45,7 +49,7 @@ export function ActivityTimeline({ orgId, leadId, activity }: ActivityTimelinePr
     if (!body.trim()) return
     setBusy(true); setError(null)
     try {
-      await createNote(orgId, { parent_type: 'opportunity', parent_id: leadId, body: body.trim() })
+      await createNote(orgId, { parent_type: parentType, parent_id: parentId, body: body.trim() })
       setBody(''); router.refresh()
     } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Could not add note') }
     finally { setBusy(false) }

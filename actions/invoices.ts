@@ -2,10 +2,12 @@
 
 import { FieldValue } from 'firebase-admin/firestore'
 import { assertOrgMember, assertOrgAdmin } from '@/lib/auth/assert'
-import { invoiceAmountDue } from '@/lib/invoices'
+import { invoiceAmountDue, amountPaid } from '@/lib/invoices'
 import { normalizeInvoice } from '@/lib/invoice-normalize'
 import { previouslyBilled, assertWithinScope, acceptedProposalTotal } from '@/lib/invoice-progress'
 import { assertEditable, assertSendEditable } from '@/lib/invoice-lock'
+import { derivePaymentStatus } from '@/lib/invoice-status'
+import { logActivity } from '@/lib/activity'
 import { getProposal } from '@/actions/proposals'
 import { getLead } from '@/actions/leads'
 import { adminDb } from '@/lib/firebase-admin'
@@ -314,9 +316,54 @@ export interface RecordPaymentInput {
   tip_amount?: number
 }
 
+// derivePaymentStatus over the invoice's own amount-due/amount-paid, at a point in time.
+// Used to detect the specific payment that TRANSITIONS an invoice to paid — not just
+// "is it paid now" — so a later payment recorded against an already-paid invoice
+// doesn't log a second event.
+function paymentStatusOf(inv: NormalizedInvoice) {
+  return derivePaymentStatus(
+    { total: invoiceAmountDue(inv), applied: amountPaid(inv.payments ?? []), lifecycle: inv.lifecycle, dueDate: inv.due_date },
+    new Date(),
+  )
+}
+
 export async function recordPayment(orgId: string, invoiceId: string, input: RecordPaymentInput): Promise<void> {
   await assertOrgAdmin(orgId)
-  return recordPaymentCore(orgId, invoiceId, input)
+
+  // Best-effort "before" snapshot for the paid-transition check below.
+  // Deliberately swallowed: recordPaymentCore below does its own authoritative
+  // read/validation (amount > 0, not void, invoice exists) — this extra,
+  // earlier read must never pre-empt or change those errors.
+  let beforeStatus: ReturnType<typeof paymentStatusOf> | undefined
+  try {
+    const before = await getInvoice(orgId, invoiceId)
+    beforeStatus = before ? paymentStatusOf(before) : undefined
+  } catch {
+    beforeStatus = undefined
+  }
+
+  await recordPaymentCore(orgId, invoiceId, input)
+
+  // Best-effort activity log, after the authoritative payment write above.
+  // Only the payment that closes the balance (transitions TO paid/overpaid)
+  // logs — a partial payment, or a payment recorded on an already-paid
+  // invoice, does not.
+  if (beforeStatus !== 'paid' && beforeStatus !== 'overpaid') {
+    try {
+      const after = await getInvoice(orgId, invoiceId)
+      const afterStatus = after ? paymentStatusOf(after) : undefined
+      if (after && (afterStatus === 'paid' || afterStatus === 'overpaid')) {
+        await logActivity(orgId, {
+          parent_type: 'opportunity',
+          parent_id: after.lead_id,
+          kind: 'invoice',
+          summary: `Invoice paid — $${invoiceAmountDue(after).toFixed(2)}`,
+        })
+      }
+    } catch {
+      // best-effort; never fail an already-successful payment write
+    }
+  }
 }
 
 export async function deleteInvoice(orgId: string, invoiceId: string): Promise<void> {

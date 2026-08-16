@@ -8,6 +8,7 @@ import { signedDocumentHash } from '@/lib/proposal-signature'
 import { sendProposalSignedConfirmation } from '@/lib/email'
 import { openStampPatch } from '@/lib/proposal-opens'
 import { getVerifiedSendingDomain } from '@/actions/domains'
+import { logActivity } from '@/lib/activity'
 import type {
   OrgBranding, Proposal, ProposalStatus, ProposalLineItem, ProposalPackage,
   ProposalDiscount, ProposalDeposit, ProposalSelection, PaymentStatus, ProposalBlock,
@@ -211,6 +212,14 @@ export async function signProposal(token: string, input: {
     await orgRef.collection('leads').doc(proposal.lead_id).update({ stage: 'closed_won', updated_at: now })
   }
 
+  // Best-effort activity log, after the authoritative signature write above.
+  await logActivity(proposal.org_id, {
+    parent_type: 'opportunity',
+    parent_id: proposal.lead_id,
+    kind: 'proposal',
+    summary: 'Proposal signed',
+  })
+
   // best-effort confirmation email — never fail the sign on send failure
   let fromDomain: string | undefined
   try {
@@ -223,7 +232,6 @@ export async function signProposal(token: string, input: {
   } catch {
     // swallow: the signature is already recorded and authoritative
   }
-  // TODO(activity): logActivity(orgId, { kind: 'proposal', summary: 'Proposal signed' })
   return { deposit_due, payment_status }
 }
 
@@ -238,10 +246,21 @@ export async function recordProposalView(token: string): Promise<void> {
     const now = new Date().toISOString()
     const ctx = await requestContext()
     const stamp = openStampPatch(proposal, now)
+    // Same signal the write below stamps: only unset on a proposal's very
+    // first portal view, so this fires once per proposal, not once per view.
+    const isFirstOpen = !proposal.first_opened_at
     await doc.ref.update({
       events: FieldValue.arrayUnion({ kind: 'viewed', at: now, ...ctx }),
       ...stamp,
     })
+    if (isFirstOpen) {
+      await logActivity(proposal.org_id, {
+        parent_type: 'opportunity',
+        parent_id: proposal.lead_id,
+        kind: 'proposal',
+        summary: 'Proposal viewed',
+      })
+    }
   } catch {
     // best-effort; never surface a view-logging failure to the public caller
   }
