@@ -1,11 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { proposalDisplayRange, PROPOSAL_STATUS_LABELS } from '@/lib/proposals'
+import { StatusPill } from '@/components/ui/status-pill'
+import { EmptyState } from '@/components/ui/empty-state'
+import { proposalDisplayRange, PROPOSAL_STATUS_LABELS, PROPOSAL_STATUS_TONE } from '@/lib/proposals'
 import type { Proposal } from '@/lib/types'
 
 interface LeadProposalsClientProps {
@@ -15,17 +16,39 @@ interface LeadProposalsClientProps {
   proposals: Proposal[]
 }
 
-const money = (n: number) => `$${n.toFixed(2)}`
+// List-view money convention (matches ClientWorkingRail/TodayKpiBand): thousands
+// separators, no forced cents — `$12,345`, not `$12345.00`.
+function money(n: number): string {
+  return `$${n.toLocaleString()}`
+}
+
+// How long the copy button holds its "Copied!" acknowledgement before
+// reverting to its resting label.
+const COPIED_RESET_MS = 2000
 
 export function LeadProposalsClient({ orgSlug, leadId, proposals }: LeadProposalsClientProps) {
   const [copied, setCopied] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // Single outstanding reset timer: copying a second link restarts the clock
+  // rather than letting the first timer clear the second row's label early.
+  const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (copiedTimer.current !== null) clearTimeout(copiedTimer.current)
+    }
+  }, [])
 
   async function handleCopy(token: string) {
     setError(null)
     try {
       await navigator.clipboard.writeText(`${window.location.origin}/proposals/${token}`)
       setCopied(token)
+      if (copiedTimer.current !== null) clearTimeout(copiedTimer.current)
+      copiedTimer.current = setTimeout(() => {
+        copiedTimer.current = null
+        setCopied(null)
+      }, COPIED_RESET_MS)
     } catch {
       setError('Could not copy link.')
     }
@@ -36,12 +59,7 @@ export function LeadProposalsClient({ orgSlug, leadId, proposals }: LeadProposal
       <Card>
         <CardHeader className="flex-row items-center justify-between space-y-0">
           <CardTitle className="text-base">Proposals</CardTitle>
-          <Link
-            href={`/${orgSlug}/leads/${leadId}/proposals/new`}
-            className="inline-flex h-8 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-          >
-            New proposal
-          </Link>
+          <Button render={<Link href={`/${orgSlug}/leads/${leadId}/proposals/new`} />}>New proposal</Button>
         </CardHeader>
         <CardContent className="space-y-3">
           <div aria-live="polite" aria-atomic="true">
@@ -49,7 +67,15 @@ export function LeadProposalsClient({ orgSlug, leadId, proposals }: LeadProposal
           </div>
 
           {proposals.length === 0 && (
-            <p className="text-sm text-muted-foreground">No proposals yet.</p>
+            <EmptyState
+              title="No proposals yet"
+              description="Draft one to send this client pricing."
+              action={
+                <Button variant="outline" size="sm" render={<Link href={`/${orgSlug}/leads/${leadId}/proposals/new`} />}>
+                  New proposal
+                </Button>
+              }
+            />
           )}
 
           {proposals.map((p) => {
@@ -59,9 +85,11 @@ export function LeadProposalsClient({ orgSlug, leadId, proposals }: LeadProposal
                 <div className="flex-1 space-y-1">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium">{p.title || 'Untitled proposal'}</span>
-                    <Badge variant="secondary">{PROPOSAL_STATUS_LABELS[p.status]}</Badge>
+                    <StatusPill tone={PROPOSAL_STATUS_TONE[p.status]}>{PROPOSAL_STATUS_LABELS[p.status]}</StatusPill>
                   </div>
-                  <p className="text-xs text-muted-foreground">{min === max ? money(min) : `${money(min)}–${money(max)}`}</p>
+                  <p className="text-xs text-muted-foreground tabular-nums">
+                    {min === max ? money(min) : `${money(min)}–${money(max)}`}
+                  </p>
                 </div>
                 <div className="flex items-center gap-2">
                   {p.status !== 'draft' && (
@@ -69,12 +97,9 @@ export function LeadProposalsClient({ orgSlug, leadId, proposals }: LeadProposal
                       {copied === p.token ? 'Copied!' : 'Copy client link'}
                     </Button>
                   )}
-                  <Link
-                    href={`/${orgSlug}/leads/${leadId}/proposals/${p.id}`}
-                    className="inline-flex h-7 items-center rounded-md border border-border bg-background px-2.5 text-[0.8rem] font-medium hover:bg-muted"
-                  >
+                  <Button variant="outline" size="sm" render={<Link href={`/${orgSlug}/leads/${leadId}/proposals/${p.id}`} />}>
                     Edit
-                  </Link>
+                  </Button>
                 </div>
               </div>
             )
