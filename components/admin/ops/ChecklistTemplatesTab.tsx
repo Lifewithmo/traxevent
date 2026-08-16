@@ -1,10 +1,12 @@
 'use client'
 
 import { useState } from 'react'
+import { MoreHorizontal } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Menu, MenuTrigger, MenuContent, MenuItem } from '@/components/ui/menu'
 import { StatusPill } from '@/components/ui/status-pill'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
@@ -16,6 +18,7 @@ interface ChecklistTemplatesTabProps {
   orgId: string
   isAdmin: boolean
   templates: ChecklistTemplate[]
+  setTemplates: React.Dispatch<React.SetStateAction<ChecklistTemplate[]>>
   ownTemplateIds: string[]
 }
 
@@ -24,8 +27,7 @@ const EVIDENCE: EvidenceType[] = ['none', 'photo', 'number']
 const SELECT_CLASS =
   'block h-9 rounded-md border border-border bg-background px-2 text-sm text-foreground'
 
-export function ChecklistTemplatesTab({ orgId, isAdmin, templates: initial, ownTemplateIds: initialOwn }: ChecklistTemplatesTabProps) {
-  const [templates, setTemplates] = useState(initial)
+export function ChecklistTemplatesTab({ orgId, isAdmin, templates, setTemplates, ownTemplateIds: initialOwn }: ChecklistTemplatesTabProps) {
   const [ownIds, setOwnIds] = useState(new Set(initialOwn))
   const [creating, setCreating] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -84,9 +86,14 @@ export function ChecklistTemplatesTab({ orgId, isAdmin, templates: initial, ownT
                       {ownIds.has(t.id) ? 'Custom' : 'Built-in'}
                     </StatusPill>
                     {isAdmin && ownIds.has(t.id) && (
-                      <Button variant="ghost" size="sm" aria-label={`Delete ${t.name}`} disabled={saving} onClick={() => setPendingDelete(t)}>
-                        Delete
-                      </Button>
+                      <Menu>
+                        <MenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label={`Actions for ${t.name}`} disabled={saving} />}>
+                          <MoreHorizontal />
+                        </MenuTrigger>
+                        <MenuContent>
+                          <MenuItem onClick={() => setPendingDelete(t)}>Delete</MenuItem>
+                        </MenuContent>
+                      </Menu>
                     )}
                   </div>
                 </CardHeader>
@@ -110,7 +117,7 @@ export function ChecklistTemplatesTab({ orgId, isAdmin, templates: initial, ownT
 
       {isEmpty && (
         <EmptyState
-          title="No checklists yet."
+          title="No checklists yet"
           description="Checklists give the crew a phase-by-phase run of the job — prep through closeout."
           action={isAdmin ? <Button onClick={() => setCreating(true)}>New checklist</Button> : undefined}
         />
