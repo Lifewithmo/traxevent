@@ -20,7 +20,7 @@ The playbook says per-package **"fulfillment cost + margin" is already computabl
 - Kit bricks only (`KpiBand`, `StatTile`, `StatusPill`, `EmptyState`, `Menu`, `RelatedRecordCard`, `Avatar` from `components/ui/`). Two kit gaps are real and get built here: **`Tabs`** and **`ConfirmDialog`**.
 - Semantic tokens only. The module has **~15 raw Tailwind color literals and zero token usage** today (`text-gray-500/600/700`, `text-red-600`, `border-gray-300`, `border-gray-900`, `text-gray-400`) — all must go.
 - **Presentation-only:** no schema change, no new writes, no new queries. The one addition is `lib/ops/catalog-costing.ts`, a pure derived-view module over data the loader **already fetches** (`listResources` + `listWorkPackages` are both already in `packages/page.tsx:17-22`). Zero extra reads.
-- Money: use `formatMoney` from `lib/utils.ts` (`$900.00`) — the existing tests assert that exact form. Do **not** switch this module to the `$${n.toLocaleString()}` convention the reference modules use locally.
+- Money: use `formatMoney` from `lib/utils.ts` (`$900.00`) for **row-level cells** — the existing tests assert that exact form, and a per-ounce unit cost genuinely needs two decimals. **Superseded in review for the KPI band:** `lib/utils`' formatter has no thousands separators, so a band tile rendered `$150.00–$4200.00` at 20px. The band now uses `lib/money.ts`'s `formatMoney` (grouped, cents only when there are cents). Note the hazard: two exported functions named `formatMoney` with different output now coexist — consolidating them is a follow-up.
 - Never hardcode "Packages": the heading and first tab label come from the `title` prop (`catalogLabel(getIndustryPack(org.industry_pack_id))` → "Menu Packages" | "Service Packages" | "Rental Packages" | "Packages"). The sidebar derives its label from the same function; hardcoding desyncs nav from page.
 - `actions/*.ts` are `'use server'` — never re-export a type from one (`next build` breaks; `tsc` passes). Types come from `lib/`.
 - **Run tests as** `npx vitest run <paths> --exclude '**/.claude/**'` — without it vitest collects 11,058 files from worktrees.
@@ -39,7 +39,8 @@ The playbook says per-package **"fulfillment cost + margin" is already computabl
 10. **Checklist phase grouping** iterates `CHECKLIST_PHASES` order and renders **nothing** for an empty phase. `'Built-in'` and `'Custom'` must each appear exactly once per matching row (singular `getByText`).
 11. **Server action names/arities are locked** by `vi.mock` factories: `createWorkPackage(orgId, input)`, `updateWorkPackage(orgId, id, updates)`, `deleteWorkPackage(orgId, id)`, `createChecklistTemplate(orgId, {...})`, `deleteChecklistTemplate(orgId, id)` — **the checklist actions live in `actions/work-packages.ts`** — `createResource(orgId, input)`, `updateResource(orgId, id, updates)`, `deleteResource(orgId, id)`.
 12. **Resource unit-cost edit is uncontrolled** (`defaultValue` + `onBlur` + equality guard): blurring an unchanged value must **not** call `updateResource`.
-13. **Tab switching must stop destroying child state.** Today, switching unmounts the other tabs, discarding an in-progress draft *and* any optimistically-created row (remount re-seeds `useState` from the original server props). Fix with `keepMounted` on the kit `TabsPanel` — **not** by lifting state (which would change PackagesTab's contract).
+13. **Tab switching must stop destroying child state.** Today, switching unmounts the other tabs, discarding an in-progress draft *and* any optimistically-created row (remount re-seeds `useState` from the original server props). Fix with `keepMounted` on the kit `TabsPanel`.
+    **Superseded in review:** this plan originally said to fix it with `keepMounted` alone and explicitly *not* by lifting state. That was wrong. `keepMounted` stops the remount but makes staleness permanent — with no remount, nothing recovers. Review found three bugs sharing that root cause: a KPI band showing a wrong money figure after an in-session create; an ingredient costed on one tab never reaching the package that needs it; and the in-use resource delete guard becoming bypassable, which would leave a dangling `resource_id` that breaks re-derive and closeout. `CatalogClient` now owns `packages`/`resources`/`templates`, derives `costing` via `useMemo`, and passes setters down. `keepMounted` stays — the two fixes are complements, not alternatives.
 
 ---
 
@@ -199,6 +200,19 @@ Both cards are read-only summaries — no `onNew`; pass `onEmptyCta` only where 
 5. **Empty state → kit `EmptyState`** with one CTA ("New checklist").
 6. **`window.confirm` → `ConfirmDialog`**, keeping the copy "Packages that attach it will simply stop including it on new events."
 7. The new-checklist form's `flex gap-3` row gets `flex-wrap` (overflows below `md` today).
+
+---
+
+## What review overturned (record, so the next module doesn't repeat it)
+
+The plan above is the pre-review intent. Four things in it were wrong, and the fixes are what shipped:
+
+1. **Task 6 kept the package card list** ("On each package card header keep `{p.name}` and `formatMoney(p.price)`"). Two independent reviewers called that a **card-reskin** — the playbook's one non-negotiable. Swapping tokens, a `Menu`, and a `StatusPill` into the same `packages.map(<Card><CardHeader>…)` is brick substitution, not recomposition, and the draft form was still appended ~2000px below the list. It shipped as a **grouped compact ledger** (uncosted first) with the editor in a `Sheet`.
+2. **The Materials figure was corrected and then not promoted.** Task 6 rendered it as one clause of a muted 14px run-on, *less prominent than the bold price beside it* — R2 forbids exactly that, and printing price and materials side by side invites the margin subtraction the whole correction exists to prevent. It shipped as a right-aligned `tabular-nums` figure with its basis, plus a **Not costed** KPI tile, and the disclosure was corrected to **"Excludes labor and equipment"** (the figure also excludes equipment, which the original copy did not say).
+3. **Invariant 13's "not by lifting state"** — see above.
+4. **Two `$0.00` doors.** The costing module's first version admitted a line to `costable` on the resource having a cost and a unit, but a line whose *own* unit could not convert still returned `costed: true, materials: 0` — rendering `Materials $0.00`. The invariant moved from admission to the figure. A second door (`materials` positive but rounding to `$0.00` at 2dp) was closed after that.
+
+The reviews were the only safety net — a live walkthrough could not run in that session. Every defect above passed green tests first.
 
 ---
 

@@ -109,7 +109,6 @@ export default async function CatalogPage({ params }: { params: Promise<{ orgSlu
                 rows={expiringRows}
                 previewLimit={o.expiring.length}
                 emptyTitle="No documents expiring"
-                emptyCtaLabel="View compliance"
               />
             </div>
           )}
