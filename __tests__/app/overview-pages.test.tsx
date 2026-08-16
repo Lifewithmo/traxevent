@@ -65,6 +65,33 @@ describe('Catalog overview page', () => {
     render(await CatalogPage({ params }))
     expect(screen.getByText('Expiring within 60 days')).toBeInTheDocument()
   })
+
+  it('renders the package, vendor, and form counts as KPI figures', async () => {
+    catalogOverview.mockResolvedValue({
+      expiring: [],
+      vendorCount: 7,
+      formCount: 3,
+      complianceCount: 1,
+      packageCount: 4,
+    })
+    const { container } = render(await CatalogPage({ params }))
+    const tileText = Array.from(container.querySelectorAll('[data-slot="stat-tile"]')).map((t) => t.textContent)
+    expect(tileText.some((t) => t?.includes('Packages') && t?.includes('4'))).toBe(true)
+    expect(tileText.some((t) => t?.includes('Vendors') && t?.includes('7'))).toBe(true)
+    expect(tileText.some((t) => t?.includes('Forms') && t?.includes('3'))).toBe(true)
+  })
+
+  it('offers a single CTA to packages from the empty state', async () => {
+    catalogOverview.mockResolvedValue({
+      expiring: [],
+      vendorCount: 0,
+      formCount: 0,
+      complianceCount: 0,
+      packageCount: 0,
+    })
+    render(await CatalogPage({ params }))
+    expect(screen.getByRole('link', { name: 'Add packages' })).toHaveAttribute('href', '/acme/packages')
+  })
 })
 
 describe('Money overview page', () => {
