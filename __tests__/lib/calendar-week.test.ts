@@ -159,6 +159,42 @@ describe('needsAttention', () => {
     expect(ids).not.toContain('beyond')
   })
 
+  // The window filter runs before classify(), so it must apply to every reason
+  // — not just the money/overdue ones the test above happens to use. A future
+  // "blockers should always show" special case would be caught here.
+  it('applies the horizon to blockers and holds too, not just money and tasks', () => {
+    const groups = needsAttention(
+      [
+        compliance({ id: 'c-old', date: '2026-01-05', blocker: true }),
+        compliance({ id: 'c-edge', date: '2026-09-11', blocker: true }), // today + 30
+        compliance({ id: 'c-beyond', date: '2026-09-12', blocker: true }), // today + 31
+        hold({ id: 'h-old', date: '2026-01-06' }),
+        hold({ id: 'h-edge', date: '2026-09-11' }),
+        hold({ id: 'h-beyond', date: '2026-09-12' }),
+      ],
+      TODAY
+    )
+    const ids = groups.flatMap((g) => g.entries.map((e) => e.item.id))
+    expect(ids).toEqual(['c-old', 'c-edge', 'h-old', 'h-edge'])
+    expect(ids).not.toContain('c-beyond')
+    expect(ids).not.toContain('h-beyond')
+  })
+
+  // `blocker` is compliance-only in buildCalendarFeed today, but the classifier
+  // checks the flag with no kind guard — pin that so the precedence can't drift.
+  it('treats a blocking invoice or a blocking hold as a blocker, not money or unbooked', () => {
+    const groups = needsAttention(
+      [
+        due({ id: 'i-block', date: '2026-08-14', blocker: true }),
+        hold({ id: 'h-block', date: '2026-08-15', blocker: true }),
+      ],
+      TODAY
+    )
+    expect(groups).toHaveLength(1)
+    expect(groups[0].key).toBe('blocker')
+    expect(groups[0].entries.map((e) => e.item.id)).toEqual(['i-block', 'h-block'])
+  })
+
   it('honours a custom horizon', () => {
     const items = [due({ id: 'in', date: '2026-08-18' }), due({ id: 'out', date: '2026-08-20' })]
     const ids = needsAttention(items, TODAY, 7).flatMap((g) => g.entries.map((e) => e.item.id))
