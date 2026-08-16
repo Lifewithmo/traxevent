@@ -12,6 +12,7 @@ import { createInvoice, generateFromProposal } from '@/actions/invoices'
 import { amountPaid, invoiceAmountDue, invoiceBalance } from '@/lib/invoices'
 import { derivePaymentStatus, deriveAging, INVOICE_TYPE_LABELS } from '@/lib/invoice-status'
 import { invoicePill, money2 } from '@/lib/invoice-presentation'
+import { round2 } from '@/lib/money-overview'
 import type { NormalizedInvoice, InvoiceType } from '@/lib/types'
 
 interface LeadInvoicesClientProps {
@@ -23,8 +24,6 @@ interface LeadInvoicesClientProps {
 }
 
 const INVOICE_TYPES: InvoiceType[] = ['deposit', 'progress', 'final', 'quick']
-
-const round2 = (n: number) => Math.round(n * 100) / 100
 
 export function LeadInvoicesClient({ orgId, orgSlug, leadId, invoices, acceptedProposals }: LeadInvoicesClientProps) {
   const router = useRouter()
