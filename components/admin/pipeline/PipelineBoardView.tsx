@@ -188,8 +188,14 @@ export function PipelineBoardView({
           next.splice(prevIndex < 0 ? next.length : Math.min(prevIndex, next.length), 0, row)
           return next
         })
+        // The MESSAGE is inside the ownership guard for the same reason the
+        // rollback is. `setError(null)` runs at the START of every call, so a
+        // superseded move rejecting after the newer move of that same card had
+        // already succeeded left "Permission denied" standing under a card
+        // sitting correctly in its new column: the operator was told a move had
+        // failed when the one they actually made had landed.
+        setError(err instanceof Error ? err.message : 'Failed to move opportunity')
       }
-      setError(err instanceof Error ? err.message : 'Failed to move opportunity')
     } finally {
       // Identity, not lead id: a second move of the SAME card replaced this
       // entry, and that move is still in flight.
@@ -261,6 +267,14 @@ export function PipelineBoardView({
         {OPEN_STAGES.map((stage) => {
           const cards = rows.filter((r) => r.lead.stage === stage)
           const value = cards.reduce((s, r) => s + (r.lead.estimated_value ?? 0), 0)
+          // The count covers every card; the sum covers only the priced ones —
+          // the rest render "Price it" precisely because theirs is unset. A
+          // column of five unpriced deals read "5 deals" over a money-green
+          // "$0", which an operator reads as "this stage is worth nothing"
+          // rather than "nobody has priced these". Naming the gap makes the $0
+          // a to-do instead of a wrong figure. Same rule as the list's
+          // GroupHeader (PipelineListClient.tsx:61).
+          const unpriced = cards.filter((r) => r.lead.estimated_value == null).length
           // R4: an empty column offered NOTHING before — it rendered blank. The
           // forward move out of an empty stage is to advance the most neglected
           // deal sitting in the stage before it; failing that (Inquiry, or an
@@ -286,6 +300,11 @@ export function PipelineBoardView({
                     own line as a figure instead of trailing an 11px grey count. */}
                 <p className="text-sm font-semibold tabular-nums text-[var(--money-green)]">
                   {money(value)}
+                  {unpriced > 0 && (
+                    <span className="ml-1.5 text-xs font-normal text-muted-foreground">
+                      · {unpriced} unpriced
+                    </span>
+                  )}
                 </p>
               </div>
               <div
@@ -376,6 +395,18 @@ export function PipelineBoardView({
                         e.dataTransfer.effectAllowed = 'move'
                         e.dataTransfer.setData('text/plain', lead.id)
                       }}
+                      /*
+                        The highlight's safety net. `dragOverStage` is otherwise
+                        cleared only by `dragleave` (behind the relatedTarget
+                        guard) and by a drop — so a CANCELLED drag (Escape,
+                        released over the gutter or outside the window) can leave
+                        a column tinted `var(--muted)` until some other column is
+                        dragged over, because a browser is not obliged to deliver
+                        a final `dragleave` on cancel. `dragend` fires on the
+                        SOURCE however the drag ended, which makes this the one
+                        event that always arrives.
+                      */
+                      onDragEnd={() => setDragOverStage(null)}
                       onKeyDown={(e) => {
                         if (e.target !== e.currentTarget) return
                         if (e.key === 'ArrowRight') { e.preventDefault(); handleArrowMove(row, 1) }
@@ -438,9 +469,15 @@ export function PipelineBoardView({
                             {money(lead.estimated_value)}
                           </span>
                         ) : (
-                          // R6: never a dash. No `?focus=value` — the opportunity
-                          // page ignores that query, and a control that silently
-                          // does nothing is worse than the dash it replaced.
+                          // R6: never a dash — and the label names what this
+                          // control DOES. It navigates: no `?focus=value`,
+                          // because the opportunity page ignores that query, and
+                          // a control that silently does nothing is worse than
+                          // the dash it replaced. "+ Add value" promised an add
+                          // and delivered a page, leaving the operator to hunt
+                          // for the SECOND "+ Add value" on the opportunity's
+                          // KPI band — the one that really does add. Same split
+                          // as the list row (PipelineListClient.tsx:216).
                           // The kit button SKIN on a real anchor, not
                           // `<Button render={<Link/>}>`: Base UI's Button owns
                           // button semantics and warns (or stamps role="button"
@@ -450,7 +487,7 @@ export function PipelineBoardView({
                             draggable={false}
                             className={cn(buttonVariants({ variant: 'link', size: 'xs' }), 'px-0')}
                           >
-                            + Add value
+                            Price it
                           </Link>
                         )}
                       </div>

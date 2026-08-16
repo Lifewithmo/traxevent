@@ -111,6 +111,50 @@ describe('PipelineBoardView', () => {
     expect(column('consultation').textContent).toContain('0 deals')
   })
 
+  /*
+    THE COUNT AND THE SUM DO NOT COVER THE SAME CARDS. Every card is counted;
+    only the priced ones are summed — the rest render "Price it" because theirs
+    is unset. A column of unpriced deals read "3 deals" over a money-green "$0",
+    which an operator reads as "this stage is worth nothing" rather than "nobody
+    has priced these". Same rule as the list's GroupHeader.
+  */
+  it('says how many cards the column’s sum leaves out', () => {
+    render(<PipelineBoardView {...baseProps} groups={{
+      needs_attention: [], waiting: [],
+      active: [
+        { lead: lead({ id: 'a', name: 'Alder Co', estimated_value: 1200 }), health: 'active', statusLine: 'x' },
+        { lead: lead({ id: 'b', name: 'Birch Co' }), health: 'active', statusLine: 'y' },
+        { lead: lead({ id: 'c', name: 'Cedar Co' }), health: 'active', statusLine: 'z' },
+      ],
+    }} />)
+    const inquiry = column('inquiry')
+    expect(inquiry.textContent).toContain('3 deals')
+    const rollup = Array.from(inquiry.querySelectorAll('p')).find((p) => p.textContent?.startsWith('$1,200'))
+    expect(rollup!.textContent).toBe('$1,200· 2 unpriced')
+  })
+
+  it('stays silent about unpriced cards when every card in the column has a value', () => {
+    render(<PipelineBoardView {...baseProps} />)
+    const rollup = Array.from(column('inquiry').querySelectorAll('p'))
+      .find((p) => p.textContent?.startsWith('$1,200'))
+    expect(rollup!.textContent).toBe('$1,200')
+  })
+
+  /*
+    THE LABEL NAMES WHAT THE CONTROL DOES. It navigates — a `?focus=value` query
+    the opportunity page ignores would be a dead control — so it must not be
+    named after the edit it does not perform. "+ Add value" belongs to the
+    opportunity KPI band's button, which really does open the editor.
+  */
+  it('names the unset-estimate affordance for the navigation it performs (R6)', () => {
+    render(<PipelineBoardView {...baseProps} groups={{
+      needs_attention: [], waiting: [],
+      active: [{ lead: lead({}), health: 'active', statusLine: 'x' }],
+    }} />)
+    expect(screen.getByRole('link', { name: 'Price it' })).toHaveAttribute('href', '/demo/leads/l1')
+    expect(screen.queryByText('+ Add value')).toBeNull()
+  })
+
   it('routes Mark lost to the opportunity page', () => {
     render(<PipelineBoardView {...baseProps} />)
     fireEvent.click(screen.getByRole('button', { name: /Stage: Inquiry/ }))
@@ -173,6 +217,30 @@ describe('PipelineBoardView', () => {
       // Leaving for good — a target outside the column — still clears it.
       dragLeaveTowards(target, dropzone('proposal'))
       expect(target.style.background).toBe('')
+    })
+
+    /*
+      A CANCELLED DRAG. `dragOverStage` is otherwise cleared only by `dragleave`
+      (behind the relatedTarget guard) and by a drop, and a browser is not
+      obliged to deliver a final `dragleave` when a drag is cancelled — Escape
+      mid-drag, or a release over the gutter or outside the window. Without a
+      `dragend` net the column keeps its `var(--muted)` tint until some other
+      column is dragged over. `dragend` fires on the SOURCE however the drag
+      ended, so it is the one event that always arrives.
+    */
+    it('clears the drop highlight when the drag is cancelled rather than dropped', () => {
+      render(<PipelineBoardView {...baseProps} />)
+      const card = screen.getByRole('article', { name: /Halcyon Studios/ })
+      const dt = dataTransfer()
+      fireEvent.dragStart(card, { dataTransfer: dt })
+      const target = dropzone('proposal')
+      fireEvent.dragOver(target, { dataTransfer: dt })
+      expect(target.style.background).toContain('var(--muted)')
+
+      // Cancelled: no drop, and no dragleave on the way out.
+      fireEvent.dragEnd(card)
+      expect(target.style.background).toBe('')
+      expect(setLeadStage).not.toHaveBeenCalled()
     })
 
     it('drops onto a column: optimistic move first, server call second, highlight cleared', async () => {
@@ -344,9 +412,13 @@ describe('PipelineBoardView', () => {
       The other half of a same-card overlap: the OLDER write is refused after a
       newer one has already repainted the card. Rewinding to the stage the older
       call started from would drag the card backwards while the newer write is
-      still running.
+      still running — and REPORTING it is the same mistake in words. `setError`
+      used to sit outside the ownership guard, so the superseded rejection left
+      "Permission denied" standing under a card that had in fact moved
+      successfully: the newer call's `setError(null)` runs at its START, before
+      the older call ever rejects.
     */
-    it('does not rewind a card when a superseded move of it is rejected', async () => {
+    it('neither rewinds nor reports a superseded move that is rejected', async () => {
       const settle: Array<() => void> = []
       const reject: Array<(e: Error) => void> = []
       setLeadStage.mockImplementation(() => new Promise<void>((res, rej) => {
@@ -369,12 +441,31 @@ describe('PipelineBoardView', () => {
 
       // Write #1 is refused AFTER #2 has already painted Proposal.
       await act(async () => { reject[0](new Error('Permission denied')) })
-      await waitFor(() => expect(screen.getByText('Permission denied')).toBeInTheDocument())
       expect(stageOf(/Alder Co/)).toBe('proposal')
+      // …and the operator is NOT told a move failed. The move they made is the
+      // one #2 is carrying, and it is still running.
+      expect(screen.queryByText('Permission denied')).toBeNull()
 
-      // #2 succeeds; the card is exactly where the operator left it.
+      // #2 succeeds; the card is exactly where the operator left it, still with
+      // no failure line under it.
       await act(async () => { settle[1]() })
       expect(stageOf(/Alder Co/)).toBe('proposal')
+      expect(screen.queryByText('Permission denied')).toBeNull()
+    })
+
+    /*
+      The owner still reports. Guarding the message must not silence the ONE
+      call whose failure the operator needs to see.
+    */
+    it('still reports a rejection from the move that owns the card', async () => {
+      setLeadStage.mockRejectedValue(new Error('Permission denied'))
+      render(<PipelineBoardView {...baseProps} />)
+      const dt = dataTransfer()
+      fireEvent.dragStart(screen.getByRole('article', { name: /Halcyon Studios/ }), { dataTransfer: dt })
+      fireEvent.drop(dropzone('proposal'), { dataTransfer: dt })
+
+      await waitFor(() => expect(screen.getByText('Permission denied')).toBeInTheDocument())
+      expect(stageOf(/Halcyon Studios/)).toBe('inquiry')
     })
 
     /*

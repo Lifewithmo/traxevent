@@ -34,6 +34,15 @@ const baseProps = {
 
 const emptyGroups = { needs_attention: [], waiting: [], active: [] }
 
+/**
+ * The first group header's rollup line, read whole. `getByText('$4,500')` is
+ * ambiguous here on purpose — the group's sum and the single row's own money
+ * legitimately print the same string — and the line spans an element boundary,
+ * so it has to come off the containing <p>.
+ */
+const groupRollup = (container: HTMLElement) =>
+  (container.querySelector('section p') as HTMLElement).textContent
+
 describe('PipelineListClient', () => {
   beforeEach(() => {
     // mockReset, not mockClear: the in-flight test installs a deferred
@@ -206,7 +215,132 @@ describe('PipelineListClient', () => {
   })
 
   /*
-    The error path's `finally` clear. Without it a refused move leaves the row
+    THE REFRESH-LAG WINDOW, which is the rest of the duplicate-write path the
+    guard was added for. `setLeadStage` resolving is NOT the end of the move:
+    `router.refresh()` is fire-and-forget and this page is `force-dynamic`, so
+    for the whole RSC round trip the row keeps rendering the STALE prop stage.
+    Re-arming on the promise put the advance button back reading "Move to
+    Consultation" and left the same-stage early return comparing against that
+    stale stage — a second click therefore fired a second `setLeadStage`, and
+    that action writes an activity entry on EVERY call (actions/leads.ts:112).
+
+    THE MOUNTED PROPS ARE THE CLOCK HERE. The first half of this test runs
+    entirely AFTER the write has resolved (note the `await act` around the
+    click), which is exactly the window a promise-scoped guard cannot see.
+  */
+  it('keeps the row locked from the resolved write until the refreshed stage lands', async () => {
+    const inquiryRow = {
+      ...emptyGroups,
+      active: [{ lead: lead({ id: 'l1', stage: 'inquiry' as const }), health: 'active' as const, statusLine: 'x' }],
+    }
+    const { rerender } = render(<PipelineListClient {...baseProps} groups={inquiryRow} />)
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Move to Consultation' })) })
+
+    expect(setLeadStage).toHaveBeenCalledTimes(1)
+    expect(refresh).toHaveBeenCalledTimes(1)
+    // The write has RESOLVED. The payload has not landed — props still say
+    // Inquiry — so the row is still moving and says so.
+    expect(screen.getByRole('button', { name: 'Moving…' })).toBeDisabled()
+
+    // …and the stage MENU, which the kit gives no way to disable, still refuses.
+    fireEvent.click(screen.getByRole('button', { name: /Stage: Inquiry/ }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Proposal' }))
+    expect(setLeadStage).toHaveBeenCalledTimes(1)
+
+    // The refreshed payload arrives; the row re-arms on its NEW stage.
+    rerender(<PipelineListClient {...baseProps} groups={{
+      ...emptyGroups,
+      active: [{ lead: lead({ id: 'l1', stage: 'consultation' as const }), health: 'active' as const, statusLine: 'x' }],
+    }} />)
+    expect(screen.getByRole('button', { name: 'Move to Proposal' })).toBeEnabled()
+  })
+
+  /*
+    A payload that DISAGREES with the move still re-arms the row. The mark is
+    held against the stage the move started FROM, not the one it aimed at, so a
+    lost race (someone else moved the deal, the write silently did not apply)
+    cannot strand the row at a disabled "Moving…" for the rest of the session.
+  */
+  it('re-arms the row on any fresh payload, not only one carrying the requested stage', async () => {
+    const inquiryRow = {
+      ...emptyGroups,
+      active: [{ lead: lead({ id: 'l1', stage: 'inquiry' as const }), health: 'active' as const, statusLine: 'x' }],
+    }
+    const { rerender } = render(<PipelineListClient {...baseProps} groups={inquiryRow} />)
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Move to Consultation' })) })
+    expect(screen.getByRole('button', { name: 'Moving…' })).toBeDisabled()
+
+    rerender(<PipelineListClient {...baseProps} groups={{
+      ...emptyGroups,
+      active: [{ lead: lead({ id: 'l1', stage: 'proposal' as const }), health: 'active' as const, statusLine: 'x' }],
+    }} />)
+    expect(screen.getByRole('button', { name: 'Move to Closed Won' })).toBeEnabled()
+  })
+
+  /*
+    THE REFUSAL HAS TO SURVIVE THE MOVE IT WARNED ABOUT. The `finally` that used
+    to clear `moving` also called `setNotice(null)`, so the sequence below —
+    refuse the second pick, then let the first write land — erased the only
+    trace of a stage change the operator explicitly made and the app silently
+    discarded. They were left looking at a deal in Consultation, having picked
+    Proposal, with nothing on screen saying why.
+
+    Note the shape: the earlier in-flight test mocks `setLeadStage` as a promise
+    that NEVER settles, so its `finally` never runs and it is structurally
+    incapable of observing this. This one settles.
+  */
+  it('keeps the refusal on screen after the in-flight move it warned about lands', async () => {
+    let settle: () => void = () => {}
+    setLeadStage.mockImplementation(() => new Promise<void>((res) => { settle = () => res() }))
+
+    render(<PipelineListClient {...baseProps} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Move to Closed Won' }))
+
+    fireEvent.click(screen.getByRole('button', { name: /Stage: Proposal/ }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Consultation' }))
+    const refusal = 'Halcyon Studios is still moving — wait for that change to land.'
+    expect(screen.getByText(refusal)).toBeInTheDocument()
+
+    await act(async () => { settle() })
+    expect(screen.getByText(refusal)).toBeInTheDocument()
+  })
+
+  /*
+    …and a DIFFERENT row's completing move must not erase it either: `notice` is
+    global while `moving` is per row, so row B's `finally` used to wipe the
+    refusal row A had just raised.
+  */
+  it('keeps one row’s refusal on screen when a different row’s move lands', async () => {
+    const settle: Record<string, () => void> = {}
+    setLeadStage.mockImplementation((_org: string, id: string) =>
+      new Promise<void>((res) => { settle[id] = () => res() }))
+
+    render(<PipelineListClient {...baseProps} groups={{
+      ...emptyGroups,
+      active: [
+        { lead: lead({ id: 'A', name: 'Alder Co', stage: 'proposal' }), health: 'active', statusLine: 'A line' },
+        { lead: lead({ id: 'B', name: 'Birch Co', stage: 'inquiry' }), health: 'active', statusLine: 'B line' },
+      ],
+    }} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Move to Closed Won' }))   // A
+    fireEvent.click(screen.getByRole('button', { name: 'Move to Consultation' })) // B
+
+    // A's stage menu is still live; the second pick on A is refused.
+    fireEvent.click(screen.getByRole('button', { name: /Stage: Proposal/ }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Consultation' }))
+    const refusal = 'Alder Co is still moving — wait for that change to land.'
+    expect(screen.getByText(refusal)).toBeInTheDocument()
+
+    // B settles. A's refusal is not B's to clear.
+    await act(async () => { settle.B() })
+    expect(screen.getByText(refusal)).toBeInTheDocument()
+
+    await act(async () => { settle.A() })
+  })
+
+  /*
+    The error path's re-arm. Without it a refused move leaves the row
     permanently stuck at a disabled "Moving…" and the operator cannot retry
     without a full page load.
   */
@@ -323,15 +457,22 @@ describe('PipelineListClient', () => {
     })
   })
 
-  it('offers "+ Add value" instead of nothing when the estimate is unset (R6)', () => {
+  /*
+    THE LABEL NAMES WHAT THE CONTROL DOES. This one navigates — a `?focus=value`
+    query the opportunity page ignores would be a dead control — so it must not
+    be named after an edit. Called "+ Add value" it promised an add, delivered a
+    page, and left the operator hunting for the SECOND "+ Add value", the one on
+    the opportunity's KPI band that really does open the editor.
+  */
+  it('names the unset-estimate affordance for the navigation it performs (R6)', () => {
     render(<PipelineListClient {...baseProps} groups={{
       ...emptyGroups,
       active: [{ lead: lead({}), health: 'active', statusLine: 'Next: call' }],
     }} />)
-    const add = screen.getByRole('link', { name: '+ Add value' })
-    // A query the opportunity page ignores would be a dead control; plain
-    // navigation lands on the rail where the value is actually set.
-    expect(add).toHaveAttribute('href', '/demo/leads/l1')
+    const priceIt = screen.getByRole('link', { name: 'Price it' })
+    expect(priceIt).toHaveAttribute('href', '/demo/leads/l1')
+    // The word that belongs to the control that actually adds one.
+    expect(screen.queryByText('+ Add value')).toBeNull()
   })
 
   it('promotes each group header to a count and a summed value (R2)', () => {
@@ -345,6 +486,33 @@ describe('PipelineListClient', () => {
     expect(screen.getByText(/2 opportunities/)).toBeInTheDocument()
     const sum = screen.getByText('$14,200')
     expect(sum.className).toContain('var(--money-green)')
+  })
+
+  /*
+    THE COUNT AND THE SUM DO NOT COVER THE SAME ROWS. The count is every row in
+    the group; the sum only the priced ones — the rest render "Price it" because
+    theirs is unset. Silent, "3 opportunities · $4,500" read as though $4,500
+    covered all three, and a group where nobody has priced anything read "$0",
+    which is a wrong figure rather than an empty one.
+  */
+  it('says how many rows the group’s sum leaves out', () => {
+    const { container } = render(<PipelineListClient {...baseProps} groups={{
+      needs_attention: [
+        { lead: lead({ id: 'a', estimated_value: 4500 }), health: 'needs_attention', statusLine: 'x' },
+        { lead: lead({ id: 'b' }), health: 'needs_attention', statusLine: 'y' },
+        { lead: lead({ id: 'c' }), health: 'needs_attention', statusLine: 'z' },
+      ],
+      waiting: [], active: [],
+    }} />)
+    expect(groupRollup(container)).toBe('3 opportunities · $4,500 · 2 unpriced')
+  })
+
+  it('stays silent about unpriced rows when every row in the group has a value', () => {
+    const { container } = render(<PipelineListClient {...baseProps} groups={{
+      needs_attention: [{ lead: lead({ id: 'a', estimated_value: 4500 }), health: 'needs_attention', statusLine: 'x' }],
+      waiting: [], active: [],
+    }} />)
+    expect(groupRollup(container)).toBe('1 opportunity · $4,500')
   })
 
   /*
@@ -372,10 +540,10 @@ describe('PipelineListClient', () => {
       expect(screen.getByRole('dialog')).toBeInTheDocument()
     })
 
-    it('sends the operator to the open list when nothing needs a move', () => {
+    it('sends the operator to the open list when nothing needs attention', () => {
       render(<PipelineListClient {...baseProps} groups={emptyGroups} openCount={0} />)
-      fireEvent.click(screen.getByRole('button', { name: /^Needs a move/ }))
-      expect(screen.getByText('Nothing needs a move')).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: /^Needs attention/ }))
+      expect(screen.getByText('Nothing needs attention')).toBeInTheDocument()
       fireEvent.click(screen.getByRole('button', { name: 'See all open' }))
       expect(screen.getByText('No open opportunities')).toBeInTheDocument()
     })
@@ -386,6 +554,22 @@ describe('PipelineListClient', () => {
       expect(screen.getByText('Nothing closed yet')).toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'See all open' })).toBeInTheDocument()
     })
+  })
+
+  /*
+    ONE QUANTITY, ONE WORD. `groups.needs_attention.length` reaches the operator
+    three times inside ~80px on /leads — the KPI tile, this tab, and the group
+    rule — and used to do so as "Needs action", "Needs a move" and "Needs
+    attention", which reads top-to-bottom as three separate queues. The health
+    model's own word is `needs_attention`; the tile is pinned to the same string
+    in PipelineStatsHeader.test.tsx.
+  */
+  it('names the needs-attention queue with the health model’s word on both the tab and the rule', () => {
+    render(<PipelineListClient {...baseProps} />)
+    expect(screen.getByRole('button', { name: 'Needs attention (1)' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Needs attention' })).toBeInTheDocument()
+    expect(screen.queryByText(/needs a move/i)).toBeNull()
+    expect(screen.queryByText(/needs action/i)).toBeNull()
   })
 
   it('mounts the create form in a dialog rather than inline above the list', () => {

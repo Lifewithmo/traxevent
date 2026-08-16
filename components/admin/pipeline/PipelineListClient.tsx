@@ -32,7 +32,15 @@ interface PipelineListClientProps {
   customers?: Customer[]
 }
 
-type Tab = 'needs_move' | 'open' | 'closed'
+/*
+  ONE WORD FOR ONE QUANTITY. `groups.needs_attention.length` reaches the operator
+  three times inside ~80px of each other on /leads: the KPI tile, this tab, and
+  the group rule below it. It used to do so under three different names — "Needs
+  action", "Needs a move", "Needs attention" — which reads as three queues. The
+  health model's own word is `needs_attention` (lib/pipeline-view), so that is
+  the word everywhere, including this key.
+*/
+type Tab = 'needs_attention' | 'open' | 'closed'
 
 // Advance sequence: open stages in order, then Closed Won — same source of
 // truth as the board's StageChip menu (spec §10.2).
@@ -56,16 +64,25 @@ const MONEY_CLASS = 'text-sm font-medium tabular-nums text-[var(--money-green)]'
  * `$0` included — the board's column headers and every KPI tile already do, and
  * a header that hides its sum at zero reads as "not computed" rather than
  * "nothing here yet". Only an UNSET per-record estimate is not a figure at all;
- * that one gets the "+ Add value" affordance below.
+ * that one gets the "Price it" affordance below.
+ *
+ * AND THE COUNT AND THE SUM DO NOT COVER THE SAME ROWS. The count is every row;
+ * the sum is only the rows carrying an estimate — the rest render "Price it"
+ * precisely because theirs is unset. Silent, "3 opportunities · $4,500" read as
+ * though $4,500 covered all three, and a group where nobody has priced anything
+ * read as "$0", which is a wrong figure rather than an empty one. So the gap is
+ * named: the trailing "· 2 unpriced" is what turns that $0 into a to-do.
  */
 function GroupHeader({ label, rows, alert }: { label: string; rows: PipelineRow[]; alert?: boolean }) {
   const value = rows.reduce((s, r) => s + (r.lead.estimated_value ?? 0), 0)
+  const unpriced = rows.filter((r) => r.lead.estimated_value == null).length
   return (
     <div className="mb-1 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 border-b border-border pb-1.5">
       <h2 className={`text-sm font-semibold ${alert ? 'text-destructive' : ''}`}>{label}</h2>
       <p className="text-xs text-muted-foreground">
         {rows.length} opportunit{rows.length === 1 ? 'y' : 'ies'}
         {' · '}<span className={MONEY_CLASS}>{money(value)}</span>
+        {unpriced > 0 && ` · ${unpriced} unpriced`}
       </p>
     </div>
   )
@@ -80,12 +97,28 @@ export function PipelineListClient({
   const [intakeOpen, setIntakeOpen] = useState(false)
   const [nudging, setNudging] = useState<string | null>(null)
   /*
-    The lead ids whose `setLeadStage` write is in flight — a LIST, not one slot.
-    A single slot could only ever describe one row: start row B while row A is
-    still writing and A's "Moving…" label vanished and its button re-enabled
-    mid-write, then A's `finally` cleared B's mark too.
+    Lead id → the move that row is still travelling on: the stage the server
+    last reported (`from`) and the stage the operator sent it to (`to`).
+
+    A MAP KEYED BY ROW, not one slot: a single slot could only ever describe one
+    row — start row B while row A is still writing and A's "Moving…" label
+    vanished and its button re-enabled mid-write, then A's cleanup cleared B's
+    mark too.
+
+    AND `from`, not a bare "is writing" flag, because the write resolving is NOT
+    the end of the move. `router.refresh()` is fire-and-forget; for the whole RSC
+    round trip (300ms–1.5s on this force-dynamic page — the same request also
+    writes an activity entry) the row still renders the STALE prop stage. Clear
+    on the promise and the advance button re-arms still reading "Move to
+    Consultation", and the same-stage early return below compares against that
+    stale stage, so a second click fires a second `setLeadStage` — which logs an
+    activity entry on EVERY call (actions/leads.ts:112). Two identical
+    "Stage → consultation" rows on the timeline, and for closed_won a second
+    `?convert=1` push. So the row stays marked until the SERVER's stage moves off
+    `from`. Any new payload re-arms it, including one that disagrees with `to`,
+    so a lost race cannot strand the row at "Moving…" forever.
   */
-  const [moving, setMoving] = useState<string[]>([])
+  const [moving, setMoving] = useState<Record<string, { from: LeadStage; to: LeadStage }>>({})
   const [error, setError] = useState<string | null>(null)
   // Not an error: the one case the guard below refuses. Rendered in the same
   // live region so a refused click is never silent.
@@ -109,6 +142,12 @@ export function PipelineListClient({
     }
   }
 
+  /** The stage a row is still travelling to, or null once the props have moved. */
+  function movingTo(lead: Lead): LeadStage | null {
+    const move = moving[lead.id]
+    return move && lead.stage === move.from ? move.to : null
+  }
+
   /*
     Mirrors `handleNudge` above, which this file already got right. Nothing on
     this surface changes for the whole round trip — no optimistic move, unlike
@@ -125,16 +164,25 @@ export function PipelineListClient({
     the one refusal left — a second stage change on the SAME row, reachable
     through the row's stage menu, which the kit's StageChip cannot be disabled
     from the outside — says so out loud.
+
+    NO `finally`, deliberately. The one that used to sit here did two wrong
+    things: it re-armed the row the instant the PROMISE resolved (see the
+    `moving` comment — the refresh-lag window is the rest of the duplicate-write
+    path), and it called `setNotice(null)`, wiping the refusal the guard below
+    had just raised. The notice is global while `moving` is per row, so row B's
+    completing move erased row A's refusal too, and the operator was left looking
+    at a deal in Consultation, having explicitly picked Proposal, with nothing on
+    screen saying why. The notice now survives until the operator's next move.
   */
   async function handleStageChange(row: PipelineRow, newStage: LeadStage) {
     if (newStage === row.lead.stage) return
-    if (moving.includes(row.lead.id)) {
+    if (movingTo(row.lead)) {
       setNotice(`${opportunityTitle(row.lead)} is still moving — wait for that change to land.`)
       return
     }
     setError(null)
     setNotice(null)
-    setMoving((m) => [...m, row.lead.id])
+    setMoving((m) => ({ ...m, [row.lead.id]: { from: row.lead.stage, to: newStage } }))
     try {
       await setLeadStage(orgId, row.lead.id, newStage)
       if (newStage === 'closed_won') {
@@ -144,11 +192,14 @@ export function PipelineListClient({
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to move opportunity')
-    } finally {
-      // Clearing this is what re-arms the row: without it the advance button is
-      // stuck reading "Moving…" and disabled forever after a rejected move.
-      setMoving((m) => m.filter((id) => id !== row.lead.id))
-      setNotice(null)
+      // Re-arm ON THE FAILURE PATH ONLY — nothing else is coming. Without this
+      // a refused move leaves the advance button stuck reading "Moving…" and
+      // disabled forever. The success path is re-armed by the refreshed props.
+      setMoving((m) => {
+        const next = { ...m }
+        delete next[row.lead.id]
+        return next
+      })
     }
   }
 
@@ -157,7 +208,7 @@ export function PipelineListClient({
     const title = opportunityTitle(lead)
     const next = nextStage(lead.stage)
     const needsAttention = row.health === 'needs_attention'
-    const isMoving = moving.includes(lead.id)
+    const isMoving = movingTo(lead) !== null
     return (
       <div
         key={lead.id}
@@ -178,7 +229,7 @@ export function PipelineListClient({
               Row titles stay `text-foreground` rather than `text-primary`: this
               is the kit's own record-row treatment (related-record-card.tsx:17)
               and a queue where every title is copper has no hierarchy left.
-              Copper is spent on the affordances below (+ Add value, Events).
+              Copper is spent on the affordances below (Price it, Events).
             */}
             <Link
               href={`/${orgSlug}/leads/${lead.id}`}
@@ -201,17 +252,21 @@ export function PipelineListClient({
           {lead.estimated_value != null ? (
             <span className={MONEY_CLASS}>{money(lead.estimated_value)}</span>
           ) : (
-            // R6: an unset figure offers the next action, never an em-dash. No
-            // `?focus=value` query — the opportunity page honours `convert`,
-            // `focus=task` and `focus=lost` (OpportunityDetailClient.tsx:202,
-            // 208) and nothing else, so a query it ignores would be a control
-            // that silently does nothing. The rail's inline "+ Add" facts are
-            // one click away on arrival.
+            // R6: an unset figure offers the next action, never an em-dash —
+            // and the label has to name the action this control PERFORMS. This
+            // one navigates: there is no `?focus=value` query, because the
+            // opportunity page honours `convert`, `focus=task` and `focus=lost`
+            // (OpportunityDetailClient.tsx:202, 208) and nothing else, so a
+            // query it ignores would be a control that silently does nothing.
+            // Labelled "+ Add value" it promised an add and delivered a page —
+            // the operator then had to find a SECOND "+ Add value" on the
+            // opportunity's KPI band, which is the one that really does add.
+            // "Price it" is the errand; the band's "+ Add value" is the edit.
             <Link
               href={`/${orgSlug}/leads/${lead.id}`}
               className={cn(buttonVariants({ variant: 'link', size: 'xs' }), 'px-0')}
             >
-              + Add value
+              Price it
             </Link>
           )}
           {row.countdown && <StatusPill tone={row.countdown.tone}>{row.countdown.text}</StatusPill>}
@@ -302,7 +357,7 @@ export function PipelineListClient({
   const openEmpty = groups.needs_attention.length + groups.waiting.length + groups.active.length === 0
 
   const tabs: Array<{ key: Tab; label: string }> = [
-    { key: 'needs_move', label: `Needs a move (${groups.needs_attention.length})` },
+    { key: 'needs_attention', label: `Needs attention (${groups.needs_attention.length})` },
     { key: 'open', label: `All open (${openCount})` },
     { key: 'closed', label: `Closed (${closed.length})` },
   ]
@@ -364,11 +419,11 @@ export function PipelineListClient({
         ))}
       </div>
 
-      {activeTab === 'needs_move' && (
+      {activeTab === 'needs_attention' && (
         groups.needs_attention.length === 0 ? (
           <EmptyState
             className="py-12"
-            title="Nothing needs a move"
+            title="Nothing needs attention"
             description="Every open opportunity has a next step or a live follow-up date."
             action={
               <Button variant="outline" size="sm" onClick={() => setActiveTab('open')}>
