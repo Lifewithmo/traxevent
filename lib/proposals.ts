@@ -18,8 +18,33 @@ export const PROPOSAL_STATUS_LABELS: Record<ProposalStatus, string> = {
   voided: 'Voided',
 }
 
+// StatusPill's tone vocabulary, restated as a plain union so this module stays
+// free of component imports. Kept next to the labels so a new status can never
+// gain a label without also gaining a tone.
+export type StatusTone = 'confirmed' | 'pending' | 'alert' | 'neutral'
+
+export const PROPOSAL_STATUS_TONE: Record<ProposalStatus, StatusTone> = {
+  draft: 'neutral',
+  sent: 'pending',
+  accepted: 'confirmed',
+  rejected: 'alert',
+  voided: 'alert',
+}
+
 function round2(n: number): number {
   return Math.round(n * 100) / 100
+}
+
+// The one money formatter for proposal surfaces. Locale is pinned: a bare
+// toLocaleString() follows the runtime's ICU default, so a de-DE server would
+// render "$1.234,5" — and `maximumFractionDigits` defaults to 3 with a minimum
+// of 0, which prints $99.90 as "$99.9". Cents show only when there are cents.
+export function formatProposalMoney(n: number): string {
+  const cents = Math.round(n * 100) % 100 !== 0
+  return `$${n.toLocaleString('en-US', {
+    minimumFractionDigits: cents ? 2 : 0,
+    maximumFractionDigits: 2,
+  })}`
 }
 
 // Subtotal for one line item; non-positive qty or price yields 0.

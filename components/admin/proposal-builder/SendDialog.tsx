@@ -112,7 +112,7 @@ export function SendDialog({
             {(placeholderCount > 0 || !expiresAt) && (
               <div className="flex flex-col gap-2">
                 {placeholderCount > 0 && (
-                  <div className="flex items-center justify-between gap-2 rounded-md bg-amber-50 px-3 py-2 text-amber-700">
+                  <div className="flex items-center justify-between gap-2 rounded-md bg-[var(--warn-bg)] px-3 py-2 text-[var(--warn-fg)]">
                     <span>{placeholderCount} placeholder section(s) will be hidden from the client</span>
                     <Button type="button" variant="ghost" size="sm" onClick={onJumpToPlaceholders}>
                       Jump to first
@@ -120,7 +120,7 @@ export function SendDialog({
                   </div>
                 )}
                 {!expiresAt && (
-                  <div className="rounded-md bg-amber-50 px-3 py-2 text-amber-700">No expiry date set</div>
+                  <div className="rounded-md bg-[var(--warn-bg)] px-3 py-2 text-[var(--warn-fg)]">No expiry date set</div>
                 )}
               </div>
             )}

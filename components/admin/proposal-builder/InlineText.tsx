@@ -74,6 +74,11 @@ export function InlineText({
     )
   }
 
+  // COLOUR RULE — the placeholder ink is pinned to --warm-400, not
+  // text-muted-foreground: this renders on <ProposalTheme>'s permanently-white
+  // sheet, so the theme-aware token would (a) invert under .dark and (b) in
+  // light resolve to --warm-500 — the exact colour of committed secondary copy,
+  // erasing the "nothing here yet" affordance. See BlockCanvas's header.
   const empty = value.trim() === ''
   return (
     <span
@@ -86,7 +91,7 @@ export function InlineText({
           begin()
         }
       }}
-      className={`block cursor-text ${empty ? 'text-gray-400' : ''} ${className}`}
+      className={`block cursor-text ${empty ? 'text-[var(--warm-400)]' : ''} ${className}`}
     >
       {empty
         ? <span>{placeholder ?? ' '}</span>

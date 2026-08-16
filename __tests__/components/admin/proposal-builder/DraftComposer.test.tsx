@@ -23,7 +23,7 @@ const DRAFT = {
       name: 'Coffee Cart',
       recommended: true,
       includes: [],
-      price: 1200,
+      price: 1234.5,
       item_ids: ['ai-1', 'ai-2'],
     },
   ],
@@ -87,7 +87,8 @@ describe('DraftComposer', () => {
     expect(screen.getByText(/because the notes mentioned coffee/i)).toBeInTheDocument()
     const suggestion = screen.getByText(/suggested: coffee cart/i)
     expect(suggestion).toHaveTextContent(/2 items/i)
-    expect(suggestion).toHaveTextContent(/\$1,200/)
+    // Cents must survive: the old local toLocaleString() rendered this "$1,234.5".
+    expect(suggestion).toHaveTextContent(/\$1,234\.50/)
     expect(suggestion).toHaveTextContent(/recommended/i)
     expect(screen.getByText(/wp-ghost/)).toBeInTheDocument()
   })

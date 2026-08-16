@@ -16,9 +16,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+// Shared formatter — the local `toLocaleString()` this replaced was
+// locale-unpinned and dropped a cent ("$1,234.5").
+import { formatProposalMoney } from '@/lib/proposals'
 import type { ProposalBlock, ProposalPackage } from '@/lib/types'
-
-const money = (n: number) => `$${n.toLocaleString()}`
 
 const TITLE = 'Draft this proposal from your notes'
 const SUBTITLE =
@@ -36,7 +37,7 @@ function SuggestedPackages({ packages }: { packages: ProposalPackage[] }) {
       {packages.map((p) => (
         <p key={p.id} className="text-xs text-muted-foreground">
           Suggested: {p.name}
-          {p.item_ids?.length ? ` — ${p.item_ids.length} items,` : ''} {money(p.price)}
+          {p.item_ids?.length ? ` — ${p.item_ids.length} items,` : ''} {formatProposalMoney(p.price)}
           {p.recommended ? ' (recommended)' : ''}
         </p>
       ))}
@@ -112,6 +113,17 @@ function ComposerBody({
         {generating ? 'Generating…' : 'Generate draft'}
       </Button>
 
+      {/* DUAL CONTEXT: this body renders both as the `hero` card (inside
+          ProposalTheme, a permanently-white sheet) and inside a `modal` Dialog
+          (theme-aware chrome). No single value is right for both, so this is a
+          deliberate trade rather than a clean fix: the stock red/amber ramps are
+          re-graded onto fixed hexes with no .dark override, which reads well on
+          the paper in either theme but lands around 2.9:1 against the dark
+          modal — better than the ~1.7:1 the theme-aware tokens gave on paper,
+          still under AA. Threading `variant` down to pick per-context ink is
+          the real fix; until then don't "tokenize" these back. The rest of this
+          body (text-muted-foreground, bg-muted, bare borders) has the same
+          problem and is untreated — see the plan doc. */}
       {state.status === 'error' && (
         <p role="alert" className="text-sm text-red-600">{state.message}</p>
       )}
@@ -129,6 +141,7 @@ function ComposerBody({
           {state.draft.rationale && <p className="text-xs text-muted-foreground">{state.draft.rationale}</p>}
           <SuggestedPackages packages={state.draft.suggested_packages} />
           {state.draft.adjustments.map((a, i) => (
+            /* Fixed literal for the dual-context reason above. */
             <p key={i} className="text-xs text-amber-700">{a}</p>
           ))}
           <div className="flex gap-2">

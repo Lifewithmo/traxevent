@@ -62,20 +62,90 @@ describe('TopBar', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'More actions' }))
     const menu = screen.getByRole('menu')
-    expect(within(menu).getByText('Open print view')).toBeInTheDocument()
-    expect(within(menu).getByText('Desktop')).toBeInTheDocument()
-    expect(within(menu).getByText('Mobile')).toBeInTheDocument()
-    expect(within(menu).getByText('Void proposal')).toBeInTheDocument()
-    expect(within(menu).queryByText('Delete')).not.toBeInTheDocument()
+    expect(within(menu).getByRole('menuitem', { name: 'Open print view' })).toBeInTheDocument()
+    expect(within(menu).getByRole('menuitem', { name: 'Desktop' })).toBeInTheDocument()
+    expect(within(menu).getByRole('menuitem', { name: 'Mobile' })).toBeInTheDocument()
+    expect(within(menu).getByRole('menuitem', { name: 'Void proposal' })).toBeInTheDocument()
+    expect(within(menu).queryByRole('menuitem', { name: 'Delete' })).not.toBeInTheDocument()
   })
 
-  it('busy disables the destructive overflow items: Delete (draft) and Void proposal (sent)', () => {
-    const { rerender } = render(<TopBar {...baseProps({ status: 'draft', locked: false, busy: true })} />)
-    fireEvent.click(screen.getByRole('button', { name: 'More actions' }))
-    expect(screen.getByRole('menuitem', { name: 'Delete' })).toBeDisabled()
+  it('Save as template renders only when handed a handler, fires it, and is busy-gated', () => {
+    const onSaveAsTemplate = vi.fn()
 
-    rerender(<TopBar {...baseProps({ status: 'sent', locked: false, busy: true })} />)
-    expect(screen.getByRole('menuitem', { name: 'Void proposal' })).toBeDisabled()
+    // Absent when the prop is not supplied at all.
+    const { unmount } = render(<TopBar {...baseProps({ status: 'draft', locked: false })} />)
+    fireEvent.click(screen.getByRole('button', { name: 'More actions' }))
+    expect(screen.queryByRole('menuitem', { name: 'Save as template' })).not.toBeInTheDocument()
+    unmount()
+
+    render(<TopBar {...baseProps({ status: 'draft', locked: false, onSaveAsTemplate })} />)
+    fireEvent.click(screen.getByRole('button', { name: 'More actions' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Save as template' }))
+    expect(onSaveAsTemplate).toHaveBeenCalled()
+
+    onSaveAsTemplate.mockClear()
+    // Fresh mount rather than rerender: activating the item above closed the menu.
+    render(<TopBar {...baseProps({ status: 'draft', locked: false, busy: true, onSaveAsTemplate })} />)
+    fireEvent.click(screen.getAllByRole('button', { name: 'More actions' })[1])
+    const item = screen.getByRole('menuitem', { name: 'Save as template' })
+    expect(item).toHaveAttribute('aria-disabled', 'true')
+    fireEvent.click(item)
+    expect(onSaveAsTemplate).not.toHaveBeenCalled()
+  })
+
+  it('viewport items pass the matching argument: Mobile -> onViewport("mobile"), Desktop -> onViewport("desktop")', () => {
+    const onViewport = vi.fn()
+    const { unmount } = render(<TopBar {...baseProps({ status: 'draft', locked: false, onViewport })} />)
+    fireEvent.click(screen.getByRole('button', { name: 'More actions' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Mobile' }))
+    expect(onViewport).toHaveBeenCalledWith('mobile')
+    unmount()
+
+    onViewport.mockClear()
+    render(<TopBar {...baseProps({ status: 'draft', locked: false, viewport: 'mobile', onViewport })} />)
+    fireEvent.click(screen.getByRole('button', { name: 'More actions' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Desktop' }))
+    expect(onViewport).toHaveBeenCalledWith('desktop')
+  })
+
+  it('Open print view opens the tokenized print URL in a new tab', () => {
+    const open = vi.fn()
+    const spy = vi.spyOn(window, 'open').mockImplementation(open)
+    try {
+      render(<TopBar {...baseProps({ status: 'draft', locked: false, token: 'tok-123' })} />)
+      fireEvent.click(screen.getByRole('button', { name: 'More actions' }))
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Open print view' }))
+
+      expect(open).toHaveBeenCalledTimes(1)
+      const [url, target] = open.mock.calls[0]
+      expect(url).toContain('tok-123')
+      expect(url).toContain('/print')
+      expect(target).toBe('_blank')
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  it('busy disables the gated overflow items: Save as template, Delete (draft) and Void proposal (sent)', () => {
+    const onDelete = vi.fn()
+    const onVoid = vi.fn()
+    const { rerender } = render(
+      <TopBar {...baseProps({ status: 'draft', locked: false, busy: true, onDelete, onVoid })} />
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'More actions' }))
+    // Kit menu items are divs, so "disabled" is aria-disabled plus an inert
+    // handler — not the DOM disabled attribute toBeDisabled() looks for. Assert
+    // both the attribute and that the action genuinely cannot fire.
+    const del = screen.getByRole('menuitem', { name: 'Delete' })
+    expect(del).toHaveAttribute('aria-disabled', 'true')
+    fireEvent.click(del)
+    expect(onDelete).not.toHaveBeenCalled()
+
+    rerender(<TopBar {...baseProps({ status: 'sent', locked: false, busy: true, onDelete, onVoid })} />)
+    const voidItem = screen.getByRole('menuitem', { name: 'Void proposal' })
+    expect(voidItem).toHaveAttribute('aria-disabled', 'true')
+    fireEvent.click(voidItem)
+    expect(onVoid).not.toHaveBeenCalled()
   })
 
   it('signed (locked) proposal still shows Void proposal in the overflow — voiding a signed proposal is deliberate product behavior', () => {
@@ -84,7 +154,7 @@ describe('TopBar', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'More actions' }))
     const menu = screen.getByRole('menu')
-    fireEvent.click(within(menu).getByText('Void proposal'))
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Void proposal' }))
     expect(onVoid).toHaveBeenCalled()
   })
 
@@ -94,8 +164,8 @@ describe('TopBar', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'More actions' }))
     const menu = screen.getByRole('menu')
-    expect(within(menu).queryByText('Void proposal')).not.toBeInTheDocument()
-    fireEvent.click(within(menu).getByText('Delete'))
+    expect(within(menu).queryByRole('menuitem', { name: 'Void proposal' })).not.toBeInTheDocument()
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Delete' }))
     expect(onDelete).toHaveBeenCalled()
   })
 
