@@ -27,6 +27,7 @@ import { NextActionBanner } from '@/components/admin/opportunity/NextActionBanne
 import { ActivityTimeline } from '@/components/admin/opportunity/ActivityTimeline'
 import { DatesPanel } from '@/components/admin/opportunity/DatesPanel'
 import { FactsGrid } from '@/components/admin/opportunity/FactsGrid'
+import { MarkLostDialog } from '@/components/admin/opportunity/MarkLostDialog'
 import { OpportunityActionsMenu } from '@/components/admin/opportunity/OpportunityActionsMenu'
 import { OpportunityKpiBand } from '@/components/admin/opportunity/OpportunityKpiBand'
 import { TasksPanel, type TasksPanelHandle } from '@/components/admin/opportunity/TasksPanel'
@@ -186,6 +187,19 @@ function QuickFactDialog({
 export function OpportunityDetailClient({ orgId, orgSlug, lead, customer, tasks, activity, job, eventTypes, proposals, invoices, vendors, acceptedProposals, pastBookings = 0, convertBlockReason, today, calendarItems }: OpportunityDetailClientProps) {
   const searchParams = useSearchParams()
   const [convertOpen, setConvertOpen] = useState(searchParams.get('convert') === '1')
+  /**
+   * `?focus=lost` — the landing half of StageChip's "Mark lost", which both the
+   * list (PipelineListClient.tsx:173) and the board (PipelineBoardView.tsx:395)
+   * push. Nothing read the parameter before this, so the destructive menu item
+   * navigated here with nothing focused and no dialog open, and the operator
+   * had to find "Mark lost" a second time in the actions menu.
+   *
+   * A `useState` latch, exactly like `convertOpen` above and for the same
+   * reason: `searchParams` does not change when the dialog is dismissed, so a
+   * value derived from it on every render would slam the dialog back open on
+   * the next re-render (and every `router.refresh()` triggers one).
+   */
+  const [lostOpen, setLostOpen] = useState(searchParams.get('focus') === 'lost')
   const [quickFact, setQuickFact] = useState<QuickFact | null>(null)
   const router = useRouter()
   const taskInputRef = useRef<TasksPanelHandle>(null)
@@ -305,6 +319,20 @@ export function OpportunityDetailClient({ orgId, orgSlug, lead, customer, tasks,
       </div>
 
       <QuickFactDialog orgId={orgId} leadId={lead.id} fact={quickFact} onClose={() => setQuickFact(null)} />
+
+      {/* A SECOND MarkLostDialog instance, not a shared one: the header's copy
+          lives inside OpportunityActionsMenu, which exposes no way to open it
+          from out here. Both are controlled and mutually exclusive in practice,
+          and a controlled-closed dialog renders nothing, so there is never more
+          than one in the DOM. Collapse the two if the menu ever lifts its
+          `lostOpen` state into a prop. */}
+      <MarkLostDialog
+        orgId={orgId}
+        leadId={lead.id}
+        onDone={() => router.refresh()}
+        open={lostOpen}
+        onOpenChange={setLostOpen}
+      />
     </div>
   )
 }

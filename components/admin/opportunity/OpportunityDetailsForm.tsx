@@ -18,6 +18,19 @@ interface OpportunityDetailsFormProps {
   customer: Customer | null
 }
 
+/**
+ * The escape hatch behind FactsGrid's per-field editing: title, contact and
+ * notes, which have no business on a four-fact card.
+ *
+ * It renders INSIDE the opportunity's working rail (~440px at lg, full width
+ * below it), so every grid here is `grid-cols-1 sm:grid-cols-2`. The base
+ * column is load-bearing, not decoration: without it the single track is
+ * implicit and sized `auto`, so it grows to the widest field's min-content and
+ * scrolls the page sideways at 375px.
+ *
+ * Its props and its save action are pinned by tests and by FactsGrid — this
+ * pass is skin only.
+ */
 export function OpportunityDetailsForm({ orgId, orgSlug, lead, customer }: OpportunityDetailsFormProps) {
   const router = useRouter()
   const [title, setTitle] = useState(lead.title ?? '')
@@ -78,7 +91,7 @@ export function OpportunityDetailsForm({ orgId, orgSlug, lead, customer }: Oppor
           <Input id="oppTitle" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Riverside gala" />
         </div>
         {!customer && (
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1">
               <Label htmlFor="oppName">Name</Label>
               <Input id="oppName" value={name} onChange={(e) => setName(e.target.value)} placeholder="Contact name" />
@@ -100,35 +113,45 @@ export function OpportunityDetailsForm({ orgId, orgSlug, lead, customer }: Oppor
         {customer && (
           <p className="text-sm text-muted-foreground">
             Contact details live on the customer record.{' '}
-            <Link href={`/${orgSlug}/clients/${customer.id}`} className="underline">Edit {customer.name}</Link>
+            <Link href={`/${orgSlug}/clients/${customer.id}`} className="font-medium text-primary hover:underline">
+              Edit {customer.name}
+            </Link>
           </p>
         )}
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="space-y-1">
             <Label htmlFor="oppEventType">Event type</Label>
             <Input id="oppEventType" value={eventType} onChange={(e) => setEventType(e.target.value)} placeholder="e.g. Wedding" />
           </div>
           <div className="space-y-1">
             <Label htmlFor="oppEventDate">Event date</Label>
-            <Input id="oppEventDate" type="date" value={eventDate} onChange={(e) => setEventDate(e.target.value)} />
+            <Input id="oppEventDate" type="date" className="tabular-nums" value={eventDate} onChange={(e) => setEventDate(e.target.value)} />
           </div>
           <div className="space-y-1">
             <Label htmlFor="oppValue">Estimated value</Label>
-            <Input id="oppValue" type="number" value={estimatedValue} onChange={(e) => setEstimatedValue(e.target.value)} placeholder="0" />
+            {/* Figures get tabular digits so a corrected 12,000 lines up under
+                the 1,200 it replaced. No money token: this is an editable
+                field, not a rendered amount — the money colour belongs on the
+                KPI tile that reads it back. */}
+            <Input id="oppValue" type="number" inputMode="decimal" className="tabular-nums" value={estimatedValue} onChange={(e) => setEstimatedValue(e.target.value)} placeholder="0" />
           </div>
           <div className="space-y-1">
             <Label htmlFor="oppGuests">Guest count</Label>
-            <Input id="oppGuests" type="number" value={guestCount} onChange={(e) => setGuestCount(e.target.value)} placeholder="Estimate" />
+            <Input id="oppGuests" type="number" inputMode="numeric" className="tabular-nums" value={guestCount} onChange={(e) => setGuestCount(e.target.value)} placeholder="Estimate" />
           </div>
         </div>
         <div className="space-y-1">
           <Label htmlFor="oppNotes">Notes</Label>
+          {/* The kit ships no Textarea and components/ui/** is frozen, so this
+              stays hand-rolled — but it wears the kit Input's skin verbatim
+              (input.tsx:10) minus the fixed height, so the notes field cannot
+              drift into looking like a control from a different product. */}
           <textarea
             id="oppNotes"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             placeholder="Notes"
-            className="flex min-h-20 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            className="flex min-h-20 w-full min-w-0 rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-base transition-colors outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm dark:bg-input/30"
           />
         </div>
         <div>

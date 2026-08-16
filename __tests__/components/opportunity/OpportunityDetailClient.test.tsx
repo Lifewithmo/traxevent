@@ -131,6 +131,45 @@ describe('OpportunityDetailClient', () => {
     expect(await screen.findByLabelText('Job name')).toBeInTheDocument()
   })
 
+  // StageChip's "Mark lost" on the list AND the board pushes
+  // /{org}/leads/{id}?focus=lost. Until this landed, nothing read `focus=lost`:
+  // the destructive menu item dumped the operator on the opportunity page with
+  // nothing focused and no dialog open, and they had to find "Mark lost" a
+  // second time in the actions menu.
+  describe('the ?focus=lost deep link', () => {
+    it('opens the mark-lost dialog on arrival', async () => {
+      search = new URLSearchParams('focus=lost')
+      render(<OpportunityDetailClient {...base} lead={lead} />)
+      const dialog = await screen.findByRole('dialog', { name: /mark lost/i })
+      expect(within(dialog).getByText(/lost reasons/i)).toBeInTheDocument()
+    })
+
+    it('does not open it without the parameter', () => {
+      render(<OpportunityDetailClient {...base} lead={lead} />)
+      expect(screen.queryByRole('dialog')).toBeNull()
+    })
+
+    // A latch, not a derived value: `searchParams` does not change when the
+    // dialog is dismissed, so anything recomputed from it on every render would
+    // slam the dialog back open the moment the tree re-rendered.
+    it('stays shut once dismissed, across a re-render', async () => {
+      search = new URLSearchParams('focus=lost')
+      const { rerender } = render(<OpportunityDetailClient {...base} lead={lead} />)
+      const dialog = await screen.findByRole('dialog', { name: /mark lost/i })
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+      await waitFor(() => expect(screen.queryByRole('dialog', { name: /mark lost/i })).toBeNull())
+      rerender(<OpportunityDetailClient {...base} lead={lead} />)
+      expect(screen.queryByRole('dialog', { name: /mark lost/i })).toBeNull()
+    })
+
+    it('leaves exactly one mark-lost dialog reachable, not two stacked', async () => {
+      search = new URLSearchParams('focus=lost')
+      render(<OpportunityDetailClient {...base} lead={lead} />)
+      await screen.findByRole('dialog', { name: /mark lost/i })
+      expect(screen.getAllByRole('dialog')).toHaveLength(1)
+    })
+  })
+
   it('promotes the rollup figures onto the KPI band', () => {
     const { container } = render(
       <OpportunityDetailClient

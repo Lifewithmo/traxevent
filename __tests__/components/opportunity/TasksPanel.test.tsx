@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createRef } from 'react'
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 const refresh = vi.fn()
@@ -13,6 +13,7 @@ vi.mock('@/actions/tasks', () => ({
 }))
 
 import { TasksPanel, type TasksPanelHandle } from '@/components/admin/opportunity/TasksPanel'
+import { addDays, todayYmd } from '@/lib/opportunity-detail'
 import type { Task } from '@/lib/types'
 
 const open: Task = { id: 't1', lead_id: 'l1', title: 'Email client', done: false, created_at: '' }
@@ -53,6 +54,24 @@ describe('TasksPanel composer', () => {
     expect(screen.getByText(/No tasks/)).toBeInTheDocument()
     expect(screen.queryByPlaceholderText('Add a task…')).not.toBeInTheDocument()
   })
+  it('renders exactly one kit EmptyState with exactly one forward CTA', () => {
+    const { container } = render(<TasksPanel orgId="o1" leadId="l1" tasks={[]} />)
+    const empties = container.querySelectorAll('[data-slot="empty-state"]')
+    expect(empties).toHaveLength(1)
+    const empty = empties[0] as HTMLElement
+    expect(within(empty).getByText('No tasks')).toBeInTheDocument()
+    // R4 is "message + ONE CTA". Two buttons is a fork in the road, not a next step.
+    expect(within(empty).getAllByRole('button')).toHaveLength(1)
+    // OpportunityDetailClient.test.tsx (P5) asserts getByText(/No tasks/), which
+    // THROWS on a second match — so the description must not restate the title,
+    // and the old "No tasks yet." branch must be gone rather than merely hidden.
+    expect(screen.getAllByText(/No tasks/)).toHaveLength(1)
+    expect(screen.queryByText('No tasks yet.')).not.toBeInTheDocument()
+  })
+  it('offers only one "Add a task" control at a time', () => {
+    render(<TasksPanel orgId="o1" leadId="l1" tasks={[]} />)
+    expect(screen.getAllByRole('button', { name: 'Add a task' })).toHaveLength(1)
+  })
   it('opens the composer on demand and focuses the input', async () => {
     const user = userEvent.setup()
     render(<TasksPanel orgId="o1" leadId="l1" tasks={[task({})]} />)
@@ -66,12 +85,20 @@ describe('TasksPanel composer', () => {
     act(() => { ref.current!.openComposer() })
     expect(screen.getByPlaceholderText('Add a task…')).toBeInTheDocument()
   })
-  it('does not co-render "No tasks yet." with the open composer', () => {
+  it('does not co-render the empty state with the open composer', () => {
     const ref = createRef<TasksPanelHandle>()
-    render(<TasksPanel ref={ref} orgId="o1" leadId="l1" tasks={[]} />)
+    const { container } = render(<TasksPanel ref={ref} orgId="o1" leadId="l1" tasks={[]} />)
     act(() => { ref.current!.openComposer() })
     expect(screen.getByPlaceholderText('Add a task…')).toBeInTheDocument()
-    expect(screen.queryByText('No tasks yet.')).not.toBeInTheDocument()
+    expect(container.querySelector('[data-slot="empty-state"]')).toBeNull()
+    expect(screen.queryByText(/No tasks/)).not.toBeInTheDocument()
+  })
+  it('keeps the imperative handle working after the empty state replaced the bare sentence', () => {
+    const ref = createRef<TasksPanelHandle>()
+    const { container } = render(<TasksPanel ref={ref} orgId="o1" leadId="l1" tasks={[]} />)
+    expect(container.querySelector('[data-slot="empty-state"]')).not.toBeNull()
+    act(() => { ref.current!.openComposer() })
+    expect(screen.getByPlaceholderText('Add a task…')).toHaveFocus()
   })
   it('re-focuses the input when openComposer is called while already open', () => {
     const ref = createRef<TasksPanelHandle>()
@@ -83,5 +110,68 @@ describe('TasksPanel composer', () => {
     expect(input).not.toHaveFocus()
     act(() => { ref.current!.openComposer() })   // already open — should still (re-)focus
     expect(input).toHaveFocus()
+  })
+})
+
+describe('TasksPanel due-date tone', () => {
+  const today = todayYmd()
+
+  function dueChip(due: string): HTMLElement {
+    render(<TasksPanel orgId="o1" leadId="l1" tasks={[task({ due_date: due })]} />)
+    return screen.getByTestId('task-due')
+  }
+
+  it('paints a task due today with the shared pending status token, not a raw amber literal', () => {
+    const chip = dueChip(today)
+    expect(chip.className).toContain('var(--status-pending-fg)')
+    expect(chip.className).not.toContain('amber')
+    // A `dark:` variant here would mean the tone was hand-picked twice; the
+    // status tokens already carry their own dark values (app/globals.css:247).
+    expect(chip.className).not.toContain('dark:')
+  })
+
+  it('paints an overdue task with the destructive token', () => {
+    expect(dueChip(addDays(today, -3)).className).toContain('text-destructive')
+  })
+
+  it('leaves an upcoming task in muted prose', () => {
+    const chip = dueChip(addDays(today, 9))
+    expect(chip.className).toContain('text-muted-foreground')
+    expect(chip.className).not.toContain('var(--status-pending-fg)')
+  })
+
+  it('reads the due date in the module date format, not a raw ISO string', () => {
+    // shortDate() from lib/pipeline-presentation — the one format the rest of
+    // the opportunity page (FactsGrid, DatesPanel, the KPI band note) uses.
+    expect(dueChip('2026-09-04')).toHaveTextContent('Sep 4, 2026')
+  })
+})
+
+describe('TasksPanel counts', () => {
+  const today = todayYmd()
+
+  it('promotes the open and overdue counts the rollup computes and no surface renders', () => {
+    render(
+      <TasksPanel
+        orgId="o1"
+        leadId="l1"
+        tasks={[
+          task({ id: 'a', title: 'A', due_date: addDays(today, -1) }),
+          task({ id: 'b', title: 'B', due_date: addDays(today, 5) }),
+          task({ id: 'c', title: 'C', done: true }),
+        ]}
+      />
+    )
+    expect(screen.getByText('2 open')).toBeInTheDocument()
+    const overdue = screen.getByText('1 overdue')
+    const pill = overdue.closest('[data-slot="status-pill"]')
+    expect(pill).not.toBeNull()
+    expect(pill!.className).toContain('var(--status-alert-fg)')
+  })
+
+  it('says nothing about overdue work when there is none', () => {
+    render(<TasksPanel orgId="o1" leadId="l1" tasks={[task({ due_date: addDays(today, 5) })]} />)
+    expect(screen.getByText('1 open')).toBeInTheDocument()
+    expect(screen.queryByText(/overdue/)).toBeNull()
   })
 })
