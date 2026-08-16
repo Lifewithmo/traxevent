@@ -30,7 +30,11 @@ describe('ProposalsLedger — empty', () => {
     render(<ProposalsLedger ledger={ledgerOf([])} orgSlug="acme" />)
     expect(screen.getByText('No proposals yet')).toBeInTheDocument()
     expect(screen.getByText('Proposals start from a job in your pipeline.')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'View pipeline' })).toHaveAttribute('href', '/acme/leads')
+    const cta = screen.getByRole('link', { name: 'View pipeline' })
+    expect(cta).toHaveAttribute('href', '/acme/leads')
+    // Base UI stamps type="button" onto the rendered element unless
+    // nativeButton={false}; an anchor carrying it is invalid markup.
+    expect(cta).not.toHaveAttribute('type')
   })
 })
 
@@ -52,13 +56,13 @@ describe('ProposalsLedger — groups', () => {
       />
     )
     expect(screen.getByText('Needs attention · 1')).toBeInTheDocument()
-    expect(screen.getByText('Out for signature · 1')).toBeInTheDocument()
+    expect(screen.getByText('Awaiting response · 1')).toBeInTheDocument()
     expect(screen.getByText('Drafts · 1')).toBeInTheDocument()
     // Only on the row. A group roll-up here would contradict the KPI band:
     // the band's "Out for signature" counts both sent proposals, while this
     // group holds only the non-signalled one.
     expect(screen.getAllByText('$2,400')).toHaveLength(1)
-    for (const label of ['Needs attention · 1', 'Out for signature · 1', 'Drafts · 1']) {
+    for (const label of ['Needs attention · 1', 'Awaiting response · 1', 'Drafts · 1']) {
       expect(screen.getByText(label).textContent).not.toContain('$')
     }
   })

@@ -216,4 +216,52 @@ describe('TemplateListClient', () => {
     expect(within(row('t1')).getByRole('button', { name: 'Delete' })).not.toBeDisabled()
     expect(refreshSpy).toHaveBeenCalled()
   })
+
+  // The interleaving that separates per-concern state from one shared `busy`
+  // slot. With a single slot, starting the create overwrites the row key (so
+  // t1 re-enables mid-flight) and the row's `finally` then clears the create
+  // guard — re-opening the orphaned-template double-submit.
+  it('keeps the create guard when a row action settles underneath it', async () => {
+    let resolveDuplicate!: () => void
+    duplicateSpy.mockImplementationOnce(() => new Promise<void>((res) => { resolveDuplicate = () => res() }))
+    createSpy.mockImplementationOnce(() => new Promise(() => {}))
+    vi.spyOn(window, 'prompt').mockReturnValue('Wedding')
+    render(<TemplateListClient orgId="o1" orgSlug="acme" templates={TEMPLATES} />)
+
+    fireEvent.click(within(row('t1')).getByRole('button', { name: 'Duplicate' }))
+    await waitFor(() => expect(within(row('t1')).getByRole('button', { name: 'Duplicate' })).toBeDisabled())
+
+    fireEvent.click(screen.getByRole('button', { name: 'New template' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'New template' })).toBeDisabled())
+    // Starting the create must not release the row that is still working.
+    expect(within(row('t1')).getByRole('button', { name: 'Duplicate' })).toBeDisabled()
+
+    await act(async () => { resolveDuplicate() })
+    // The row is free again, but the create is still in flight and stays gated.
+    expect(within(row('t1')).getByRole('button', { name: 'Duplicate' })).not.toBeDisabled()
+    expect(screen.getByRole('button', { name: 'New template' })).toBeDisabled()
+    expect(createSpy).toHaveBeenCalledTimes(1)
+  })
+
+  // Rows run concurrently, so the guard cannot be a single id.
+  it('holds a separate guard per in-flight row', async () => {
+    let resolveT1!: () => void
+    duplicateSpy
+      .mockImplementationOnce(() => new Promise<void>((res) => { resolveT1 = () => res() }))
+      .mockImplementationOnce(() => new Promise(() => {}))
+    render(<TemplateListClient orgId="o1" orgSlug="acme" templates={TEMPLATES} />)
+
+    fireEvent.click(within(row('t1')).getByRole('button', { name: 'Duplicate' }))
+    await waitFor(() => expect(within(row('t1')).getByRole('button', { name: 'Duplicate' })).toBeDisabled())
+
+    fireEvent.click(within(row('t2')).getByRole('button', { name: 'Duplicate' }))
+    await waitFor(() => expect(within(row('t2')).getByRole('button', { name: 'Duplicate' })).toBeDisabled())
+    // t2 starting must not release t1.
+    expect(within(row('t1')).getByRole('button', { name: 'Duplicate' })).toBeDisabled()
+
+    await act(async () => { resolveT1() })
+    // t1 settling must not release t2, which is still working.
+    expect(within(row('t1')).getByRole('button', { name: 'Duplicate' })).not.toBeDisabled()
+    expect(within(row('t2')).getByRole('button', { name: 'Duplicate' })).toBeDisabled()
+  })
 })

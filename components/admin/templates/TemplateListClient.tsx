@@ -49,17 +49,18 @@ export function TemplateListClient({
   templates: ProposalTemplate[]
 }) {
   const router = useRouter()
-  // Two slots, not one. A single `busy` key multiplexing row ids and a 'new'
-  // sentinel lets the two concerns clear each other: a row action finishing
-  // would run `finally { setBusy(null) }` and drop the create guard mid-flight
-  // (re-enabling the double-submit), while starting a create would un-gate an
-  // in-flight row's buttons.
+  // In-flight state is tracked per concern, never in one shared slot. A single
+  // key multiplexing row ids and a 'new' sentinel let the concerns clear each
+  // other — a finishing row would drop the create guard mid-flight, re-opening
+  // the double-submit, and starting a create would un-gate an in-flight row.
   const [creating, setCreating] = useState(false)
-  const [rowBusy, setRowBusy] = useState<string | null>(null)
+  // A Set for the same reason one level down: rows run concurrently, so a
+  // single id would let each new row's action clear the previous row's guard.
+  const [rowBusy, setRowBusy] = useState<ReadonlySet<string>>(new Set())
   const [error, setError] = useState<string | null>(null)
 
   async function run(key: string, fn: () => Promise<void>) {
-    setRowBusy(key)
+    setRowBusy((prev) => new Set(prev).add(key))
     setError(null)
     try {
       await fn()
@@ -67,7 +68,11 @@ export function TemplateListClient({
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Something went wrong')
     } finally {
-      setRowBusy(null)
+      setRowBusy((prev) => {
+        const next = new Set(prev)
+        next.delete(key)
+        return next
+      })
     }
   }
 
@@ -79,6 +84,9 @@ export function TemplateListClient({
     try {
       const t = await createProposalTemplate(orgId, { name: name.trim() })
       router.push(`/${orgSlug}/proposal-templates/${t.id}`)
+      // Deliberately no `finally`: the guard has to survive the push, which
+      // navigates away and unmounts us. Clearing it here would re-enable the
+      // button for the whole duration of the navigation.
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to create template')
       setCreating(false)
@@ -116,9 +124,9 @@ export function TemplateListClient({
       ) : (
         <div className="overflow-hidden rounded-xl border border-border bg-card">
           {templates.map((t) => {
-            // Row-scoped: rowBusy holds the id of the row whose action is in
+            // Row-scoped: rowBusy holds the ids of rows whose actions are in
             // flight, so one row's work never freezes the rest of the library.
-            const isRowBusy = rowBusy === t.id
+            const isRowBusy = rowBusy.has(t.id)
             const used = t.usage_count ?? 0
             return (
               <div

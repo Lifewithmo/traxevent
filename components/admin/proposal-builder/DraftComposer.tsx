@@ -16,11 +16,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+// Shared formatter — the local `toLocaleString()` this replaced was
+// locale-unpinned and dropped a cent ("$1,234.5").
 import { formatProposalMoney } from '@/lib/proposals'
 import type { ProposalBlock, ProposalPackage } from '@/lib/types'
-
-// Shared formatter: a bare toLocaleString() is locale-unpinned and defaults to
-// 0..3 fraction digits, so $1,234.50 rendered as "$1,234.5".
 
 const TITLE = 'Draft this proposal from your notes'
 const SUBTITLE =
@@ -116,12 +115,15 @@ function ComposerBody({
 
       {/* DUAL CONTEXT: this body renders both as the `hero` card (inside
           ProposalTheme, a permanently-white sheet) and inside a `modal` Dialog
-          (theme-aware chrome). No theme-aware token is correct in both — in
-          dark mode --destructive/--warn-fg are tuned for a dark surface and
-          would fall to ~3:1 on the white paper. globals.css re-grades the stock
-          red/amber ramps onto fixed hexes with NO .dark override, so these
-          literals are theme-independent by construction and legible in both
-          contexts. Do not "tokenize" them. */}
+          (theme-aware chrome). No single value is right for both, so this is a
+          deliberate trade rather than a clean fix: the stock red/amber ramps are
+          re-graded onto fixed hexes with no .dark override, which reads well on
+          the paper in either theme but lands around 2.9:1 against the dark
+          modal — better than the ~1.7:1 the theme-aware tokens gave on paper,
+          still under AA. Threading `variant` down to pick per-context ink is
+          the real fix; until then don't "tokenize" these back. The rest of this
+          body (text-muted-foreground, bg-muted, bare borders) has the same
+          problem and is untreated — see the plan doc. */}
       {state.status === 'error' && (
         <p role="alert" className="text-sm text-red-600">{state.message}</p>
       )}

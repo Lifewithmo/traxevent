@@ -100,7 +100,10 @@ export interface ProposalLedger {
 
 const GROUP_META: Record<ProposalGroupKey, { label: string; tone: 'urgent' | 'normal' }> = {
   needs_attention: { label: 'Needs attention', tone: 'urgent' },
-  out_for_signature: { label: 'Out for signature', tone: 'normal' },
+  // NOT "Out for signature" — that is the KPI tile's label, and the tile counts
+  // every sent proposal while this group holds only the ones with no signal.
+  // Sharing the label would put "· 1" directly under a tile reading "2 proposals".
+  out_for_signature: { label: 'Awaiting response', tone: 'normal' },
   drafts: { label: 'Drafts', tone: 'normal' },
   accepted: { label: 'Accepted', tone: 'normal' },
   closed: { label: 'Closed', tone: 'normal' },

@@ -70,8 +70,17 @@ KPI band (four `StatTile`s, all previously computed and discarded):
 | Accepted | Σ locked selection total of `accepted` | money |
 | Deposits due | Σ `depositAmount` on accepted, unpaid | alert when > 0 |
 
-Groups, decision-first: **Needs attention** (urgent tone) → Out for signature → Drafts →
+Groups, decision-first: **Needs attention** (urgent tone) → Awaiting response → Drafts →
 Accepted → Closed (rejected + voided). Empty groups are omitted.
+
+**Groups carry no money, and no group reuses a tile's label.** The band owns money; the
+groups own the work queue. A per-group roll-up cannot agree with the band in every group —
+the "Out for signature" tile spans every sent proposal while signalled ones sit in Needs
+attention, and the Accepted tile sums locked floors where a group would sum ceilings. For
+the same reason the sent group is labelled *Awaiting response*, not *Out for signature*:
+sharing the tile's label would print "· 1" directly beneath a tile reading "2 proposals".
+One consequence to accept: total drafted value is now shown nowhere, since Drafts has no
+tile.
 
 A signalled row shows its *signal* pill (`Expired` / `Expiring soon` / `Not opened`) instead
 of a `Sent` pill — every signalled row is sent, so both would be redundant.
@@ -114,9 +123,13 @@ WYSIWYG-locked to `ProposalPricing` and must not drift alone. `ProposalBuilderCl
 `money()` stays `toFixed(2)` for the same reason: it feeds the "Client sees:" strip and the
 send dialog, both of which *claim* to show the customer's figure.
 
-Still theme-aware on the paper, and not fixed here: `TotalsCanvas`'s form controls
-(`border-input`, `placeholder:text-muted-foreground`, a few bare `border-t`/`divide-y`).
-Pre-existing, latent, and untouched by this branch.
+Still theme-aware on the paper, and **not** fixed here — all pre-existing and latent:
+- `TotalsCanvas`'s form controls (`border-input`, `placeholder:text-muted-foreground`, a few
+  bare `border-t`/`divide-y`), and `PricingCanvas`'s `divide-y`.
+- `DraftComposer`'s body beyond the two ink lines: `text-muted-foreground`, `bg-muted`, and
+  bare `border`. These reach the paper through the `hero` variant. The proper fix is to
+  thread `variant` into the body and pick per-context values; the two lines that were
+  treated are the ones this branch had itself regressed.
 
 **None of this is live today** — nothing in the app ever applies the `.dark` class (no theme
 provider, and `@custom-variant dark` is class-gated with no `prefers-color-scheme` fallback).
