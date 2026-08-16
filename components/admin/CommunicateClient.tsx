@@ -168,7 +168,7 @@ export function CommunicateClient({
             <div aria-live="polite" aria-atomic="true">
               {error && <p className="text-sm text-destructive">{error}</p>}
               {result && (
-                <p className="text-sm text-[var(--money-green)]">
+                <p className="text-sm text-[var(--status-confirmed-fg)]">
                   Sent to {result.sent} recipient{result.sent !== 1 ? 's' : ''}.
                 </p>
               )}

@@ -177,7 +177,7 @@ export function ItineraryClient({ orgId, eventId, items: initialItems, published
 
         {days.length === 0 ? (
           <div className="rounded-xl border border-border bg-card">
-            <EmptyState title="No schedule blocks yet." action={addToggle} />
+            <EmptyState title="No schedule blocks yet." action={addOpen ? undefined : addToggle} />
           </div>
         ) : (
           <div className="space-y-5">
@@ -220,7 +220,7 @@ export function ItineraryClient({ orgId, eventId, items: initialItems, published
                               <MenuItem onClick={() => startEditing(it)}>Edit</MenuItem>
                               <MenuItem
                                 className="text-destructive data-highlighted:text-destructive"
-                                onClick={() => setDeleteId(it.id)}
+                                onClick={() => { setError(null); setDeleteId(it.id) }}
                               >
                                 Delete
                               </MenuItem>
@@ -284,6 +284,7 @@ export function ItineraryClient({ orgId, eventId, items: initialItems, published
           <DialogHeader>
             <DialogTitle>Delete this item?</DialogTitle>
           </DialogHeader>
+          {error && <p className="text-sm text-destructive">{error}</p>}
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleteId(null)} disabled={saving}>
               Cancel

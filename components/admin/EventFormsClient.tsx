@@ -164,7 +164,7 @@ export function EventFormsClient({
             title="No form templates found for your org."
             description="Create templates at the org level first."
             action={
-              <Button variant="outline" size="sm" render={<Link href={`/${orgSlug}/forms`} />}>
+              <Button variant="outline" size="sm" nativeButton={false} render={<Link href={`/${orgSlug}/forms`} />}>
                 Create templates
               </Button>
             }

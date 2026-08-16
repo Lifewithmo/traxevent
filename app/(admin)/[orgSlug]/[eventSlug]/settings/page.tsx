@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import { getOrgBySlug } from '@/actions/orgs'
 import { getEventBySlug, updateEvent } from '@/actions/events'
 import { DEFAULT_EVENT_TYPE_ID } from '@/lib/event-types'
@@ -21,6 +21,7 @@ const SELECT_CLASS = 'h-8 w-full rounded-lg border border-input bg-transparent p
 
 export default function EventSettingsPage() {
   const { orgSlug, eventSlug } = useParams<{ orgSlug: string; eventSlug: string }>()
+  const router = useRouter()
   const [event, setEvent] = useState<Event | null>(null)
   const [orgId, setOrgId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -148,6 +149,7 @@ export default function EventSettingsPage() {
           : {}),
       })
       setSaved(true)
+      router.refresh()
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to save')
     } finally {
@@ -458,7 +460,7 @@ export default function EventSettingsPage() {
 
         <div aria-live="polite" aria-atomic="true">
           {error && <p className="text-sm text-destructive">{error}</p>}
-          {saved && <p className="text-sm text-[var(--money-green)]">Settings saved.</p>}
+          {saved && <p className="text-sm text-[var(--status-confirmed-fg)]">Settings saved.</p>}
         </div>
 
         <Button type="submit" disabled={saving}>
