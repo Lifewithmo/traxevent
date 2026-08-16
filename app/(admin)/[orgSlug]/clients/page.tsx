@@ -1,5 +1,14 @@
-// The list now lives in layout.tsx (ClientQueueRail, left pane). This page is
-// the right pane shown when no client is selected — Task 16 fills it in.
+import { Users } from 'lucide-react'
+import { EmptyState } from '@/components/ui/empty-state'
+
 export default function ClientsPage() {
-  return null
+  return (
+    <div className="flex h-full items-center justify-center">
+      <EmptyState
+        icon={<Users className="size-4" />}
+        title="Select a client from the queue"
+        description="Pick someone on the left to see their record."
+      />
+    </div>
+  )
 }
