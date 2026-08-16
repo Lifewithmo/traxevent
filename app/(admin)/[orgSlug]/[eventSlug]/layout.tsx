@@ -59,7 +59,10 @@ export default async function EventLayout({
         allowedEventPages={allowed}
         enabledModules={enabledModules}
       />
-      <main className="flex-1 bg-gray-50 overflow-auto">
+      {/* bg-background, not a raw literal — same fix as the org layout: the hardcoded ground was
+          what made dark mode unreadable on every event page. --background is warm-50 in light, so
+          the ground/card relationship is unchanged. */}
+      <main className="flex-1 bg-background overflow-auto">
         <EventSpineHeader event={event} />
         <EventSubNav orgSlug={orgSlug} eventSlug={eventSlug} items={navItems} />
         {kpis && (
