@@ -73,15 +73,23 @@ function LedgerRow({ row, onOpen }: { row: VendorLedgerRow; onOpen: (row: Vendor
     <button
       type="button"
       onClick={() => onOpen(row)}
-      aria-label={`${row.name} — ${VENDOR_STATUS_LABELS[row.status]}, ${formatMoney(row.cost ?? 0)}`}
+      aria-label={`${row.name} — ${VENDOR_STATUS_LABELS[row.status]}, ${
+        row.cost == null ? 'cost not recorded' : formatMoney(row.cost)
+      }`}
       className="flex w-full items-center gap-3 border-b border-border/60 px-5 py-2.5 text-left hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
     >
       <span className="min-w-0 flex-1 truncate text-sm font-semibold">{row.name}</span>
       {/* R8 — below md the lower-value columns drop out rather than the row scrolling. */}
       <span className="hidden min-w-0 flex-1 truncate text-xs text-muted-foreground md:block">{row.service}</span>
       <span className="hidden min-w-0 flex-1 truncate text-xs text-muted-foreground md:block">{row.clientName}</span>
-      <span className="w-24 shrink-0 text-right text-sm font-semibold tabular-nums text-[var(--money-green)]">
-        {formatMoney(row.cost ?? 0)}
+      {/* An unrecorded cost must not render as $0.00 — "unknown" and "free" are
+          different answers, and the subtotals already treat unknown as zero. */}
+      <span className="w-24 shrink-0 text-right">
+        {row.cost == null ? (
+          <span className="text-xs text-muted-foreground">Not recorded</span>
+        ) : (
+          <span className="text-sm font-semibold tabular-nums text-[var(--money-green)]">{formatMoney(row.cost)}</span>
+        )}
       </span>
       <span className="w-24 shrink-0 text-right">
         <StatusPill tone={VENDOR_STATUS_TONE[row.status]}>{VENDOR_STATUS_LABELS[row.status]}</StatusPill>
@@ -99,9 +107,12 @@ export function VendorsLedger({ orgSlug, rows }: VendorsLedgerProps) {
     () => rows.filter((r) => matchesFacet(r, facet) && matchesSearch(r, query)),
     [rows, facet, query]
   )
-  // Tiles are built from the FILTERED set: the band answers "what does *this*
-  // slice cost", not a constant that ignores the operator's current question.
+  // Groups follow the filter; the band does NOT. The band is the org-level spend
+  // rollup, so filtering to "Declined" must not report $0 committed — that reads
+  // as "nothing is committed" rather than "nothing matches". The per-slice
+  // question is already answered by each group's subtotal.
   const ledger = useMemo(() => buildVendorLedger(visible), [visible])
+  const bandTiles = useMemo(() => buildVendorLedger(rows).tiles, [rows])
 
   const filtered = facet !== 'all' || query.trim() !== ''
 
@@ -118,8 +129,12 @@ export function VendorsLedger({ orgSlug, rows }: VendorsLedgerProps) {
         </div>
       </div>
 
+      {/* A zeroed band over dead filter chips is a brand-new org's first impression
+          of the module. Show the empty state alone until there is something to roll up. */}
+      {rows.length > 0 && (
+      <>
       <div className="px-5 py-3">
-        <VendorsKpiBand tiles={ledger.tiles} total={ledger.total} />
+        <VendorsKpiBand tiles={bandTiles} total={rows.length} />
       </div>
 
       <div className="flex flex-wrap items-center gap-2 px-5 pb-3">
@@ -150,6 +165,8 @@ export function VendorsLedger({ orgSlug, rows }: VendorsLedgerProps) {
           className="min-w-[12rem] flex-1 rounded-md border border-input bg-card px-2.5 py-1.5 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
         />
       </div>
+      </>
+      )}
 
       {rows.length === 0 ? (
         <EmptyState
@@ -182,6 +199,18 @@ export function VendorsLedger({ orgSlug, rows }: VendorsLedgerProps) {
         />
       ) : (
         <div>
+          {/* The deleted table had <th>s; two adjacent truncated muted columns are
+              ambiguous without them. Gated to md to match the row's own column gating. */}
+          <div
+            aria-hidden
+            className="hidden items-center gap-3 px-5 pb-1.5 text-[10px] font-semibold uppercase tracking-[.06em] text-muted-foreground md:flex"
+          >
+            <span className="min-w-0 flex-1">Vendor</span>
+            <span className="min-w-0 flex-1">Service</span>
+            <span className="min-w-0 flex-1">Client</span>
+            <span className="w-24 shrink-0 text-right">Cost</span>
+            <span className="w-24 shrink-0 text-right">Status</span>
+          </div>
           {ledger.groups.map((group) => (
             <div key={group.key}>
               <GroupHeader group={group} />

@@ -192,12 +192,15 @@ export function LeadVendorsClient({ orgId, leadId, vendors: initial }: LeadVendo
         )}
       </CardHeader>
       <CardContent className="space-y-3">
-        {/* Three tiles, always three columns: this panel lives in the narrow
-            opportunity column, so the page-level 4-up/2-up rhythm would orphan
-            the last tile onto a half-width second row. */}
-        <KpiBand className="grid-cols-3 max-[1000px]:grid-cols-3">
+        {/* Three tiles, three columns: this panel lives in the narrow opportunity
+            column, so the kit's page-level 4-up/2-up rhythm would orphan the last
+            tile onto a half-width second row. `max-[1000px]:` is a viewport query,
+            not a container query, so overriding it alone would also cancel the
+            kit's phone protection — below 420px the tiles stack instead of
+            squeezing a money figure into ~90px. */}
+        <KpiBand className="grid-cols-3 max-[1000px]:grid-cols-3 max-[420px]:grid-cols-1">
           <StatTile label="Committed" value={formatMoney(confirmedVendorCost(vendors))} tone="money" />
-          <StatTile label="Est. total" value={formatMoney(totalVendorCost(vendors))} tone="money" />
+          <StatTile label="Estimated total" value={formatMoney(totalVendorCost(vendors))} tone="money" />
           <StatTile label="To confirm" value={String(toConfirm)} tone={toConfirm > 0 ? 'alert' : 'default'} />
         </KpiBand>
 
@@ -304,6 +307,7 @@ export function LeadVendorsClient({ orgId, leadId, vendors: initial }: LeadVendo
               <DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>
               <Button
                 variant="destructive"
+                disabled={saving}
                 onClick={() => { if (pendingDelete) void handleDelete(pendingDelete) }}
               >
                 Delete vendor

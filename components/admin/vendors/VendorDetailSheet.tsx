@@ -25,16 +25,14 @@ interface VendorDetailSheetProps {
 }
 
 /**
- * R6 — an unset field is an affordance, not an em-dash. This sheet is read-only
- * (vendor editing lives on the lead's vendor panel), so "add" means "go where
- * you can add it".
+ * R6 wants an affordance rather than an em-dash, but there is no vendor field-edit
+ * path anywhere in the app yet — `updateVendor` is only ever called with `{ status }`,
+ * and the lead panel's form is create-only. A "+ Add cost" link would promise an edit
+ * the product cannot perform, which is worse than a plain em-dash. Honest label until
+ * vendor editing exists; swap this for the real affordance when it does.
  */
-function AddField({ label, href }: { label: string; href: string }) {
-  return (
-    <Link href={href} className="text-xs font-medium text-muted-foreground hover:text-[var(--link)] hover:underline">
-      + Add {label}
-    </Link>
-  )
+function NotRecorded() {
+  return <span className="text-xs text-muted-foreground">Not recorded</span>
 }
 
 function FieldRow({ label, children }: { label: string; children: React.ReactNode }) {
@@ -76,7 +74,7 @@ export function VendorDetailSheet({ row, orgSlug, onClose }: VendorDetailSheetPr
                 <p className="text-[10px] font-semibold uppercase tracking-[.06em] text-muted-foreground">Cost</p>
                 {row.cost == null ? (
                   <div className="mt-1">
-                    <AddField label="cost" href={leadHref} />
+                    <NotRecorded />
                   </div>
                 ) : (
                   <p className="text-[26px] font-semibold leading-tight tracking-[-.02em] tabular-nums text-[var(--money-green)]">
@@ -92,7 +90,7 @@ export function VendorDetailSheet({ row, orgSlug, onClose }: VendorDetailSheetPr
                 {hasContact ? (
                   <div>
                     <FieldRow label="Name">
-                      {row.contact_name ? row.contact_name : <AddField label="contact name" href={leadHref} />}
+                      {row.contact_name ? row.contact_name : <NotRecorded />}
                     </FieldRow>
                     <FieldRow label="Email">
                       {row.email ? (
@@ -100,7 +98,7 @@ export function VendorDetailSheet({ row, orgSlug, onClose }: VendorDetailSheetPr
                           {row.email}
                         </a>
                       ) : (
-                        <AddField label="email" href={leadHref} />
+                        <NotRecorded />
                       )}
                     </FieldRow>
                     <FieldRow label="Phone">
@@ -109,17 +107,17 @@ export function VendorDetailSheet({ row, orgSlug, onClose }: VendorDetailSheetPr
                           {row.phone}
                         </a>
                       ) : (
-                        <AddField label="phone" href={leadHref} />
+                        <NotRecorded />
                       )}
                     </FieldRow>
                   </div>
                 ) : (
                   <EmptyState
-                    title="No contact details yet."
-                    description="Add a name, email, or phone on the client's vendor panel."
+                    title="No contact details recorded."
+                    description="Contact details are captured when the vendor is added to the job."
                     action={
                       <Button variant="outline" size="sm" render={<Link href={leadHref} />}>
-                        Add contact
+                        Open client
                       </Button>
                     }
                   />
@@ -133,7 +131,7 @@ export function VendorDetailSheet({ row, orgSlug, onClose }: VendorDetailSheetPr
                 {row.notes ? (
                   <p className="whitespace-pre-wrap text-[13px] text-foreground">{row.notes}</p>
                 ) : (
-                  <AddField label="notes" href={leadHref} />
+                  <NotRecorded />
                 )}
               </section>
 
