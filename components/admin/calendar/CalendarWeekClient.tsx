@@ -62,13 +62,28 @@ function money(n: number): string {
 // Below md the 7-column grid stacks into one column, so a cell needs its own day
 // label (the header row is desktop-only) and an empty cell is dropped entirely —
 // scrolling past seven blank boxes on a phone is worse than not seeing them.
-function dayCellClass(empty: boolean): string {
+// Stacked below md (bottom rules), 7 columns at md+ (right rules). `last:` can't
+// be used for the mobile rule: empty cells are `hidden`, so the DOM-last cell is
+// often not the visually-last one and its rule would double with the band's own
+// bottom border. The caller tells us which cell is last *visible* instead.
+function dayCellClass(empty: boolean, lastVisible: boolean): string {
   return [
-    'space-y-1 border-b border-border/60 p-1.5 last:border-b-0 md:border-b-0 md:border-r md:last:border-r-0',
+    'space-y-1 p-1.5 md:border-b-0 md:border-r md:last:border-r-0',
+    lastVisible ? '' : 'border-b border-border/60',
     empty ? 'hidden md:block' : '',
   ]
     .filter(Boolean)
     .join(' ')
+}
+
+/** Per-day buckets for one band, plus which day is the last one shown on mobile. */
+function dayCells(days: string[], items: CalendarItem[], time: boolean) {
+  const cells = days.map((d) => ({
+    day: d,
+    items: items.filter((i) => TIME_KINDS.has(i.kind) === time && i.date.slice(0, 10) === d),
+  }))
+  const lastFilled = cells.reduce((last, c, i) => (c.items.length > 0 ? i : last), -1)
+  return cells.map((c, i) => ({ ...c, lastVisible: i === lastFilled }))
 }
 
 function TimeEntry({ item }: { item: CalendarItem }) {
@@ -218,42 +233,38 @@ export function CalendarWeekClient({
             ) : (
               <>
                 <div className="grid min-h-24 grid-cols-1 border-b border-border md:grid-cols-7">
-                  {days.map((d) => {
-                    const cellItems = weekItems.filter(
-                      (i) => TIME_KINDS.has(i.kind) && i.date.slice(0, 10) === d
-                    )
-                    return (
-                      <div key={d} className={dayCellClass(cellItems.length === 0)}>
-                        <p className="font-mono text-[10px] font-bold uppercase tracking-wide text-muted-foreground md:hidden">
-                          {dayLabel(d)}
-                        </p>
-                        {cellItems.map((i) => (
-                          <TimeEntry key={`${i.kind}:${i.id}`} item={i} />
-                        ))}
-                      </div>
-                    )
-                  })}
+                  {dayCells(days, weekItems, true).map((cell) => (
+                    <div
+                      key={cell.day}
+                      className={dayCellClass(cell.items.length === 0, cell.lastVisible)}
+                    >
+                      <p className="font-mono text-[10px] font-bold uppercase tracking-wide text-muted-foreground md:hidden">
+                        {dayLabel(cell.day)}
+                      </p>
+                      {cell.items.map((i) => (
+                        <TimeEntry key={`${i.kind}:${i.id}`} item={i} />
+                      ))}
+                    </div>
+                  ))}
                 </div>
 
                 <div className="border-b border-border bg-muted px-5 py-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-muted-foreground">
                   Owed
                 </div>
                 <div className="grid min-h-20 grid-cols-1 border-b border-border md:grid-cols-7">
-                  {days.map((d) => {
-                    const cellItems = weekItems.filter(
-                      (i) => !TIME_KINDS.has(i.kind) && i.date.slice(0, 10) === d
-                    )
-                    return (
-                      <div key={d} className={dayCellClass(cellItems.length === 0)}>
-                        <p className="font-mono text-[10px] font-bold uppercase tracking-wide text-muted-foreground md:hidden">
-                          {dayLabel(d)}
-                        </p>
-                        {cellItems.map((i) => (
-                          <OwedEntry key={`${i.kind}:${i.id}`} item={i} />
-                        ))}
-                      </div>
-                    )
-                  })}
+                  {dayCells(days, weekItems, false).map((cell) => (
+                    <div
+                      key={cell.day}
+                      className={dayCellClass(cell.items.length === 0, cell.lastVisible)}
+                    >
+                      <p className="font-mono text-[10px] font-bold uppercase tracking-wide text-muted-foreground md:hidden">
+                        {dayLabel(cell.day)}
+                      </p>
+                      {cell.items.map((i) => (
+                        <OwedEntry key={`${i.kind}:${i.id}`} item={i} />
+                      ))}
+                    </div>
+                  ))}
                 </div>
               </>
             )}

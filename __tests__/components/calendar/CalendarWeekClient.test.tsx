@@ -122,6 +122,35 @@ describe('CalendarWeekClient — week view', () => {
     render(<CalendarWeekClient {...props} footnote={<p>3 open opportunities have no date yet</p>} />)
     expect(screen.getByText('3 open opportunities have no date yet')).toBeInTheDocument()
   })
+
+  // Below md the 7 columns stack, empty days drop out, and only the last day
+  // that is actually SHOWN loses its bottom rule — `last:` would pick the DOM-last
+  // cell, which is usually hidden, doubling a hairline against the band border.
+  it('stacks the grid below md: empty days hidden, rules on all but the last shown day', () => {
+    const { container } = render(<CalendarWeekClient {...props} />)
+    const bands = container.querySelectorAll('section[aria-label="Week grid"] > div.grid')
+    expect(bands).toHaveLength(2)
+
+    // `md:border-b-0` contains the substring "border-b", so compare class TOKENS
+    const has = (el: Element, cls: string) => el.classList.contains(cls)
+
+    // time band: event Mon 10 (0) … hold Sat 15 (5); Sun 16 (6) is empty
+    const time = Array.from(bands[0].children)
+    expect(time).toHaveLength(7)
+    expect(has(time[0], 'border-b')).toBe(true)
+    expect(has(time[5], 'border-b')).toBe(false) // last shown day — no doubled rule
+    expect(has(time[6], 'hidden')).toBe(true)
+    expect(has(time[6], 'md:block')).toBe(true)
+
+    // owed band: task Tue 11 (1), compliance Wed 12 (2), invoice Thu 13 (3)
+    const owed = Array.from(bands[1].children)
+    expect(has(owed[1], 'border-b')).toBe(true)
+    expect(has(owed[3], 'border-b')).toBe(false)
+    expect(has(owed[0], 'hidden')).toBe(true)
+
+    // every cell keeps the desktop column rule
+    for (const cell of [...time, ...owed]) expect(has(cell, 'md:border-r')).toBe(true)
+  })
 })
 
 describe('CalendarWeekClient — agenda view', () => {
