@@ -33,6 +33,10 @@ import type {
   ProposalStatus,
 } from '@/lib/types'
 
+// Stays toFixed(2), deliberately: this feeds the "Client sees:" strip and the
+// send dialog, both of which claim to show the customer's figure. The customer
+// document renders prices through ProposalPricing's own toFixed(2), so adopting
+// the separator-style shared formatter here would make the claim false.
 const money = (n: number) => `$${n.toFixed(2)}`
 
 export function ProposalBuilderClient({

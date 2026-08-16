@@ -330,42 +330,28 @@ describe('buildProposalLedger — rows', () => {
     expect(led.groups[0].rows[0]).toMatchObject({ min: 100, max: 300 })
   })
 
-  it('sums each group to the ceiling of its rows', () => {
+  // Money lives on the KPI band, never on a group. A per-group total cannot
+  // agree with the band: the band's "Out for signature" spans every sent
+  // proposal while signalled ones sit in `needs_attention`, so an
+  // identically-labelled group roll-up would print a smaller figure right
+  // beneath it. Same mismatch for accepted (tile sums floors, a group would
+  // sum ceilings) and closed (voiding keeps the locked total).
+  it('carries no money roll-up on any group', () => {
     const led = buildProposalLedger(
       [
-        p({ id: 'a', status: 'draft' }),
-        p({ id: 'b', status: 'draft', line_items: [{ description: 'x', quantity: 1, unit_price: 250 }] }),
-      ],
-      NOW,
-    )
-    expect(led.groups[0].value).toBe(350)
-  })
-
-  // Voiding does not clear `selection`, so a voided proposal still reports its
-  // locked total. Rolling that up would print dead money beside booked money.
-  it('omits the money roll-up for the closed group', () => {
-    const led = buildProposalLedger(
-      [
+        p({ id: 'd', status: 'draft' }),
+        p({ id: 's', status: 'sent' }),
+        p({ id: 'a', status: 'accepted' }),
         p({
           id: 'v',
           status: 'voided',
           selection: { optional_item_ids: [], selected_total: 50000, selected_at: '2026-08-05T00:00:00.000Z' },
         }),
-        p({ id: 'r', status: 'rejected' }),
       ],
       NOW,
     )
-    const closed = led.groups.find((g) => g.key === 'closed')!
-    expect(closed.rows).toHaveLength(2)
-    expect(closed.value).toBeUndefined()
-  })
-
-  it('still reports a roll-up for every live group', () => {
-    const led = buildProposalLedger(
-      [p({ id: 'a', status: 'draft' }), p({ id: 'b', status: 'sent' }), p({ id: 'c', status: 'accepted' })],
-      NOW,
-    )
-    for (const g of led.groups) expect(g.value).toBe(100)
+    expect(led.groups.length).toBeGreaterThan(0)
+    for (const g of led.groups) expect(g).not.toHaveProperty('value')
   })
 })
 

@@ -86,6 +86,42 @@ returns minimal rows without them. Making the ledger `'use client'` for filter c
 ship that PII to the browser — the groups already segment by decision state, so chips were
 not worth it.
 
+## The paper invariant (read before touching the builder)
+
+Everything rendered inside `<ProposalTheme>` sits on `bg-[var(--warm-0)]` — **permanently
+white in both themes, by design**: it is the customer's document, not app chrome. `--warm-*`
+has no `.dark` override; `--foreground`, `--muted-foreground`, `--border`, `--muted` and
+`--popover` all do.
+
+So on the paper, ink must be pinned to fixed `--warm-*` values, **not** semantic tokens. The
+stock literals (`text-gray-700` etc.) were already theme-independent, because `@theme inline`
+re-grades those ramps onto the warm ramp with no dark block — which is why "tokenizing" them
+made things worse, not better: `text-foreground` is near-white on white paper in dark mode.
+It also broke WYSIWYG parity in *light* mode, because the customer renderers
+(`components/proposals/ProposalDocument.tsx`, `ProposalPricing.tsx`) still use the literals.
+
+Files that obey the rule and carry a `COLOUR RULE` header: `BlockCanvas`, `PricingCanvas`,
+`TotalsCanvas`, `InlineText`, `ItemPopover`. Also pinned: the paper wrappers in
+`ProposalBuilderClient` and `TemplateBuilderClient`, `SkeletonPicker`'s thumbnail ladder, and
+the `EmptyState` on the canvas.
+
+`DraftComposer` is the awkward one: one body serves both a `hero` (on the paper) and a
+`modal` (theme-aware chrome), so no single theme-aware token is right. Its error and
+advisory ink stays on the fixed stock literals deliberately.
+
+Money on the paper stays `toFixed(2)` in `PricingCanvas` / `TotalsCanvas` — those are
+WYSIWYG-locked to `ProposalPricing` and must not drift alone. `ProposalBuilderClient`'s
+`money()` stays `toFixed(2)` for the same reason: it feeds the "Client sees:" strip and the
+send dialog, both of which *claim* to show the customer's figure.
+
+Still theme-aware on the paper, and not fixed here: `TotalsCanvas`'s form controls
+(`border-input`, `placeholder:text-muted-foreground`, a few bare `border-t`/`divide-y`).
+Pre-existing, latent, and untouched by this branch.
+
+**None of this is live today** — nothing in the app ever applies the `.dark` class (no theme
+provider, and `@custom-variant dark` is class-gated with no `prefers-color-scheme` fallback).
+It all lands the day a theme toggle ships.
+
 ## Deferred (with reasons)
 
 - `window.confirm`/`prompt` → kit dialog. Test-pinned, repo-wide convention, behaviour
@@ -99,3 +135,15 @@ not worth it.
 - Adding `sent_at` to `Proposal` + writing the `sent` event. Data-model change.
 - `components/client-portal/ClientPortalView.tsx` renders a fourth per-proposal row style
   with hardcoded grays — out of module scope.
+- Extracting a shared `GroupHeader` kit primitive. The urgent/normal group header is now
+  written three times (`ProposalsLedger`, `TodayQueue`, `PipelineTasksList`). It is the one
+  brick this rollout owed and did not ship; other modules are mid-flight in parallel
+  sessions, so extracting it now would collide.
+- `LeadProposalsClient` still takes a full `Proposal[]` into a client component, serializing
+  `token`/`signature.ip`/`signer_email` — pre-existing, and `token` is genuinely needed for
+  the copy-link button. The new `/proposals` index deliberately does the opposite (server
+  component, narrowed rows). Narrowing the per-lead prop is follow-up work.
+- Pagination for `/proposals`. `listAllProposals` is unbounded and the ledger row is ~4× the
+  DOM of the old table row. Not made worse at the query level, but the page gets heavier.
+- Adding `sent_at` + writing the `sent` event, which would unlock a real "days since sent"
+  signal (see the data-gap note above).

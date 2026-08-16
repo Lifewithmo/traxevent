@@ -64,18 +64,23 @@ export interface ProposalLedgerRow {
   signal?: ProposalSignal
 }
 
+/**
+ * Groups deliberately carry NO money roll-up: the KPI band owns money, the
+ * groups own the work queue.
+ *
+ * A per-group total cannot agree with the band without lying somewhere. The
+ * band's "Out for signature" spans every sent proposal, but signalled ones are
+ * bucketed into `needs_attention`, so an identically-labelled group header
+ * would print a smaller number directly beneath it. `accepted` has the mirror
+ * problem — the tile sums locked floors while a group roll-up would sum
+ * ceilings. And `closed` keeps its locked `selection.selected_total` (voiding
+ * does not clear it), so summing it would show dead proposals as revenue.
+ */
 export interface ProposalLedgerGroup {
   key: ProposalGroupKey
   label: string
   tone: 'urgent' | 'normal'
   rows: ProposalLedgerRow[]
-  /**
-   * Σ of the group's ceilings, or undefined where a money roll-up would lie.
-   * `closed` holds rejected and voided proposals, which keep their locked
-   * `selection.selected_total` (voiding does not clear it) — summing those
-   * would print dead proposals in the same money slot as booked revenue.
-   */
-  value?: number
 }
 
 export interface ProposalLedgerTiles {
@@ -212,9 +217,6 @@ export function buildProposalLedger(
       label: GROUP_META[key].label,
       tone: GROUP_META[key].tone,
       rows,
-      ...(key === 'closed'
-        ? {}
-        : { value: round2(rows.reduce((s, r) => s + r.max, 0)) }),
     }]
   })
 

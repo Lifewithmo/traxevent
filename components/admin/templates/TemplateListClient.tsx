@@ -22,18 +22,18 @@ import type { ProposalTemplate } from '@/lib/types'
 // round-trip (auth + write) opens a second prompt and orphans a document,
 // since only one of the two ids gets navigated to.
 function NewTemplateButton({
-  busy,
+  creating,
   onNew,
   variant,
   size,
 }: {
-  busy: string | null
+  creating: boolean
   onNew: () => void
   variant?: ComponentProps<typeof Button>['variant']
   size?: ComponentProps<typeof Button>['size']
 }) {
   return (
-    <Button variant={variant} size={size} onClick={onNew} disabled={busy === 'new'}>
+    <Button variant={variant} size={size} onClick={onNew} disabled={creating}>
       New template
     </Button>
   )
@@ -49,11 +49,17 @@ export function TemplateListClient({
   templates: ProposalTemplate[]
 }) {
   const router = useRouter()
-  const [busy, setBusy] = useState<string | null>(null)
+  // Two slots, not one. A single `busy` key multiplexing row ids and a 'new'
+  // sentinel lets the two concerns clear each other: a row action finishing
+  // would run `finally { setBusy(null) }` and drop the create guard mid-flight
+  // (re-enabling the double-submit), while starting a create would un-gate an
+  // in-flight row's buttons.
+  const [creating, setCreating] = useState(false)
+  const [rowBusy, setRowBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   async function run(key: string, fn: () => Promise<void>) {
-    setBusy(key)
+    setRowBusy(key)
     setError(null)
     try {
       await fn()
@@ -61,21 +67,21 @@ export function TemplateListClient({
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Something went wrong')
     } finally {
-      setBusy(null)
+      setRowBusy(null)
     }
   }
 
   async function handleNew() {
     const name = window.prompt('Template name:')
     if (!name?.trim()) return
-    setBusy('new')
+    setCreating(true)
     setError(null)
     try {
       const t = await createProposalTemplate(orgId, { name: name.trim() })
       router.push(`/${orgSlug}/proposal-templates/${t.id}`)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to create template')
-      setBusy(null)
+      setCreating(false)
     }
   }
 
@@ -89,7 +95,7 @@ export function TemplateListClient({
           </p>
         </div>
         {/* Only the create action gates this button — row work must not freeze it. */}
-        <NewTemplateButton busy={busy} onNew={handleNew} />
+        <NewTemplateButton creating={creating} onNew={handleNew} />
       </div>
 
       {/* Kept mounted so the live region can announce, but collapsed out of
@@ -103,16 +109,16 @@ export function TemplateListClient({
           <EmptyState
             title="No templates yet"
             description="Build one from scratch, or open any proposal and choose “Save as template”."
-            action={<NewTemplateButton busy={busy} onNew={handleNew} variant="outline" size="sm" />}
+            action={<NewTemplateButton creating={creating} onNew={handleNew} variant="outline" size="sm" />}
             className="py-10"
           />
         </div>
       ) : (
         <div className="overflow-hidden rounded-xl border border-border bg-card">
           {templates.map((t) => {
-            // Row-scoped: `busy` holds the id of the row whose action is in
+            // Row-scoped: rowBusy holds the id of the row whose action is in
             // flight, so one row's work never freezes the rest of the library.
-            const rowBusy = busy === t.id
+            const isRowBusy = rowBusy === t.id
             const used = t.usage_count ?? 0
             return (
               <div
@@ -155,7 +161,7 @@ export function TemplateListClient({
                   <Button
                     variant="ghost"
                     size="xs"
-                    disabled={rowBusy}
+                    disabled={isRowBusy}
                     onClick={() => {
                       const name = window.prompt('Rename template:', t.name)
                       if (!name?.trim() || name.trim() === t.name) return
@@ -167,7 +173,7 @@ export function TemplateListClient({
                   <Button
                     variant="ghost"
                     size="xs"
-                    disabled={rowBusy}
+                    disabled={isRowBusy}
                     onClick={() => void run(t.id, async () => { await duplicateProposalTemplate(orgId, t.id) })}
                   >
                     Duplicate
@@ -178,7 +184,7 @@ export function TemplateListClient({
                     // `hover:` too — the ghost variant ships `hover:text-foreground`,
                     // which otherwise drains the red exactly as the pointer lands.
                     className="text-destructive hover:text-destructive"
-                    disabled={rowBusy}
+                    disabled={isRowBusy}
                     onClick={() => {
                       if (!window.confirm(`Delete “${t.name}”? Proposals already created from it are unaffected.`)) return
                       void run(t.id, () => deleteProposalTemplate(orgId, t.id))

@@ -16,9 +16,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { formatProposalMoney } from '@/lib/proposals'
 import type { ProposalBlock, ProposalPackage } from '@/lib/types'
 
-const money = (n: number) => `$${n.toLocaleString()}`
+// Shared formatter: a bare toLocaleString() is locale-unpinned and defaults to
+// 0..3 fraction digits, so $1,234.50 rendered as "$1,234.5".
 
 const TITLE = 'Draft this proposal from your notes'
 const SUBTITLE =
@@ -36,7 +38,7 @@ function SuggestedPackages({ packages }: { packages: ProposalPackage[] }) {
       {packages.map((p) => (
         <p key={p.id} className="text-xs text-muted-foreground">
           Suggested: {p.name}
-          {p.item_ids?.length ? ` — ${p.item_ids.length} items,` : ''} {money(p.price)}
+          {p.item_ids?.length ? ` — ${p.item_ids.length} items,` : ''} {formatProposalMoney(p.price)}
           {p.recommended ? ' (recommended)' : ''}
         </p>
       ))}
@@ -112,8 +114,16 @@ function ComposerBody({
         {generating ? 'Generating…' : 'Generate draft'}
       </Button>
 
+      {/* DUAL CONTEXT: this body renders both as the `hero` card (inside
+          ProposalTheme, a permanently-white sheet) and inside a `modal` Dialog
+          (theme-aware chrome). No theme-aware token is correct in both — in
+          dark mode --destructive/--warn-fg are tuned for a dark surface and
+          would fall to ~3:1 on the white paper. globals.css re-grades the stock
+          red/amber ramps onto fixed hexes with NO .dark override, so these
+          literals are theme-independent by construction and legible in both
+          contexts. Do not "tokenize" them. */}
       {state.status === 'error' && (
-        <p role="alert" className="text-sm text-destructive">{state.message}</p>
+        <p role="alert" className="text-sm text-red-600">{state.message}</p>
       )}
 
       {state.status === 'streaming' && (
@@ -129,7 +139,8 @@ function ComposerBody({
           {state.draft.rationale && <p className="text-xs text-muted-foreground">{state.draft.rationale}</p>}
           <SuggestedPackages packages={state.draft.suggested_packages} />
           {state.draft.adjustments.map((a, i) => (
-            <p key={i} className="text-xs text-[var(--warn-fg)]">{a}</p>
+            /* Fixed literal for the dual-context reason above. */
+            <p key={i} className="text-xs text-amber-700">{a}</p>
           ))}
           <div className="flex gap-2">
             <Button type="button" size="sm" onClick={() => fill(state.draft.blocks)}

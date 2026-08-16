@@ -140,7 +140,13 @@ export function TemplateBuilderClient({
       <main className="flex-1 overflow-y-auto bg-muted px-6 py-8">
         {/* The paper is the customer's document, so it stays white in dark mode —
             --warm-0 is the literal white token. Do NOT use bg-card, which inverts. */}
-        <ProposalTheme branding={branding} className="mx-auto max-w-3xl rounded-lg bg-[var(--warm-0)] p-8 shadow-sm">
+        {/* The ink is pinned for the same reason as the sheet: ProposalTheme sets
+            no text colour, so without this the document inherits --foreground and
+            renders near-white on white paper in dark mode. */}
+        <ProposalTheme
+          branding={branding}
+          className="mx-auto max-w-3xl rounded-lg bg-[var(--warm-0)] p-8 text-[var(--warm-950)] shadow-sm"
+        >
           <BlockCanvas
             blocks={blocks}
             onChange={(next) => update({ blocks: next })}

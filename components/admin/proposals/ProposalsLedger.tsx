@@ -23,20 +23,16 @@ function GroupHeader({ group }: { group: ProposalLedgerGroup }) {
   return (
     <div
       className={[
-        'flex items-center justify-between border-y px-5 py-2 font-mono text-[10px] font-bold uppercase tracking-[0.1em]',
+        'border-y px-5 py-2 font-mono text-[10px] font-bold uppercase tracking-[0.1em]',
         group.tone === 'urgent'
           ? 'border-destructive/25 bg-destructive/5 text-destructive'
           : 'border-border bg-muted text-muted-foreground',
       ].join(' ')}
     >
-      <span>
-        {group.label} · {group.rows.length}
-      </span>
-      {/* `closed` deliberately carries no roll-up — see ProposalLedgerGroup.value.
-          justify-between leaves the label at flex-start on its own. */}
-      {group.value !== undefined && (
-        <span className="tabular-nums">{formatProposalMoney(group.value)}</span>
-      )}
+      {/* No money here on purpose — the KPI band owns money, these own the work
+          queue. See ProposalLedgerGroup: a per-group total cannot agree with the
+          band's tiles without lying in at least one group. */}
+      {group.label} · {group.rows.length}
     </div>
   )
 }
@@ -88,7 +84,16 @@ export function ProposalsLedger({ ledger, orgSlug }: { ledger: ProposalLedger; o
         title="No proposals yet"
         description="Proposals start from a job in your pipeline."
         action={
-          <Button variant="outline" size="sm" render={<Link href={`/${orgSlug}/leads`} />}>
+          /* nativeButton={false} stops Base UI merging type="button" onto the
+             anchor; the explicit role then overrides the role="button" it adds
+             in exchange, so this stays a link to assistive tech. */
+          <Button
+            variant="outline"
+            size="sm"
+            nativeButton={false}
+            role="link"
+            render={<Link href={`/${orgSlug}/leads`} />}
+          >
             View pipeline
           </Button>
         }

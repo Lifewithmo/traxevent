@@ -35,7 +35,7 @@ describe('ProposalsLedger — empty', () => {
 })
 
 describe('ProposalsLedger — groups', () => {
-  it('renders a header per group with its count and money roll-up', () => {
+  it('renders a header per group with its count and no money', () => {
     render(
       <ProposalsLedger
         orgSlug="acme"
@@ -54,8 +54,13 @@ describe('ProposalsLedger — groups', () => {
     expect(screen.getByText('Needs attention · 1')).toBeInTheDocument()
     expect(screen.getByText('Out for signature · 1')).toBeInTheDocument()
     expect(screen.getByText('Drafts · 1')).toBeInTheDocument()
-    // Once in the group header roll-up, once on the row itself.
-    expect(screen.getAllByText('$2,400')).toHaveLength(2)
+    // Only on the row. A group roll-up here would contradict the KPI band:
+    // the band's "Out for signature" counts both sent proposals, while this
+    // group holds only the non-signalled one.
+    expect(screen.getAllByText('$2,400')).toHaveLength(1)
+    for (const label of ['Needs attention · 1', 'Out for signature · 1', 'Drafts · 1']) {
+      expect(screen.getByText(label).textContent).not.toContain('$')
+    }
   })
 
   it('omits groups that have no rows', () => {
@@ -88,7 +93,7 @@ describe('ProposalsLedger — groups', () => {
     )
     expect(screen.getByRole('link', { name: /Cancelled retreat/ })).toBeInTheDocument()
 
-    const header = screen.getByText('Closed · 1').parentElement!
+    const header = screen.getByText('Closed · 1')
     // The header must carry the label alone — no money slot at all.
     expect(header.textContent).toBe('Closed · 1')
     expect(header.textContent).not.toContain('$')
@@ -98,7 +103,9 @@ describe('ProposalsLedger — groups', () => {
     expect(screen.getAllByText('$50,000')).toHaveLength(1)
   })
 
-  it('still rolls up the live groups', () => {
+  // Live groups get no roll-up either. Only the KPI band reports money, so the
+  // header can never contradict a tile — it shows the two row prices and no sum.
+  it('does not roll up live groups either', () => {
     render(
       <ProposalsLedger
         orgSlug="acme"
@@ -108,7 +115,11 @@ describe('ProposalsLedger — groups', () => {
         ])}
       />
     )
-    expect(screen.getByText('Drafts · 2').parentElement!.textContent).toContain('$1,000')
+    const header = screen.getByText('Drafts · 2')
+    expect(header.textContent).toBe('Drafts · 2')
+    expect(screen.queryByText('$1,000')).not.toBeInTheDocument()
+    expect(screen.getByText('$700')).toBeInTheDocument()
+    expect(screen.getByText('$300')).toBeInTheDocument()
   })
 })
 
@@ -251,8 +262,8 @@ describe('ProposalsLedger — rows', () => {
         ])}
       />
     )
-    // Once on the row, once in the Drafts roll-up.
-    expect(screen.getAllByText('$1,234.50')).toHaveLength(2)
+    // On the row only — groups carry no money.
+    expect(screen.getAllByText('$1,234.50')).toHaveLength(1)
     expect(screen.queryByText('$1,234.5')).not.toBeInTheDocument()
   })
 })
