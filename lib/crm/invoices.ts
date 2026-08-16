@@ -12,7 +12,8 @@ import {
 } from '@/lib/invoice-progress'
 import { depositAmount } from '@/lib/proposals'
 import { derivePaymentStatus } from '@/lib/invoice-status'
-import { leadsRef } from '@/lib/crm/leads'
+import { leadsRef, listLeadsByCustomerCore } from '@/lib/crm/leads'
+import { filterInvoicesByLeadIds } from '@/lib/crm/ar-rollup'
 import type {
   Invoice,
   InvoiceLineItem,
@@ -84,6 +85,15 @@ export async function listAllInvoicesCore(orgId: string): Promise<NormalizedInvo
 export async function listInvoicesCore(orgId: string, leadId: string): Promise<NormalizedInvoice[]> {
   const snap = await invoicesRef(orgId).where('lead_id', '==', leadId).orderBy('created_at', 'desc').get()
   return snap.docs.map((d) => normalizeInvoice(d.data()))
+}
+
+/** All invoices belonging to a customer, joined by the customer's lead ids
+ *  (customer_id is only conditionally stamped, so we never query it directly). */
+export async function listInvoicesByCustomerCore(orgId: string, customerId: string): Promise<Invoice[]> {
+  const leads = await listLeadsByCustomerCore(orgId, customerId)
+  if (leads.length === 0) return []
+  const all = await listAllInvoicesCore(orgId)
+  return filterInvoicesByLeadIds(all, leads.map((l) => l.id))
 }
 
 /** Guard-free invoice creation. Takes `customer_id` directly instead of fetching the lead. */
