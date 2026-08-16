@@ -30,7 +30,7 @@ export function customerAR(invoices: Invoice[], now: Date): CustomerAR {
       outstanding += balance
       openCount += 1
       if (inv.due_date && (!nextDueDate || inv.due_date < nextDueDate)) nextDueDate = inv.due_date
-      const aging = deriveAging({ dueDate: inv.due_date, balance, lifecycle: inv.lifecycle }, now)
+      const aging = deriveAging({ dueDate: inv.due_date, balance, lifecycle: 'sent' }, now)
       if (OVERDUE_BUCKETS.has(aging)) overdueAmount += balance
     }
   }
