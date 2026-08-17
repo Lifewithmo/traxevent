@@ -11,8 +11,9 @@ const avatarVariants = cva(
   }
 )
 
-// Warm, on-brand monogram grounds (copper / moss / honey / terracotta / warm).
-const BGS = ["#8a4e20", "#5d7a45", "#7d5a18", "#8c3524", "#6d5d4f", "#905525"] as const
+// Charcoal & Sapphire monogram grounds (sapphire / forest / amber / alert /
+// graphite); all clear AA for the white monogram text.
+const BGS = ["#1450a3", "#103f82", "#1e6b3d", "#7a4e00", "#8a2a1e", "#3a3b3f"] as const
 
 function initialsOf(name: string): string {
   return name.trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase()
