@@ -263,11 +263,13 @@ lead → nearest future event; no `payment_amount`/`booth_fee` in Booked-$);
 component tests for view-switching, empty states, spine live-swap, param
 preservation; browser walkthrough (authenticated) as the ISO 9241-210 gate.
 
-## 12. Open decisions for review
-1. **Runway cost anchor:** v1 shows *expected inflow before each booked job* —
-   do we also show a cost estimate to compute true "runway," or defer cost
-   modeling (no per-event cost field exists) to phase-2? (Recommend: v1 shows
-   inflow + due-before-date; label it honestly as receivables timing, not a P&L.)
-2. **Month view density:** dots+count (recommend) vs mini event chips.
-3. **Attention rail:** fold entirely into the day spine (recommend) vs keep a
-   week-level attention section in the left rail.
+## 12. Decisions (resolved 2026-08-16)
+1. **Runway = receivables-timing, honestly labeled.** v1 shows *expected inflow
+   before each booked job* + due-before-date; it does NOT claim a true P&L /
+   cost-based runway (no per-event cost field exists — cost modeling is phase-2).
+   The UI must label it as receivables timing, never imply profit.
+2. **Month view = density dots + count** per day (scales to n:many), not mini
+   event chips.
+3. **Attention rail = folded into the day spine** (it is day/horizon detail); no
+   separate week-level attention section in the left rail. The left rail holds
+   mini-month + kind filters + KPIs + runway only.
