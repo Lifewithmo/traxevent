@@ -139,6 +139,42 @@ aggregation already in `lib/pipeline-stats.ts` (`wonValueInMonth`/`backlogByMont
 and `lib/leads.ts` (`bookedValue`). No new business logic; thread a `bookedValue`
 field through `buildCalendarFeed`'s event/lead loop + `weekRollup`.
 
+### 4.4 Week/Day rendering — hybrid time-grid + all-day band (VERIFIED)
+The Week/Day canvas loads each day start→end as a **time grid**, so a day reads
+as its real shape — not date-only chips floating in white space. But a *pure*
+grid is **not trustworthy on today's data** (adversarially verified):
+- `CalendarItem` is date-only; `Event.hours` (`HH:mm`) is the only time source,
+  and it is **UI-unreachable for `client_job` events** — the create action
+  (`actions/events.ts`) and settings page expose a time input **only** when
+  `kind === 'market_day'`; lead→job conversion never sets it. `event_start`/
+  `event_end` are date-only. So client jobs — the core booked-job workflow —
+  carry **no hours today**.
+- Only two kinds can hold a real time: `event` (reliable only for market-day
+  *series*, which require hours) and **`drop`** (pickup windows carry
+  `start`/`end`, but `buildCalendarFeed` currently **discards** them, collapsing
+  to distinct days). The other five kinds (lead, task, follow_up, compliance,
+  invoice_due) are **due-that-day**, all-day by nature.
+
+**Design — hybrid.** Each day = a persistent **all-day band** (top) for
+due-that-day items *and any event lacking hours, shown as a "time TBD" chip* +
+a **time-grid body** (morning→evening) placing only items with a projected time
+(events with `hours`; one item per drop window, sized by `end − start`). Never
+pins a due-date to a fake hour.
+
+**Tasks (all projection / UI — NO Firestore migration):**
+1. Extend `CalendarItem` with `start?`/`end?` (`HH:mm`); project `Event.hours` in
+   `buildCalendarFeed`; restructure the drop loop to emit **one item per
+   `DropPickupWindow`** with its times (stop discarding them).
+2. **Add an optional start/end time input to the client-job create + settings
+   forms** (writes the existing `Event.hours` field). Without it the grid stays
+   empty of bookings for non-market verticals — so this is **in v1**, not a
+   fast-follow. Two-form UI change, no schema change.
+3. Handle **multi-day events** (`event_start !== event_end`) — span or repeat.
+
+**Reliability caveat (state honestly):** until task 2 ships, most client jobs
+render in the all-day "time TBD" band; the grid is densely populated mainly for
+the mobile-beverage vertical (market-day series + drops).
+
 ## 5. The three panes
 
 ### Left rail (~280px, persistent)
@@ -191,9 +227,11 @@ is the Cockpit-style live detail pane calendar has never had.
 
 ## 9. Scope — v1 vs phase-2 (verified feasibility)
 
-**v1 (this spec):** the three-pane cockpit + Month/Day views + live day-spine +
-Booked-$ (from `estimated_value`) + **cash-flow runway** (category-defining).
-All buildable now, no migration.
+**v1 (this spec):** the three-pane cockpit + Month/Week/Day/Agenda views with the
+**hybrid time-grid + all-day band** (§4.4) + a **start/end time input on the
+client-job booking form** (so the grid is populated for bookings, not just market
+days) + live day-spine + Booked-$ (from `estimated_value`) + **cash-flow runway**
+(category-defining). All buildable now, no Firestore migration.
 
 **Phase-2 fast-follows — named, each gated on a verified prerequisite:**
 - **Drive-time-aware placement** — *prerequisite:* zero geo exists (verified:
