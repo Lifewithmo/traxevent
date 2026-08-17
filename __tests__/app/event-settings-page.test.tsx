@@ -65,4 +65,20 @@ describe('Event settings — client-job booking time', () => {
       ),
     )
   })
+
+  it('rejects a one-sided or reversed time range with an inline error, without saving', async () => {
+    updateEventSpy.mockClear() // shared hoisted spy — ignore prior tests' calls
+    render(<EventSettingsPage />)
+    // one-sided: start only
+    fireEvent.change(await screen.findByLabelText(/start time/i), { target: { value: '16:00' } })
+    fireEvent.click(screen.getByRole('button', { name: /save settings/i }))
+    expect(await screen.findByText(/both a start and end time/i)).toBeInTheDocument()
+    expect(updateEventSpy).not.toHaveBeenCalled()
+
+    // reversed: end at/before start
+    fireEvent.change(screen.getByLabelText(/end time/i), { target: { value: '15:00' } })
+    fireEvent.click(screen.getByRole('button', { name: /save settings/i }))
+    expect(await screen.findByText(/end time must be after/i)).toBeInTheDocument()
+    expect(updateEventSpy).not.toHaveBeenCalled()
+  })
 })

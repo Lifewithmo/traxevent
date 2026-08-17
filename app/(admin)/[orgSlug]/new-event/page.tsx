@@ -49,6 +49,16 @@ export default function NewEventPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
+    // Booking time is both-or-neither, and the end must be after the start —
+    // otherwise a one-sided range is silently dropped and start>start clamps the grid.
+    if (Boolean(hoursStart) !== Boolean(hoursEnd)) {
+      setError('Enter both a start and end time, or leave both blank.')
+      return
+    }
+    if (hoursStart && hoursEnd && hoursEnd <= hoursStart) {
+      setError('End time must be after the start time.')
+      return
+    }
     setLoading(true)
     try {
       if (!orgId) throw new Error('Organization not found')

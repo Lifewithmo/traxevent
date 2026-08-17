@@ -69,4 +69,23 @@ describe('NewEventPage — optional booking time', () => {
     await waitFor(() => expect(createEventSpy).toHaveBeenCalled())
     expect(createEventSpy.mock.calls[0][1].hours).toBeUndefined()
   })
+
+  it('rejects a one-sided time range with an inline error, without submitting', async () => {
+    render(<NewEventPage />)
+    await fillBaseFields()
+    fireEvent.change(screen.getByLabelText(/start time/i), { target: { value: '16:00' } })
+    fireEvent.click(screen.getByRole('button', { name: /create event/i }))
+    expect(await screen.findByText(/both a start and end time/i)).toBeInTheDocument()
+    expect(createEventSpy).not.toHaveBeenCalled()
+  })
+
+  it('rejects an end at or before the start, without submitting', async () => {
+    render(<NewEventPage />)
+    await fillBaseFields()
+    fireEvent.change(screen.getByLabelText(/start time/i), { target: { value: '18:00' } })
+    fireEvent.change(screen.getByLabelText(/end time/i), { target: { value: '17:00' } })
+    fireEvent.click(screen.getByRole('button', { name: /create event/i }))
+    expect(await screen.findByText(/end time must be after/i)).toBeInTheDocument()
+    expect(createEventSpy).not.toHaveBeenCalled()
+  })
 })

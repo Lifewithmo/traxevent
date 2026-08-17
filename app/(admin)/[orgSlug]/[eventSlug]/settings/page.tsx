@@ -107,6 +107,16 @@ export default function EventSettingsPage() {
     e.preventDefault()
     if (!orgId || !event) return
     setError(null)
+    // Booking/working time is both-or-neither, end after start — otherwise a
+    // one-sided range is silently dropped and start>end clamps on the grid.
+    if (Boolean(hoursStart) !== Boolean(hoursEnd)) {
+      setError('Enter both a start and end time, or leave both blank.')
+      return
+    }
+    if (hoursStart && hoursEnd && hoursEnd <= hoursStart) {
+      setError('End time must be after the start time.')
+      return
+    }
     setSaving(true)
     setSaved(false)
     try {
