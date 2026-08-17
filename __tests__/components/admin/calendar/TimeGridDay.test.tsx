@@ -123,3 +123,32 @@ describe('TimeGridDay — grid geometry', () => {
     expect(gridItem('Reversed')).toHaveAttribute('data-invalid-hours', 'true')
   })
 })
+
+describe('TimeGridDay — accessibility & polish', () => {
+  it('names the kind for assistive tech, not colour alone', () => {
+    const { container } = render(<TimeGridDay orgSlug="acme" ymd={day} items={items} />)
+    // the compliance chip carries its kind name in its accessible label
+    expect(bandOf(container).getByRole('link', { name: /Compliance/ })).toBeInTheDocument()
+    // a timed grid item does too
+    expect(bodyOf(container).getByRole('link', { name: /Booked event/ })).toBeInTheDocument()
+  })
+
+  it('gives band chips a touch-safe min height', () => {
+    const { container } = render(<TimeGridDay orgSlug="acme" ymd={day} items={items} />)
+    const chip = bandOf(container).getByText('Deposit invoice').closest('a')!
+    expect(chip).toHaveClass('min-h-6')
+  })
+
+  it('suppresses the per-cell "nothing all-day" placeholder in the week band section', () => {
+    render(<TimeGridDay orgSlug="acme" ymd={day} items={[]} section="band" />)
+    expect(screen.queryByText(/nothing all-day/i)).not.toBeInTheDocument()
+  })
+
+  it('keeps the "nothing all-day" hint on the single day view', () => {
+    const timedOnly: CalendarItem[] = [
+      { id: 'e1', title: 'Wedding', date: day, kind: 'event', href: '/acme/w', start: '16:00', end: '18:00' },
+    ]
+    render(<TimeGridDay orgSlug="acme" ymd={day} items={timedOnly} section="all" withGutter />)
+    expect(screen.getByText(/nothing all-day/i)).toBeInTheDocument()
+  })
+})

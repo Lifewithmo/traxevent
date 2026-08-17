@@ -88,13 +88,14 @@ function BandChip({ item }: { item: CalendarItem }) {
   return (
     <Link
       href={item.href}
-      className="flex items-center gap-1.5 rounded-sm border border-border bg-card px-1.5 py-1 text-[11px] leading-tight transition-colors hover:bg-muted focus-visible:bg-muted motion-reduce:transition-none"
+      className="flex min-h-6 items-center gap-1.5 rounded-sm border border-border bg-card px-1.5 py-1.5 text-[11px] leading-tight transition-colors hover:bg-muted focus-visible:bg-muted motion-reduce:transition-none"
     >
       <span
         className="size-1.5 shrink-0 rounded-full"
         style={{ background: KIND_DOT[item.kind] }}
         aria-hidden
       />
+      <span className="sr-only">{CALENDAR_KIND_LABELS[item.kind]}: </span>
       <span className={cn('min-w-0 flex-1 truncate', item.blocker && 'text-destructive')}>{item.title}</span>
       {tbd ? <span className="shrink-0 text-[10px] text-muted-foreground">Time TBD</span> : null}
       {item.kind === 'invoice_due' && item.amount != null ? (
@@ -232,14 +233,17 @@ function TimeGridBody({
   )
 }
 
-function AllDayBand({ band }: { band: CalendarItem[] }) {
+function AllDayBand({ band, placeholder = true }: { band: CalendarItem[]; placeholder?: boolean }) {
   return (
     <div data-slot="all-day-band" className="min-h-8 space-y-1 p-1.5">
-      {band.length === 0 ? (
-        <p className="px-0.5 py-1 text-[10px] text-muted-foreground">Nothing all-day</p>
-      ) : (
-        band.map((i) => <BandChip key={`${i.kind}:${i.id}`} item={i} />)
-      )}
+      {band.length === 0
+        ? // In the week view the band is one row of seven cells — a placeholder in
+          // every empty cell would repeat "Nothing all-day" across the week, so it
+          // is suppressed there and kept only for the single Day view.
+          placeholder
+          ? <p className="px-0.5 py-1 text-[10px] text-muted-foreground">Nothing all-day</p>
+          : null
+        : band.map((i) => <BandChip key={`${i.kind}:${i.id}`} item={i} />)}
     </div>
   )
 }
@@ -265,7 +269,7 @@ export function TimeGridDay({
   const band = items.filter((i) => !i.start)
 
   if (section === 'band') {
-    return <AllDayBand band={band} />
+    return <AllDayBand band={band} placeholder={false} />
   }
   if (section === 'body') {
     return <TimeGridBody timed={timed} dayStartHour={dayStartHour} dayEndHour={dayEndHour} />
