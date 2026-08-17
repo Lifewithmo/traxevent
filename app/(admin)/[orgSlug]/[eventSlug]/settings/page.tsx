@@ -146,7 +146,11 @@ export default function EventSettingsPage() {
               hours: hoursStart && hoursEnd ? { start: hoursStart, end: hoursEnd } : null,
               booth_fee: boothFee !== '' ? Number(boothFee) : null,
             }
-          : {}),
+          : {
+              // Client jobs carry an optional booking time in the same Event.hours
+              // field. Blank clears it (null → delete) so the calendar shows "time TBD".
+              hours: hoursStart && hoursEnd ? { start: hoursStart, end: hoursEnd } : null,
+            }),
       })
       setSaved(true)
       router.refresh()
@@ -256,6 +260,22 @@ export default function EventSettingsPage() {
                   />
                 </div>
               </div>
+
+              {!isMarketDay && (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-1">
+                    <Label htmlFor="cj-start">Start time (optional)</Label>
+                    <Input id="cj-start" type="time" value={hoursStart} onChange={(e) => { setHoursStart(e.target.value); setSaved(false) }} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="cj-end">End time (optional)</Label>
+                    <Input id="cj-end" type="time" value={hoursEnd} onChange={(e) => { setHoursEnd(e.target.value); setSaved(false) }} />
+                  </div>
+                  <p className="text-xs text-muted-foreground sm:col-span-2">
+                    Sets the booking&rsquo;s time on the calendar. Leave blank to show it as &ldquo;time TBD&rdquo;.
+                  </p>
+                </div>
+              )}
 
               {isMarketDay && (
                 <div className="space-y-4">
