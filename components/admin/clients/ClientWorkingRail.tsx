@@ -116,7 +116,7 @@ function EditableFact({
   }
 
   return (
-    <div>
+    <div className="min-w-0">
       <dt className="text-xs text-muted-foreground">{label}</dt>
       {editing ? (
         <input
@@ -140,7 +140,7 @@ function EditableFact({
         />
       ) : value ? (
         <dd className="mt-0.5">
-          <button type="button" onClick={startEditing} className="text-left text-sm font-medium text-foreground hover:underline">
+          <button type="button" onClick={startEditing} title={value} className="block max-w-full truncate text-left text-sm font-medium text-foreground hover:underline">
             {value}
           </button>
         </dd>

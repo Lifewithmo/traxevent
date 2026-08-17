@@ -77,7 +77,7 @@ export function InviteMemberModal({ orgId }: { orgId: string }) {
               <Label htmlFor="invRole">Role</Label>
               <select
                 id="invRole"
-                className="w-full border rounded-md px-3 py-2 text-sm bg-white"
+                className="w-full border rounded-md px-3 py-2 text-sm bg-background"
                 value={role}
                 onChange={(e) => setRole(e.target.value as OrgRole)}
               >

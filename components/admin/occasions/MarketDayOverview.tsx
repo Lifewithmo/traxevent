@@ -15,23 +15,23 @@ export function MarketDayOverview({
   return (
     <div className="p-5 max-w-2xl">
       <div className="grid gap-4 sm:grid-cols-2">
-        <div className="rounded-lg border bg-white p-4">
+        <div className="rounded-lg border bg-card p-4">
           <p className="text-xs uppercase tracking-wide text-muted-foreground">Location</p>
           <p className="mt-1 font-medium">{event.location?.name ?? 'Not set'}</p>
           {event.location?.address && <p className="text-sm text-muted-foreground">{event.location.address}</p>}
         </div>
-        <div className="rounded-lg border bg-white p-4">
+        <div className="rounded-lg border bg-card p-4">
           <p className="text-xs uppercase tracking-wide text-muted-foreground">Hours</p>
           <p className="mt-1 font-medium">
             {event.hours ? `${event.hours.start}–${event.hours.end}` : 'Not set'}
           </p>
         </div>
-        <div className="rounded-lg border bg-white p-4">
+        <div className="rounded-lg border bg-card p-4">
           <p className="text-xs uppercase tracking-wide text-muted-foreground">Booth fee</p>
           <p className="mt-1 font-medium">{event.booth_fee != null ? money(event.booth_fee) : 'None'}</p>
         </div>
         {series && (
-          <div className="rounded-lg border bg-white p-4">
+          <div className="rounded-lg border bg-card p-4">
             <p className="text-xs uppercase tracking-wide text-muted-foreground">Series</p>
             <Link href={`/${orgSlug}/series/${series.id}`} className="mt-1 inline-block font-medium underline">
               {series.name}
