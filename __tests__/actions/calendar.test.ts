@@ -9,6 +9,7 @@ const listTasksCoreSpy = vi.hoisted(() => vi.fn())
 const listAllInvoicesCoreSpy = vi.hoisted(() => vi.fn().mockResolvedValue([]))
 const listAllProposalsSpy = vi.hoisted(() => vi.fn().mockResolvedValue([]))
 const listComplianceDocsCoreSpy = vi.hoisted(() => vi.fn().mockResolvedValue([]))
+const listDropsCoreSpy = vi.hoisted(() => vi.fn().mockResolvedValue([]))
 
 vi.mock('@/actions/events', () => ({ listEvents: listEventsSpy }))
 vi.mock('@/actions/leads', () => ({ listLeads: listLeadsSpy }))
@@ -19,6 +20,7 @@ vi.mock('@/lib/crm/tasks', () => ({ listTasksCore: listTasksCoreSpy }))
 vi.mock('@/lib/crm/invoices', () => ({ listAllInvoicesCore: listAllInvoicesCoreSpy }))
 vi.mock('@/actions/proposals', () => ({ listAllProposals: listAllProposalsSpy }))
 vi.mock('@/lib/ops/compliance', () => ({ listComplianceDocsCore: listComplianceDocsCoreSpy }))
+vi.mock('@/lib/storefront/drops', () => ({ listDropsCore: listDropsCoreSpy }))
 // getCalendarFeed's assembly module reaches firebase-admin at import time.
 vi.mock('@/lib/calendar-feed', () => ({ assembleCalendarFeed: vi.fn() }))
 
@@ -114,5 +116,20 @@ describe('getDayDetail', () => {
     expect(detail.related).toEqual({})
     expect(detail.tasks).toEqual([])
     expect(detail.blockers).toEqual([])
+    expect(detail.drops).toEqual([])
+  })
+
+  it('surfaces drops landing on the day through the fan-out (not silently empty)', async () => {
+    listEventsCoreSpy.mockResolvedValue([])
+    listLeadsCoreSpy.mockResolvedValue([])
+    listDropsCoreSpy.mockResolvedValue([
+      { id: 'drop1', title: 'Weekend', status: 'scheduled', opens_at: 'x', closes_at: 'x', timezone: 'UTC',
+        pickup: { location_name: 'SW Boise', windows: [{ id: 'w1', day: '2026-08-22', start: '16:00', end: '18:00' }] },
+        items: [], channels: [], created_at: 'x' },
+    ])
+    const detail = await getDayDetail('org-1', 'acme', '2026-08-22')
+    expect(listDropsCoreSpy).toHaveBeenCalledWith('org-1')
+    expect(detail.drops.map((d) => d.id)).toEqual(['drop1:w1'])
+    expect(detail.drops[0].start).toBe('16:00')
   })
 })

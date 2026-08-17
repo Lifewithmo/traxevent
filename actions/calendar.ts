@@ -9,6 +9,7 @@ import { listLeadsCore } from '@/lib/crm/leads'
 import { listTasksCore } from '@/lib/crm/tasks'
 import { listAllInvoicesCore } from '@/lib/crm/invoices'
 import { listComplianceDocsCore } from '@/lib/ops/compliance'
+import { listDropsCore } from '@/lib/storefront/drops'
 import { assembleCalendarFeed } from '@/lib/calendar-feed'
 import { OPEN_STAGES } from '@/lib/leads'
 import { buildCalendar, buildCalendarFeed, calendarRangeItems, feedForDay, type CalendarItem } from '@/lib/calendar'
@@ -56,6 +57,8 @@ export interface DayDetail {
   tasks: CalendarItem[]
   /** compliance expiries landing that day (blockers fold into the spine, no separate rail). */
   blockers: CalendarItem[]
+  /** drop-pickup windows landing that day (one item per window). */
+  drops: CalendarItem[]
   /** per day-event: its opportunity + that opportunity's proposals and invoices. */
   related: Record<string, DayEventDetail>
 }
@@ -71,12 +74,15 @@ export async function getDayDetail(orgId: string, orgSlug: string, ymd: string):
   await assertOrgMember(orgId)
   const day = ymd.slice(0, 10)
 
-  const [events, leads, invoices, proposals, complianceDocs] = await Promise.all([
+  const [events, leads, invoices, proposals, complianceDocs, drops] = await Promise.all([
     listEventsCore(orgId),
     listLeadsCore(orgId),
     listAllInvoicesCore(orgId),
+    // listAllProposals re-asserts membership (intentional redundant read — there is
+    // no listAllProposalsCore, and adding one is not worth it for a single caller).
     listAllProposals(orgId),
     listComplianceDocsCore(orgId),
+    listDropsCore(orgId),
   ])
 
   // Open-lead tasks feed the prep/blocker derivation (same shape as the org feed).
@@ -86,11 +92,12 @@ export async function getDayDetail(orgId: string, orgSlug: string, ymd: string):
   openLeads.forEach((l, i) => { tasksByLeadId[l.id] = taskLists[i] })
 
   const dayItems = feedForDay(
-    buildCalendarFeed(orgSlug, { events, leads, tasksByLeadId, complianceDocs, invoices, drops: [] }),
+    buildCalendarFeed(orgSlug, { events, leads, tasksByLeadId, complianceDocs, invoices, drops }),
     day
   )
   const tasks = dayItems.filter((i) => i.kind === 'task' || i.kind === 'follow_up')
   const blockers = dayItems.filter((i) => i.kind === 'compliance')
+  const dayDrops = dayItems.filter((i) => i.kind === 'drop')
 
   const dayEvents = events.filter(
     (e) =>
@@ -112,7 +119,7 @@ export async function getDayDetail(orgId: string, orgSlug: string, ymd: string):
     }
   }
 
-  return { ymd: day, events: dayEvents, tasks, blockers, related }
+  return { ymd: day, events: dayEvents, tasks, blockers, drops: dayDrops, related }
 }
 
 function groupByLead<T extends { lead_id: string }>(rows: T[]): Map<string, T[]> {
