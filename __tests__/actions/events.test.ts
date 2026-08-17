@@ -89,6 +89,37 @@ describe('createEvent — slug collisions', () => {
   })
 })
 
+describe('createEvent — client-job hours', () => {
+  beforeEach(() => {
+    slugQueryGetSpy.mockReset()
+    slugQueryGetSpy.mockResolvedValue({ empty: true })
+  })
+
+  it('persists optional start/end hours on a client-job event', async () => {
+    const event = await createEvent('org-1', {
+      name: 'Smith Wedding',
+      year: 2026,
+      registration_type: 'individual',
+      event_start: '2026-09-12',
+      event_end: '2026-09-12',
+      hours: { start: '16:00', end: '21:00' },
+    })
+    expect(event.hours).toEqual({ start: '16:00', end: '21:00' })
+  })
+
+  it('creates a client-job event with no hours (hours optional)', async () => {
+    const event = await createEvent('org-1', {
+      name: 'Jones Wedding',
+      year: 2026,
+      registration_type: 'individual',
+      event_start: '2026-09-12',
+      event_end: '2026-09-12',
+    })
+    expect(event.hours).toBeUndefined()
+    expect(event.id).toBeTruthy()
+  })
+})
+
 describe('updateEvent', () => {
   beforeEach(() => {
     eventDocGetSpy.mockResolvedValue({ exists: true, data: () => ({ id: 'camp-1' }) })
