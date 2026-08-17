@@ -29,8 +29,8 @@ describe('TabLinks', () => {
     expect(screen.getByRole('navigation', { name: 'Calendar filter' })).toBeInTheDocument()
   })
 
-  // CalendarKindFilter relies on this to place the pill (`mx-5 mt-3`); every
-  // other consumer will too. Merged, not replacing the pill's own chrome.
+  // Consumers rely on this to place the pill (`mx-5 mt-3`) — the passed className
+  // is merged onto the nav, not replacing its own chrome.
   it('merges className onto the nav without dropping its own layout classes', () => {
     render(<TabLinks tabs={TABS} active="all" ariaLabel="Calendar filter" className="mx-5 mt-3" />)
     const nav = screen.getByRole('navigation', { name: 'Calendar filter' })
