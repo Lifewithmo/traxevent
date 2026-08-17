@@ -1,5 +1,6 @@
 import type { CalendarItem } from '@/lib/calendar'
 import type { Event } from '@/lib/types'
+import { todayYmd as localDateOf } from '@/lib/opportunity-detail'
 
 // Cash-flow runway to your next booked job. Pure derivation over an already-built
 // feed + the org's events. Receivables timing only — this is NEVER a P&L: it says
@@ -29,7 +30,11 @@ const ymd = (s: string) => s.slice(0, 10)
  * receivables attach to the NEAREST FUTURE `event_start`.
  */
 export function buildRunway(items: CalendarItem[], events: Event[], today: Date): RunwayJob[] {
-  const todayYmd = today.toISOString().slice(0, 10)
+  // "today" is the LOCAL calendar date (the same convention as todayYmd() used
+  // everywhere else on the page), NOT the UTC date. Deriving it via
+  // today.toISOString() drops tonight's jobs and mis-buckets receivables for
+  // several hours each evening in any negative-UTC-offset (Americas) org.
+  const todayYmd = localDateOf(today)
   const live = events.filter((e) => e.status !== 'archived' && e.event_start)
 
   // Upcoming booked jobs, nearest first.

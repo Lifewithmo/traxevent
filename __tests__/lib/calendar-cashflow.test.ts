@@ -83,6 +83,22 @@ describe('buildRunway', () => {
     expect(buildRunway(items, events, TODAY)[0].inflowBefore).toBe(700)
   })
 
+  it('uses the LOCAL calendar date for "today", not the UTC date (Americas evening boundary)', () => {
+    // A fake `now`: local components say the 16th, but toISOString() has already
+    // rolled to the 17th (UTC) — exactly the several-hours-a-day window where an
+    // Americas org would otherwise lose tonight's job off the runway.
+    const now = {
+      getFullYear: () => 2026,
+      getMonth: () => 7, // August (0-based)
+      getDate: () => 16,
+      toISOString: () => '2026-08-17T02:00:00.000Z',
+    } as unknown as Date
+    const events = [evt({ id: 'tonight', event_start: '2026-08-16' })]
+    // Local today (08-16) keeps the job upcoming; a UTC-derived today (08-17) would
+    // treat it as past and drop it. Reverting to toISOString() breaks this.
+    expect(buildRunway([], events, now).map((r) => r.eventId)).toEqual(['tonight'])
+  })
+
   it('ignores non-invoice items, unlinked invoices, and invoices with no anchor event', () => {
     const events = [evt({ id: 'j', lead_id: 'L', event_start: '2026-08-22' })]
     const items: CalendarItem[] = [
