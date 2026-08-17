@@ -51,7 +51,7 @@ const drop = (over: Partial<Drop>): Drop => ({
     windows: [
       { id: 'w1', day: '2026-08-22', start: '08:00', end: '11:00' },
       { id: 'w2', day: '2026-08-23', start: '08:00', end: '10:00' },
-      { id: 'w3', day: '2026-08-22', start: '15:00', end: '17:00' }, // same day → deduped
+      { id: 'w3', day: '2026-08-22', start: '15:00', end: '17:00' }, // same day as w1 → its own item (one per window)
     ],
   },
   items: [], channels: [], created_at: 'x', ...over,
