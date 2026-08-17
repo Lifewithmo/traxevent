@@ -75,15 +75,21 @@ export function CalendarLeftRail({ orgSlug, today, rollup, runway }: CalendarLef
     setCursor(anchor.slice(0, 7))
   }
 
-  const dayHref = (ymd: string) => calendarHref({ orgSlug, view, week, kinds, ymd })
+  // Links that target a SPECIFIC day must NOT forward the current `?week`: a stale
+  // week would win over the clicked day (page.tsx / [ymd] do `anchor = week ?? ymd`)
+  // and render an unrelated period with the clicked day off-screen. Omit it so the
+  // target self-derives its own week/month — mirroring the WeekGrid/MonthGrid
+  // day-header links, which already omit week.
+  const dayHref = (ymd: string) => calendarHref({ orgSlug, view, kinds, ymd })
 
-  // Kind filter: preserve the open day + view/week, only toggle scope.
+  // Kind filter toggles scope while staying put. With a day open, keep the day and
+  // drop week (the day derives its period); on the bare canvas, keep the shown week.
   const filterTabs = [
-    { key: 'all' as const, label: 'Everything', href: calendarHref({ orgSlug, view, week, ymd: selected }) },
+    { key: 'all' as const, label: 'Everything', href: calendarHref({ orgSlug, view, week: selected ? undefined : week, ymd: selected }) },
     {
       key: 'pipeline' as const,
       label: 'Pipeline only',
-      href: calendarHref({ orgSlug, view, week, kinds: 'pipeline', ymd: selected }),
+      href: calendarHref({ orgSlug, view, week: selected ? undefined : week, kinds: 'pipeline', ymd: selected }),
     },
   ]
 

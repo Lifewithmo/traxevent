@@ -6,7 +6,9 @@ import type { RunwayJob } from '@/lib/calendar-cashflow'
 // The rail preserves ?view/?kinds by reading them client-side (a server layout
 // can't take searchParams). Selected day comes from the /calendar/[ymd] path.
 let pathname = '/acme/calendar/2026-08-20'
-const search = new URLSearchParams('view=week&kinds=pipeline')
+// A STALE week param is in the URL (the week of Jul 30–Aug 5), different from the
+// days the rail links to — day-targeting links must not forward it.
+const search = new URLSearchParams('view=week&kinds=pipeline&week=2026-08-03')
 vi.mock('next/navigation', () => ({
   useSearchParams: () => search,
   usePathname: () => pathname,
@@ -57,6 +59,18 @@ describe('CalendarLeftRail', () => {
     const grid = screen.getByRole('grid', { name: /mini calendar/i })
     const cell = within(grid).getByRole('link', { name: /15/ })
     expect(cell).toHaveAttribute('href', '/acme/calendar/2026-08-15?view=week&kinds=pipeline')
+  })
+
+  it('does NOT forward a stale ?week onto day-targeting links (mini-month + runway)', () => {
+    render(<CalendarLeftRail {...baseProps} rollup={rollup()} runway={runway} />)
+    const grid = screen.getByRole('grid', { name: /mini calendar/i })
+    const cell = within(grid).getByRole('link', { name: /15/ }) as HTMLAnchorElement
+    // the URL carries week=2026-08-03, but the clicked day is in a different week —
+    // forwarding it would make page.tsx render Jul 30–Aug 5 with the 15th invisible.
+    expect(cell.getAttribute('href')).not.toContain('week=')
+    const runwayRow = screen.getByText('Alder wedding').closest('a') as HTMLAnchorElement
+    expect(runwayRow.getAttribute('href')).not.toContain('week=')
+    expect(runwayRow.getAttribute('href')).toBe('/acme/calendar/2026-08-22?view=week&kinds=pipeline')
   })
 
   it('marks the selected day in the mini-month', () => {

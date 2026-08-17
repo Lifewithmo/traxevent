@@ -88,6 +88,30 @@ describe('CalendarCanvas', () => {
     expect(within(dialog).getAllByRole('option').length).toBeLessThanOrEqual(7)
   })
 
+  it('routes the palette jump through the day-link helper, omitting stale week', async () => {
+    render(<CalendarCanvas {...base} view="week" />)
+    fireEvent.keyDown(window, { key: 'k', metaKey: true })
+    const dialog = await screen.findByRole('dialog')
+    const box = within(dialog).getByRole('combobox')
+    fireEvent.change(box, { target: { value: '2026-08-25' } })
+    fireEvent.click(within(dialog).getByText(/jump to/i))
+    // targets the clicked day with view+kinds preserved, but NO week (the target
+    // derives its own period — anchor=2026-08-19 must not leak through).
+    expect(push).toHaveBeenCalledWith('/acme/calendar/2026-08-25?view=week&kinds=pipeline')
+  })
+
+  it('wires the active command to the combobox via aria-activedescendant', async () => {
+    render(<CalendarCanvas {...base} view="week" />)
+    fireEvent.keyDown(window, { key: 'k', metaKey: true })
+    const dialog = await screen.findByRole('dialog')
+    const box = within(dialog).getByRole('combobox')
+    const ids = within(dialog).getAllByRole('option').map((o) => o.id)
+    expect(ids[0]).toBeTruthy()
+    expect(box).toHaveAttribute('aria-activedescendant', ids[0])
+    fireEvent.keyDown(box, { key: 'ArrowDown' })
+    expect(box).toHaveAttribute('aria-activedescendant', ids[1])
+  })
+
   it('keeps the pane-swap out of prefers-reduced-motion', () => {
     const { container } = render(<CalendarCanvas {...base} view="week" />)
     const pane = container.querySelector('[data-slot="canvas-pane"]')

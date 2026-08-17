@@ -238,9 +238,11 @@ function CommandPalette({
     const q = query.trim()
     const link = (over: { view?: CanvasView; week?: string; ymd?: string }) =>
       calendarHref({ orgSlug, view: over.view ?? view, week: over.week ?? anchor, kinds, ymd: over.ymd ?? selectedDay })
+    // Day-targeting links omit week so the target self-derives its period (#1).
+    const dayLink = (ymd: string) => calendarHref({ orgSlug, view, kinds, ymd })
 
     const jump: Command[] = YMD.test(q)
-      ? [{ id: 'jump', label: `Jump to ${prettyDate(q)}`, href: calendarHref({ orgSlug, ymd: q, view, kinds }) }]
+      ? [{ id: 'jump', label: `Jump to ${prettyDate(q)}`, href: dayLink(q) }]
       : []
 
     const actions: Command[] = [
@@ -286,6 +288,7 @@ function CommandPalette({
           aria-expanded
           aria-controls={listId}
           aria-autocomplete="list"
+          aria-activedescendant={results[active]?.id}
           aria-label="Jump to a date or action"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
@@ -300,6 +303,7 @@ function CommandPalette({
             results.map((cmd, i) => (
               <li
                 key={cmd.id}
+                id={cmd.id}
                 role="option"
                 aria-selected={i === active}
                 onMouseEnter={() => setActive(i)}
