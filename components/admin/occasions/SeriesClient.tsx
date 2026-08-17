@@ -93,7 +93,7 @@ export function SeriesClient({
       {error && <p className="mt-3 text-sm text-destructive" aria-live="polite">{error}</p>}
 
       {editing && (
-        <div className="mt-4 grid max-w-md gap-2 rounded-xl border bg-white p-4">
+        <div className="mt-4 grid max-w-md gap-2 rounded-xl border bg-card p-4">
           <Label htmlFor="s-name">Name</Label>
           <Input id="s-name" value={name} onChange={(e) => setName(e.target.value)} />
           <Label htmlFor="s-loc">Location name</Label>
@@ -129,7 +129,7 @@ export function SeriesClient({
         {days.map((d) => {
           const status = skippedIds.has(d.id) ? 'archived' : d.status
           return (
-            <div key={d.id} data-testid={`day-${d.id}`} className={`flex items-center gap-3 rounded-xl border bg-white p-3 ${status === 'archived' ? 'opacity-60' : ''}`}>
+            <div key={d.id} data-testid={`day-${d.id}`} className={`flex items-center gap-3 rounded-xl border bg-card p-3 ${status === 'archived' ? 'opacity-60' : ''}`}>
               <Link href={`/${orgSlug}/${d.slug}/dashboard`} className="min-w-0 flex-1">
                 <span className="font-medium">{d.event_start}</span>
                 <span className="ml-2 text-sm text-muted-foreground">

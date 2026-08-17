@@ -57,7 +57,7 @@ export function OrgReportsClient({ report, departments }: OrgReportsClientProps)
           <Label htmlFor="deptFilter">Department</Label>
           <select
             id="deptFilter"
-            className="w-full border rounded-md px-3 py-2 text-sm bg-white"
+            className="w-full border rounded-md px-3 py-2 text-sm bg-background"
             value={deptFilter}
             onChange={(e) => setDeptFilter(e.target.value)}
           >

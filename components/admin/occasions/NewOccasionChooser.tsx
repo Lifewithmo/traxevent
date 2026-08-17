@@ -22,7 +22,7 @@ export function NewOccasionChooser({
   return (
     <div className="grid gap-4 sm:grid-cols-2">
       {doors.map((d) => (
-        <Link key={d.href} href={d.href} className="rounded-xl border bg-white p-5 hover:shadow-md transition-shadow">
+        <Link key={d.href} href={d.href} className="rounded-xl border bg-card p-5 hover:shadow-md transition-shadow">
           <p className="font-semibold">{d.title}</p>
           <p className="mt-1 text-sm text-muted-foreground">{d.body}</p>
         </Link>
