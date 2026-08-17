@@ -18,6 +18,8 @@ export interface CalendarItem {
   /** timed items only ('HH:mm'): events with working hours, drop windows. Absent = all-day. */
   start?: string
   end?: string
+  /** multi-day events only: the last ISO date (YYYY-MM-DD) the item spans; absent = single day. */
+  endDate?: string
   /** compliance only: an upcoming booked event depends on this document. */
   blocker?: boolean
   /** lead dates are holds, not bookings. */
@@ -124,8 +126,10 @@ export function buildCalendarFeed(orgSlug: string, s: CalendarFeedSources): Cale
   const liveEvents = s.events.filter((e) => e.status !== 'archived' && e.event_start)
 
   for (const e of liveEvents) {
+    const startYmd = e.event_start.slice(0, 10)
+    const endYmd = e.event_end?.slice(0, 10)
     items.push({
-      id: e.id, title: e.name, date: e.event_start.slice(0, 10), kind: 'event',
+      id: e.id, title: e.name, date: startYmd, kind: 'event',
       href: `/${orgSlug}/${e.slug}/dashboard`,
       detail: e.headcount
         ? `${e.headcount} guests`
@@ -136,6 +140,8 @@ export function buildCalendarFeed(orgSlug: string, s: CalendarFeedSources): Cale
       headcount: e.headcount,
       // timed placement on the grid; absent hours ⇒ all-day "time TBD"
       ...(e.hours ? { start: e.hours.start, end: e.hours.end } : {}),
+      // multi-day span: carry the end date so feedForDay can include interior days
+      ...(endYmd && endYmd > startYmd ? { endDate: endYmd } : {}),
     })
   }
 
@@ -224,5 +230,16 @@ export function feedInRange(items: CalendarItem[], fromYmd: string, toYmd: strin
   return items.filter((i) => {
     const d = i.date.slice(0, 10)
     return d >= fromYmd && d <= toYmd
+  })
+}
+
+/** Every item landing on `ymd` (date part only). Multi-day events (those with an
+ *  `endDate`) are included on every interior day they span, not just their start. */
+export function feedForDay(items: CalendarItem[], ymd: string): CalendarItem[] {
+  const day = ymd.slice(0, 10)
+  return items.filter((i) => {
+    const from = i.date.slice(0, 10)
+    const to = (i.endDate ?? i.date).slice(0, 10)
+    return day >= from && day <= to
   })
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { buildCalendarFeed, feedInRange, filterFeed, weekRange, weekDays, type CalendarFeedSources } from '@/lib/calendar'
+import { buildCalendarFeed, feedForDay, feedInRange, filterFeed, weekRange, weekDays, type CalendarItem, type CalendarFeedSources } from '@/lib/calendar'
 import type { ComplianceDoc, Drop, Event, Lead, NormalizedInvoice, Task } from '@/lib/types'
 
 const listEventsCoreSpy = vi.hoisted(() => vi.fn().mockResolvedValue([]))
@@ -226,6 +226,33 @@ describe('week helpers', () => {
     expect(days).toHaveLength(7)
     expect(days[0]).toBe('2026-08-10')
     expect(days[6]).toBe('2026-08-16')
+  })
+
+  // ── Task 2: feedForDay pure filter ──
+  it('feedForDay returns only that day’s items, comparing the date part', () => {
+    const items = buildCalendarFeed('acme', {
+      ...empty,
+      events: [event({ id: 'e1', event_start: '2026-08-22', event_end: '2026-08-22' })],
+      leads: [lead({ id: 'l1', event_date: '2026-08-23', stage: 'proposal' })],
+    })
+    expect(feedForDay(items, '2026-08-22').map((i) => i.id)).toEqual(['e1'])
+    expect(feedForDay(items, '2026-08-23').map((i) => i.id)).toEqual(['l1'])
+
+    const timed: CalendarItem = { id: 'x', title: 'X', date: '2026-08-22T18:00:00.000Z', kind: 'event', href: '/x' }
+    expect(feedForDay([timed], '2026-08-22').map((i) => i.id)).toEqual(['x'])
+  })
+
+  it('feedForDay includes a multi-day event on every day it spans', () => {
+    const items = buildCalendarFeed('acme', {
+      ...empty,
+      events: [event({ id: 'multi', event_start: '2026-08-21', event_end: '2026-08-23' })],
+    })
+    expect(items.find((i) => i.id === 'multi')!.endDate).toBe('2026-08-23')
+    expect(feedForDay(items, '2026-08-20').map((i) => i.id)).toEqual([])
+    expect(feedForDay(items, '2026-08-21').map((i) => i.id)).toEqual(['multi'])
+    expect(feedForDay(items, '2026-08-22').map((i) => i.id)).toEqual(['multi']) // interior day
+    expect(feedForDay(items, '2026-08-23').map((i) => i.id)).toEqual(['multi'])
+    expect(feedForDay(items, '2026-08-24').map((i) => i.id)).toEqual([])
   })
 
   it('filterFeed and feedInRange narrow without reordering', () => {
