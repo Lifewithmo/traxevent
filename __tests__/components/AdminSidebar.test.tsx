@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 
 vi.mock('next/navigation', () => ({
@@ -8,6 +8,14 @@ vi.mock('next/navigation', () => ({
 vi.mock('@/lib/auth/establish-session', () => ({ endSession: vi.fn() }))
 
 import { AdminSidebar } from '@/components/layout/AdminSidebar'
+
+// The workspace rail is a slim icon rail by default now; these tests assert the
+// nav's *contents* (gating, labels, sections), which are surfaced in the
+// expanded view, so pin it open. The slim default itself is covered in the
+// layout sidebar test's "slim icon rail by default" case.
+beforeEach(() => {
+  window.localStorage.setItem('tx-sidebar-collapsed', '0')
+})
 
 describe('AdminSidebar workspace nav gating', () => {
   it('shows every workspace link when enabledModules is omitted', () => {

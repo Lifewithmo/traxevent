@@ -124,21 +124,25 @@
 }
 
 :root {
-  /* Charcoal & Sapphire — a true achromatic graphite neutral (no warm or cool
-     cast), so the one sapphire accent reads as a discrete jewel, not a tint. */
+  /* Charcoal & Sapphire — light mode "bright & light" (option B): a bright,
+     clean cool-white CONTENT canvas with a light nav rail, in the spirit of
+     Zoho / Flowlu / Zuper — professional and dense. Colour is carried by the
+     status chips, forest money, and the sapphire accent, not the neutral.
+     WCAG-checked: muted text clears 5.4:1. (Dark mode keeps its approved
+     near-black in the .dark block below.) */
   --warm-0: #ffffff;
-  --warm-25: #fafafa;
-  --warm-50: #f5f5f4;
-  --warm-100: #ececec;
-  --warm-200: #dfdfde;
-  --warm-300: #c9c9c8;
-  --warm-400: #9a9b9c;
-  --warm-500: #64666a;
-  --warm-600: #4e5054;
-  --warm-700: #3a3b3f;
-  --warm-800: #292a2d;
-  --warm-900: #1c1d1f;
-  --warm-950: #161719;
+  --warm-25: #fafbfc;
+  --warm-50: #f7f8fa;
+  --warm-100: #eff1f4;
+  --warm-200: #e3e6eb;
+  --warm-300: #cdd2da;
+  --warm-400: #949aa5;
+  --warm-500: #5e6672;
+  --warm-600: #474e59;
+  --warm-700: #353b45;
+  --warm-800: #242932;
+  --warm-900: #181c24;
+  --warm-950: #10131a;
 
   /* Sapphire accent — the single callout color, for action and selection. */
   --copper-50: #eaf1fb;
@@ -189,7 +193,7 @@
   --accent-foreground: var(--warm-800);
   --destructive: #c4362a;
   --border: var(--warm-200);
-  --input: #8a8a89; /* functional form-field boundary — clears WCAG 1.4.11 3:1 (border stays subtle for decorative outlines) */
+  --input: #8b93a0; /* functional form-field boundary (cool grey) — clears WCAG 1.4.11 3:1; --border stays subtle for decorative outlines */
   --ring: var(--copper-600);
   --chart-1: var(--copper-400);
   --chart-2: var(--copper-600);
@@ -197,15 +201,18 @@
   --chart-4: var(--warm-600);
   --chart-5: var(--warm-800);
   --radius: 0.625rem;
-  --sidebar: var(--warm-100);
-  --sidebar-foreground: var(--warm-950);
-  --sidebar-muted: var(--warm-600);
-  --sidebar-primary: var(--copper-600);
+  /* Light nav rail (option B): white rail, dark ink, sapphire-tinted active
+     pill — Zoho-style. Slim (icon rail) by default, expandable via the toggle
+     (AdminSidebar). (Dark mode redefines these in the .dark block.) */
+  --sidebar: #ffffff;
+  --sidebar-foreground: #1a1d23;
+  --sidebar-muted: #616875;
+  --sidebar-primary: #1450a3;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: var(--warm-200);
-  --sidebar-accent-foreground: var(--warm-950);
-  --sidebar-border: var(--warm-200);
-  --sidebar-ring: var(--copper-500);
+  --sidebar-accent: #eaf1fb;
+  --sidebar-accent-foreground: #1450a3;
+  --sidebar-border: #e7e9ed;
+  --sidebar-ring: #1450a3;
 }
 
 .dark {

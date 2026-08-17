@@ -19,10 +19,13 @@ vi.mock('@/lib/firebase', () => ({
   db: {},
 }))
 
-// The rail-collapse test persists to localStorage; clear it so later renders
-// in this file start from the expanded sidebar.
+// The rail is a slim icon rail by default now; the tests here assert the nav's
+// contents or the collapse toggle, so pin it expanded. The slim default itself
+// is covered by the dedicated "slim icon rail by default" test, which opts back
+// out with removeItem.
 beforeEach(() => {
   window.localStorage.clear()
+  window.localStorage.setItem('tx-sidebar-collapsed', '0')
   nav.pathname = '/acme'
 })
 
@@ -149,16 +152,23 @@ describe('AdminSidebar — workspace nav (no eventSlug)', () => {
     expect(screen.queryByText('Forms')).not.toBeInTheDocument()
   })
 
-  it('collapses to an icon rail and persists', () => {
+  it('is a slim icon rail by default, expandable and persisted', () => {
     window.localStorage.removeItem('tx-sidebar-collapsed')
     renderNav(['calendar', 'clients', 'events', 'leads', 'registrants'])
 
-    const collapseButton = screen.getByRole('button', { name: 'Collapse navigation' })
-    fireEvent.click(collapseButton)
+    // Default with no stored preference: the collapsed icon rail — Pipeline is
+    // an icon-only link with an aria-label but no text.
+    const pipelineIcon = screen.getByLabelText('Pipeline')
+    expect(pipelineIcon.tagName).toBe('A')
+    expect(pipelineIcon.textContent).toBe('')
 
-    const pipelineLink = screen.getByLabelText('Pipeline')
-    expect(pipelineLink.tagName).toBe('A')
-    expect(pipelineLink.textContent).toBe('')
+    // Expanding reveals the labels and persists the preference.
+    fireEvent.click(screen.getByRole('button', { name: 'Expand navigation' }))
+    expect(screen.getByText('Pipeline')).toBeInTheDocument()
+    expect(window.localStorage.getItem('tx-sidebar-collapsed')).toBe('0')
+
+    // Collapsing again persists '1'.
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse navigation' }))
     expect(window.localStorage.getItem('tx-sidebar-collapsed')).toBe('1')
   })
 })
@@ -521,7 +531,7 @@ describe('AdminSidebar — open section follows client-side navigation', () => {
 // measured geometry — the width itself is checked in the browser.
 describe('AdminSidebar — mobile drawer', () => {
   function renderNav() {
-    window.localStorage.removeItem('tx-sidebar-collapsed')
+    window.localStorage.setItem('tx-sidebar-collapsed', '0')
     return render(<AdminSidebar orgSlug="acme" enabledModules={['calendar', 'clients']} catalogLabel="Packages" />)
   }
 

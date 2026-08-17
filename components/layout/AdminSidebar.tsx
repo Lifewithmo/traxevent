@@ -221,7 +221,7 @@ export function AdminSidebar({ orgSlug, eventSlug, eventKind, terminology, allow
   // Exactly one section is open at a time, seeded to whichever section owns the
   // current page so a hard load shows the current row without a click.
   const [openSection, setOpenSection] = useState<string | null>(() => activeSection(pathname, orgSlug))
-  const [collapsed, setCollapsed] = useState(false)
+  const [collapsed, setCollapsed] = useState(true)
   // Below md the sidebar is an off-canvas drawer rather than an in-flow rail —
   // a fixed 224px column leaves ~63px of content at 375px. Deliberately NOT
   // persisted: a drawer should always open closed on a fresh page.
@@ -244,10 +244,11 @@ export function AdminSidebar({ orgSlug, eventSlug, eventKind, terminology, allow
   }
 
   // Read persisted rail state after mount only — never in a useState
-  // initializer, to avoid an SSR/client hydration mismatch.
+  // initializer, to avoid an SSR/client hydration mismatch. The rail is slim
+  // (collapsed) by default; expand only when the operator has pinned it open.
   useEffect(() => {
-    if (window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1') {
-      setCollapsed(true)
+    if (window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '0') {
+      setCollapsed(false)
     }
   }, [])
 
@@ -485,7 +486,7 @@ export function AdminSidebar({ orgSlug, eventSlug, eventKind, terminology, allow
         </button>
       </div>
 
-      {!eventSlug && collapsed ? (
+      {!eventSlug && collapsed && !mobileOpen ? (
         <nav className="flex-1 min-h-0 overflow-y-auto" aria-label="Workspace navigation">
           <IconRailGroup items={railLinks} />
         </nav>
@@ -622,7 +623,7 @@ export function AdminSidebar({ orgSlug, eventSlug, eventKind, terminology, allow
       )}
 
       <div className="mt-auto px-2 py-4 border-t border-[color:var(--sidebar-border)]">
-        {!eventSlug && collapsed ? (
+        {!eventSlug && collapsed && !mobileOpen ? (
           <button
             type="button"
             onClick={handleSignOut}
