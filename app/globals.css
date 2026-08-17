@@ -48,7 +48,7 @@
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
 
-  /* Copper accent ramp (design system: links, emphasis, public flows). */
+  /* Sapphire accent ramp (Charcoal & Sapphire: links, actions, focus). */
   --color-copper-50: var(--copper-50);
   --color-copper-100: var(--copper-100);
   --color-copper-200: var(--copper-200);
@@ -58,11 +58,10 @@
   --color-copper-600: var(--copper-600);
   --color-copper-700: var(--copper-700);
 
-  /* Warm re-grade of the stock palettes actually used in screen code, so
-     existing utility classes pick up the design system without edits:
-     gray -> warm neutrals, purple -> copper (registration zone),
-     emerald -> moss (booked work), red -> terracotta, amber/yellow -> honey,
-     blue -> copper (links/info). */
+  /* Signal re-grade of the stock palettes used in screen code, so existing
+     utility classes pick up the palette without edits:
+     gray -> achromatic graphite, purple -> sapphire, emerald/green -> forest
+     money, red -> alert red, amber/yellow -> amber pending, blue -> sapphire. */
   --color-gray-50: var(--warm-50);
   --color-gray-100: var(--warm-100);
   --color-gray-200: var(--warm-200);
@@ -83,94 +82,94 @@
   --color-purple-700: var(--copper-600);
   --color-purple-800: var(--copper-700);
 
-  --color-green-50: #eef2e8;
-  --color-green-100: #e4ebdb;
-  --color-green-200: #c6d4b6;
-  --color-green-600: #5d7a45;
-  --color-green-700: #4c6438;
-  --color-green-800: #3f5730;
+  --color-green-50: #e0f0e7;
+  --color-green-100: #c4e4d0;
+  --color-green-200: #9fcfb1;
+  --color-green-600: #1e6b3d;
+  --color-green-700: #17532f;
+  --color-green-800: #124327;
 
-  --color-emerald-200: #c6d4b6;
-  --color-emerald-400: #5d7a45;
-  --color-emerald-600: #4c6438;
-  --color-emerald-700: #3f5730;
-  --color-emerald-900: #2c3d22;
+  --color-emerald-200: #9fcfb1;
+  --color-emerald-400: #2e8b57;
+  --color-emerald-600: #1e6b3d;
+  --color-emerald-700: #17532f;
+  --color-emerald-900: #0e3620;
 
-  --color-red-50: #fbeee9;
-  --color-red-100: #f7e0da;
-  --color-red-300: #dda694;
-  --color-red-500: #b8492f;
-  --color-red-600: #a33b28;
-  --color-red-700: #8c3524;
-  --color-red-800: #7a2e1f;
-  --color-red-900: #66261a;
+  --color-red-50: #fbedeb;
+  --color-red-100: #fbe1de;
+  --color-red-300: #efa79c;
+  --color-red-500: #d9503c;
+  --color-red-600: #c4362a;
+  --color-red-700: #a82a20;
+  --color-red-800: #8a2a1e;
+  --color-red-900: #6e2015;
 
-  --color-amber-50: #fdf4e3;
-  --color-amber-100: #fbeed2;
-  --color-amber-300: #e3c07a;
-  --color-amber-400: #d9a94e;
-  --color-amber-500: #c9962f;
-  --color-amber-600: #a87a1e;
-  --color-amber-700: #7d5a18;
-  --color-amber-800: #6b4b14;
-  --color-amber-900: #59400f;
-  --color-amber-950: #3f2d0a;
-  --color-yellow-100: #fbeed2;
-  --color-yellow-800: #6b4b14;
+  --color-amber-50: #fef6e6;
+  --color-amber-100: #fcebc7;
+  --color-amber-300: #f0c978;
+  --color-amber-400: #e0a93e;
+  --color-amber-500: #c98a1e;
+  --color-amber-600: #a87014;
+  --color-amber-700: #7a4e00;
+  --color-amber-800: #6b4400;
+  --color-amber-900: #593a00;
+  --color-amber-950: #3f2900;
+  --color-yellow-100: #fcebc7;
+  --color-yellow-800: #7a4e00;
 
   --color-blue-100: var(--copper-100);
   --color-blue-600: var(--copper-600);
   --color-blue-700: var(--copper-700);
-  --color-blue-800: #5c3213;
+  --color-blue-800: #0d3568;
 }
 
 :root {
-  /* TraxEvent warm neutral system (claude.ai/design "TraxEvent Design System").
-     Greige paper, espresso ink, copper accent; nothing here is a true gray. */
+  /* Charcoal & Sapphire — a true achromatic graphite neutral (no warm or cool
+     cast), so the one sapphire accent reads as a discrete jewel, not a tint. */
   --warm-0: #ffffff;
-  --warm-25: #fdfbf9;
-  --warm-50: #faf7f3;
-  --warm-100: #f2ece5;
-  --warm-200: #e7ded4;
-  --warm-300: #d6c9bb;
-  --warm-400: #a9998a;
-  --warm-500: #786a5c;
-  --warm-600: #6d5d4f;
-  --warm-700: #52453a;
-  --warm-800: #3a2f27;
-  --warm-900: #2a211b;
-  --warm-950: #1c1511;
+  --warm-25: #fafafa;
+  --warm-50: #f5f5f4;
+  --warm-100: #ececec;
+  --warm-200: #dfdfde;
+  --warm-300: #c9c9c8;
+  --warm-400: #9a9b9c;
+  --warm-500: #64666a;
+  --warm-600: #4e5054;
+  --warm-700: #3a3b3f;
+  --warm-800: #292a2d;
+  --warm-900: #1c1d1f;
+  --warm-950: #161719;
 
-  --copper-50: #fdf3ea;
-  --copper-100: #f7e2cd;
-  --copper-200: #eec49f;
-  --copper-300: #dfa26f;
-  --copper-400: #c9803f;
-  --copper-500: #905525;
-  --copper-600: #8a4e20;
-  --copper-700: #6b3b19;
+  /* Sapphire accent — the single callout color, for action and selection. */
+  --copper-50: #eaf1fb;
+  --copper-100: #d2e2f6;
+  --copper-200: #a9c7ee;
+  --copper-300: #6fa3e0;
+  --copper-400: #3d7fce;
+  --copper-500: #1e5fb5;
+  --copper-600: #1450a3;
+  --copper-700: #103f82;
 
-  /* Design-system semantic roles beyond the shadcn contract: status pills
-     (moss / honey / terracotta), booked-work money green, alert surfaces,
-     and copper links. */
-  --status-confirmed-bg: #e4ebdb;
-  --status-confirmed-fg: #3f5730;
-  --status-pending-bg: #fbeed2;
-  --status-pending-fg: #7d5a18;
-  --status-alert-bg: #f7e0da;
-  --status-alert-fg: #8c3524;
+  /* Semantic roles: status pills (forest / amber / red / graphite), settled
+     money green kept separate from the sapphire accent, and sapphire links. */
+  --status-confirmed-bg: #e0f0e7;
+  --status-confirmed-fg: #14522f;
+  --status-pending-bg: #fcebc7;
+  --status-pending-fg: #7a4e00;
+  --status-alert-bg: #fbe1de;
+  --status-alert-fg: #8a2a1e;
   --status-neutral-bg: var(--warm-100);
-  --status-neutral-fg: var(--warm-500);
-  --money-green: #4c6438;
-  --money-green-strong: #5d7a45;
-  --money-green-border: #c6d4b6;
-  --warn-bg: #fdf4e3;
-  --warn-border: #e3c07a;
-  --warn-fg: #6b4b14;
-  --danger-bg: #fbeee9;
-  --danger-border: #dda694;
-  --danger-fg: #8c3524;
-  --danger-text: #a33b28;
+  --status-neutral-fg: var(--warm-600);
+  --money-green: #1e6b3d;
+  --money-green-strong: #14663a;
+  --money-green-border: #bfe0cc;
+  --warn-bg: #fcebc7;
+  --warn-border: #f0c978;
+  --warn-fg: #7a4e00;
+  --danger-bg: #fbe1de;
+  --danger-border: #efa79c;
+  --danger-fg: #8a2a1e;
+  --danger-text: #8a2a1e;
   --link: var(--copper-600);
   --link-hover: var(--copper-700);
 
@@ -180,84 +179,85 @@
   --card-foreground: var(--warm-950);
   --popover: var(--warm-0);
   --popover-foreground: var(--warm-950);
-  --primary: var(--warm-900);
-  --primary-foreground: var(--warm-25);
+  --primary: var(--copper-600);
+  --primary-foreground: #ffffff;
   --secondary: var(--warm-100);
   --secondary-foreground: var(--warm-800);
   --muted: var(--warm-100);
   --muted-foreground: var(--warm-500);
   --accent: var(--warm-100);
   --accent-foreground: var(--warm-800);
-  --destructive: #a33b28;
+  --destructive: #c4362a;
   --border: var(--warm-200);
-  --input: var(--warm-200);
-  --ring: var(--warm-400);
-  --chart-1: var(--warm-300);
-  --chart-2: var(--warm-500);
-  --chart-3: var(--copper-300);
-  --chart-4: var(--copper-500);
+  --input: #8a8a89; /* functional form-field boundary — clears WCAG 1.4.11 3:1 (border stays subtle for decorative outlines) */
+  --ring: var(--copper-600);
+  --chart-1: var(--copper-400);
+  --chart-2: var(--copper-600);
+  --chart-3: var(--warm-400);
+  --chart-4: var(--warm-600);
   --chart-5: var(--warm-800);
   --radius: 0.625rem;
-  --sidebar: #f2eee8;
+  --sidebar: var(--warm-100);
   --sidebar-foreground: var(--warm-950);
   --sidebar-muted: var(--warm-600);
   --sidebar-primary: var(--copper-600);
-  --sidebar-primary-foreground: #fdf6ef;
-  --sidebar-accent: #e7e1d8;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: var(--warm-200);
   --sidebar-accent-foreground: var(--warm-950);
   --sidebar-border: var(--warm-200);
-  --sidebar-ring: var(--copper-400);
+  --sidebar-ring: var(--copper-500);
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-muted: oklch(0.708 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  /* First-class dark: near-black neutral ground (achromatic), light graphite
+     ink, sapphire lifted to stay legible. Every :root variable redefined. */
+  --background: #131313;
+  --foreground: #ededeb;
+  --card: #1d1d1c;
+  --card-foreground: #ededeb;
+  --popover: #1d1d1c;
+  --popover-foreground: #ededeb;
+  --primary: #5ca8e8;
+  --primary-foreground: #0b1622;
+  --secondary: #262625;
+  --secondary-foreground: #ededeb;
+  --muted: #262625;
+  --muted-foreground: #a6a9a3;
+  --accent: #262625;
+  --accent-foreground: #ededeb;
+  --destructive: #f0705c;
+  --border: #333333;
+  --input: #6a6a6a; /* functional form-field boundary — clears WCAG 1.4.11 3:1 */
+  --ring: #5ca8e8;
+  --chart-1: #5ca8e8;
+  --chart-2: #3d7fce;
+  --chart-3: #a6a9a3;
+  --chart-4: #6f7073;
+  --chart-5: #c8c8c8;
+  --sidebar: #131313;
+  --sidebar-foreground: #ededeb;
+  --sidebar-muted: #a6a9a3;
+  --sidebar-primary: #5ca8e8;
+  --sidebar-primary-foreground: #0b1622;
+  --sidebar-accent: #262625;
+  --sidebar-accent-foreground: #ededeb;
+  --sidebar-border: #333333;
+  --sidebar-ring: #5ca8e8;
 
-  --status-confirmed-bg: #22301a; --status-confirmed-fg: #bcd4a6;
-  --status-pending-bg: #382d13;  --status-pending-fg: #e3c07a;
-  --status-alert-bg: #3a1f18;    --status-alert-fg: #e6a793;
-  --status-neutral-bg: #26201a;  --status-neutral-fg: #a9998a;
-  --money-green: #9cbb7c;
-  --money-green-strong: #a6c487;
-  --money-green-border: #3b4f2a;
+  --status-confirmed-bg: #16321f; --status-confirmed-fg: #7fe3a3;
+  --status-pending-bg: #3a2e12;   --status-pending-fg: #f0b93d;
+  --status-alert-bg: #3a1712;     --status-alert-fg: #f19686;
+  --status-neutral-bg: #262625;   --status-neutral-fg: #a6a9a3;
+  --money-green: #3fa968;
+  --money-green-strong: #6fd79a;
+  --money-green-border: #16321f;
+  --link: #5ca8e8;
+  --link-hover: #8ac4f0;
 
-  /* Advisory/destructive banner surfaces. Without these the light cream and
-     terracotta fills stayed put in dark mode, so a warn banner rendered as a
-     glaring light chip — and any text set to --warn-fg (dark brown) landed on
-     a dark surface, unreadable. Mirrors the --status-* pairs above. */
-  --warn-bg: #382d13;    --warn-border: #5c4a22;  --warn-fg: #e3c07a;
-  --danger-bg: #3a1f18;  --danger-border: #6b3226; --danger-fg: #e6a793;
-  --danger-text: #e6a793;
+  /* Advisory/destructive banner surfaces mirror the --status-* dark pairs. */
+  --warn-bg: #3a2e12;   --warn-border: #7a5a1e; --warn-fg: #f0b93d;
+  --danger-bg: #3a1712; --danger-border: #7a2a1e; --danger-fg: #f19686;
+  --danger-text: #f19686;
 }
 
 @layer base {
