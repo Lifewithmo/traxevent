@@ -3,14 +3,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // The new-event page is a client component that loads its data in an effect.
 // Mock the actions + navigation so none of the firebase-admin graph is pulled in.
-const { pushSpy, createEventSpy } = vi.hoisted(() => ({
+const { pushSpy, createEventSpy, nav } = vi.hoisted(() => ({
   pushSpy: vi.fn(),
   createEventSpy: vi.fn().mockResolvedValue({ slug: 'summer-gala-2026' }),
+  nav: { search: '' },
 }))
 
 vi.mock('next/navigation', () => ({
   useParams: () => ({ orgSlug: 'acme' }),
   useRouter: () => ({ push: pushSpy }),
+  useSearchParams: () => new URLSearchParams(nav.search),
 }))
 
 vi.mock('@/actions/orgs', () => ({
@@ -43,6 +45,15 @@ describe('NewEventPage — optional booking time', () => {
   beforeEach(() => {
     pushSpy.mockClear()
     createEventSpy.mockClear()
+    nav.search = ''
+  })
+
+  it('prefills the dates from ?date so the empty-state CTA lands ready', async () => {
+    nav.search = 'date=2026-08-22'
+    render(<NewEventPage />)
+    await waitFor(() => expect(screen.getByRole('button', { name: /create event/i })).not.toBeDisabled())
+    expect(screen.getByLabelText(/start date/i)).toHaveValue('2026-08-22')
+    expect(screen.getByLabelText(/end date/i)).toHaveValue('2026-08-22')
   })
 
   it('renders optional Start/End time inputs', async () => {

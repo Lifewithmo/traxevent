@@ -239,7 +239,10 @@ export function DaySpine({ orgSlug, today, detail, runway = [] }: DaySpineProps)
           description="Booked jobs, drops, tasks and due dates for this day land here."
           className="px-5 py-12"
           action={
-            <Link className={cn(buttonVariants({ variant: 'outline', size: 'sm' }))} href={`/${orgSlug}/new-event`}>
+            <Link
+              className={cn(buttonVariants({ variant: 'outline', size: 'sm' }))}
+              href={`/${orgSlug}/new-event?date=${detail.ymd}`}
+            >
               Book a job
             </Link>
           }

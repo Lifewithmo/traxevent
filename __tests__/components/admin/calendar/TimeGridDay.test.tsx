@@ -54,7 +54,8 @@ describe('TimeGridDay', () => {
     render(<TimeGridDay orgSlug="acme" ymd={day} items={[]} />)
     expect(screen.getByText(/nothing scheduled/i)).toBeInTheDocument()
     const cta = screen.getByRole('link', { name: /book a job/i })
-    expect(cta).toHaveAttribute('href', '/acme/new-event')
+    // prefilled with the day it was launched from (anticipation)
+    expect(cta).toHaveAttribute('href', '/acme/new-event?date=2026-08-22')
   })
 })
 

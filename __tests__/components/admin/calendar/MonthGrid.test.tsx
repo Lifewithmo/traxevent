@@ -81,7 +81,7 @@ describe('MonthGrid', () => {
   it('renders a specific CTA when the month is empty', () => {
     render(<MonthGrid orgSlug="acme" items={[]} month="2026-08" today="2026-08-01" />)
     expect(screen.getByText(/nothing scheduled/i)).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /book a job/i })).toHaveAttribute('href', '/acme/new-event')
+    expect(screen.getByRole('link', { name: /book a job/i })).toHaveAttribute('href', '/acme/new-event?date=2026-08-01')
   })
 
   it('is not empty when a multi-day event only spans into the month', () => {

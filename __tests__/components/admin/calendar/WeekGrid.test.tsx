@@ -76,6 +76,6 @@ describe('WeekGrid', () => {
   it('renders one specific CTA when the whole week is empty', () => {
     render(<WeekGrid orgSlug="acme" items={[]} weekStart={weekStart} today="2026-08-18" />)
     expect(screen.getByText(/nothing on the calendar this week/i)).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /book a job/i })).toHaveAttribute('href', '/acme/new-event')
+    expect(screen.getByRole('link', { name: /book a job/i })).toHaveAttribute('href', '/acme/new-event?date=2026-08-17')
   })
 })

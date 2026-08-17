@@ -71,7 +71,10 @@ export function WeekGrid({
         description="Booked jobs, holds, drops, tasks and invoice due dates all land here."
         className="px-5 py-12"
         action={
-          <Link className={cn(buttonVariants({ variant: 'outline', size: 'sm' }))} href={`/${orgSlug}/new-event`}>
+          <Link
+            className={cn(buttonVariants({ variant: 'outline', size: 'sm' }))}
+            href={`/${orgSlug}/new-event?date=${weekStart}`}
+          >
             Book a job
           </Link>
         }

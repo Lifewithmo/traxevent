@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter, useParams } from 'next/navigation'
+import { useRouter, useParams, useSearchParams } from 'next/navigation'
 import { createEvent } from '@/actions/events'
 import { getOrgBySlug } from '@/actions/orgs'
 import { listOrgEventTypes } from '@/actions/event-types'
@@ -15,11 +15,16 @@ import { Card, CardContent } from '@/components/ui/card'
 export default function NewEventPage() {
   const router = useRouter()
   const { orgSlug } = useParams<{ orgSlug: string }>()
+  const searchParams = useSearchParams()
+  // The calendar's empty-state CTAs pass ?date=YYYY-MM-DD (the day/period they were
+  // launched from) so the booking lands pre-dated instead of on a blank form.
+  const dateParam = searchParams.get('date')
+  const seedDate = dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : ''
   const [name, setName] = useState('')
   const [year, setYear] = useState(new Date().getFullYear())
   const [eventTypeId, setEventTypeId] = useState<string>(DEFAULT_EVENT_TYPE_ID)
-  const [eventStart, setEventStart] = useState('')
-  const [eventEnd, setEventEnd] = useState('')
+  const [eventStart, setEventStart] = useState(seedDate)
+  const [eventEnd, setEventEnd] = useState(seedDate)
   // Optional booking time for client jobs (writes the existing Event.hours field).
   // Blank → omitted → the calendar renders the job in the all-day "time TBD" band.
   const [hoursStart, setHoursStart] = useState('')

@@ -37,6 +37,6 @@ describe('DayView', () => {
   it('renders a specific CTA when the day is empty', () => {
     render(<DayView orgSlug="acme" items={[]} ymd={ymd} today={ymd} />)
     expect(screen.getByText(/nothing scheduled/i)).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /book a job/i })).toHaveAttribute('href', '/acme/new-event')
+    expect(screen.getByRole('link', { name: /book a job/i })).toHaveAttribute('href', '/acme/new-event?date=2026-08-22')
   })
 })
