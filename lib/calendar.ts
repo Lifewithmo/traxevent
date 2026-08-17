@@ -130,13 +130,31 @@ export function buildCalendarFeed(orgSlug: string, s: CalendarFeedSources): Cale
   const scheduledLeadIds = new Set(s.events.map((e) => e.lead_id).filter((id): id is string => !!id))
   const liveEvents = s.events.filter((e) => e.status !== 'archived' && e.event_start)
 
+  // A closed_won lead's booked value must be counted ONCE even when it owns
+  // several events. Attribute it to the lead's earliest live event only (a
+  // deterministic anchor; tie-break by id). We use earliest rather than the
+  // runway's nearest-future anchor because this pure builder has no `today`.
+  const wonAnchorEventId = new Map<string, string>()
+  for (const e of liveEvents) {
+    if (!e.lead_id || leadById.get(e.lead_id)?.stage !== 'closed_won') continue
+    const curId = wonAnchorEventId.get(e.lead_id)
+    if (!curId) { wonAnchorEventId.set(e.lead_id, e.id); continue }
+    const cur = liveEvents.find((x) => x.id === curId)!
+    const better = e.event_start < cur.event_start || (e.event_start === cur.event_start && e.id < cur.id)
+    if (better) wonAnchorEventId.set(e.lead_id, e.id)
+  }
+
   for (const e of liveEvents) {
     const startYmd = e.event_start.slice(0, 10)
     const endYmd = e.event_end?.slice(0, 10)
     // Booked-$ comes from the source lead's estimated_value, never the event's
-    // payment_amount (registration fee) or booth_fee (an expense).
+    // payment_amount (registration fee) or booth_fee (an expense). Counted only
+    // on the lead's single anchor event so multi-event bookings never double-count.
     const wonLead = e.lead_id ? leadById.get(e.lead_id) : undefined
-    const bookedValue = wonLead?.stage === 'closed_won' ? wonLead.estimated_value : undefined
+    const bookedValue =
+      wonLead?.stage === 'closed_won' && wonAnchorEventId.get(e.lead_id!) === e.id
+        ? wonLead.estimated_value
+        : undefined
     items.push({
       id: e.id, title: e.name, date: startYmd, kind: 'event',
       href: `/${orgSlug}/${e.slug}/dashboard`,

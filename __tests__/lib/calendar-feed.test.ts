@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { buildCalendarFeed, feedForDay, feedInRange, filterFeed, weekRange, weekDays, type CalendarItem, type CalendarFeedSources } from '@/lib/calendar'
+import { weekRollup } from '@/lib/calendar-week'
 import type { ComplianceDoc, Drop, Event, Lead, NormalizedInvoice, Task } from '@/lib/types'
 
 const listEventsCoreSpy = vi.hoisted(() => vi.fn().mockResolvedValue([]))
@@ -141,6 +142,25 @@ describe('buildCalendarFeed', () => {
     const row = items.find((i) => i.id === 'ev')!
     expect(row.kind).toBe('event')
     expect(row.bookedValue).toBe(12000) // estimated_value, NOT payment_amount/booth_fee
+  })
+
+  it('attributes a multi-event closed-won lead’s booked value to exactly one event (no double count)', () => {
+    const items = buildCalendarFeed('acme', {
+      ...empty,
+      // deliberately out of date order to prove the anchor is by event_start, not array order
+      events: [
+        event({ id: 'e2', lead_id: 'won', event_start: '2026-08-22', event_end: '2026-08-22' }),
+        event({ id: 'e1', lead_id: 'won', event_start: '2026-08-19', event_end: '2026-08-19' }),
+      ],
+      leads: [lead({ id: 'won', stage: 'closed_won', estimated_value: 10000, event_date: '2026-08-19' })],
+    })
+    const withValue = items.filter((i) => i.kind === 'event' && i.bookedValue != null)
+    expect(withValue).toHaveLength(1)
+    expect(withValue[0].id).toBe('e1') // earliest event_start is the canonical anchor
+    expect(withValue[0].bookedValue).toBe(10000)
+    // both events land in the same week → the booking is still counted exactly once
+    const week = feedInRange(items, '2026-08-17', '2026-08-23')
+    expect(weekRollup(week, '2026-08-18').bookedValue).toBe(10000)
   })
 
   it('leaves a plain event (no closed-won lead) without bookedValue', () => {
