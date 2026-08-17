@@ -91,6 +91,20 @@ export function CalendarCanvas({ orgSlug, items, today, view, anchor, kinds, sel
       ymd: over.ymd ?? selectedDay,
     })
 
+  // The day the Day view actually renders (DayView pins to selectedDay, falling
+  // back to the anchor). Prev/next/Today must move THIS, and the heading must name
+  // it — otherwise stepping the week param while a day is open desyncs the grid,
+  // the heading and the bounded window (they'd track different days and blank out).
+  const dayShown = selectedDay ?? anchor
+  const dayStepping = view === 'day' && !!selectedDay
+  const stepHref = (delta: number) =>
+    dayStepping
+      ? calendarHref({ orgSlug, view, kinds: kindsParam, ymd: stepAnchor('day', selectedDay!, delta) })
+      : link({ week: stepAnchor(view, anchor, delta) })
+  const todayHref = dayStepping
+    ? calendarHref({ orgSlug, view, kinds: kindsParam, ymd: today })
+    : link({ week: today })
+
   const [paletteOpen, setPaletteOpen] = useState(false)
 
   // Keyboard: ⌘K toggles the palette; bare letters switch views; arrows step the
@@ -109,9 +123,9 @@ export function CalendarCanvas({ orgSlug, items, today, view, anchor, kinds, sel
         case 'w': router.push(link({ view: 'week' })); break
         case 'd': router.push(link({ view: 'day' })); break
         case 'a': router.push(link({ view: 'agenda' })); break
-        case 't': router.push(link({ week: today })); break
-        case 'ArrowRight': router.push(link({ week: stepAnchor(view, anchor, 1) })); break
-        case 'ArrowLeft': router.push(link({ week: stepAnchor(view, anchor, -1) })); break
+        case 't': router.push(todayHref); break
+        case 'ArrowRight': router.push(stepHref(1)); break
+        case 'ArrowLeft': router.push(stepHref(-1)); break
         default: return
       }
     }
@@ -134,17 +148,17 @@ export function CalendarCanvas({ orgSlug, items, today, view, anchor, kinds, sel
           <span aria-hidden>⌘K</span>
           <span className="max-sm:sr-only">Jump…</span>
         </Button>
-        <h1 className="text-sm font-semibold">{rangeLabel(view, anchor)}</h1>
+        <h1 className="text-sm font-semibold">{rangeLabel(view, view === 'day' ? dayShown : anchor)}</h1>
         <div className="ml-auto flex flex-wrap items-center gap-2">
           {view !== 'agenda' ? (
             <div className="flex items-center gap-1">
-              <Link href={link({ week: stepAnchor(view, anchor, -1) })} aria-label="Previous" className={cn(buttonVariants({ variant: 'outline', size: 'sm' }))}>
+              <Link href={stepHref(-1)} aria-label="Previous" className={cn(buttonVariants({ variant: 'outline', size: 'sm' }))}>
                 ←
               </Link>
-              <Link href={link({ week: today })} className={cn(buttonVariants({ variant: 'outline', size: 'sm' }))}>
+              <Link href={todayHref} className={cn(buttonVariants({ variant: 'outline', size: 'sm' }))}>
                 Today
               </Link>
-              <Link href={link({ week: stepAnchor(view, anchor, 1) })} aria-label="Next" className={cn(buttonVariants({ variant: 'outline', size: 'sm' }))}>
+              <Link href={stepHref(1)} aria-label="Next" className={cn(buttonVariants({ variant: 'outline', size: 'sm' }))}>
                 →
               </Link>
             </div>

@@ -58,6 +58,28 @@ describe('CalendarCanvas', () => {
     expect(push).toHaveBeenCalledWith('/acme/calendar?view=week&week=2026-08-12&kinds=pipeline')
   })
 
+  it('in Day view with a day open, arrows step the DAY route and omit stale week', () => {
+    // Repro of the desync bug: stepping the week param here left DayView pinned to
+    // the old selectedDay while the window bound to the new day → blank grid.
+    render(<CalendarCanvas {...base} view="day" selectedDay="2026-08-20" />)
+    fireEvent.keyDown(window, { key: 'ArrowRight' })
+    expect(push).toHaveBeenCalledWith('/acme/calendar/2026-08-21?view=day&kinds=pipeline')
+    fireEvent.keyDown(window, { key: 'ArrowLeft' })
+    expect(push).toHaveBeenCalledWith('/acme/calendar/2026-08-19?view=day&kinds=pipeline')
+  })
+
+  it('in Day view with a day open, Today jumps to today’s day route', () => {
+    render(<CalendarCanvas {...base} view="day" selectedDay="2026-08-20" />)
+    fireEvent.keyDown(window, { key: 't' })
+    expect(push).toHaveBeenCalledWith('/acme/calendar/2026-08-18?view=day&kinds=pipeline')
+  })
+
+  it('week-view arrows still step the week (day-stepping only when a day is open)', () => {
+    render(<CalendarCanvas {...base} view="week" />)
+    fireEvent.keyDown(window, { key: 'ArrowRight' })
+    expect(push).toHaveBeenCalledWith('/acme/calendar?view=week&week=2026-08-26&kinds=pipeline')
+  })
+
   it('switches views with single-key shortcuts', () => {
     render(<CalendarCanvas {...base} view="week" />)
     fireEvent.keyDown(window, { key: 'm' })
