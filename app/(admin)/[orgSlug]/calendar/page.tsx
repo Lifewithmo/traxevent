@@ -1,17 +1,19 @@
 export const dynamic = 'force-dynamic'
 
-import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { adminDb } from '@/lib/firebase-admin'
 import { getCalendarFeed } from '@/actions/calendar'
-import { ensureIcsToken } from '@/actions/calendar-sync'
-import { listLeads } from '@/actions/leads'
-import { filterFeed, weekRange, PIPELINE_KINDS } from '@/lib/calendar'
-import { OPEN_STAGES } from '@/lib/leads'
+import { filterFeed, PIPELINE_KINDS } from '@/lib/calendar'
+import { feedInWindow, normalizeView } from '@/lib/calendar-window'
 import { todayYmd } from '@/lib/opportunity-detail'
-import { CalendarWeekClient } from '@/components/admin/calendar/CalendarWeekClient'
-import { CalendarKindFilter } from '@/components/admin/calendar/CalendarKindFilter'
+import { CalendarCanvas } from '@/components/admin/calendar/CalendarCanvas'
 
+/**
+ * The canvas page: reads `?view` / `?week` / `?kinds` (only pages can) and fetches
+ * its own visible-window feed, bounded to the shown view — never the whole
+ * unbounded feed. Defaults to today's Week view. No day is selected here, so the
+ * spine lives on the sibling `/calendar/[ymd]` route.
+ */
 export default async function CalendarPage({
   params,
   searchParams,
@@ -19,52 +21,28 @@ export default async function CalendarPage({
   params: Promise<{ orgSlug: string }>
   searchParams: Promise<{ week?: string; view?: string; kinds?: string }>
 }) {
-  const [{ orgSlug }, { week, view, kinds }] = await Promise.all([params, searchParams])
+  const [{ orgSlug }, sp] = await Promise.all([params, searchParams])
   const orgSnap = await adminDb.collection('orgs').where('slug', '==', orgSlug).limit(1).get()
   if (orgSnap.empty) notFound()
   const orgId = orgSnap.docs[0].id
-  const pipelineOnly = kinds === 'pipeline'
 
   const today = todayYmd()
-  const { from } = weekRange(week ?? today)
-  const [feed, icsToken, leads] = await Promise.all([
-    getCalendarFeed(orgId, orgSlug),
-    ensureIcsToken(orgId),
-    pipelineOnly ? listLeads(orgId) : Promise.resolve([]),
-  ])
-  const origin = process.env.NEXT_PUBLIC_APP_ORIGIN ?? ''
+  const view = normalizeView(sp.view)
+  const anchor = (sp.week ?? today).slice(0, 10)
+  const kinds = sp.kinds === 'pipeline' ? 'pipeline' : undefined
 
-  const items = pipelineOnly ? filterFeed(feed, PIPELINE_KINDS) : feed
-  const undated = pipelineOnly
-    ? leads.filter((l) => (OPEN_STAGES as (typeof l.stage)[]).includes(l.stage) && !l.event_date).length
-    : 0
+  const feed = await getCalendarFeed(orgId, orgSlug)
+  const scoped = kinds === 'pipeline' ? filterFeed(feed, PIPELINE_KINDS) : feed
+  const items = feedInWindow(scoped, view, anchor)
 
   return (
-    <div className="mx-auto w-full max-w-7xl">
-      <CalendarKindFilter orgSlug={orgSlug} active={pipelineOnly ? 'pipeline' : 'all'} week={week} view={view} />
-      <CalendarWeekClient
-        orgSlug={orgSlug}
-        items={items}
-        today={today}
-        weekFrom={from}
-        view={view === 'agenda' ? 'agenda' : 'week'}
-        subscribeUrl={`${origin}/ics/${orgSlug}/${icsToken}`}
-        scope={pipelineOnly ? 'pipeline' : 'all'}
-        undated={undated}
-        footnote={
-          pipelineOnly && undated > 0 ? (
-            // The count is promoted to a StatTile in pipeline scope; this line
-            // stays as the way to act on it.
-            <p className="border-t border-border px-5 py-2.5 text-xs text-muted-foreground">
-              {undated} open opportunit{undated === 1 ? 'y has' : 'ies have'} no date yet — they will not appear on
-              any week.{' '}
-              <Link href={`/${orgSlug}/leads`} className="font-medium text-[var(--link)] hover:underline">
-                Set dates in the pipeline &rarr;
-              </Link>
-            </p>
-          ) : undefined
-        }
-      />
-    </div>
+    <CalendarCanvas
+      orgSlug={orgSlug}
+      items={items}
+      today={today}
+      view={view}
+      anchor={anchor}
+      kinds={kinds}
+    />
   )
 }
