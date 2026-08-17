@@ -175,7 +175,7 @@ export function CalendarLeftRail({ orgSlug, today, rollup, runway, subscribeUrl 
         <p className="px-5 pt-3 text-[11px] font-semibold uppercase tracking-[.06em] text-muted-foreground">
           This week
         </p>
-        <CalendarKpiBand rollup={rollup} showBooked />
+        <CalendarKpiBand rollup={rollup} />
       </div>
 
       {/* Cash-flow runway (category-defining) */}
