@@ -1,6 +1,15 @@
 import { cache } from 'react'
+import { adminDb } from '@/lib/firebase-admin'
 import { getCalendarFeed } from '@/actions/calendar'
 import { listEvents } from '@/actions/events'
+
+/** Resolve an org slug to its id, memoised per request — the layout, the canvas
+ *  page and the day route all need it, so this collapses 2-3 identical org reads
+ *  into one. Returns null when the slug matches no org (caller → notFound()). */
+export const orgIdBySlug = cache(async (slug: string): Promise<string | null> => {
+  const snap = await adminDb.collection('orgs').where('slug', '==', slug).limit(1).get()
+  return snap.empty ? null : snap.docs[0].id
+})
 
 // Request-scoped memoisation for the cockpit. The calendar layout, the canvas
 // page and the day route all render inside ONE server request and each need the

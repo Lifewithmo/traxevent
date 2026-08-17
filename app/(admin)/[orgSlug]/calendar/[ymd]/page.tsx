@@ -1,9 +1,8 @@
 export const dynamic = 'force-dynamic'
 
 import { notFound } from 'next/navigation'
-import { adminDb } from '@/lib/firebase-admin'
 import { getDayDetail } from '@/actions/calendar'
-import { orgCalendarFeed, orgEvents } from '@/lib/calendar-fetch'
+import { orgCalendarFeed, orgEvents, orgIdBySlug } from '@/lib/calendar-fetch'
 import { filterFeed, PIPELINE_KINDS } from '@/lib/calendar'
 import { feedInWindow, normalizeView } from '@/lib/calendar-window'
 import { buildRunway } from '@/lib/calendar-cashflow'
@@ -28,9 +27,8 @@ export default async function CalendarDayPage({
   const [{ orgSlug, ymd }, sp] = await Promise.all([params, searchParams])
   if (!YMD.test(ymd)) notFound()
 
-  const orgSnap = await adminDb.collection('orgs').where('slug', '==', orgSlug).limit(1).get()
-  if (orgSnap.empty) notFound()
-  const orgId = orgSnap.docs[0].id
+  const orgId = await orgIdBySlug(orgSlug)
+  if (!orgId) notFound()
 
   const today = todayYmd()
   const view = normalizeView(sp.view)

@@ -1,8 +1,7 @@
 export const dynamic = 'force-dynamic'
 
 import { notFound } from 'next/navigation'
-import { adminDb } from '@/lib/firebase-admin'
-import { orgCalendarFeed, orgEvents } from '@/lib/calendar-fetch'
+import { orgCalendarFeed, orgEvents, orgIdBySlug } from '@/lib/calendar-fetch'
 import { ensureIcsToken } from '@/actions/calendar-sync'
 import { feedInWindow } from '@/lib/calendar-window'
 import { weekRollup } from '@/lib/calendar-week'
@@ -26,9 +25,8 @@ export default async function CalendarLayout({
   params: Promise<{ orgSlug: string }>
 }) {
   const { orgSlug } = await params
-  const orgSnap = await adminDb.collection('orgs').where('slug', '==', orgSlug).limit(1).get()
-  if (orgSnap.empty) notFound()
-  const orgId = orgSnap.docs[0].id
+  const orgId = await orgIdBySlug(orgSlug)
+  if (!orgId) notFound()
 
   const today = todayYmd()
   // orgCalendarFeed / orgEvents are React.cache()'d, so the page (and the day
