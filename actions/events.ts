@@ -21,6 +21,9 @@ export async function createEvent(
     event_start: string
     event_end: string
     department_id?: string | null
+    // Optional working hours for client jobs (writes the existing Event.hours field).
+    // Blank → omitted → the calendar renders the job in the all-day "time TBD" band.
+    hours?: EventHours
   }
 ): Promise<Event> {
   await assertOrgAdmin(orgId)

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
-import { buildCalendarFeed, feedInRange, filterFeed, weekRange, weekDays, type CalendarFeedSources } from '@/lib/calendar'
+import { buildCalendarFeed, feedForDay, feedInRange, filterFeed, weekRange, weekDays, type CalendarItem, type CalendarFeedSources } from '@/lib/calendar'
+import { weekRollup } from '@/lib/calendar-week'
 import type { ComplianceDoc, Drop, Event, Lead, NormalizedInvoice, Task } from '@/lib/types'
 
 const listEventsCoreSpy = vi.hoisted(() => vi.fn().mockResolvedValue([]))
@@ -50,7 +51,7 @@ const drop = (over: Partial<Drop>): Drop => ({
     windows: [
       { id: 'w1', day: '2026-08-22', start: '08:00', end: '11:00' },
       { id: 'w2', day: '2026-08-23', start: '08:00', end: '10:00' },
-      { id: 'w3', day: '2026-08-22', start: '15:00', end: '17:00' }, // same day → deduped
+      { id: 'w3', day: '2026-08-22', start: '15:00', end: '17:00' }, // same day as w1 → its own item (one per window)
     ],
   },
   items: [], channels: [], created_at: 'x', ...over,
@@ -118,6 +119,67 @@ describe('buildCalendarFeed', () => {
     expect(items[0].detail).toBe('Wedding')
   })
 
+  // ── Task 3: Booked-$ threading (closed-won estimated_value only) ──
+  it('threads bookedValue onto an unconverted closed-won hold from its estimated_value', () => {
+    const items = buildCalendarFeed('acme', {
+      ...empty,
+      leads: [
+        lead({ id: 'won', stage: 'closed_won', estimated_value: 8000, event_date: '2026-08-22' }),
+        lead({ id: 'open', stage: 'proposal', estimated_value: 9999, event_date: '2026-08-20' }),
+      ],
+    })
+    expect(items.find((i) => i.id === 'won')!.bookedValue).toBe(8000)
+    // open-stage holds never carry booked value
+    expect(items.find((i) => i.id === 'open')!.bookedValue).toBeUndefined()
+  })
+
+  it('threads bookedValue onto the event of a converted closed-won lead, ignoring payment_amount/booth_fee', () => {
+    const items = buildCalendarFeed('acme', {
+      ...empty,
+      events: [event({ id: 'ev', lead_id: 'won', payment_amount: 150, booth_fee: 40 })],
+      leads: [lead({ id: 'won', stage: 'closed_won', estimated_value: 12000, event_date: '2026-08-14' })],
+    })
+    const row = items.find((i) => i.id === 'ev')!
+    expect(row.kind).toBe('event')
+    expect(row.bookedValue).toBe(12000) // estimated_value, NOT payment_amount/booth_fee
+  })
+
+  it('attributes a multi-event closed-won lead’s booked value to exactly one event (no double count)', () => {
+    const items = buildCalendarFeed('acme', {
+      ...empty,
+      // deliberately out of date order to prove the anchor is by event_start, not array order
+      events: [
+        event({ id: 'e2', lead_id: 'won', event_start: '2026-08-22', event_end: '2026-08-22' }),
+        event({ id: 'e1', lead_id: 'won', event_start: '2026-08-19', event_end: '2026-08-19' }),
+      ],
+      leads: [lead({ id: 'won', stage: 'closed_won', estimated_value: 10000, event_date: '2026-08-19' })],
+    })
+    const withValue = items.filter((i) => i.kind === 'event' && i.bookedValue != null)
+    expect(withValue).toHaveLength(1)
+    expect(withValue[0].id).toBe('e1') // earliest event_start is the canonical anchor
+    expect(withValue[0].bookedValue).toBe(10000)
+    // both events land in the same week → the booking is still counted exactly once
+    const week = feedInRange(items, '2026-08-17', '2026-08-23')
+    expect(weekRollup(week, '2026-08-18').bookedValue).toBe(10000)
+  })
+
+  it('leaves a plain event (no closed-won lead) without bookedValue', () => {
+    const items = buildCalendarFeed('acme', {
+      ...empty,
+      events: [event({ id: 'ev', payment_amount: 150, booth_fee: 40 })],
+    })
+    expect(items.find((i) => i.id === 'ev')!.bookedValue).toBeUndefined()
+  })
+
+  it('threads the invoice lead_id onto invoice_due items so the runway can anchor them', () => {
+    const items = buildCalendarFeed('acme', {
+      ...empty,
+      leads: [lead({ id: 'l', title: 'Wedding' })],
+      invoices: [invoice({ id: 'i1', lead_id: 'l' })],
+    })
+    expect(items.find((i) => i.id === 'i1')!.leadId).toBe('l')
+  })
+
   it('tentative holds say why they are on the calendar', () => {
     const items = buildCalendarFeed('acme', {
       ...empty,
@@ -144,16 +206,73 @@ describe('buildCalendarFeed', () => {
     expect(row.detail).toBe('Capitol Blvd')
   })
 
-  it('emits one drop item per pickup-window day for scheduled drops, skipping drafts/archived', () => {
+  it('emits one drop item per pickup window for scheduled drops, skipping drafts/archived', () => {
     const items = buildCalendarFeed('acme', { ...empty, drops: [drop({})] })
     const dropItems = items.filter((i) => i.kind === 'drop')
-    expect(dropItems).toHaveLength(2)
+    // one item per WINDOW now (two windows share 2026-08-22), not per distinct day
+    expect(dropItems).toHaveLength(3)
     expect(dropItems[0]).toMatchObject({
       date: '2026-08-22', title: 'Drop pickup: Weekend Drop',
       href: '/acme/drop-orders/d1', detail: 'SW Boise',
     })
     const draftItems = buildCalendarFeed('acme', { ...empty, drops: [drop({ status: 'draft' })] })
     expect(draftItems.filter((i) => i.kind === 'drop')).toHaveLength(0)
+  })
+
+  // ── Task 1: time projection onto event items + per-window drop times ──
+  it('projects Event.hours onto event items as start/end', () => {
+    const items = buildCalendarFeed('acme', {
+      ...empty,
+      events: [event({ id: 'e1', name: 'Wedding', event_start: '2026-08-22', event_end: '2026-08-22', hours: { start: '16:00', end: '21:00' } })],
+    })
+    const ev = items.find((i) => i.id === 'e1')!
+    expect(ev.start).toBe('16:00')
+    expect(ev.end).toBe('21:00')
+  })
+
+  it('leaves an event without hours time-less, so it falls to the all-day band', () => {
+    const items = buildCalendarFeed('acme', {
+      ...empty,
+      events: [event({ id: 'e2', name: 'Job', event_start: '2026-08-22', event_end: '2026-08-22' })],
+    })
+    const ev = items.find((i) => i.id === 'e2')!
+    expect(ev.start).toBeUndefined()
+    expect(ev.end).toBeUndefined()
+  })
+
+  it('emits one drop item per window carrying that window start/end', () => {
+    const items = buildCalendarFeed('acme', {
+      ...empty,
+      drops: [drop({
+        id: 'd9', title: 'Twin', pickup: {
+          location_name: 'SW Boise',
+          windows: [
+            { id: 'a', day: '2026-08-18', start: '16:00', end: '18:00' },
+            { id: 'b', day: '2026-08-18', start: '19:00', end: '20:00' },
+          ],
+        },
+      })],
+    })
+    const dropItems = items.filter((i) => i.kind === 'drop')
+    expect(dropItems).toHaveLength(2)
+    expect(dropItems.map((i) => i.start).sort()).toEqual(['16:00', '19:00'])
+    expect(dropItems.map((i) => i.end).sort()).toEqual(['18:00', '20:00'])
+    expect(dropItems.map((i) => i.date)).toEqual(['2026-08-18', '2026-08-18'])
+  })
+
+  it('carries no time on date-only kinds (invoice_due, task, compliance, lead)', () => {
+    const items = buildCalendarFeed('acme', {
+      ...empty,
+      leads: [lead({ id: 'l', title: 'Wedding', event_date: '2026-08-20', stage: 'proposal' })],
+      tasksByLeadId: { l: [task({ id: 't1', lead_id: 'l', due_date: '2026-08-20' })] },
+      complianceDocs: [doc({ id: 'c1', expires_on: '2026-08-20' })],
+      invoices: [invoice({ id: 'i1', due_date: '2026-08-20' })],
+    })
+    for (const kind of ['invoice_due', 'task', 'compliance', 'lead'] as const) {
+      const it = items.find((i) => i.kind === kind)!
+      expect(it.start).toBeUndefined()
+      expect(it.end).toBeUndefined()
+    }
   })
 })
 
@@ -169,6 +288,33 @@ describe('week helpers', () => {
     expect(days).toHaveLength(7)
     expect(days[0]).toBe('2026-08-10')
     expect(days[6]).toBe('2026-08-16')
+  })
+
+  // ── Task 2: feedForDay pure filter ──
+  it('feedForDay returns only that day’s items, comparing the date part', () => {
+    const items = buildCalendarFeed('acme', {
+      ...empty,
+      events: [event({ id: 'e1', event_start: '2026-08-22', event_end: '2026-08-22' })],
+      leads: [lead({ id: 'l1', event_date: '2026-08-23', stage: 'proposal' })],
+    })
+    expect(feedForDay(items, '2026-08-22').map((i) => i.id)).toEqual(['e1'])
+    expect(feedForDay(items, '2026-08-23').map((i) => i.id)).toEqual(['l1'])
+
+    const timed: CalendarItem = { id: 'x', title: 'X', date: '2026-08-22T18:00:00.000Z', kind: 'event', href: '/x' }
+    expect(feedForDay([timed], '2026-08-22').map((i) => i.id)).toEqual(['x'])
+  })
+
+  it('feedForDay includes a multi-day event on every day it spans', () => {
+    const items = buildCalendarFeed('acme', {
+      ...empty,
+      events: [event({ id: 'multi', event_start: '2026-08-21', event_end: '2026-08-23' })],
+    })
+    expect(items.find((i) => i.id === 'multi')!.endDate).toBe('2026-08-23')
+    expect(feedForDay(items, '2026-08-20').map((i) => i.id)).toEqual([])
+    expect(feedForDay(items, '2026-08-21').map((i) => i.id)).toEqual(['multi'])
+    expect(feedForDay(items, '2026-08-22').map((i) => i.id)).toEqual(['multi']) // interior day
+    expect(feedForDay(items, '2026-08-23').map((i) => i.id)).toEqual(['multi'])
+    expect(feedForDay(items, '2026-08-24').map((i) => i.id)).toEqual([])
   })
 
   it('filterFeed and feedInRange narrow without reordering', () => {
@@ -187,6 +333,6 @@ describe('assembleCalendarFeed', () => {
     listDropsCoreSpy.mockResolvedValueOnce([drop({})])
     const items = await assembleCalendarFeed('org-1', 'acme')
     expect(listDropsCoreSpy).toHaveBeenCalledWith('org-1')
-    expect(items.filter((i) => i.kind === 'drop')).toHaveLength(2)
+    expect(items.filter((i) => i.kind === 'drop')).toHaveLength(3)
   })
 })

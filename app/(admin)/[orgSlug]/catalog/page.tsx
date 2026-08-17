@@ -36,8 +36,7 @@ export default async function CatalogPage({ params }: { params: Promise<{ orgSlu
 
   // Each row must be a real link — an expiring COI you cannot click through to
   // is inert. There is no per-document detail route, so every row points at
-  // the compliance list, same as CalendarAttentionRail's rows point at their
-  // source record.
+  // the compliance list.
   const expiringRows: RelatedRow[] = o.expiring.map((d) => ({
     id: d.id,
     title: d.name,

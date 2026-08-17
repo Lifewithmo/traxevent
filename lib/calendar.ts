@@ -15,6 +15,16 @@ export interface CalendarItem {
   detail?: string
   /** invoice_due only: the outstanding balance. */
   amount?: number
+  /** timed items only ('HH:mm'): events with working hours, drop windows. Absent = all-day. */
+  start?: string
+  end?: string
+  /** multi-day events only: the last ISO date (YYYY-MM-DD) the item spans; absent = single day. */
+  endDate?: string
+  /** Booked-$: the closed-won lead's estimated_value, on its event or its unconverted hold.
+   *  NEVER Event.payment_amount (a registration fee) or Event.booth_fee (an expense). */
+  bookedValue?: number
+  /** The opportunity this item belongs to — lets the runway anchor receivables to an Event. */
+  leadId?: string
   /** compliance only: an upcoming booked event depends on this document. */
   blocker?: boolean
   /** lead dates are holds, not bookings. */
@@ -120,9 +130,33 @@ export function buildCalendarFeed(orgSlug: string, s: CalendarFeedSources): Cale
   const scheduledLeadIds = new Set(s.events.map((e) => e.lead_id).filter((id): id is string => !!id))
   const liveEvents = s.events.filter((e) => e.status !== 'archived' && e.event_start)
 
+  // A closed_won lead's booked value must be counted ONCE even when it owns
+  // several events. Attribute it to the lead's earliest live event only (a
+  // deterministic anchor; tie-break by id). We use earliest rather than the
+  // runway's nearest-future anchor because this pure builder has no `today`.
+  const wonAnchorEventId = new Map<string, string>()
   for (const e of liveEvents) {
+    if (!e.lead_id || leadById.get(e.lead_id)?.stage !== 'closed_won') continue
+    const curId = wonAnchorEventId.get(e.lead_id)
+    if (!curId) { wonAnchorEventId.set(e.lead_id, e.id); continue }
+    const cur = liveEvents.find((x) => x.id === curId)!
+    const better = e.event_start < cur.event_start || (e.event_start === cur.event_start && e.id < cur.id)
+    if (better) wonAnchorEventId.set(e.lead_id, e.id)
+  }
+
+  for (const e of liveEvents) {
+    const startYmd = e.event_start.slice(0, 10)
+    const endYmd = e.event_end?.slice(0, 10)
+    // Booked-$ comes from the source lead's estimated_value, never the event's
+    // payment_amount (registration fee) or booth_fee (an expense). Counted only
+    // on the lead's single anchor event so multi-event bookings never double-count.
+    const wonLead = e.lead_id ? leadById.get(e.lead_id) : undefined
+    const bookedValue =
+      wonLead?.stage === 'closed_won' && wonAnchorEventId.get(e.lead_id!) === e.id
+        ? wonLead.estimated_value
+        : undefined
     items.push({
-      id: e.id, title: e.name, date: e.event_start.slice(0, 10), kind: 'event',
+      id: e.id, title: e.name, date: startYmd, kind: 'event',
       href: `/${orgSlug}/${e.slug}/dashboard`,
       detail: e.headcount
         ? `${e.headcount} guests`
@@ -131,6 +165,11 @@ export function buildCalendarFeed(orgSlug: string, s: CalendarFeedSources): Cale
           ? e.location.name
           : undefined,
       headcount: e.headcount,
+      // timed placement on the grid; absent hours ⇒ all-day "time TBD"
+      ...(e.hours ? { start: e.hours.start, end: e.hours.end } : {}),
+      // multi-day span: carry the end date so feedForDay can include interior days
+      ...(endYmd && endYmd > startYmd ? { endDate: endYmd } : {}),
+      ...(bookedValue != null ? { bookedValue } : {}),
     })
   }
 
@@ -141,6 +180,8 @@ export function buildCalendarFeed(orgSlug: string, s: CalendarFeedSources): Cale
       id: l.id, title: opportunityTitle(l), date: l.event_date.slice(0, 10), kind: 'lead',
       href: `/${orgSlug}/leads/${l.id}`, tentative: true,
       detail: l.stage === 'closed_won' ? 'won · not scheduled' : 'not booked',
+      // an unconverted won lead still carries its booked value, bucketed by event_date
+      ...(l.stage === 'closed_won' && l.estimated_value != null ? { bookedValue: l.estimated_value } : {}),
     })
   }
 
@@ -185,22 +226,24 @@ export function buildCalendarFeed(orgSlug: string, s: CalendarFeedSources): Cale
     items.push({
       id: inv.id, title: inv.title?.trim() || `Invoice ${inv.number ?? ''}`.trim(), date: inv.due_date,
       kind: 'invoice_due', href: `/${orgSlug}/leads/${inv.lead_id}`,
-      amount: balance, detail: lead ? opportunityTitle(lead) : undefined,
+      amount: balance, detail: lead ? opportunityTitle(lead) : undefined, leadId: inv.lead_id,
     })
   }
 
-  // drop — one entry per distinct pickup day of live (scheduled/closed) drops
+  // drop — one entry per pickup WINDOW of live (scheduled/closed) drops, each
+  // carrying its own start/end so the time-grid can place it.
   for (const d of s.drops) {
     if (d.status !== 'scheduled' && d.status !== 'closed') continue
-    const days = [...new Set(d.pickup.windows.map((w) => w.day))]
-    for (const day of days) {
+    for (const w of d.pickup.windows) {
       items.push({
-        id: `${d.id}:${day}`,
+        id: `${d.id}:${w.id}`,
         title: `Drop pickup: ${d.title}`,
-        date: day,
+        date: w.day.slice(0, 10),
         kind: 'drop',
         href: `/${orgSlug}/drop-orders/${d.id}`,
         detail: d.pickup.location_name,
+        start: w.start,
+        end: w.end,
       })
     }
   }
@@ -217,5 +260,16 @@ export function feedInRange(items: CalendarItem[], fromYmd: string, toYmd: strin
   return items.filter((i) => {
     const d = i.date.slice(0, 10)
     return d >= fromYmd && d <= toYmd
+  })
+}
+
+/** Every item landing on `ymd` (date part only). Multi-day events (those with an
+ *  `endDate`) are included on every interior day they span, not just their start. */
+export function feedForDay(items: CalendarItem[], ymd: string): CalendarItem[] {
+  const day = ymd.slice(0, 10)
+  return items.filter((i) => {
+    const from = i.date.slice(0, 10)
+    const to = (i.endDate ?? i.date).slice(0, 10)
+    return day >= from && day <= to
   })
 }

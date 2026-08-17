@@ -47,7 +47,21 @@ describe('weekRollup', () => {
       dueAmount: 1150,
       overdueDueAmount: 900,
       blockerCount: 1,
+      bookedValue: 0,
     })
+  })
+
+  it('sums bookedValue across items carrying it (closed-won bookings), by week position', () => {
+    const rollup = weekRollup(
+      [
+        ev({ id: 'e1', date: '2026-08-22', bookedValue: 8000 }),  // converted won → event item
+        hold({ id: 'l1', date: '2026-08-19', bookedValue: 4400 }), // unconverted won hold
+        hold({ id: 'l2', date: '2026-08-20' }),                    // no bookedValue → 0
+        ev({ id: 'e2', date: '2026-08-21' }),                      // plain event → 0
+      ],
+      TODAY
+    )
+    expect(rollup.bookedValue).toBe(12400)
   })
 
   it('counts events without a headcount but adds no guests', () => {
@@ -87,7 +101,7 @@ describe('weekRollup', () => {
   it('returns all zeros for an empty week', () => {
     expect(weekRollup([], TODAY)).toEqual({
       eventCount: 0, guestCount: 0, tentativeCount: 0, taskCount: 0, dueAmount: 0, overdueDueAmount: 0,
-      blockerCount: 0,
+      blockerCount: 0, bookedValue: 0,
     })
   })
 })

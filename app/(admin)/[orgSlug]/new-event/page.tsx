@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter, useParams } from 'next/navigation'
+import { useRouter, useParams, useSearchParams } from 'next/navigation'
 import { createEvent } from '@/actions/events'
 import { getOrgBySlug } from '@/actions/orgs'
 import { listOrgEventTypes } from '@/actions/event-types'
@@ -15,11 +15,20 @@ import { Card, CardContent } from '@/components/ui/card'
 export default function NewEventPage() {
   const router = useRouter()
   const { orgSlug } = useParams<{ orgSlug: string }>()
+  const searchParams = useSearchParams()
+  // The calendar's empty-state CTAs pass ?date=YYYY-MM-DD (the day/period they were
+  // launched from) so the booking lands pre-dated instead of on a blank form.
+  const dateParam = searchParams.get('date')
+  const seedDate = dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : ''
   const [name, setName] = useState('')
   const [year, setYear] = useState(new Date().getFullYear())
   const [eventTypeId, setEventTypeId] = useState<string>(DEFAULT_EVENT_TYPE_ID)
-  const [eventStart, setEventStart] = useState('')
-  const [eventEnd, setEventEnd] = useState('')
+  const [eventStart, setEventStart] = useState(seedDate)
+  const [eventEnd, setEventEnd] = useState(seedDate)
+  // Optional booking time for client jobs (writes the existing Event.hours field).
+  // Blank → omitted → the calendar renders the job in the all-day "time TBD" band.
+  const [hoursStart, setHoursStart] = useState('')
+  const [hoursEnd, setHoursEnd] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [eventTypes, setEventTypes] = useState<EventType[]>([])
@@ -45,6 +54,16 @@ export default function NewEventPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
+    // Booking time is both-or-neither, and the end must be after the start —
+    // otherwise a one-sided range is silently dropped and start>start clamps the grid.
+    if (Boolean(hoursStart) !== Boolean(hoursEnd)) {
+      setError('Enter both a start and end time, or leave both blank.')
+      return
+    }
+    if (hoursStart && hoursEnd && hoursEnd <= hoursStart) {
+      setError('End time must be after the start time.')
+      return
+    }
     setLoading(true)
     try {
       if (!orgId) throw new Error('Organization not found')
@@ -56,6 +75,7 @@ export default function NewEventPage() {
         ...eventCreateFieldsFromType(selectedType),
         event_start: eventStart,
         event_end: eventEnd,
+        ...(hoursStart && hoursEnd ? { hours: { start: hoursStart, end: hoursEnd } } : {}),
       })
       router.push(`/${orgSlug}/${event.slug}/dashboard`)
     } catch (err: unknown) {
@@ -102,6 +122,17 @@ export default function NewEventPage() {
               <div className="space-y-1">
                 <Label htmlFor="campEnd">End date</Label>
                 <Input id="campEnd" type="date" value={eventEnd} onChange={(e) => setEventEnd(e.target.value)} required />
+              </div>
+            </div>
+            {/* Optional booking time — sets the job's time on the calendar; blank shows it as "time TBD". */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <Label htmlFor="hoursStart">Start time (optional)</Label>
+                <Input id="hoursStart" type="time" value={hoursStart} onChange={(e) => setHoursStart(e.target.value)} />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="hoursEnd">End time (optional)</Label>
+                <Input id="hoursEnd" type="time" value={hoursEnd} onChange={(e) => setHoursEnd(e.target.value)} />
               </div>
             </div>
             {error && <p className="text-sm text-destructive">{error}</p>}

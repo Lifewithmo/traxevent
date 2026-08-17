@@ -27,6 +27,14 @@ describe('buildIcs', () => {
     expect(ics.endsWith('END:VCALENDAR\r\n')).toBe(true)
   })
 
+  it('exports a multi-day event as a span with exclusive DTEND (endDate + 1)', () => {
+    const ics = buildIcs([item({ date: '2026-08-14', endDate: '2026-08-16' })], 'Cal', now)
+    expect(ics).toContain('DTSTART;VALUE=DATE:20260814')
+    // exclusive end: the day AFTER the last spanned day (08-16 → 08-17)
+    expect(ics).toContain('DTEND;VALUE=DATE:20260817')
+    expect(ics).not.toContain('DTEND;VALUE=DATE:20260815')
+  })
+
   it('marks tentative holds and appends invoice amounts to the summary', () => {
     const ics = buildIcs(
       [
@@ -51,6 +59,28 @@ describe('buildIcs', () => {
     const summaryLine = ics.split('\r\n').find((l) => l.startsWith('SUMMARY:'))!
     expect(summaryLine.length).toBeLessThanOrEqual(75)
     expect(ics).toContain('\r\n A') // continuation line
+  })
+
+  it('emits distinct TIMED VEVENTs for two drop windows on the same day', () => {
+    const ics = buildIcs(
+      [
+        item({ id: 'd1:w1', kind: 'drop', title: 'Drop pickup: Weekend', date: '2026-08-18', start: '16:00', end: '18:00' }),
+        item({ id: 'd1:w2', kind: 'drop', title: 'Drop pickup: Weekend', date: '2026-08-18', start: '19:00', end: '20:00' }),
+      ],
+      'Feed',
+      now
+    )
+    // real timed DTSTART/DTEND (not VALUE=DATE), one pair per window
+    expect(ics).toContain('DTSTART:20260818T160000')
+    expect(ics).toContain('DTEND:20260818T180000')
+    expect(ics).toContain('DTSTART:20260818T190000')
+    expect(ics).toContain('DTEND:20260818T200000')
+    // the two windows are distinguishable timed entries, not identical all-day blocks
+    const starts = ics.split('\r\n').filter((l) => l.startsWith('DTSTART'))
+    expect(starts).toEqual(['DTSTART:20260818T160000', 'DTSTART:20260818T190000'])
+    expect(ics).not.toContain('DTSTART;VALUE=DATE') // timed items never fall back to all-day
+    expect(ics).toContain('UID:drop-d1:w1@traxevent')
+    expect(ics).toContain('UID:drop-d1:w2@traxevent')
   })
 
   it('uses stable UIDs so calendar apps update instead of duplicating', () => {

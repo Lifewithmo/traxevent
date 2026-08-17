@@ -16,6 +16,8 @@ export interface WeekRollup {
   dueAmount: number
   overdueDueAmount: number
   blockerCount: number
+  /** Booked-$: closed-won estimated_value landing in the shown week (via item.bookedValue). */
+  bookedValue: number
 }
 
 /** Rollup of items ALREADY scoped to the shown week (caller does the range filter). */
@@ -29,6 +31,7 @@ export function weekRollup(weekItems: CalendarItem[], today: string): WeekRollup
     dueAmount: 0,
     overdueDueAmount: 0,
     blockerCount: 0,
+    bookedValue: 0,
   }
   for (const item of weekItems) {
     if (item.kind === 'event') {
@@ -38,6 +41,7 @@ export function weekRollup(weekItems: CalendarItem[], today: string): WeekRollup
     if (item.kind === 'task' || item.kind === 'follow_up') rollup.taskCount += 1
     if (item.tentative === true) rollup.tentativeCount += 1
     if (item.blocker === true) rollup.blockerCount += 1
+    rollup.bookedValue += item.bookedValue ?? 0
     if (item.kind === 'invoice_due') {
       const amount = item.amount ?? 0
       rollup.dueAmount += amount
