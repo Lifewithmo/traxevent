@@ -57,6 +57,26 @@ describe('buildRunway', () => {
     expect(buildRunway([], events, TODAY).map((r) => r.eventId)).toEqual(['today', 'future'])
   })
 
+  it('counts a receivable due exactly ON the job date as inflow before (boundary, pins the <=)', () => {
+    const events = [evt({ id: 'j', lead_id: 'L', event_start: '2026-08-22' })]
+    const items = [due({ id: 'on-date', leadId: 'L', amount: 900, date: '2026-08-22' })] // due == event_start
+    const runway = buildRunway(items, events, TODAY)
+    expect(runway[0].inflowBefore).toBe(900)
+    expect(runway[0].dueAfter).toBe(0)
+  })
+
+  it('picks the nearest future event as anchor even when events arrive far-first (pins the ordering)', () => {
+    // far event listed BEFORE the near one — a naive "first match wins" resolver would anchor to 9/30
+    const events = [
+      evt({ id: 'far', lead_id: 'L', event_start: '2026-09-30' }),
+      evt({ id: 'near', lead_id: 'L', event_start: '2026-08-22' }),
+    ]
+    const items = [due({ id: 'inv', leadId: 'L', amount: 1000, date: '2026-08-20' })]
+    const runway = buildRunway(items, events, TODAY)
+    expect(runway.find((r) => r.eventId === 'near')!.inflowBefore).toBe(1000)
+    expect(runway.find((r) => r.eventId === 'far')!.inflowBefore).toBe(0)
+  })
+
   it('still counts an overdue receivable as inflow before the job', () => {
     const events = [evt({ id: 'j', lead_id: 'L', event_start: '2026-08-22' })]
     const items = [due({ id: 'overdue', leadId: 'L', amount: 700, date: '2026-08-05' })] // due before today
