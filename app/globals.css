@@ -124,21 +124,25 @@
 }
 
 :root {
-  /* Charcoal & Sapphire — a true achromatic graphite neutral (no warm or cool
-     cast), so the one sapphire accent reads as a discrete jewel, not a tint. */
+  /* Charcoal & Sapphire — light mode is a "charcoal rail" layout: a bright,
+     clean cool-neutral CONTENT canvas (this --warm-* ramp) paired with a dark
+     charcoal sidebar (the --sidebar-* block below), so the charcoal in the
+     palette name anchors the UI instead of only appearing in dark mode. The
+     sapphire accent and forest money stay constant. WCAG-checked: muted text
+     clears 5.2:1. (Dark mode keeps its approved near-black in the .dark block.) */
   --warm-0: #ffffff;
-  --warm-25: #fafafa;
-  --warm-50: #f5f5f4;
-  --warm-100: #ececec;
-  --warm-200: #dfdfde;
-  --warm-300: #c9c9c8;
-  --warm-400: #9a9b9c;
-  --warm-500: #64666a;
-  --warm-600: #4e5054;
-  --warm-700: #3a3b3f;
-  --warm-800: #292a2d;
-  --warm-900: #1c1d1f;
-  --warm-950: #161719;
+  --warm-25: #fafbfc;
+  --warm-50: #f4f6f9;
+  --warm-100: #e9edf2;
+  --warm-200: #dbe1e9;
+  --warm-300: #c3cbd6;
+  --warm-400: #8a93a1;
+  --warm-500: #59626f;
+  --warm-600: #444c58;
+  --warm-700: #333a44;
+  --warm-800: #232833;
+  --warm-900: #181c25;
+  --warm-950: #10131a;
 
   /* Sapphire accent — the single callout color, for action and selection. */
   --copper-50: #eaf1fb;
@@ -189,7 +193,7 @@
   --accent-foreground: var(--warm-800);
   --destructive: #c4362a;
   --border: var(--warm-200);
-  --input: #8a8a89; /* functional form-field boundary — clears WCAG 1.4.11 3:1 (border stays subtle for decorative outlines) */
+  --input: #86909e; /* functional form-field boundary (cool grey) — clears WCAG 1.4.11 3:1; --border stays subtle for decorative outlines */
   --ring: var(--copper-600);
   --chart-1: var(--copper-400);
   --chart-2: var(--copper-600);
@@ -197,15 +201,19 @@
   --chart-4: var(--warm-600);
   --chart-5: var(--warm-800);
   --radius: 0.625rem;
-  --sidebar: var(--warm-100);
-  --sidebar-foreground: var(--warm-950);
-  --sidebar-muted: var(--warm-600);
-  --sidebar-primary: var(--copper-600);
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: var(--warm-200);
-  --sidebar-accent-foreground: var(--warm-950);
-  --sidebar-border: var(--warm-200);
-  --sidebar-ring: var(--copper-500);
+  /* Charcoal rail: the sidebar is dark in light mode too, anchoring the layout;
+     the active/hover row reads as a sapphire-tinted glow on the charcoal, and
+     the active parent gets a sapphire border via --sidebar-primary. (Dark mode
+     redefines these in the .dark block.) */
+  --sidebar: #1b1c1e;
+  --sidebar-foreground: #ededeb;
+  --sidebar-muted: #9b9d99;
+  --sidebar-primary: #5ca8e8;
+  --sidebar-primary-foreground: #0b1622;
+  --sidebar-accent: #233041;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #303236;
+  --sidebar-ring: #5ca8e8;
 }
 
 .dark {
