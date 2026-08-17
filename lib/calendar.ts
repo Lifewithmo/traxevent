@@ -23,6 +23,8 @@ export interface CalendarItem {
   /** Booked-$: the closed-won lead's estimated_value, on its event or its unconverted hold.
    *  NEVER Event.payment_amount (a registration fee) or Event.booth_fee (an expense). */
   bookedValue?: number
+  /** The opportunity this item belongs to — lets the runway anchor receivables to an Event. */
+  leadId?: string
   /** compliance only: an upcoming booked event depends on this document. */
   blocker?: boolean
   /** lead dates are holds, not bookings. */
@@ -206,7 +208,7 @@ export function buildCalendarFeed(orgSlug: string, s: CalendarFeedSources): Cale
     items.push({
       id: inv.id, title: inv.title?.trim() || `Invoice ${inv.number ?? ''}`.trim(), date: inv.due_date,
       kind: 'invoice_due', href: `/${orgSlug}/leads/${inv.lead_id}`,
-      amount: balance, detail: lead ? opportunityTitle(lead) : undefined,
+      amount: balance, detail: lead ? opportunityTitle(lead) : undefined, leadId: inv.lead_id,
     })
   }
 

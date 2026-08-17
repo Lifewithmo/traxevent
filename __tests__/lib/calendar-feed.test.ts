@@ -151,6 +151,15 @@ describe('buildCalendarFeed', () => {
     expect(items.find((i) => i.id === 'ev')!.bookedValue).toBeUndefined()
   })
 
+  it('threads the invoice lead_id onto invoice_due items so the runway can anchor them', () => {
+    const items = buildCalendarFeed('acme', {
+      ...empty,
+      leads: [lead({ id: 'l', title: 'Wedding' })],
+      invoices: [invoice({ id: 'i1', lead_id: 'l' })],
+    })
+    expect(items.find((i) => i.id === 'i1')!.leadId).toBe('l')
+  })
+
   it('tentative holds say why they are on the calendar', () => {
     const items = buildCalendarFeed('acme', {
       ...empty,
