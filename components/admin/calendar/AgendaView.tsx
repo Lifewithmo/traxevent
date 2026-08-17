@@ -108,15 +108,18 @@ export function AgendaView({ orgSlug, items, onBulk }: AgendaViewProps) {
             {group.items.map((item) => {
               const id = selId(item)
               return (
-                <div key={id} className="flex items-start gap-3 border-b border-border/60 py-2">
-                  <input
-                    type="checkbox"
-                    className="mt-1 size-4 shrink-0 accent-[var(--primary)]"
-                    checked={selected.includes(id)}
-                    onChange={() => toggle(id)}
-                    aria-label={`Select ${item.title}`}
-                  />
-                  <span className="w-14 shrink-0 pt-0.5 font-mono text-xs font-semibold tabular-nums">
+                <div key={id} className="flex items-start gap-1 border-b border-border/60 py-1">
+                  {/* 44px label so the 16px box clears the WCAG touch target. */}
+                  <label className="flex size-11 shrink-0 cursor-pointer items-center justify-center">
+                    <input
+                      type="checkbox"
+                      className="size-4 accent-[var(--primary)]"
+                      checked={selected.includes(id)}
+                      onChange={() => toggle(id)}
+                      aria-label={`Select ${item.title}`}
+                    />
+                  </label>
+                  <span className="w-14 shrink-0 pt-2.5 font-mono text-xs font-semibold tabular-nums">
                     {item.date.slice(5, 10)}
                   </span>
                   <span

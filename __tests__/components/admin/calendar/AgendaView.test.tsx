@@ -46,6 +46,15 @@ describe('AgendaView', () => {
     expect(screen.queryByRole('button', { name: /reschedule/i })).not.toBeInTheDocument()
   })
 
+  it('wraps each select checkbox in a touch-safe hit target', () => {
+    render(<AgendaView orgSlug="acme" items={items} />)
+    const box = screen.getByRole('checkbox', { name: /select wedding/i })
+    const label = box.closest('label')
+    expect(label).not.toBeNull()
+    // a bare 16px input fails the WCAG target gate; the padded label clears it
+    expect(label).toHaveClass('size-11')
+  })
+
   it('renders one specific CTA when the feed is empty', () => {
     render(<AgendaView orgSlug="acme" items={[]} />)
     expect(screen.getByText(/nothing on the calendar/i)).toBeInTheDocument()
