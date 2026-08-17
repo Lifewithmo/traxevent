@@ -104,6 +104,25 @@ describe('CalendarLeftRail', () => {
     expect(screen.getByText('https://app.example/ics/acme/tok123')).toBeInTheDocument()
   })
 
+  it('keeps the rail controls reachable on mobile via an off-canvas drawer', () => {
+    render(
+      <CalendarLeftRail
+        {...baseProps}
+        rollup={rollup()}
+        runway={runway}
+        subscribeUrl="https://app.example/ics/acme/tok123"
+      />
+    )
+    const trigger = screen.getByRole('button', { name: /open calendar panel/i })
+    expect(trigger).toHaveAttribute('aria-expanded', 'false')
+    // the controls are rendered (the drawer makes them reachable, not a dead-end)
+    expect(screen.getByRole('link', { name: /everything/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /subscribe/i })).toBeInTheDocument()
+    expect(screen.getByRole('grid', { name: /mini calendar/i })).toBeInTheDocument()
+    fireEvent.click(trigger)
+    expect(trigger).toHaveAttribute('aria-expanded', 'true')
+  })
+
   it('lets the mini-month page months without leaving the day', () => {
     render(<CalendarLeftRail {...baseProps} rollup={rollup()} runway={runway} />)
     // Aug 2026 shown; step forward a month → September.

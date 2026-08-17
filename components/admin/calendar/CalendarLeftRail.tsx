@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { TabLinks } from '@/components/ui/tab-links'
@@ -29,6 +29,16 @@ interface CalendarLeftRailProps {
 
 const YMD = /^\d{4}-\d{2}-\d{2}$/
 const WEEKDAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S']
+
+// Mirrors AdminSidebar / ClientQueueRail's hamburger so the drawer reads as the
+// same off-canvas pattern.
+function MenuIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden focusable="false">
+      <path d="M3 5h14M3 10h14M3 15h14" />
+    </svg>
+  )
+}
 
 function monthTitle(monthKey: string): string {
   return new Date(`${monthKey}-01T00:00:00.000Z`).toLocaleDateString(undefined, {
@@ -61,6 +71,24 @@ export function CalendarLeftRail({ orgSlug, today, rollup, runway, subscribeUrl 
   const params = useSearchParams()
   const pathname = usePathname() ?? ''
   const [showSubscribe, setShowSubscribe] = useState(false)
+  // Below md the rail is an off-canvas drawer (mirrors AdminSidebar / ClientQueueRail)
+  // so the kind filter, mini-month, KPIs, runway and ICS subscribe stay reachable on
+  // mobile instead of being hidden. Always opens closed.
+  const [mobileOpen, setMobileOpen] = useState(false)
+
+  // Navigating (picking a day / toggling scope) dismisses the drawer.
+  useEffect(() => {
+    setMobileOpen(false)
+  }, [pathname])
+
+  useEffect(() => {
+    if (!mobileOpen) return
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setMobileOpen(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [mobileOpen])
 
   const view = params.get('view') ?? undefined
   const kinds = params.get('kinds') ?? undefined
@@ -100,7 +128,37 @@ export function CalendarLeftRail({ orgSlug, today, rollup, runway, subscribeUrl 
   ]
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-col overflow-y-auto bg-sidebar">
+    <>
+      {/* Mobile bar: the only rail chrome that takes layout space below md
+          (mirrors AdminSidebar's own mobile bar). Hidden from md up. */}
+      <div className="flex items-center gap-3 border-b border-sidebar-border bg-sidebar px-4 py-3 text-sidebar-foreground md:hidden">
+        <button
+          type="button"
+          onClick={() => setMobileOpen(true)}
+          aria-label="Open calendar panel"
+          aria-expanded={mobileOpen}
+          aria-controls="calendar-left-rail"
+          className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-card"
+        >
+          <MenuIcon />
+        </button>
+        <span className="text-sm font-semibold">Calendar</span>
+      </div>
+
+      {mobileOpen && (
+        <div className="fixed inset-0 z-40 bg-black/40 md:hidden" onClick={() => setMobileOpen(false)} aria-hidden />
+      )}
+
+      <div
+        id="calendar-left-rail"
+        className={cn(
+          'flex h-full w-[280px] shrink-0 flex-col overflow-y-auto bg-sidebar md:border-r md:border-sidebar-border',
+          // Below md: off-canvas drawer, out of flow so the canvas gets full width.
+          'max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-50 max-md:w-[280px]',
+          'max-md:transition-transform max-md:duration-200 motion-reduce:transition-none',
+          mobileOpen ? 'max-md:translate-x-0' : 'max-md:-translate-x-full'
+        )}
+      >
       <div className="border-b border-sidebar-border px-4 py-3">
         <TabLinks
           tabs={filterTabs}
@@ -199,6 +257,7 @@ export function CalendarLeftRail({ orgSlug, today, rollup, runway, subscribeUrl 
           {showSubscribe ? <SubscribePanel url={subscribeUrl} /> : null}
         </div>
       ) : null}
-    </div>
+      </div>
+    </>
   )
 }

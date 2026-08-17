@@ -48,12 +48,11 @@ export default async function CalendarLayout({
 
   return (
     // main (org layout) is a stretched, scrollable box — h-full fills it; the rail
-    // and the canvas/spine each scroll independently. Below md the rail goes away
-    // and the canvas takes the full width (mirrors the Clients cockpit).
+    // and the canvas/spine each scroll independently. The rail manages its own
+    // responsive shape: an in-flow 280px column at md+, an off-canvas drawer below
+    // (its mobile bar sits above the canvas), mirroring the Clients cockpit.
     <div className="flex h-full min-h-0 max-md:flex-col">
-      <div className="hidden h-full w-[280px] shrink-0 border-r border-sidebar-border md:block">
-        <CalendarLeftRail orgSlug={orgSlug} today={today} rollup={rollup} runway={runway} subscribeUrl={subscribeUrl} />
-      </div>
+      <CalendarLeftRail orgSlug={orgSlug} today={today} rollup={rollup} runway={runway} subscribeUrl={subscribeUrl} />
       <div className="flex min-w-0 flex-1 overflow-hidden max-lg:flex-col">{children}</div>
     </div>
   )
