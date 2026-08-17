@@ -4,7 +4,8 @@ import { notFound } from 'next/navigation'
 import { adminDb } from '@/lib/firebase-admin'
 import { getCalendarFeed } from '@/actions/calendar'
 import { listEvents } from '@/actions/events'
-import { feedInRange, weekRange } from '@/lib/calendar'
+import { ensureIcsToken } from '@/actions/calendar-sync'
+import { feedInWindow } from '@/lib/calendar-window'
 import { weekRollup } from '@/lib/calendar-week'
 import { buildRunway } from '@/lib/calendar-cashflow'
 import { todayYmd } from '@/lib/opportunity-detail'
@@ -31,12 +32,19 @@ export default async function CalendarLayout({
   const orgId = orgSnap.docs[0].id
 
   const today = todayYmd()
-  const { from, to } = weekRange(today)
-  const [feed, events] = await Promise.all([getCalendarFeed(orgId, orgSlug), listEvents(orgId)])
+  const [feed, events, icsToken] = await Promise.all([
+    getCalendarFeed(orgId, orgSlug),
+    listEvents(orgId),
+    ensureIcsToken(orgId),
+  ])
+  const origin = process.env.NEXT_PUBLIC_APP_ORIGIN ?? ''
+  const subscribeUrl = `${origin}/ics/${orgSlug}/${icsToken}`
 
-  // KPI stack summarises THIS week (bounded slice); the runway scans the whole
-  // feed forward to each upcoming booked job (receivables timing).
-  const rollup = weekRollup(feedInRange(feed, from, to), today)
+  // KPI stack summarises THIS week. Uses the SPAN-AWARE window (not a start-date
+  // bound) so a multi-day booking that started last week but spans into this one is
+  // counted — matching what the WeekGrid renders. The runway scans the whole feed
+  // forward to each upcoming booked job (receivables timing).
+  const rollup = weekRollup(feedInWindow(feed, 'week', today), today)
   const runway = buildRunway(feed, events, new Date())
 
   return (
@@ -45,7 +53,7 @@ export default async function CalendarLayout({
     // and the canvas takes the full width (mirrors the Clients cockpit).
     <div className="flex h-full min-h-0 max-md:flex-col">
       <div className="hidden h-full w-[280px] shrink-0 border-r border-sidebar-border md:block">
-        <CalendarLeftRail orgSlug={orgSlug} today={today} rollup={rollup} runway={runway} />
+        <CalendarLeftRail orgSlug={orgSlug} today={today} rollup={rollup} runway={runway} subscribeUrl={subscribeUrl} />
       </div>
       <div className="flex min-w-0 flex-1 overflow-hidden max-lg:flex-col">{children}</div>
     </div>

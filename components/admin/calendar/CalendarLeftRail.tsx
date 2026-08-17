@@ -11,6 +11,8 @@ import type { WeekRollup } from '@/lib/calendar-week'
 import type { RunwayJob } from '@/lib/calendar-cashflow'
 import { CalendarKpiBand } from '@/components/admin/calendar/CalendarKpiBand'
 import { RunwayStrip } from '@/components/admin/calendar/RunwayStrip'
+import { SubscribePanel } from '@/components/admin/calendar/SubscribePanel'
+import { Button } from '@/components/ui/button'
 
 interface CalendarLeftRailProps {
   orgSlug: string
@@ -20,6 +22,9 @@ interface CalendarLeftRailProps {
   rollup: WeekRollup
   /** buildRunway() output over the whole feed. */
   runway: RunwayJob[]
+  /** The org's ICS feed URL (origin + /ics/[orgSlug]/[token]); enables the
+   *  Subscribe-in-Google/Outlook disclosure. Omitted → the entry point hides. */
+  subscribeUrl?: string
 }
 
 const YMD = /^\d{4}-\d{2}-\d{2}$/
@@ -52,9 +57,10 @@ function monthCells(monthKey: string): Array<{ day: string; inMonth: boolean }> 
   })
 }
 
-export function CalendarLeftRail({ orgSlug, today, rollup, runway }: CalendarLeftRailProps) {
+export function CalendarLeftRail({ orgSlug, today, rollup, runway, subscribeUrl }: CalendarLeftRailProps) {
   const params = useSearchParams()
   const pathname = usePathname() ?? ''
+  const [showSubscribe, setShowSubscribe] = useState(false)
 
   const view = params.get('view') ?? undefined
   const kinds = params.get('kinds') ?? undefined
@@ -174,6 +180,25 @@ export function CalendarLeftRail({ orgSlug, today, rollup, runway }: CalendarLef
 
       {/* Cash-flow runway (category-defining) */}
       <RunwayStrip orgSlug={orgSlug} runway={runway} dayHref={dayHref} />
+
+      {/* ICS subscribe — parity with the retired week view. */}
+      {subscribeUrl ? (
+        <div className="mt-auto border-t border-sidebar-border">
+          <div className="px-4 py-3">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="w-full"
+              aria-expanded={showSubscribe}
+              onClick={() => setShowSubscribe((s) => !s)}
+            >
+              Subscribe in Google / Outlook
+            </Button>
+          </div>
+          {showSubscribe ? <SubscribePanel url={subscribeUrl} /> : null}
+        </div>
+      ) : null}
     </div>
   )
 }

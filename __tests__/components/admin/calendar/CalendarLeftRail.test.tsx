@@ -89,6 +89,21 @@ describe('CalendarLeftRail', () => {
     expect(pipeline).toHaveAttribute('aria-current', 'page')
   })
 
+  it('offers an ICS subscribe entry point that reveals the feed URL', () => {
+    render(
+      <CalendarLeftRail
+        {...baseProps}
+        rollup={rollup()}
+        runway={runway}
+        subscribeUrl="https://app.example/ics/acme/tok123"
+      />
+    )
+    expect(screen.queryByText(/calendar sync/i)).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /subscribe/i }))
+    expect(screen.getByText(/calendar sync/i)).toBeInTheDocument()
+    expect(screen.getByText('https://app.example/ics/acme/tok123')).toBeInTheDocument()
+  })
+
   it('lets the mini-month page months without leaving the day', () => {
     render(<CalendarLeftRail {...baseProps} rollup={rollup()} runway={runway} />)
     // Aug 2026 shown; step forward a month → September.

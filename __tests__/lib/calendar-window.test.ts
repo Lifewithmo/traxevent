@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { calendarWindow, feedInWindow, normalizeView } from '@/lib/calendar-window'
-import type { CalendarItem } from '@/lib/calendar'
+import { feedInRange, weekRange, type CalendarItem } from '@/lib/calendar'
+import { weekRollup } from '@/lib/calendar-week'
 
 describe('normalizeView', () => {
   it('defaults unknown or missing views to week', () => {
@@ -59,5 +60,24 @@ describe('feedInWindow', () => {
 
   it('passes the whole feed through untouched for agenda', () => {
     expect(feedInWindow(feed, 'agenda', '2026-08-19')).toHaveLength(feed.length)
+  })
+})
+
+// The week KPI band must count what the WeekGrid renders — including a multi-day
+// booking that started last week but spans into this one. A start-date-only bound
+// (feedInRange) drops it; the span-aware feedInWindow keeps it.
+describe('week KPI rollup uses a span-aware window', () => {
+  const anchor = '2026-08-19' // Mon 2026-08-17 … Sun 2026-08-23
+  const feed: CalendarItem[] = [
+    { id: 'spanning', title: 'Festival', date: '2026-08-14', endDate: '2026-08-18', kind: 'event', href: '/x', headcount: 200 },
+  ]
+
+  it('feedInRange (start-date only) misses the spanning booking', () => {
+    const { from, to } = weekRange(anchor)
+    expect(weekRollup(feedInRange(feed, from, to), anchor).eventCount).toBe(0)
+  })
+
+  it('feedInWindow counts the spanning booking, matching the grid', () => {
+    expect(weekRollup(feedInWindow(feed, 'week', anchor), anchor).eventCount).toBe(1)
   })
 })
