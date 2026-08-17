@@ -124,21 +124,25 @@
 }
 
 :root {
-  /* Charcoal & Sapphire — a true achromatic graphite neutral (no warm or cool
-     cast), so the one sapphire accent reads as a discrete jewel, not a tint. */
+  /* Charcoal & Sapphire — warm-white neutral (light mode): a soft warm paper
+     ground with warm-grey ink, so the UI reads inviting rather than clinical,
+     while the sapphire accent stays cool — warm paper, cool ink. Distinct from
+     the old copper app: the callout is sapphire, money is forest. (Dark mode
+     keeps its approved near-black neutral in the .dark block below.)
+     WCAG-checked: every muted-text pairing clears 5.2:1. */
   --warm-0: #ffffff;
-  --warm-25: #fafafa;
-  --warm-50: #f5f5f4;
-  --warm-100: #ececec;
-  --warm-200: #dfdfde;
-  --warm-300: #c9c9c8;
-  --warm-400: #9a9b9c;
-  --warm-500: #64666a;
-  --warm-600: #4e5054;
-  --warm-700: #3a3b3f;
-  --warm-800: #292a2d;
-  --warm-900: #1c1d1f;
-  --warm-950: #161719;
+  --warm-25: #fbf9f5;
+  --warm-50: #f6f3ed;
+  --warm-100: #ece8df;
+  --warm-200: #ded8cd;
+  --warm-300: #c7bfb1;
+  --warm-400: #9a9184;
+  --warm-500: #675e52;
+  --warm-600: #524b41;
+  --warm-700: #3d3830;
+  --warm-800: #2b2823;
+  --warm-900: #1e1b17;
+  --warm-950: #16130f;
 
   /* Sapphire accent — the single callout color, for action and selection. */
   --copper-50: #eaf1fb;
@@ -189,7 +193,7 @@
   --accent-foreground: var(--warm-800);
   --destructive: #c4362a;
   --border: var(--warm-200);
-  --input: #8a8a89; /* functional form-field boundary — clears WCAG 1.4.11 3:1 (border stays subtle for decorative outlines) */
+  --input: #8a847a; /* functional form-field boundary (warm grey) — clears WCAG 1.4.11 3:1; --border stays subtle for decorative outlines */
   --ring: var(--copper-600);
   --chart-1: var(--copper-400);
   --chart-2: var(--copper-600);
