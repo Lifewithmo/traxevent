@@ -3,7 +3,7 @@ import { buttonVariants } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { formatMoney } from '@/lib/money'
 import { cn } from '@/lib/utils'
-import type { CalendarItem } from '@/lib/calendar'
+import { CALENDAR_KIND_LABELS, type CalendarItem } from '@/lib/calendar'
 import { KIND_DOT } from '@/components/admin/calendar/kind-color'
 
 // Hybrid time-grid geometry. Exported so callers (and tests) share the exact
@@ -11,7 +11,8 @@ import { KIND_DOT } from '@/components/admin/calendar/kind-color'
 export const PX_PER_HOUR = 48
 export const DAY_START_HOUR = 6 // 6am — earlier than most prep starts
 export const DAY_END_HOUR = 22 // 10pm — covers evening events
-const MIN_ITEM_PX = 22 // a 15-minute window is still a tappable target
+// Floor so even a 15-minute window clears the WCAG touch target (44px > 24px min).
+const MIN_ITEM_PX = 44
 
 /** 'HH:mm' → fractional hour ('16:30' → 16.5). */
 function hourOf(hhmm: string): number {
@@ -103,19 +104,93 @@ function BandChip({ item }: { item: CalendarItem }) {
   )
 }
 
-/** A timed item positioned by its start; height ∝ duration. */
-function GridItem({ item, dayStartHour }: { item: CalendarItem; dayStartHour: number }) {
-  const start = hourOf(item.start!)
-  const end = item.end ? hourOf(item.end) : start + 1
-  const top = Math.max(0, (start - dayStartHour) * PX_PER_HOUR)
-  const height = Math.max(MIN_ITEM_PX, (end - start) * PX_PER_HOUR)
+interface PlacedItem {
+  item: CalendarItem
+  top: number
+  height: number
+  leftPct: number
+  widthPct: number
+  invalid: boolean
+}
+
+/**
+ * Position + lane-layout for the timed items of one day. Endpoints are clamped
+ * to [dayStart, dayEnd] so nothing bleeds past the grid; overlapping items are
+ * split into side-by-side lanes so a later item never paints over an earlier one.
+ * Reversed hours (end <= start) are normalised (min/max) and flagged.
+ */
+function layoutTimed(timed: CalendarItem[], dayStartHour: number, dayEndHour: number): PlacedItem[] {
+  const gridHeight = (dayEndHour - dayStartHour) * PX_PER_HOUR
+  const norm = timed
+    .map((item) => {
+      const a = hourOf(item.start!)
+      const b = item.end ? hourOf(item.end) : a + 1
+      const invalid = b <= a
+      const lo = Math.min(a, b)
+      const hi = Math.max(a, b)
+      const s = Math.min(Math.max(lo, dayStartHour), dayEndHour)
+      const e = Math.min(Math.max(hi, dayStartHour), dayEndHour)
+      return { item, s, e, invalid }
+    })
+    .sort((x, y) => x.s - y.s || x.e - y.e)
+
+  // Cluster transitively-overlapping items, then greedily pack each cluster into
+  // the fewest lanes; the cluster's lane count sets every member's width.
+  type Row = (typeof norm)[number] & { lane: number; laneCount: number }
+  const rows: Row[] = []
+  let cluster: Array<(typeof norm)[number] & { lane?: number }> = []
+  let clusterEnd = -Infinity
+  const flush = () => {
+    const laneEnds: number[] = []
+    for (const it of cluster) {
+      let lane = laneEnds.findIndex((end) => it.s >= end)
+      if (lane === -1) {
+        lane = laneEnds.length
+        laneEnds.push(it.e)
+      } else {
+        laneEnds[lane] = it.e
+      }
+      it.lane = lane
+    }
+    for (const it of cluster) rows.push({ ...it, lane: it.lane!, laneCount: laneEnds.length })
+    cluster = []
+  }
+  for (const it of norm) {
+    if (cluster.length > 0 && it.s >= clusterEnd) {
+      flush()
+      clusterEnd = -Infinity
+    }
+    cluster.push(it)
+    clusterEnd = Math.max(clusterEnd, it.e)
+  }
+  if (cluster.length > 0) flush()
+
+  return rows.map(({ item, s, e, invalid, lane, laneCount }) => {
+    const height = Math.max(MIN_ITEM_PX, (e - s) * PX_PER_HOUR)
+    const rawTop = (s - dayStartHour) * PX_PER_HOUR
+    // Keep the box wholly inside the grid even after the min-height floor.
+    const top = Math.min(Math.max(0, rawTop), Math.max(0, gridHeight - height))
+    const widthPct = 100 / laneCount
+    return { item, top, height, leftPct: lane * widthPct, widthPct, invalid }
+  })
+}
+
+/** A timed item positioned by start, sized by duration, offset into its lane. */
+function GridItem({ placed }: { placed: PlacedItem }) {
+  const { item, top, height, leftPct, widthPct, invalid } = placed
   return (
     <Link
       href={item.href}
       data-slot="grid-item"
-      style={{ top, height, borderLeftColor: KIND_DOT[item.kind] }}
-      className="absolute inset-x-1 overflow-hidden rounded-sm border border-border border-l-[3px] bg-card px-1.5 py-0.5 text-[11px] leading-tight shadow-xs transition-colors hover:bg-muted focus-visible:bg-muted motion-reduce:transition-none"
+      data-invalid-hours={invalid ? 'true' : undefined}
+      title={invalid ? 'Check the start / end times' : undefined}
+      style={{ top, height, left: `${leftPct}%`, width: `${widthPct}%`, borderLeftColor: KIND_DOT[item.kind] }}
+      className={cn(
+        'absolute overflow-hidden rounded-sm border border-border border-l-[3px] bg-card px-1.5 py-0.5 text-[11px] leading-tight shadow-xs transition-colors hover:bg-muted focus-visible:bg-muted motion-reduce:transition-none',
+        invalid && 'border-dashed border-destructive'
+      )}
     >
+      <span className="sr-only">{CALENDAR_KIND_LABELS[item.kind]}: </span>
       <span className="block truncate font-medium">{item.title}</span>
       <span className="block truncate text-[10px] text-muted-foreground tabular-nums">
         {timeLabel(item.start!)}
@@ -135,10 +210,11 @@ function TimeGridBody({
   dayStartHour: number
   dayEndHour: number
 }) {
+  const placed = layoutTimed(timed, dayStartHour, dayEndHour)
   return (
     <div
       data-slot="time-grid-body"
-      className="relative flex-1"
+      className="relative flex-1 overflow-hidden"
       style={{ height: (dayEndHour - dayStartHour) * PX_PER_HOUR }}
     >
       {hourRange(dayStartHour, dayEndHour).map((h) => (
@@ -149,12 +225,9 @@ function TimeGridBody({
           aria-hidden
         />
       ))}
-      {timed
-        .slice()
-        .sort((a, b) => a.start!.localeCompare(b.start!))
-        .map((i) => (
-          <GridItem key={`${i.kind}:${i.id}`} item={i} dayStartHour={dayStartHour} />
-        ))}
+      {placed.map((p) => (
+        <GridItem key={`${p.item.kind}:${p.item.id}`} placed={p} />
+      ))}
     </div>
   )
 }

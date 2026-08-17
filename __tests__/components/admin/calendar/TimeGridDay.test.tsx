@@ -57,3 +57,69 @@ describe('TimeGridDay', () => {
     expect(cta).toHaveAttribute('href', '/acme/new-event')
   })
 })
+
+describe('TimeGridDay — grid geometry', () => {
+  const gridItem = (label: string) => screen.getByText(label).closest('a')!
+
+  it('lays overlapping timed items into side-by-side lanes (no collision)', () => {
+    const overlap: CalendarItem[] = [
+      { id: 'ev', title: 'Ceremony', date: day, kind: 'event', href: '/acme/ev', start: '16:00', end: '18:00' },
+      { id: 'dr', title: 'Pickup window', date: day, kind: 'drop', href: '/acme/dr', start: '17:00', end: '19:00' },
+    ]
+    render(<TimeGridDay orgSlug="acme" ymd={day} items={overlap} />)
+    // two lanes: each takes half the width, offset so they never paint over each other
+    expect(gridItem('Ceremony')).toHaveStyle({ left: '0%', width: '50%' })
+    expect(gridItem('Pickup window')).toHaveStyle({ left: '50%', width: '50%' })
+  })
+
+  it('gives non-overlapping items the full column width', () => {
+    const apart: CalendarItem[] = [
+      { id: 'a', title: 'Morning', date: day, kind: 'event', href: '/acme/a', start: '09:00', end: '10:00' },
+      { id: 'b', title: 'Noon', date: day, kind: 'event', href: '/acme/b', start: '11:00', end: '12:00' },
+    ]
+    render(<TimeGridDay orgSlug="acme" ymd={day} items={apart} />)
+    expect(gridItem('Morning')).toHaveStyle({ left: '0%', width: '100%' })
+    expect(gridItem('Noon')).toHaveStyle({ left: '0%', width: '100%' })
+  })
+
+  it('clamps an item running past day-end to the grid bottom', () => {
+    const late: CalendarItem[] = [
+      { id: 'l', title: 'Late night', date: day, kind: 'event', href: '/acme/l', start: '21:00', end: '23:00' },
+    ]
+    render(<TimeGridDay orgSlug="acme" ymd={day} items={late} />)
+    const el = gridItem('Late night')
+    // day-end is 22:00 → the box stops at the grid bottom, never bleeding past it
+    expect(el).toHaveStyle({ top: `${(21 - DAY_START_HOUR) * PX_PER_HOUR}px` })
+    expect(el).toHaveStyle({ height: `${1 * PX_PER_HOUR}px` })
+  })
+
+  it('clamps an item starting before day-start to the visible remainder', () => {
+    const early: CalendarItem[] = [
+      { id: 'e', title: 'Load in', date: day, kind: 'event', href: '/acme/e', start: '06:00', end: '10:00' },
+    ]
+    render(<TimeGridDay orgSlug="acme" ymd={day} items={early} dayStartHour={8} dayEndHour={22} />)
+    const el = gridItem('Load in')
+    expect(el).toHaveStyle({ top: '0px' })
+    // 06:00–10:00 against an 08:00 start shows only the 08:00–10:00 remainder
+    expect(el).toHaveStyle({ height: `${2 * PX_PER_HOUR}px` })
+  })
+
+  it('floors a very short window to a tappable height (>= 24px, prefer 44)', () => {
+    const tiny: CalendarItem[] = [
+      { id: 't', title: 'Quick drop', date: day, kind: 'drop', href: '/acme/t', start: '10:00', end: '10:15' },
+    ]
+    render(<TimeGridDay orgSlug="acme" ymd={day} items={tiny} />)
+    const el = gridItem('Quick drop')
+    const h = Number((el.style.height || '').replace('px', ''))
+    expect(h).toBeGreaterThanOrEqual(24)
+    expect(h).toBe(44)
+  })
+
+  it('flags an item with end <= start instead of silently collapsing', () => {
+    const bad: CalendarItem[] = [
+      { id: 'x', title: 'Reversed', date: day, kind: 'event', href: '/acme/x', start: '18:00', end: '16:00' },
+    ]
+    render(<TimeGridDay orgSlug="acme" ymd={day} items={bad} />)
+    expect(gridItem('Reversed')).toHaveAttribute('data-invalid-hours', 'true')
+  })
+})
