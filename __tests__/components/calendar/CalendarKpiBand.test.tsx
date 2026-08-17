@@ -173,3 +173,34 @@ describe('CalendarKpiBand', () => {
     expect(band).toHaveClass('border-b')
   })
 })
+
+describe('CalendarKpiBand — rail mode (showBooked)', () => {
+  it('adds a Booked-$ tile from rollup.bookedValue and drops "Needs attention"', () => {
+    render(<CalendarKpiBand rollup={rollup({ bookedValue: 12400, eventCount: 2 })} showBooked />)
+    expect(screen.getByText('Booked')).toBeInTheDocument()
+    expect(screen.getByText('$12,400')).toBeInTheDocument()
+    // attention folds into the day spine (decision #3) — no rail attention tile.
+    expect(screen.queryByText('Needs attention')).not.toBeInTheDocument()
+  })
+
+  it('shows a week-scoped Blockers tile, alert-toned only above zero', () => {
+    const { rerender } = render(<CalendarKpiBand rollup={rollup({ blockerCount: 2 })} showBooked />)
+    expect(tileOf('Blockers')).toHaveClass(ALERT)
+    expect(valueOf('Blockers')?.textContent).toBe('2')
+
+    rerender(<CalendarKpiBand rollup={rollup({ blockerCount: 0 })} showBooked />)
+    expect(tileOf('Blockers')).not.toHaveClass(ALERT)
+  })
+
+  it('gives the Booked tile money tone only when something is booked', () => {
+    const { rerender } = render(<CalendarKpiBand rollup={rollup({ bookedValue: 8000 })} showBooked />)
+    expect(valueOf('Booked')).toHaveClass(MONEY)
+    rerender(<CalendarKpiBand rollup={rollup({ bookedValue: 0 })} showBooked />)
+    expect(valueOf('Booked')).not.toHaveClass(MONEY)
+  })
+
+  it('works without an attention prop in rail mode', () => {
+    // rail mode never reads `attention`; omitting it must not throw.
+    expect(() => render(<CalendarKpiBand rollup={rollup()} showBooked />)).not.toThrow()
+  })
+})

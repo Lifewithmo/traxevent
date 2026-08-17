@@ -1,0 +1,173 @@
+'use client'
+
+import { useMemo, useState } from 'react'
+import Link from 'next/link'
+import { usePathname, useSearchParams } from 'next/navigation'
+import { TabLinks } from '@/components/ui/tab-links'
+import { addDays } from '@/lib/opportunity-detail'
+import { calendarHref } from '@/lib/calendar-href'
+import { cn } from '@/lib/utils'
+import type { WeekRollup } from '@/lib/calendar-week'
+import type { RunwayJob } from '@/lib/calendar-cashflow'
+import { CalendarKpiBand } from '@/components/admin/calendar/CalendarKpiBand'
+import { RunwayStrip } from '@/components/admin/calendar/RunwayStrip'
+
+interface CalendarLeftRailProps {
+  orgSlug: string
+  today: string
+  /** weekRollup() over the CURRENT week (param-independent, so the rail survives
+   *  navigation without a refetch). */
+  rollup: WeekRollup
+  /** buildRunway() output over the whole feed. */
+  runway: RunwayJob[]
+}
+
+const YMD = /^\d{4}-\d{2}-\d{2}$/
+const WEEKDAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S']
+
+function monthTitle(monthKey: string): string {
+  return new Date(`${monthKey}-01T00:00:00.000Z`).toLocaleDateString(undefined, {
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  })
+}
+
+function daysInMonth(year: number, month1: number): number {
+  return new Date(Date.UTC(year, month1, 0)).getUTCDate()
+}
+
+/** Monday-start grid of the month's days plus the leading/trailing pad days
+ *  (marked out-of-month) so the calendar is a clean 7-wide block. */
+function monthCells(monthKey: string): Array<{ day: string; inMonth: boolean }> {
+  const [year, month1] = monthKey.split('-').map(Number)
+  const firstYmd = `${monthKey}-01`
+  const firstDow = new Date(`${firstYmd}T00:00:00.000Z`).getUTCDay() // 0 Sun … 6 Sat
+  const lead = (firstDow + 6) % 7
+  const total = Math.ceil((lead + daysInMonth(year, month1)) / 7) * 7
+  const gridStart = addDays(firstYmd, -lead)
+  return Array.from({ length: total }, (_, i) => {
+    const day = addDays(gridStart, i)
+    return { day, inMonth: day.slice(0, 7) === monthKey }
+  })
+}
+
+export function CalendarLeftRail({ orgSlug, today, rollup, runway }: CalendarLeftRailProps) {
+  const params = useSearchParams()
+  const pathname = usePathname() ?? ''
+
+  const view = params.get('view') ?? undefined
+  const kinds = params.get('kinds') ?? undefined
+  const week = params.get('week') ?? undefined
+
+  // The open day comes from the /calendar/[ymd] segment, not a param.
+  const last = pathname.split('/').filter(Boolean).pop() ?? ''
+  const selected = YMD.test(last) ? last : undefined
+
+  // Mini-month cursor: starts on the open day's month (or the current week /
+  // today), and pages locally without navigating away from the day.
+  const initialMonth = (selected ?? week ?? today).slice(0, 7)
+  const [cursor, setCursor] = useState(initialMonth)
+
+  const cells = useMemo(() => monthCells(cursor), [cursor])
+  const stepMonth = (delta: number) => {
+    const anchor = addDays(`${cursor}-01`, delta > 0 ? 32 : -1)
+    setCursor(anchor.slice(0, 7))
+  }
+
+  const dayHref = (ymd: string) => calendarHref({ orgSlug, view, week, kinds, ymd })
+
+  // Kind filter: preserve the open day + view/week, only toggle scope.
+  const filterTabs = [
+    { key: 'all' as const, label: 'Everything', href: calendarHref({ orgSlug, view, week, ymd: selected }) },
+    {
+      key: 'pipeline' as const,
+      label: 'Pipeline only',
+      href: calendarHref({ orgSlug, view, week, kinds: 'pipeline', ymd: selected }),
+    },
+  ]
+
+  return (
+    <div className="flex h-full min-h-0 w-full flex-col overflow-y-auto bg-sidebar">
+      <div className="border-b border-sidebar-border px-4 py-3">
+        <TabLinks
+          tabs={filterTabs}
+          active={kinds === 'pipeline' ? 'pipeline' : 'all'}
+          ariaLabel="Calendar filter"
+          className="w-full"
+        />
+      </div>
+
+      {/* Mini-month */}
+      <div className="border-b border-sidebar-border px-4 py-3">
+        <div className="mb-2 flex items-center justify-between">
+          <span className="text-[13px] font-semibold text-sidebar-foreground">{monthTitle(cursor)}</span>
+          <div className="flex items-center gap-0.5">
+            <button
+              type="button"
+              aria-label="Previous month"
+              onClick={() => stepMonth(-1)}
+              className="flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-card motion-reduce:transition-none"
+            >
+              ←
+            </button>
+            <button
+              type="button"
+              aria-label="Next month"
+              onClick={() => stepMonth(1)}
+              className="flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-card motion-reduce:transition-none"
+            >
+              →
+            </button>
+          </div>
+        </div>
+        <div role="grid" aria-label={`Mini calendar, ${monthTitle(cursor)}`} className="grid grid-cols-7 gap-0.5">
+          {WEEKDAYS.map((w, i) => (
+            <div
+              key={i}
+              role="columnheader"
+              aria-hidden
+              className="pb-1 text-center font-mono text-[9px] font-bold uppercase text-muted-foreground"
+            >
+              {w}
+            </div>
+          ))}
+          {cells.map(({ day, inMonth }) => {
+            const dayNum = Number(day.slice(8, 10))
+            const isToday = day === today
+            const isSelected = day === selected
+            if (!inMonth) {
+              return <span key={day} aria-hidden className="py-1 text-center text-[11px] text-muted-foreground/30" />
+            }
+            return (
+              <Link
+                key={day}
+                href={dayHref(day)}
+                aria-current={isSelected ? 'date' : undefined}
+                className={cn(
+                  'flex h-6 items-center justify-center rounded-md text-[11px] tabular-nums transition-colors hover:bg-card focus-visible:bg-card motion-reduce:transition-none',
+                  isToday && 'bg-foreground font-bold text-background',
+                  isSelected && !isToday && 'bg-card font-semibold text-foreground ring-1 ring-inset ring-ring',
+                  !isToday && !isSelected && 'text-sidebar-foreground'
+                )}
+              >
+                {dayNum}
+              </Link>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* This-week KPIs (Booked-$ wired here) */}
+      <div className="border-b border-sidebar-border">
+        <p className="px-5 pt-3 text-[11px] font-semibold uppercase tracking-[.06em] text-muted-foreground">
+          This week
+        </p>
+        <CalendarKpiBand rollup={rollup} showBooked />
+      </div>
+
+      {/* Cash-flow runway (category-defining) */}
+      <RunwayStrip orgSlug={orgSlug} runway={runway} dayHref={dayHref} />
+    </div>
+  )
+}

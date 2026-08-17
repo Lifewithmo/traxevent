@@ -6,14 +6,20 @@ import { attentionCount, type AttentionGroup, type WeekRollup } from '@/lib/cale
 interface CalendarKpiBandProps {
   /** weekRollup() over the SHOWN week. */
   rollup: WeekRollup
-  /** needsAttention() over the WHOLE feed — the caller owns the derivation. */
-  attention: AttentionGroup[]
+  /** needsAttention() over the WHOLE feed — the caller owns the derivation.
+   *  Unused (and optional) in rail mode: attention folds into the day spine. */
+  attention?: AttentionGroup[]
   /** Which feed the page is showing. `?kinds=pipeline` filters events and
    *  invoices out entirely, so a booked/money band there would read "nothing
    *  booked · nothing due" for a week that has both. */
   scope?: 'all' | 'pipeline'
   /** pipeline scope only: open opportunities carrying no date at all. */
   undated?: number
+  /** Cockpit LEFT-RAIL variant (decision #3): swap the feed-scoped "Needs
+   *  attention" tile — which now lives folded into the day spine — for the
+   *  category surfaces the rail owns: Booked-$ (weekRollup().bookedValue) and a
+   *  week-scoped Blockers count. */
+  showBooked?: boolean
 }
 
 // Summarises the SHOWN week, so it carries everything the old 12px prose line
@@ -23,7 +29,65 @@ interface CalendarKpiBandProps {
 // anything past due) while the other tiles are week-scoped, so EVERY branch of
 // its note names the horizon. Without that, paging to a week beyond the horizon
 // reads "0 · nothing blocking" as if it were a claim about the week on screen.
-export function CalendarKpiBand({ rollup, attention, scope = 'all', undated = 0 }: CalendarKpiBandProps) {
+export function CalendarKpiBand({
+  rollup,
+  attention = [],
+  scope = 'all',
+  undated = 0,
+  showBooked = false,
+}: CalendarKpiBandProps) {
+  // Rail variant: the KPI stack the cockpit's left rail owns — Events · Guests ·
+  // Booked-$ · Due-$ · Blockers (spec §5). "Needs attention" is gone from here
+  // because the day spine now carries it (decision #3).
+  if (showBooked) {
+    const bookedValue = rollup.bookedValue
+    const overdue = rollup.overdueDueAmount > 0
+    return (
+      <KpiBand inset>
+        <StatTile
+          label="Events"
+          value={String(rollup.eventCount)}
+          note={rollup.eventCount > 0 ? 'this week' : 'nothing booked'}
+        />
+        <StatTile
+          label="Guests"
+          value={rollup.guestCount.toLocaleString()}
+          note={
+            rollup.eventCount === 0
+              ? undefined
+              : `across ${rollup.eventCount} ${rollup.eventCount === 1 ? 'event' : 'events'}`
+          }
+        />
+        <StatTile
+          label="Booked"
+          value={formatMoney(bookedValue)}
+          // Booked-$ is closed-won estimated_value landing this week. Green only
+          // when it is real money — $0 booked is neutral, not a win.
+          tone={bookedValue > 0 ? 'money' : 'default'}
+          note={bookedValue > 0 ? 'won, this week' : 'nothing won yet'}
+        />
+        <StatTile
+          label="Due this week"
+          value={formatMoney(rollup.dueAmount)}
+          tone={overdue ? 'alert' : rollup.dueAmount > 0 ? 'money' : 'default'}
+          note={
+            overdue
+              ? `${formatMoney(rollup.overdueDueAmount)} overdue`
+              : rollup.dueAmount > 0
+                ? 'nothing overdue'
+                : 'nothing due'
+          }
+        />
+        <StatTile
+          label="Blockers"
+          value={String(rollup.blockerCount)}
+          tone={rollup.blockerCount > 0 ? 'alert' : 'default'}
+          note={rollup.blockerCount > 0 ? 'this week' : 'none this week'}
+        />
+      </KpiBand>
+    )
+  }
+
   const attentionTotal = attentionCount(attention)
   const blocking = attention.find((g) => g.key === 'blocker')?.entries.length ?? 0
 
