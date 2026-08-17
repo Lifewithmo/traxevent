@@ -15,6 +15,9 @@ export interface CalendarItem {
   detail?: string
   /** invoice_due only: the outstanding balance. */
   amount?: number
+  /** timed items only ('HH:mm'): events with working hours, drop windows. Absent = all-day. */
+  start?: string
+  end?: string
   /** compliance only: an upcoming booked event depends on this document. */
   blocker?: boolean
   /** lead dates are holds, not bookings. */
@@ -131,6 +134,8 @@ export function buildCalendarFeed(orgSlug: string, s: CalendarFeedSources): Cale
           ? e.location.name
           : undefined,
       headcount: e.headcount,
+      // timed placement on the grid; absent hours ⇒ all-day "time TBD"
+      ...(e.hours ? { start: e.hours.start, end: e.hours.end } : {}),
     })
   }
 
@@ -189,18 +194,20 @@ export function buildCalendarFeed(orgSlug: string, s: CalendarFeedSources): Cale
     })
   }
 
-  // drop — one entry per distinct pickup day of live (scheduled/closed) drops
+  // drop — one entry per pickup WINDOW of live (scheduled/closed) drops, each
+  // carrying its own start/end so the time-grid can place it.
   for (const d of s.drops) {
     if (d.status !== 'scheduled' && d.status !== 'closed') continue
-    const days = [...new Set(d.pickup.windows.map((w) => w.day))]
-    for (const day of days) {
+    for (const w of d.pickup.windows) {
       items.push({
-        id: `${d.id}:${day}`,
+        id: `${d.id}:${w.id}`,
         title: `Drop pickup: ${d.title}`,
-        date: day,
+        date: w.day.slice(0, 10),
         kind: 'drop',
         href: `/${orgSlug}/drop-orders/${d.id}`,
         detail: d.pickup.location_name,
+        start: w.start,
+        end: w.end,
       })
     }
   }

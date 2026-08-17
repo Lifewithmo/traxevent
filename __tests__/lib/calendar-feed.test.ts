@@ -144,16 +144,73 @@ describe('buildCalendarFeed', () => {
     expect(row.detail).toBe('Capitol Blvd')
   })
 
-  it('emits one drop item per pickup-window day for scheduled drops, skipping drafts/archived', () => {
+  it('emits one drop item per pickup window for scheduled drops, skipping drafts/archived', () => {
     const items = buildCalendarFeed('acme', { ...empty, drops: [drop({})] })
     const dropItems = items.filter((i) => i.kind === 'drop')
-    expect(dropItems).toHaveLength(2)
+    // one item per WINDOW now (two windows share 2026-08-22), not per distinct day
+    expect(dropItems).toHaveLength(3)
     expect(dropItems[0]).toMatchObject({
       date: '2026-08-22', title: 'Drop pickup: Weekend Drop',
       href: '/acme/drop-orders/d1', detail: 'SW Boise',
     })
     const draftItems = buildCalendarFeed('acme', { ...empty, drops: [drop({ status: 'draft' })] })
     expect(draftItems.filter((i) => i.kind === 'drop')).toHaveLength(0)
+  })
+
+  // ── Task 1: time projection onto event items + per-window drop times ──
+  it('projects Event.hours onto event items as start/end', () => {
+    const items = buildCalendarFeed('acme', {
+      ...empty,
+      events: [event({ id: 'e1', name: 'Wedding', event_start: '2026-08-22', event_end: '2026-08-22', hours: { start: '16:00', end: '21:00' } })],
+    })
+    const ev = items.find((i) => i.id === 'e1')!
+    expect(ev.start).toBe('16:00')
+    expect(ev.end).toBe('21:00')
+  })
+
+  it('leaves an event without hours time-less, so it falls to the all-day band', () => {
+    const items = buildCalendarFeed('acme', {
+      ...empty,
+      events: [event({ id: 'e2', name: 'Job', event_start: '2026-08-22', event_end: '2026-08-22' })],
+    })
+    const ev = items.find((i) => i.id === 'e2')!
+    expect(ev.start).toBeUndefined()
+    expect(ev.end).toBeUndefined()
+  })
+
+  it('emits one drop item per window carrying that window start/end', () => {
+    const items = buildCalendarFeed('acme', {
+      ...empty,
+      drops: [drop({
+        id: 'd9', title: 'Twin', pickup: {
+          location_name: 'SW Boise',
+          windows: [
+            { id: 'a', day: '2026-08-18', start: '16:00', end: '18:00' },
+            { id: 'b', day: '2026-08-18', start: '19:00', end: '20:00' },
+          ],
+        },
+      })],
+    })
+    const dropItems = items.filter((i) => i.kind === 'drop')
+    expect(dropItems).toHaveLength(2)
+    expect(dropItems.map((i) => i.start).sort()).toEqual(['16:00', '19:00'])
+    expect(dropItems.map((i) => i.end).sort()).toEqual(['18:00', '20:00'])
+    expect(dropItems.map((i) => i.date)).toEqual(['2026-08-18', '2026-08-18'])
+  })
+
+  it('carries no time on date-only kinds (invoice_due, task, compliance, lead)', () => {
+    const items = buildCalendarFeed('acme', {
+      ...empty,
+      leads: [lead({ id: 'l', title: 'Wedding', event_date: '2026-08-20', stage: 'proposal' })],
+      tasksByLeadId: { l: [task({ id: 't1', lead_id: 'l', due_date: '2026-08-20' })] },
+      complianceDocs: [doc({ id: 'c1', expires_on: '2026-08-20' })],
+      invoices: [invoice({ id: 'i1', due_date: '2026-08-20' })],
+    })
+    for (const kind of ['invoice_due', 'task', 'compliance', 'lead'] as const) {
+      const it = items.find((i) => i.kind === kind)!
+      expect(it.start).toBeUndefined()
+      expect(it.end).toBeUndefined()
+    }
   })
 })
 
@@ -187,6 +244,6 @@ describe('assembleCalendarFeed', () => {
     listDropsCoreSpy.mockResolvedValueOnce([drop({})])
     const items = await assembleCalendarFeed('org-1', 'acme')
     expect(listDropsCoreSpy).toHaveBeenCalledWith('org-1')
-    expect(items.filter((i) => i.kind === 'drop')).toHaveLength(2)
+    expect(items.filter((i) => i.kind === 'drop')).toHaveLength(3)
   })
 })
