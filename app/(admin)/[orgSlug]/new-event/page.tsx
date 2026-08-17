@@ -20,6 +20,10 @@ export default function NewEventPage() {
   const [eventTypeId, setEventTypeId] = useState<string>(DEFAULT_EVENT_TYPE_ID)
   const [eventStart, setEventStart] = useState('')
   const [eventEnd, setEventEnd] = useState('')
+  // Optional booking time for client jobs (writes the existing Event.hours field).
+  // Blank → omitted → the calendar renders the job in the all-day "time TBD" band.
+  const [hoursStart, setHoursStart] = useState('')
+  const [hoursEnd, setHoursEnd] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [eventTypes, setEventTypes] = useState<EventType[]>([])
@@ -56,6 +60,7 @@ export default function NewEventPage() {
         ...eventCreateFieldsFromType(selectedType),
         event_start: eventStart,
         event_end: eventEnd,
+        ...(hoursStart && hoursEnd ? { hours: { start: hoursStart, end: hoursEnd } } : {}),
       })
       router.push(`/${orgSlug}/${event.slug}/dashboard`)
     } catch (err: unknown) {
@@ -102,6 +107,17 @@ export default function NewEventPage() {
               <div className="space-y-1">
                 <Label htmlFor="campEnd">End date</Label>
                 <Input id="campEnd" type="date" value={eventEnd} onChange={(e) => setEventEnd(e.target.value)} required />
+              </div>
+            </div>
+            {/* Optional booking time — sets the job's time on the calendar; blank shows it as "time TBD". */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <Label htmlFor="hoursStart">Start time (optional)</Label>
+                <Input id="hoursStart" type="time" value={hoursStart} onChange={(e) => setHoursStart(e.target.value)} />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="hoursEnd">End time (optional)</Label>
+                <Input id="hoursEnd" type="time" value={hoursEnd} onChange={(e) => setHoursEnd(e.target.value)} />
               </div>
             </div>
             {error && <p className="text-sm text-destructive">{error}</p>}
