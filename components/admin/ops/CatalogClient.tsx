@@ -126,7 +126,7 @@ export function CatalogClient({
       <CatalogKpiBand title={title} packages={packages} resources={resources} costing={costing} />
 
       {/* The rail is a sibling of the WHOLE tab set, not of one panel's content —
-          same shape as TodayClient/CalendarWeekClient. Rendered inside PackagesTab
+          same shape as TodayClient. Rendered inside PackagesTab
           it only capped the reading column on one of three tabs, leaving the
           Ingredients table and the Checklists stack stretched to the full 7xl. */}
       <div className="flex flex-col gap-4 px-5 py-4 lg:flex-row">
