@@ -118,6 +118,39 @@ describe('buildCalendarFeed', () => {
     expect(items[0].detail).toBe('Wedding')
   })
 
+  // ── Task 3: Booked-$ threading (closed-won estimated_value only) ──
+  it('threads bookedValue onto an unconverted closed-won hold from its estimated_value', () => {
+    const items = buildCalendarFeed('acme', {
+      ...empty,
+      leads: [
+        lead({ id: 'won', stage: 'closed_won', estimated_value: 8000, event_date: '2026-08-22' }),
+        lead({ id: 'open', stage: 'proposal', estimated_value: 9999, event_date: '2026-08-20' }),
+      ],
+    })
+    expect(items.find((i) => i.id === 'won')!.bookedValue).toBe(8000)
+    // open-stage holds never carry booked value
+    expect(items.find((i) => i.id === 'open')!.bookedValue).toBeUndefined()
+  })
+
+  it('threads bookedValue onto the event of a converted closed-won lead, ignoring payment_amount/booth_fee', () => {
+    const items = buildCalendarFeed('acme', {
+      ...empty,
+      events: [event({ id: 'ev', lead_id: 'won', payment_amount: 150, booth_fee: 40 })],
+      leads: [lead({ id: 'won', stage: 'closed_won', estimated_value: 12000, event_date: '2026-08-14' })],
+    })
+    const row = items.find((i) => i.id === 'ev')!
+    expect(row.kind).toBe('event')
+    expect(row.bookedValue).toBe(12000) // estimated_value, NOT payment_amount/booth_fee
+  })
+
+  it('leaves a plain event (no closed-won lead) without bookedValue', () => {
+    const items = buildCalendarFeed('acme', {
+      ...empty,
+      events: [event({ id: 'ev', payment_amount: 150, booth_fee: 40 })],
+    })
+    expect(items.find((i) => i.id === 'ev')!.bookedValue).toBeUndefined()
+  })
+
   it('tentative holds say why they are on the calendar', () => {
     const items = buildCalendarFeed('acme', {
       ...empty,

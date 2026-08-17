@@ -16,6 +16,7 @@ function rollup(overrides: Partial<WeekRollup> = {}): WeekRollup {
     dueAmount: 0,
     overdueDueAmount: 0,
     blockerCount: 0,
+    bookedValue: 0,
     ...overrides,
   }
 }

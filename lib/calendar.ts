@@ -20,6 +20,9 @@ export interface CalendarItem {
   end?: string
   /** multi-day events only: the last ISO date (YYYY-MM-DD) the item spans; absent = single day. */
   endDate?: string
+  /** Booked-$: the closed-won lead's estimated_value, on its event or its unconverted hold.
+   *  NEVER Event.payment_amount (a registration fee) or Event.booth_fee (an expense). */
+  bookedValue?: number
   /** compliance only: an upcoming booked event depends on this document. */
   blocker?: boolean
   /** lead dates are holds, not bookings. */
@@ -128,6 +131,10 @@ export function buildCalendarFeed(orgSlug: string, s: CalendarFeedSources): Cale
   for (const e of liveEvents) {
     const startYmd = e.event_start.slice(0, 10)
     const endYmd = e.event_end?.slice(0, 10)
+    // Booked-$ comes from the source lead's estimated_value, never the event's
+    // payment_amount (registration fee) or booth_fee (an expense).
+    const wonLead = e.lead_id ? leadById.get(e.lead_id) : undefined
+    const bookedValue = wonLead?.stage === 'closed_won' ? wonLead.estimated_value : undefined
     items.push({
       id: e.id, title: e.name, date: startYmd, kind: 'event',
       href: `/${orgSlug}/${e.slug}/dashboard`,
@@ -142,6 +149,7 @@ export function buildCalendarFeed(orgSlug: string, s: CalendarFeedSources): Cale
       ...(e.hours ? { start: e.hours.start, end: e.hours.end } : {}),
       // multi-day span: carry the end date so feedForDay can include interior days
       ...(endYmd && endYmd > startYmd ? { endDate: endYmd } : {}),
+      ...(bookedValue != null ? { bookedValue } : {}),
     })
   }
 
@@ -152,6 +160,8 @@ export function buildCalendarFeed(orgSlug: string, s: CalendarFeedSources): Cale
       id: l.id, title: opportunityTitle(l), date: l.event_date.slice(0, 10), kind: 'lead',
       href: `/${orgSlug}/leads/${l.id}`, tentative: true,
       detail: l.stage === 'closed_won' ? 'won · not scheduled' : 'not booked',
+      // an unconverted won lead still carries its booked value, bucketed by event_date
+      ...(l.stage === 'closed_won' && l.estimated_value != null ? { bookedValue: l.estimated_value } : {}),
     })
   }
 
