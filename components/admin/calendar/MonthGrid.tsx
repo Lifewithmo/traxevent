@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { buttonVariants } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
-import { feedForDay, feedInRange, type CalendarItem } from '@/lib/calendar'
+import { feedForDay, type CalendarItem } from '@/lib/calendar'
 import { addDays } from '@/lib/opportunity-detail'
 import { cn } from '@/lib/utils'
 import { KIND_DOT } from '@/components/admin/calendar/kind-color'
@@ -32,7 +32,6 @@ export function MonthGrid({ orgSlug, items, month, today, selected, kinds, view 
   const monthKey = month.slice(0, 7)
   const [year, month1] = monthKey.split('-').map(Number)
   const firstYmd = `${monthKey}-01`
-  const lastYmd = `${monthKey}-${String(daysInMonth(year, month1)).padStart(2, '0')}`
 
   const dayHref = (ymd: string) => {
     const p = new URLSearchParams()
@@ -42,7 +41,20 @@ export function MonthGrid({ orgSlug, items, month, today, selected, kinds, view 
     return `/${orgSlug}/calendar/${ymd}${q ? `?${q}` : ''}`
   }
 
-  if (feedInRange(items, firstYmd, lastYmd).length === 0) {
+  // Monday-start grid: pad leading days from the previous month, then fill whole weeks.
+  const firstDow = new Date(`${firstYmd}T00:00:00.000Z`).getUTCDay() // 0 Sun … 6 Sat
+  const lead = (firstDow + 6) % 7
+  const total = Math.ceil((lead + daysInMonth(year, month1)) / 7) * 7
+  const gridStart = addDays(firstYmd, -lead)
+  // Per-day off the FULL feed (feedForDay's span logic), then judge emptiness
+  // from the in-month days — a multi-day event that only SPANS into the month
+  // (its start date is in the prior month) still counts, and still shows.
+  const perCell = Array.from({ length: total }, (_, i) => {
+    const day = addDays(gridStart, i)
+    return { day, inMonth: day.slice(0, 7) === monthKey, items: feedForDay(items, day) }
+  })
+
+  if (perCell.every((c) => !c.inMonth || c.items.length === 0)) {
     return (
       <EmptyState
         title="Nothing scheduled this month"
@@ -57,13 +69,6 @@ export function MonthGrid({ orgSlug, items, month, today, selected, kinds, view 
     )
   }
 
-  // Monday-start grid: pad leading days from the previous month, then fill whole weeks.
-  const firstDow = new Date(`${firstYmd}T00:00:00.000Z`).getUTCDay() // 0 Sun … 6 Sat
-  const lead = (firstDow + 6) % 7
-  const total = Math.ceil((lead + daysInMonth(year, month1)) / 7) * 7
-  const gridStart = addDays(firstYmd, -lead)
-  const cells = Array.from({ length: total }, (_, i) => addDays(gridStart, i))
-
   return (
     <section aria-label="Month view" className="min-w-0">
       <div className="grid grid-cols-7 border-b border-border">
@@ -77,9 +82,7 @@ export function MonthGrid({ orgSlug, items, month, today, selected, kinds, view 
         ))}
       </div>
       <div className="grid grid-cols-7">
-        {cells.map((d) => {
-          const inMonth = d.slice(0, 7) === monthKey
-          const dayItems = feedForDay(items, d)
+        {perCell.map(({ day: d, inMonth, items: dayItems }) => {
           const dots = dayItems.slice(0, MAX_DOTS)
           const overflow = dayItems.length - dots.length
           const isToday = d === today

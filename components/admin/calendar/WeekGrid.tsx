@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { buttonVariants } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
-import { feedForDay, feedInRange, weekDays, type CalendarItem } from '@/lib/calendar'
+import { feedForDay, weekDays, type CalendarItem } from '@/lib/calendar'
 import { cn } from '@/lib/utils'
 import {
   HoursGutter,
@@ -50,7 +50,11 @@ export function WeekGrid({
   dayEndHour = DAY_END_HOUR,
 }: WeekGridProps) {
   const days = weekDays(weekStart)
-  const weekItems = feedInRange(items, days[0], days[6])
+  // Per-day off the FULL feed so feedForDay's span logic keeps a multi-day event
+  // that STARTS before the week on its interior days — a start-date range filter
+  // would drop it. Emptiness is judged the same overlap-aware way.
+  const perDay = days.map((d) => ({ day: d, items: feedForDay(items, d) }))
+  const isEmpty = perDay.every((p) => p.items.length === 0)
 
   const dayHref = (ymd: string) => {
     const p = new URLSearchParams()
@@ -60,7 +64,7 @@ export function WeekGrid({
     return `/${orgSlug}/calendar/${ymd}${q ? `?${q}` : ''}`
   }
 
-  if (weekItems.length === 0) {
+  if (isEmpty) {
     return (
       <EmptyState
         title="Nothing on the calendar this week"
@@ -74,8 +78,6 @@ export function WeekGrid({
       />
     )
   }
-
-  const perDay = days.map((d) => ({ day: d, items: feedForDay(weekItems, d) }))
 
   return (
     <section aria-label="Week grid" className="min-w-0">

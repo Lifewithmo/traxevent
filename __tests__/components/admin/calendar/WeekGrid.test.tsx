@@ -43,6 +43,19 @@ describe('WeekGrid', () => {
     expect(screen.queryByText('Next week')).not.toBeInTheDocument()
   })
 
+  it('shows a multi-day event on its interior days even when it starts before the week', () => {
+    const spanning: CalendarItem[] = [
+      { id: 'span', title: 'Festival', date: '2026-08-15', endDate: '2026-08-19', kind: 'event', href: '/acme/fest' },
+    ]
+    // 08-15 is before the Mon 08-17 week start, but the span reaches into 08-18/08-19
+    const { container } = render(
+      <WeekGrid orgSlug="acme" items={spanning} weekStart={weekStart} today="2026-08-18" />
+    )
+    expect(bandCell(container, '2026-08-18').getByText('Festival')).toBeInTheDocument()
+    // …and a week that only holds the tail of a span is NOT rendered as empty
+    expect(screen.queryByText(/nothing on the calendar this week/i)).not.toBeInTheDocument()
+  })
+
   it('links each day header to its day route, preserving ?kinds and ?view', () => {
     const { container } = render(
       <WeekGrid orgSlug="acme" items={items} weekStart={weekStart} today="2026-08-18" kinds="pipeline" view="week" />

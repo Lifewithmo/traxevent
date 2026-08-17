@@ -57,4 +57,14 @@ describe('MonthGrid', () => {
     expect(screen.getByText(/nothing scheduled/i)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /book a job/i })).toHaveAttribute('href', '/acme/new-event')
   })
+
+  it('is not empty when a multi-day event only spans into the month', () => {
+    const spanning: CalendarItem[] = [
+      { id: 'span', title: 'Festival', date: '2026-07-30', endDate: '2026-08-02', kind: 'event', href: '/acme/fest' },
+    ]
+    const { container } = render(<MonthGrid orgSlug="acme" items={spanning} month="2026-08" today="2026-08-01" />)
+    // starts in July, spans into August — the month is populated, not empty
+    expect(screen.queryByText(/nothing scheduled this month/i)).not.toBeInTheDocument()
+    expect(cell(container, '2026-08-01').queryAllByTestId('density-dot').length).toBeGreaterThan(0)
+  })
 })
