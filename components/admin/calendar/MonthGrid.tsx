@@ -28,6 +28,18 @@ function daysInMonth(year: number, month1: number): number {
   return new Date(Date.UTC(year, month1, 0)).getUTCDate()
 }
 
+const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+/** Accessible cell name: "Wed, Aug 19, 3 items" / "…, 1 item" / "…, nothing scheduled".
+ *  Month/day order is composed explicitly so it never flips to a locale's day-first form. */
+function cellAriaLabel(ymd: string, count: number): string {
+  const dt = new Date(`${ymd}T00:00:00.000Z`)
+  const weekday = dt.toLocaleDateString(undefined, { weekday: 'short', timeZone: 'UTC' })
+  const date = `${weekday}, ${MONTHS_SHORT[dt.getUTCMonth()]} ${dt.getUTCDate()}`
+  const items = count === 0 ? 'nothing scheduled' : `${count} ${count === 1 ? 'item' : 'items'}`
+  return `${date}, ${items}`
+}
+
 export function MonthGrid({ orgSlug, items, month, today, selected, kinds, view }: MonthGridProps) {
   const monthKey = month.slice(0, 7)
   const [year, month1] = monthKey.split('-').map(Number)
@@ -94,7 +106,8 @@ export function MonthGrid({ orgSlug, items, month, today, selected, kinds, view 
               href={dayHref(d)}
               data-slot="month-cell"
               data-day={d}
-              aria-current={isSelected || isToday ? 'date' : undefined}
+              aria-label={cellAriaLabel(d, dayItems.length)}
+              aria-current={isSelected ? 'date' : undefined}
               className={cn(
                 'flex min-h-16 flex-col gap-1 border-b border-l border-border/60 p-1.5 text-left transition-colors hover:bg-muted focus-visible:bg-muted motion-reduce:transition-none',
                 '[&:nth-child(7n+1)]:border-l-0',

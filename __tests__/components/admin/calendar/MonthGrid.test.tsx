@@ -11,12 +11,13 @@ const mk = (id: string, date: string, kind: CalendarItem['kind'] = 'event'): Cal
   href: `/acme/x/${id}`,
 })
 
-// 3 items on the 10th; 6 items on the 15th (overflows MAX_DOTS)
+// 3 items on the 10th; 6 items on the 15th (overflows MAX_DOTS); 1 on the 16th
 const items: CalendarItem[] = [
   mk('a', '2026-08-10', 'event'),
   mk('b', '2026-08-10', 'task'),
   mk('c', '2026-08-10', 'invoice_due'),
   ...Array.from({ length: 6 }, (_, i) => mk(`m${i}`, '2026-08-15', i % 2 ? 'task' : 'event')),
+  mk('solo', '2026-08-16', 'event'),
 ]
 
 const cellEl = (c: HTMLElement, d: string) =>
@@ -47,9 +48,34 @@ describe('MonthGrid', () => {
     )
   })
 
-  it('marks today', () => {
+  it('marks today with a visual marker but not aria-current (reserved for selection)', () => {
     const { container } = render(<MonthGrid orgSlug="acme" items={items} month="2026-08" today="2026-08-15" />)
-    expect(cellEl(container, '2026-08-15')).toHaveAttribute('aria-current', 'date')
+    const today = cellEl(container, '2026-08-15')
+    // today is a visual state, not the current selection — matches WeekGrid's convention
+    expect(today).not.toHaveAttribute('aria-current')
+    expect(today.querySelector('.bg-foreground')).not.toBeNull()
+  })
+
+  it('marks the selected day with aria-current and the ring, even when it is not today', () => {
+    const { container } = render(
+      <MonthGrid orgSlug="acme" items={items} month="2026-08" today="2026-08-01" selected="2026-08-15" />
+    )
+    const sel = cellEl(container, '2026-08-15')
+    expect(sel).toHaveAttribute('aria-current', 'date')
+    expect(sel).toHaveClass('ring-1')
+    // a different, non-selected day carries neither
+    const other = cellEl(container, '2026-08-10')
+    expect(other).not.toHaveAttribute('aria-current')
+    expect(other).not.toHaveClass('ring-1')
+  })
+
+  it('gives each in-month day an accessible name with the date and item count', () => {
+    const { container } = render(<MonthGrid orgSlug="acme" items={items} month="2026-08" today="2026-08-01" />)
+    expect(cellEl(container, '2026-08-10')).toHaveAttribute('aria-label', expect.stringMatching(/Aug 10.*3 items/))
+    // an empty in-month day says so
+    expect(cellEl(container, '2026-08-12')).toHaveAttribute('aria-label', expect.stringMatching(/nothing scheduled/i))
+    // a single item is singular
+    expect(cellEl(container, '2026-08-16')).toHaveAttribute('aria-label', expect.stringMatching(/1 item(?!s)/))
   })
 
   it('renders a specific CTA when the month is empty', () => {
