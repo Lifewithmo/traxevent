@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { describe, it, expect } from 'vitest'
+import { render, screen } from '@testing-library/react'
 import { AgendaView } from '@/components/admin/calendar/AgendaView'
 import type { CalendarItem } from '@/lib/calendar'
 
@@ -17,42 +17,19 @@ describe('AgendaView', () => {
     expect(screen.getByRole('link', { name: 'Wedding' })).toHaveAttribute('href', '/acme/wedding/dashboard')
   })
 
-  it('reveals a bulk action bar once a row is selected', () => {
+  it('shows an invoice amount alongside its row', () => {
     render(<AgendaView orgSlug="acme" items={items} />)
-    // no bar until something is picked
+    expect(screen.getByText('$500')).toBeInTheDocument()
+  })
+
+  // The old multi-select "Reschedule / Tag" toolbar was inert (no handler was ever
+  // wired), so it was removed rather than shipped as no-op controls. Bulk agenda
+  // actions are a documented fast-follow.
+  it('renders no inert bulk controls', () => {
+    render(<AgendaView orgSlug="acme" items={items} />)
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /reschedule/i })).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('checkbox', { name: /select wedding/i }))
-    expect(screen.getByText(/1 selected/i)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /reschedule/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /tag/i })).toBeInTheDocument()
-  })
-
-  it('passes the selected ids to the bulk handler', () => {
-    const onBulk = vi.fn()
-    render(<AgendaView orgSlug="acme" items={items} onBulk={onBulk} />)
-    fireEvent.click(screen.getByRole('checkbox', { name: /select wedding/i }))
-    fireEvent.click(screen.getByRole('checkbox', { name: /select deposit invoice/i }))
-    expect(screen.getByText(/2 selected/i)).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: /reschedule/i }))
-    expect(onBulk).toHaveBeenCalledWith(['event:e1', 'invoice_due:i1'], 'reschedule')
-  })
-
-  it('toggling a row off hides the bar again', () => {
-    render(<AgendaView orgSlug="acme" items={items} />)
-    const box = screen.getByRole('checkbox', { name: /select wedding/i })
-    fireEvent.click(box)
-    expect(screen.getByRole('button', { name: /reschedule/i })).toBeInTheDocument()
-    fireEvent.click(box)
-    expect(screen.queryByRole('button', { name: /reschedule/i })).not.toBeInTheDocument()
-  })
-
-  it('wraps each select checkbox in a touch-safe hit target', () => {
-    render(<AgendaView orgSlug="acme" items={items} />)
-    const box = screen.getByRole('checkbox', { name: /select wedding/i })
-    const label = box.closest('label')
-    expect(label).not.toBeNull()
-    // a bare 16px input fails the WCAG target gate; the padded label clears it
-    expect(label).toHaveClass('size-11')
+    expect(screen.queryByRole('button', { name: /tag/i })).not.toBeInTheDocument()
   })
 
   it('renders one specific CTA when the feed is empty', () => {
