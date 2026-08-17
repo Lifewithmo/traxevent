@@ -2,8 +2,8 @@ export const dynamic = 'force-dynamic'
 
 import { notFound } from 'next/navigation'
 import { adminDb } from '@/lib/firebase-admin'
-import { getCalendarFeed, getDayDetail } from '@/actions/calendar'
-import { listEvents } from '@/actions/events'
+import { getDayDetail } from '@/actions/calendar'
+import { orgCalendarFeed, orgEvents } from '@/lib/calendar-fetch'
 import { filterFeed, PIPELINE_KINDS } from '@/lib/calendar'
 import { feedInWindow, normalizeView } from '@/lib/calendar-window'
 import { buildRunway } from '@/lib/calendar-cashflow'
@@ -38,9 +38,12 @@ export default async function CalendarDayPage({
   const anchor = (sp.week ?? ymd).slice(0, 10)
   const kinds = sp.kinds === 'pipeline' ? 'pipeline' : undefined
 
+  // orgCalendarFeed / orgEvents are React.cache()'d, so these reuse the layout's
+  // fetch within the request. getDayDetail keeps its own source fan-out (it needs
+  // the raw arrays) — a tracked perf fast-follow, see lib/calendar-fetch.ts.
   const [feed, events, detail] = await Promise.all([
-    getCalendarFeed(orgId, orgSlug),
-    listEvents(orgId),
+    orgCalendarFeed(orgId, orgSlug),
+    orgEvents(orgId),
     getDayDetail(orgId, orgSlug, ymd),
   ])
   const scoped = kinds === 'pipeline' ? filterFeed(feed, PIPELINE_KINDS) : feed

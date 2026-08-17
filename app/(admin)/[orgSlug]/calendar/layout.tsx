@@ -2,8 +2,7 @@ export const dynamic = 'force-dynamic'
 
 import { notFound } from 'next/navigation'
 import { adminDb } from '@/lib/firebase-admin'
-import { getCalendarFeed } from '@/actions/calendar'
-import { listEvents } from '@/actions/events'
+import { orgCalendarFeed, orgEvents } from '@/lib/calendar-fetch'
 import { ensureIcsToken } from '@/actions/calendar-sync'
 import { feedInWindow } from '@/lib/calendar-window'
 import { weekRollup } from '@/lib/calendar-week'
@@ -32,9 +31,11 @@ export default async function CalendarLayout({
   const orgId = orgSnap.docs[0].id
 
   const today = todayYmd()
+  // orgCalendarFeed / orgEvents are React.cache()'d, so the page (and the day
+  // route) reuse this same fetch within the request instead of re-fanning out.
   const [feed, events, icsToken] = await Promise.all([
-    getCalendarFeed(orgId, orgSlug),
-    listEvents(orgId),
+    orgCalendarFeed(orgId, orgSlug),
+    orgEvents(orgId),
     ensureIcsToken(orgId),
   ])
   const origin = process.env.NEXT_PUBLIC_APP_ORIGIN ?? ''
