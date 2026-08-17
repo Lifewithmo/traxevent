@@ -38,11 +38,14 @@ function vevent(item: CalendarItem, dtstamp: string): string[] {
   const description = [label, item.detail].filter(Boolean).join(' · ')
   // Timed items (event working hours, drop windows) get real DTSTART/DTEND so
   // two windows on the same day are distinguishable; timed DTEND is inclusive.
-  // Everything else is an all-day event, whose DTEND is exclusive (ends next day).
+  // Everything else is an all-day event, whose DTEND is exclusive (the day AFTER
+  // the last spanned day) — so a multi-day event (endDate set) exports as a true
+  // span, not a single day.
+  const lastDay = (item.endDate ?? date).slice(0, 10)
   const dateLines =
     item.start && item.end
       ? [`DTSTART:${icsDateTime(date, item.start)}`, `DTEND:${icsDateTime(date, item.end)}`]
-      : [`DTSTART;VALUE=DATE:${icsDate(date)}`, `DTEND;VALUE=DATE:${icsDate(addDays(date, 1))}`]
+      : [`DTSTART;VALUE=DATE:${icsDate(date)}`, `DTEND;VALUE=DATE:${icsDate(addDays(lastDay, 1))}`]
   return [
     'BEGIN:VEVENT',
     `UID:${item.kind}-${item.id}@traxevent`,

@@ -27,6 +27,14 @@ describe('buildIcs', () => {
     expect(ics.endsWith('END:VCALENDAR\r\n')).toBe(true)
   })
 
+  it('exports a multi-day event as a span with exclusive DTEND (endDate + 1)', () => {
+    const ics = buildIcs([item({ date: '2026-08-14', endDate: '2026-08-16' })], 'Cal', now)
+    expect(ics).toContain('DTSTART;VALUE=DATE:20260814')
+    // exclusive end: the day AFTER the last spanned day (08-16 → 08-17)
+    expect(ics).toContain('DTEND;VALUE=DATE:20260817')
+    expect(ics).not.toContain('DTEND;VALUE=DATE:20260815')
+  })
+
   it('marks tentative holds and appends invoice amounts to the summary', () => {
     const ics = buildIcs(
       [
