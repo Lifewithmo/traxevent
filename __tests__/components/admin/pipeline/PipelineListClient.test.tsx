@@ -716,4 +716,89 @@ describe('PipelineListClient', () => {
       confirmSpy.mockRestore()
     })
   })
+
+  /*
+    CAPACITY-AWARE RADAR COPY (increment 1 · resource-aware). For a business-tier
+    org that has configured units, a row carries `overCapacity` (a CapacityDay)
+    and the badge stops being the binary "Date conflict": it names the
+    denominator that broke — "Over capacity — N events · M carts (date)" — so the
+    operator reads the shortfall, not merely a flag. Base/solo orgs never carry
+    `overCapacity` and keep the increment-1 "Date conflict" copy byte-for-byte.
+  */
+  describe('capacity-aware radar copy', () => {
+    const capRow = (overCapacity: Record<string, unknown>, conflict = true) => ({
+      lead: lead({ id: 'cap1', name: 'Saturday Rush', stage: 'proposal', event_date: '2026-09-30' }),
+      health: 'active' as const,
+      statusLine: 'Next: call',
+      eventDate: '2026-09-30',
+      conflict,
+      overCapacity,
+    })
+
+    it('names the mobile shortfall — "N events · M carts" — instead of a bare conflict flag', () => {
+      render(<PipelineListClient {...baseProps} groups={{
+        ...emptyGroups,
+        active: [capRow({
+          date: '2026-09-30', over: true,
+          detail: [{ kind: 'mobile', demand: 4, supply: 3 }, { kind: 'venue', demand: 0, supply: 2 }],
+        })],
+      }} />)
+      const pill = screen.getByText('Over capacity — 4 events · 3 carts (Sep 30, 2026)')
+      expect(pill.getAttribute('data-slot')).toBe('status-pill')
+      expect(pill.className).toContain('var(--status-alert-bg)')
+      // Reuses the #115 wrap fix so the longer copy does not clip at 375.
+      expect(pill.className).toContain('max-w-full')
+      expect(pill.className).toContain('whitespace-normal')
+      // Capacity copy REPLACES the increment-1 badge; it must not double up.
+      expect(screen.queryByText(/Date conflict/)).toBeNull()
+    })
+
+    it('names a room shortfall as "rooms", not "carts", when the venue is the breach', () => {
+      render(<PipelineListClient {...baseProps} groups={{
+        ...emptyGroups,
+        active: [capRow({
+          date: '2026-09-30', over: true,
+          detail: [{ kind: 'mobile', demand: 3, supply: 3 }, { kind: 'venue', demand: 3, supply: 2 }],
+        })],
+      }} />)
+      expect(screen.getByText('Over capacity — 3 events · 2 rooms (Sep 30, 2026)')).toBeInTheDocument()
+    })
+
+    it('leads with the larger overage when both kinds breach', () => {
+      render(<PipelineListClient {...baseProps} groups={{
+        ...emptyGroups,
+        active: [capRow({
+          date: '2026-09-30', over: true,
+          // mobile over by 2 (5−3); venue over by 3 (4−1) — the sharper shortfall wins.
+          detail: [{ kind: 'mobile', demand: 5, supply: 3 }, { kind: 'venue', demand: 4, supply: 1 }],
+        })],
+      }} />)
+      expect(screen.getByText('Over capacity — 4 events · 1 room (Sep 30, 2026)')).toBeInTheDocument()
+      expect(screen.queryByText(/carts/)).toBeNull()
+    })
+
+    it('shows no capacity or conflict badge when capacity mode reports the day is under capacity', () => {
+      render(<PipelineListClient {...baseProps} groups={{
+        ...emptyGroups,
+        active: [capRow({
+          date: '2026-09-30', over: false,
+          detail: [{ kind: 'mobile', demand: 2, supply: 3 }, { kind: 'venue', demand: 0, supply: 2 }],
+        }, false)],
+      }} />)
+      expect(screen.queryByText(/Over capacity/)).toBeNull()
+      expect(screen.queryByText(/Date conflict/)).toBeNull()
+    })
+
+    it('keeps the increment-1 "Date conflict" copy for a base org with no capacity data (backstop)', () => {
+      render(<PipelineListClient {...baseProps} groups={{
+        ...emptyGroups,
+        active: [{
+          lead: lead({ id: 'b1', stage: 'proposal', event_date: '2026-09-30' }),
+          health: 'active', statusLine: 'x', eventDate: '2026-09-30', conflict: true,
+        }],
+      }} />)
+      expect(screen.getByText('Date conflict — Sep 30, 2026')).toBeInTheDocument()
+      expect(screen.queryByText(/Over capacity/)).toBeNull()
+    })
+  })
 })

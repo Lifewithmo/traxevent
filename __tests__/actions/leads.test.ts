@@ -117,6 +117,24 @@ describe('leads actions', () => {
     expect('title' in lead).toBe(false)
   })
 
+  it('createLead persists delivery_mode when supplied', async () => {
+    findOrCreateCustomerCore.mockResolvedValue({ customer: { id: 'c1', name: 'Dana Kim', created_at: 'x' }, created: true })
+    const lead = await createLead('o1', { name: 'Dana Kim', delivery_mode: 'onsite' })
+    expect(leadDocSetSpy).toHaveBeenCalledWith(expect.objectContaining({ delivery_mode: 'onsite' }))
+    expect(lead.delivery_mode).toBe('onsite')
+  })
+
+  it('createLead omits delivery_mode entirely when not supplied', async () => {
+    findOrCreateCustomerCore.mockResolvedValue({ customer: { id: 'c1', name: 'Dana Kim', created_at: 'x' }, created: true })
+    await createLead('o1', { name: 'Dana Kim' })
+    expect(leadDocSetSpy.mock.calls[0][0]).not.toHaveProperty('delivery_mode')
+  })
+
+  it('updateLead persists a delivery_mode change', async () => {
+    await updateLead('org-1', 'l1', { delivery_mode: 'onsite' })
+    expect(leadDocUpdateSpy.mock.calls[0][0].delivery_mode).toBe('onsite')
+  })
+
   it('createLead throws "Name is required" for blank name and does not write', async () => {
     await expect(createLead('org-1', { name: '   ' })).rejects.toThrow('Name is required')
     expect(leadDocSetSpy).not.toHaveBeenCalled()

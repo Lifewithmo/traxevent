@@ -14,6 +14,8 @@ import { listVendors } from '@/actions/vendors'
 import { listEventsByLead } from '@/actions/events'
 import { listOrgEventTypes } from '@/actions/event-types'
 import { listCalendarRange } from '@/actions/calendar'
+import { hasMultiResourceCapacity, listCapacityUnitsCore } from '@/lib/capacity/units'
+import type { BillingPlan } from '@/lib/types'
 import { OpportunityDetailClient } from '@/components/admin/OpportunityDetailClient'
 
 export default async function LeadDetailPage({ params }: { params: Promise<{ orgSlug: string; leadId: string }> }) {
@@ -21,9 +23,16 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ org
   const orgSnap = await adminDb.collection('orgs').where('slug', '==', orgSlug).limit(1).get()
   if (orgSnap.empty) notFound()
   const orgId = orgSnap.docs[0].id
+  const org = { plan: orgSnap.docs[0].data().plan as BillingPlan | undefined }
 
   const lead = await getLead(orgId, leadId)
   if (!lead) notFound()
+
+  // The delivery-mode control appears only when there is a room to choose: a
+  // business-tier org with ≥1 active venue unit. Gated read — base/solo orgs
+  // never touch the capacity collection (matches the pipeline page's gate).
+  const capacityUnits = hasMultiResourceCapacity(org) ? await listCapacityUnitsCore(orgId) : []
+  const showDeliveryMode = capacityUnits.some((u) => u.kind === 'venue' && u.active)
 
   const today = todayYmd()
   const center = lead.event_date ?? today
@@ -74,6 +83,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ org
       convertBlocker={convertBlock.blocker}
       today={today}
       calendarItems={calendarItems}
+      showDeliveryMode={showDeliveryMode}
     />
   )
 }

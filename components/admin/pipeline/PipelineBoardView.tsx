@@ -26,6 +26,10 @@ interface PipelineBoardViewProps {
   groups: PipelineGroups
   monthly: ReturnType<typeof closedThisMonth>
   customers?: Customer[]
+  // Same server-computed gate the list uses: business tier + ≥1 active venue.
+  // Offers the offsite / on-site toggle in the board's create form so both
+  // pipeline surfaces behave identically. Undefined ⇒ hidden.
+  showDeliveryMode?: boolean
 }
 
 // The board only offers open stages plus Closed won; losing happens on the
@@ -79,7 +83,7 @@ function applyPending(base: PipelineRow[], pending: Map<string, PendingMove>): P
 }
 
 export function PipelineBoardView({
-  orgId, orgSlug, groups, monthly, customers,
+  orgId, orgSlug, groups, monthly, customers, showDeliveryMode,
 }: PipelineBoardViewProps) {
   const router = useRouter()
   const [rows, setRows] = useState<PipelineRow[]>(() => flatten(groups))
@@ -250,7 +254,7 @@ export function PipelineBoardView({
         <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-lg">
           <DialogTitle className="sr-only">New opportunity</DialogTitle>
           <div className="[&_[data-slot=card-content]]:px-0 [&_[data-slot=card-header]]:px-0 [&_[data-slot=card]]:border-0 [&_[data-slot=card]]:bg-transparent [&_[data-slot=card]]:shadow-none">
-            <NewOpportunityForm orgId={orgId} open={creating} onClose={() => setCreating(false)} customers={customers} />
+            <NewOpportunityForm orgId={orgId} open={creating} onClose={() => setCreating(false)} customers={customers} showDeliveryMode={showDeliveryMode} />
           </div>
         </DialogContent>
       </Dialog>

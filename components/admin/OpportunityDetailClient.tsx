@@ -6,9 +6,11 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { Mail, Phone } from 'lucide-react'
 import { Avatar } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { StatusPill } from '@/components/ui/status-pill'
+import { DeliveryModeToggle, type DeliveryMode } from '@/components/admin/pipeline/DeliveryModeToggle'
 import {
   Dialog,
   DialogContent,
@@ -58,6 +60,10 @@ interface OpportunityDetailClientProps {
   convertBlocker?: ConvertBlocker
   today: string
   calendarItems: CalendarItem[]
+  // Business-tier org with ≥1 active venue unit: show the offsite / on-site
+  // delivery control. Computed on the server page; the client never queries the
+  // plan or units. Undefined ⇒ hidden (nothing to choose without a room).
+  showDeliveryMode?: boolean
 }
 
 type QuickFact = 'value' | 'date'
@@ -175,6 +181,60 @@ function QuickFactDialog({
 }
 
 /**
+ * The delivery-mode control on the cockpit rail — offered only for a
+ * business-tier org that has a room to host in (`showDeliveryMode`, gated on the
+ * server). It is the demand signal the capacity radar reads: an on-site event
+ * consumes one of the operator's rooms, an offsite one takes a serving unit to
+ * the venue. Default offsite.
+ *
+ * Persisted OPTIMISTICALLY: the segment flips immediately, `updateLead` writes,
+ * `router.refresh()` re-pulls the page (the radar recomputes off the new mode).
+ * A rejected write rolls the segment back and shows the reason, mirroring the
+ * inline-edit pattern used by QuickFactDialog above — an operator must never be
+ * left looking at a mode the server did not accept.
+ */
+function DeliveryModeControl({ orgId, lead }: { orgId: string; lead: Lead }) {
+  const router = useRouter()
+  const [mode, setMode] = useState<DeliveryMode>(lead.delivery_mode ?? 'offsite')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function change(next: DeliveryMode) {
+    if (next === mode || saving) return
+    const prev = mode
+    setMode(next)
+    setSaving(true)
+    setError(null)
+    try {
+      await updateLead(orgId, lead.id, { delivery_mode: next })
+      router.refresh()
+    } catch (e: unknown) {
+      setMode(prev)
+      setError(e instanceof Error ? e.message : 'Could not save')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Card>
+      <CardContent className="space-y-2 pt-4">
+        <DeliveryModeToggle
+          value={mode}
+          onChange={change}
+          disabled={saving}
+          idPrefix={`delivery-${lead.id}`}
+        />
+        <p className="text-xs text-muted-foreground">
+          On-site events use one of your rooms; offsite events send a serving unit to the venue.
+        </p>
+        {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+      </CardContent>
+    </Card>
+  )
+}
+
+/**
  * The opportunity cockpit.
  *
  * JOB: decide the next move on this deal — chase it, price it, close it or kill
@@ -204,7 +264,7 @@ function QuickFactDialog({
  * ledes stacked would render the same facts twice — see buildClientStory on the
  * Clients cockpit, where the header carries no equivalent narrative.
  */
-export function OpportunityDetailClient({ orgId, orgSlug, lead, customer, tasks, activity, job, eventTypes, proposals, invoices, vendors, acceptedProposals, pastBookings = 0, convertBlockReason, convertBlocker, today, calendarItems }: OpportunityDetailClientProps) {
+export function OpportunityDetailClient({ orgId, orgSlug, lead, customer, tasks, activity, job, eventTypes, proposals, invoices, vendors, acceptedProposals, pastBookings = 0, convertBlockReason, convertBlocker, today, calendarItems, showDeliveryMode }: OpportunityDetailClientProps) {
   const searchParams = useSearchParams()
   const [convertOpen, setConvertOpen] = useState(searchParams.get('convert') === '1')
   /**
@@ -347,6 +407,7 @@ export function OpportunityDetailClient({ orgId, orgSlug, lead, customer, tasks,
             blocker={convertBlocker}
           />
           <FactsGrid orgId={orgId} orgSlug={orgSlug} lead={lead} customer={customer} />
+          {showDeliveryMode && <DeliveryModeControl orgId={orgId} lead={lead} />}
           <DatesPanel orgId={orgId} orgSlug={orgSlug} lead={lead} today={today} initialItems={calendarItems} />
           {/* LeadVendorsClient hard-codes its KpiBand to `grid-cols-3` with a
               max-[420px] escape hatch — a VIEWPORT query, which never fires when

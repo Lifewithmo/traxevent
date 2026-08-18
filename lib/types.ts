@@ -480,6 +480,7 @@ export interface Lead {
   waiting?: LeadWaiting    // set when the lead is blocked/waiting on something
   guest_count?: number     // estimated guests; prefills convert headcount
   source?: 'intake' | 'manual'  // how the lead entered the pipeline; absent on pre-2026-08 leads
+  delivery_mode?: 'offsite' | 'onsite'  // capacity demand signal; optional, defaults to offsite (mobile unit, no venue)
   last_touch_at?: string   // ISO; stamped by logActivity; fallback updated_at ?? created_at
   closed_at?: string       // ISO; stamped entering closed_won/closed_lost, cleared on reopen
   lost?: { reason: LostReason; note?: string }
@@ -929,6 +930,27 @@ export interface OpsResource {
   dimension?: Dimension            // fundamental measure; legacy docs inferred on read (spec §3.3)
   conversions?: ConversionBridge[] // AI/operator bridges: density, yields, custom serving units
   notes?: string
+  created_at: string
+  updated_at?: string
+}
+
+// --- Capacity units (pipeline resource capacity; collection: orgs/{orgId}/capacity_units) ---
+// 'mobile' = a deployable serving unit that goes to the job (a coffee cart, truck, kit).
+// 'venue'  = a fixed on-site space the operator hosts events in (a room).
+export type CapacityUnitKind = 'mobile' | 'venue'
+
+export interface CapacityBlockout {
+  start: string          // ISO ymd, inclusive
+  end: string            // ISO ymd, inclusive
+  note?: string          // "maintenance", "held for private event"
+}
+
+export interface CapacityUnit {
+  id: string
+  name: string           // operator-chosen label: "Kart 1", "Room #1"
+  kind: CapacityUnitKind
+  active: boolean        // false = retired; excluded from all supply
+  blockouts: CapacityBlockout[]
   created_at: string
   updated_at?: string
 }

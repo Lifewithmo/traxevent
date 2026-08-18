@@ -9,7 +9,12 @@ const base = {
 
 describe('buildSettingsAreas', () => {
   it('returns one entry per settings area', () => {
-    expect(buildSettingsAreas(base)).toHaveLength(9)
+    expect(buildSettingsAreas(base)).toHaveLength(10)
+  })
+
+  it('includes a reachable capacity area (route /<org>/capacity), never nagging', () => {
+    const capacity = buildSettingsAreas(base).find((a) => a.slug === 'capacity')
+    expect(capacity).toEqual({ slug: 'capacity', label: 'Resources & capacity', configured: true })
   })
 
   it('marks branding unconfigured when there is no logo', () => {

@@ -16,6 +16,7 @@ import { setLeadStage } from '@/actions/leads'
 import { OPEN_STAGES, LEAD_STAGE_LABELS, LOST_REASON_LABELS, opportunityTitle } from '@/lib/leads'
 import { STAGE_TONE, money, shortDate, type Tone } from '@/lib/pipeline-presentation'
 import type { PipelineGroups, PipelineRow, closedThisMonth } from '@/lib/pipeline-view'
+import type { CapacityDay } from '@/lib/capacity/capacity'
 import type { Customer, Lead, LeadStage } from '@/lib/types'
 import { NewOpportunityForm } from './NewOpportunityForm'
 import { IntakeLinkCard } from './IntakeLinkCard'
@@ -30,6 +31,10 @@ interface PipelineListClientProps {
   openCount: number
   monthly: ReturnType<typeof closedThisMonth>
   customers?: Customer[]
+  // Business-tier org with ≥1 active venue unit: the create form offers the
+  // offsite / on-site delivery toggle. Computed on the server (page.tsx) so the
+  // client never queries the org's plan or units. Undefined ⇒ hidden.
+  showDeliveryMode?: boolean
 }
 
 /*
@@ -83,6 +88,37 @@ export function bookByChip(row: PipelineRow): { text: string; tone: Tone } | nul
 }
 
 /**
+ * The over-capacity badge copy (capacity mode only — a business-tier org with
+ * configured units; spec increment 1). Where increment 1 painted a bare binary
+ * "Date conflict — <date>", a resource-aware org has a DENOMINATOR, so the pill
+ * shows the pair that matters: how many events want the resource vs how many are
+ * available. "3 events · 2 carts" makes "I'm one over" read at a glance (Tufte /
+ * Few — the numbers are the signal), where a flag only said "something's wrong".
+ *
+ * WHICH kind it names: only the kind(s) that actually breached (demand > supply)
+ * — a spare cart is not the story on a day the ROOMS ran out. If both breach,
+ * lead with the larger overage (demand − supply), the sharper shortfall. mobile
+ * → "carts", venue → "rooms"; `demand` is that kind's own demand (all bookable
+ * for mobile, on-site only for venue), so venue reads "N events" meaning the
+ * on-site ones. ONE date format: `shortDate`, the module's single vocabulary.
+ *
+ * Returns null when the day is not actually over (defensive — the caller already
+ * gates on `overCapacity?.over`, but a `detail` with no breach would otherwise
+ * pick a non-breaching kind and print a contradiction).
+ */
+export function overCapacityChip(cap: CapacityDay, eventDate?: string): string | null {
+  const breaches = cap.detail
+    .filter((d) => d.demand > d.supply)
+    .sort((a, b) => b.demand - b.supply - (a.demand - a.supply))
+  const worst = breaches[0]
+  if (!worst) return null
+  const noun = worst.kind === 'venue' ? 'room' : 'cart'
+  const events = `${worst.demand} event${worst.demand === 1 ? '' : 's'}`
+  const units = `${worst.supply} ${noun}${worst.supply === 1 ? '' : 's'}`
+  return `Over capacity — ${events} · ${units} (${shortDate(eventDate ?? cap.date)})`
+}
+
+/**
  * A group's rule, carrying the two numbers the operator already paid to compute:
  * how many opportunities are in the bucket and what they are worth. R2 — before
  * this the summed value was computed nowhere and the header was a bare word.
@@ -117,7 +153,7 @@ function GroupHeader({ label, rows, alert }: { label: string; rows: PipelineRow[
 }
 
 export function PipelineListClient({
-  orgId, orgSlug, groups, closed, openCount, monthly, customers,
+  orgId, orgSlug, groups, closed, openCount, monthly, customers, showDeliveryMode,
 }: PipelineListClientProps) {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState<Tab>('open')
@@ -317,10 +353,27 @@ export function PipelineListClient({
                   ~76px), silently cutting "…4d left". flex-wrap only breaks
                   BETWEEN pills; a single over-wide pill needs to wrap its own
                   text. Harmless on desktop — the text fits on one line there.
+                  The capacity pill is longer still ("Over capacity — 3 events ·
+                  2 carts (Sep 5)"), so it leans on the same wrap.
                 */}
-                {row.conflict && row.eventDate && (
+                {/*
+                  Capacity mode wins over the base badge: when `overCapacity.over`
+                  is set the org has a real denominator, so it gets the numbered
+                  "Over capacity — N events · M carts" pill, NOT the binary "Date
+                  conflict". base/solo orgs never carry `overCapacity`, so they
+                  fall through to the increment-1 "Date conflict — <date>" copy
+                  BYTE-FOR-BYTE (the non-negotiable backstop). Both are `alert`.
+                */}
+                {row.overCapacity?.over ? (
+                  (() => {
+                    const text = overCapacityChip(row.overCapacity, row.eventDate)
+                    return text
+                      ? <StatusPill tone="alert" className="max-w-full whitespace-normal">{text}</StatusPill>
+                      : null
+                  })()
+                ) : row.conflict && row.eventDate ? (
                   <StatusPill tone="alert" className="max-w-full whitespace-normal">Date conflict — {shortDate(row.eventDate)}</StatusPill>
-                )}
+                ) : null}
                 {chip && <StatusPill tone={chip.tone} className="max-w-full whitespace-normal">{chip.text}</StatusPill>}
               </div>
             )}
@@ -481,7 +534,7 @@ export function PipelineListClient({
         <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-lg">
           <DialogTitle className="sr-only">New opportunity</DialogTitle>
           <div className="[&_[data-slot=card-content]]:px-0 [&_[data-slot=card-header]]:px-0 [&_[data-slot=card]]:border-0 [&_[data-slot=card]]:bg-transparent [&_[data-slot=card]]:shadow-none">
-            <NewOpportunityForm orgId={orgId} open={creating} onClose={() => setCreating(false)} customers={customers} />
+            <NewOpportunityForm orgId={orgId} open={creating} onClose={() => setCreating(false)} customers={customers} showDeliveryMode={showDeliveryMode} />
           </div>
         </DialogContent>
       </Dialog>
