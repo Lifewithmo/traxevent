@@ -50,9 +50,13 @@ export function ClientCockpit({ orgId, orgSlug, customer, opportunities, notes, 
   return (
     <div className="mx-auto max-w-6xl space-y-4 p-6">
       <ClientCockpitHeader
+        orgId={orgId}
         orgSlug={orgSlug}
         customer={customer}
         group={row.group}
+        row={row}
+        opportunities={opportunities}
+        invoices={invoices}
         ar={ar}
         onNewJob={() => setCreatingJob(true)}
         onNewProposal={goToNewProposal}
