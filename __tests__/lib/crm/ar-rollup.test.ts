@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { customerAR, filterInvoicesByLeadIds } from '@/lib/crm/ar-rollup'
+import { customerAR, filterInvoicesByLeadIds, overdueInvoices } from '@/lib/crm/ar-rollup'
 import type { Invoice } from '@/lib/types'
 
 // Minimal invoice factory — only the fields the money helpers read.
@@ -48,5 +48,31 @@ describe('customerAR', () => {
     const ar = customerAR(list, NOW)
     expect(ar.paid).toBe(500)
     expect(ar.outstanding).toBe(0)
+  })
+})
+
+describe('overdueInvoices', () => {
+  it('keeps only SENT invoices that are past due with an open balance', () => {
+    const list = [
+      inv({ id: 'overdue', due_date: '2026-08-01', line_items: [{ description: 'x', quantity: 1, unit_price: 300 }] }),
+      inv({ id: 'future', due_date: '2026-09-01', line_items: [{ description: 'x', quantity: 1, unit_price: 700 }] }),
+      inv({ id: 'draft', lifecycle: 'draft', due_date: '2026-01-01', line_items: [{ description: 'x', quantity: 1, unit_price: 400 }] }),
+      inv({ id: 'paid', due_date: '2026-01-01', line_items: [{ description: 'x', quantity: 1, unit_price: 200 }], payments: [{ amount: 200, recorded_at: NOW.toISOString() }] }),
+    ]
+    expect(overdueInvoices(list, NOW).map((i) => i.id)).toEqual(['overdue'])
+  })
+
+  it('orders most-overdue (earliest due date) first', () => {
+    const list = [
+      inv({ id: 'recent', due_date: '2026-08-10', line_items: [{ description: 'x', quantity: 1, unit_price: 100 }] }),
+      inv({ id: 'oldest', due_date: '2026-06-01', line_items: [{ description: 'x', quantity: 1, unit_price: 100 }] }),
+      inv({ id: 'middle', due_date: '2026-07-15', line_items: [{ description: 'x', quantity: 1, unit_price: 100 }] }),
+    ]
+    expect(overdueInvoices(list, NOW).map((i) => i.id)).toEqual(['oldest', 'middle', 'recent'])
+  })
+
+  it('returns empty when nothing is overdue', () => {
+    const list = [inv({ id: 'future', due_date: '2026-12-01', line_items: [{ description: 'x', quantity: 1, unit_price: 100 }] })]
+    expect(overdueInvoices(list, NOW)).toEqual([])
   })
 })

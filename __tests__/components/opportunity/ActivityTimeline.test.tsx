@@ -26,23 +26,32 @@ describe('ActivityTimeline', () => {
     expect(screen.getByText(/no activity/i)).toBeInTheDocument()
   })
 
+  it('always shows the composer textarea without an extra click', () => {
+    render(<ActivityTimeline orgId="o1" parentType="opportunity" parentId="l1" activity={[]} />)
+    expect(screen.getByPlaceholderText('Add a note…')).toBeInTheDocument()
+  })
+
   it('adds a note', async () => {
     render(<ActivityTimeline orgId="o1" parentType="opportunity" parentId="l1" activity={[]} />)
-    fireEvent.click(screen.getByRole('button', { name: 'Add a note' }))
     fireEvent.change(screen.getByPlaceholderText(/add a note/i), { target: { value: 'Talked to client' } })
     fireEvent.click(screen.getByRole('button', { name: /add note/i }))
     await waitFor(() => expect(createNote).toHaveBeenCalledWith('o1', { parent_type: 'opportunity', parent_id: 'l1', body: 'Talked to client' }))
     await waitFor(() => expect(refresh).toHaveBeenCalled())
   })
 
-  it('keeps the composer hidden until the affordance is used', () => {
+  it('submits the note on Cmd/Ctrl+Enter', async () => {
     render(<ActivityTimeline orgId="o1" parentType="opportunity" parentId="l1" activity={[]} />)
-    expect(screen.queryByPlaceholderText('Add a note…')).not.toBeInTheDocument()
+    const textarea = screen.getByPlaceholderText(/add a note/i)
+    fireEvent.change(textarea, { target: { value: 'Quick note' } })
+    fireEvent.keyDown(textarea, { key: 'Enter', metaKey: true })
+    await waitFor(() => expect(createNote).toHaveBeenCalledWith('o1', { parent_type: 'opportunity', parent_id: 'l1', body: 'Quick note' }))
   })
 
-  it('focuses the note textarea when opened', async () => {
+  it('does not submit on a plain Enter (multiline notes)', () => {
     render(<ActivityTimeline orgId="o1" parentType="opportunity" parentId="l1" activity={[]} />)
-    fireEvent.click(screen.getByRole('button', { name: 'Add a note' }))
-    expect(screen.getByPlaceholderText('Add a note…')).toHaveFocus()
+    const textarea = screen.getByPlaceholderText(/add a note/i)
+    fireEvent.change(textarea, { target: { value: 'Line one' } })
+    fireEvent.keyDown(textarea, { key: 'Enter' })
+    expect(createNote).not.toHaveBeenCalled()
   })
 })

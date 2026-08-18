@@ -40,4 +40,18 @@ export function customerAR(invoices: Invoice[], now: Date): CustomerAR {
   }
 }
 
+// Sent invoices that are past due with an open balance, most-overdue first.
+// Reuses deriveAging (OVERDUE buckets) so "overdue" means the same thing the
+// AR rollup counts. Earliest due date == most overdue.
+export function overdueInvoices(invoices: Invoice[], now: Date): Invoice[] {
+  return invoices
+    .filter((inv) => {
+      if (inv.lifecycle !== 'sent') return false
+      const balance = invoiceBalance(inv)
+      if (balance <= 0) return false
+      return OVERDUE_BUCKETS.has(deriveAging({ dueDate: inv.due_date, balance, lifecycle: 'sent' }, now))
+    })
+    .sort((a, b) => (a.due_date ?? '').localeCompare(b.due_date ?? ''))
+}
+
 function round2(n: number): number { return Math.round(n * 100) / 100 }

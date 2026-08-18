@@ -35,7 +35,7 @@ export function ClientCockpit({ orgId, orgSlug, customer, opportunities, notes, 
 
   const today = todayYmd()
   const row = buildClientRow(customer, opportunities, today)
-  const story = buildClientStory(row, opportunities)
+  const story = buildClientStory(row, opportunities, today)
   const mostRecentLeadId = byCreatedDesc(opportunities)[0]?.id
   // "Pinned note" = the most recent note, surfaced above the fold. Note has
   // no `pinned` flag (lib/types.ts) — the full history still lives in the
@@ -50,9 +50,13 @@ export function ClientCockpit({ orgId, orgSlug, customer, opportunities, notes, 
   return (
     <div className="mx-auto max-w-6xl space-y-4 p-6">
       <ClientCockpitHeader
+        orgId={orgId}
         orgSlug={orgSlug}
         customer={customer}
         group={row.group}
+        row={row}
+        opportunities={opportunities}
+        invoices={invoices}
         ar={ar}
         onNewJob={() => setCreatingJob(true)}
         onNewProposal={goToNewProposal}
