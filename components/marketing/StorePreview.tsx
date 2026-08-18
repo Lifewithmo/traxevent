@@ -41,7 +41,7 @@ export function StorePreview({ defaultName = '' }: { defaultName?: string }) {
           onChange={(e) => setName(e.target.value)} />
       </div>
       <div data-testid="store-preview" className="rounded-xl ring-1 ring-foreground/10">
-        <DropStorefront drop={sampleDrop(name)} />
+        <DropStorefront drop={sampleDrop(name)} titleAs="h2" />
       </div>
     </div>
   )

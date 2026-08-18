@@ -11,10 +11,12 @@ import Home from '@/app/(marketing)/brand/[brandId]/page'
 test('home leads with the coffee-cart headline and shows the fee autopsy at the fold', async () => {
   const ui = await Home({ params: Promise.resolve({ brandId: 'brewtrax' }) })
   render(ui)
-  // Scoped by accessible name: StorePreview embeds DropStorefront, which has
-  // its own <h1> (the drop title) for its real standalone route — a second
-  // page-level h1 once assembled here, so a bare level-1 query is ambiguous.
-  expect(screen.getByRole('heading', { level: 1, name: /every dollar/i })).toHaveTextContent(/every dollar/i)
+  // Exactly one h1 on the page: StorePreview embeds DropStorefront, which
+  // demotes its drop-title heading to h2 in this context (titleAs="h2") so
+  // the hero headline stays the page's sole top-level heading.
+  const h1s = screen.getAllByRole('heading', { level: 1 })
+  expect(h1s).toHaveLength(1)
+  expect(h1s[0]).toHaveTextContent(/every dollar/i)
   // FeeAutopsy present in the hero (its result testid)
   expect(screen.getByTestId('autopsy-annual-kept')).toBeInTheDocument()
   // drops escape-hatch to the vs page
