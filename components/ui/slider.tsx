@@ -24,10 +24,11 @@ export function Slider({
   useLayoutEffect(() => {
     inputRef.current?.setAttribute('aria-valuemin', String(min))
     inputRef.current?.setAttribute('aria-valuemax', String(max))
-  }, [min, max, value])
+  }, [min, max])
 
   return (
     <SliderPrimitive.Root
+      data-slot="slider"
       value={value}
       onValueChange={(v) => onValueChange(Array.isArray(v) ? v[0] : v)}
       min={min}
@@ -35,10 +36,11 @@ export function Slider({
       step={step}
       className={cn('relative flex w-full touch-none select-none items-center py-2', className)}
     >
-      <SliderPrimitive.Control className="flex w-full items-center">
-        <SliderPrimitive.Track className="h-1.5 w-full rounded-full bg-copper-100">
-          <SliderPrimitive.Indicator className="rounded-full bg-copper-500" />
+      <SliderPrimitive.Control data-slot="slider-control" className="flex w-full items-center">
+        <SliderPrimitive.Track data-slot="slider-track" className="h-1.5 w-full rounded-full bg-copper-100">
+          <SliderPrimitive.Indicator data-slot="slider-indicator" className="rounded-full bg-copper-500" />
           <SliderPrimitive.Thumb
+            data-slot="slider-thumb"
             id={id}
             aria-label={ariaLabel}
             inputRef={inputRef}
