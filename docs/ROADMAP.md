@@ -1,6 +1,6 @@
 # TraxEvent — Product Roadmap
 
-Rollup of where the build stands and what's next. Last updated: 2026-08-15.
+Rollup of where the build stands and what's next. Last updated: 2026-08-18.
 
 The original vision/architecture spec is
 [2026-06-02-product-roadmap-design.md](superpowers/specs/2026-06-02-product-roadmap-design.md)
@@ -144,6 +144,21 @@ EventTrax pivot (neutralization, multi-brand, ops core). Detailed designs live i
   Next increments: counter register → tabs + publicMode "Find us" +
   drop↔market pickup linkage → registration retirement R2. Manual browser
   walkthrough of the occasion flows still owed.
+
+- **Pipeline Book-By Capacity Radar — increment 1** (PR #114 + mobile hotfix
+  #115, merged 2026-08-18, live) — the Pipeline now ranks by the **event
+  deadline** (`event_date − org.prep_lead_days`, default 14), not
+  touch-staleness, and flags **same-day booking conflicts** (two bookable leads
+  sharing a date; capacity = 1 for the solo-operator anchor). Rows carry a
+  book-by urgency chip (alert ≤7 days, incl. past-due), a conflict badge, and a
+  double-booked-won `window.confirm` guard; the group sort is conflict-first →
+  soonest book-by → no-date tail → oldest-touch tiebreak (a transitive
+  lexicographic comparator). All in-memory, zero new queries. Walked live
+  desktop/tablet/mobile against a seeded same-day conflict pair (Sat
+  2026-09-05). Plan: `superpowers/plans/2026-08-18-pipeline-bookby-radar.md`.
+  Deferred to increment 2: date-bucket list, serviceable-ceiling forecast +
+  capacity>1, deadline-aware health, per-event-type lead times, server-side hard
+  block, board-view chip/badge.
 
 - **Track 2 module level-up rollout — COMPLETE** (PRs #90–#100, merged
   2026-08-16) — every operator-facing module now runs on the shared UI kit.
