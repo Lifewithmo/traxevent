@@ -1,6 +1,6 @@
 'use server'
 
-import { assertOrgMember } from '@/lib/auth/assert'
+import { assertOrgMember, assertOrgAdmin } from '@/lib/auth/assert'
 import {
   listCapacityUnitsCore,
   createCapacityUnitCore,
@@ -23,7 +23,7 @@ export async function createCapacityUnit(
   orgId: string,
   input: { name: string; kind: CapacityUnitKind },
 ): Promise<CapacityUnit> {
-  await assertOrgMember(orgId)
+  await assertOrgAdmin(orgId)
   return createCapacityUnitCore(orgId, input)
 }
 
@@ -32,11 +32,11 @@ export async function updateCapacityUnit(
   id: string,
   updates: Partial<Pick<CapacityUnit, 'name' | 'active' | 'blockouts'>>,
 ): Promise<void> {
-  await assertOrgMember(orgId)
+  await assertOrgAdmin(orgId)
   await updateCapacityUnitCore(orgId, id, updates)
 }
 
 export async function deleteCapacityUnit(orgId: string, id: string): Promise<void> {
-  await assertOrgMember(orgId)
+  await assertOrgAdmin(orgId)
   await deleteCapacityUnitCore(orgId, id)
 }
