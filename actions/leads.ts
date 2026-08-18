@@ -25,6 +25,7 @@ export interface CreateLeadInput {
   guest_count?: number
   stage?: LeadStage
   notes?: string
+  delivery_mode?: 'offsite' | 'onsite'
 }
 
 export async function listLeads(orgId: string): Promise<Lead[]> {
@@ -84,6 +85,7 @@ export async function createLead(orgId: string, input: CreateLeadInput): Promise
     ...(input.estimated_value != null ? { estimated_value: input.estimated_value } : {}),
     ...(input.guest_count != null ? { guest_count: input.guest_count } : {}),
     ...(input.notes !== undefined ? { notes: input.notes } : {}),
+    ...(input.delivery_mode !== undefined ? { delivery_mode: input.delivery_mode } : {}),
   })
 }
 

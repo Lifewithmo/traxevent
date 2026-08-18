@@ -20,6 +20,7 @@ export interface LeadUpdate {
   guest_count?: number | null
   closed_at?: string | null
   lost?: { reason: LostReason; note?: string } | null
+  delivery_mode?: 'offsite' | 'onsite'
 }
 
 export function leadsRef(orgId: string) {
@@ -50,6 +51,7 @@ export interface CreateLeadCoreInput {
   guest_count?: number
   notes?: string
   source?: 'intake' | 'manual'
+  delivery_mode?: 'offsite' | 'onsite'
 }
 
 /** Guard-free lead create. Validates name/stage; performs no auth, no customer
@@ -74,6 +76,7 @@ export async function createLeadCore(orgId: string, input: CreateLeadCoreInput):
     ...(input.guest_count != null ? { guest_count: input.guest_count } : {}),
     ...(input.notes?.trim() ? { notes: input.notes.trim() } : {}),
     ...(input.source ? { source: input.source } : {}),
+    ...(input.delivery_mode ? { delivery_mode: input.delivery_mode } : {}),
   }
   await leadsRef(orgId).doc(id).set(lead)
   return lead
