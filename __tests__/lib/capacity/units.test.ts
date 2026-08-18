@@ -8,8 +8,11 @@ const collRef = vi.hoisted(() => ({
   doc: vi.fn((id?: string) => ({ id: id ?? 'unit-new', set: docSetSpy, update: docUpdateSpy, delete: docDeleteSpy })),
   orderBy: vi.fn().mockReturnValue({ get: listGetSpy }),
 }))
+const rootCollSpy = vi.hoisted(() => vi.fn())
+const subCollSpy = vi.hoisted(() => vi.fn(() => collRef))
+const orgDocSpy = vi.hoisted(() => vi.fn(() => ({ collection: subCollSpy })))
 vi.mock('@/lib/firebase-admin', () => ({
-  adminDb: { collection: () => ({ doc: () => ({ collection: () => collRef }) }) },
+  adminDb: { collection: rootCollSpy.mockReturnValue({ doc: orgDocSpy }) },
 }))
 
 import {
@@ -92,6 +95,21 @@ describe('listCapacityUnitsCore', () => {
   it('orders by name', async () => {
     await listCapacityUnitsCore('o1')
     expect(collRef.orderBy).toHaveBeenCalledWith('name')
+  })
+})
+
+describe('firestore path', () => {
+  it('reads/writes the org-scoped capacity_units collection, never resources', async () => {
+    await listCapacityUnitsCore('o1')
+    await createCapacityUnitCore('o1', { name: 'Kart 1', kind: 'mobile' })
+    await updateCapacityUnitCore('o1', 'u1', { active: false })
+    await deleteCapacityUnitCore('o1', 'u1')
+    expect(rootCollSpy).toHaveBeenCalledWith('orgs')
+    expect(orgDocSpy).toHaveBeenCalledWith('o1')
+    // The non-negotiable invariant: the sub-collection is 'capacity_units'.
+    // 'resources' would collide with ops materials at orgs/{orgId}/resources.
+    expect(subCollSpy).toHaveBeenCalledWith('capacity_units')
+    expect(subCollSpy).not.toHaveBeenCalledWith('resources')
   })
 })
 
