@@ -71,6 +71,7 @@ export function ClientCockpitHeader({
 }: ClientCockpitHeaderProps) {
   const router = useRouter()
   const [rebooking, setRebooking] = useState(false)
+  const [rebookError, setRebookError] = useState<string | null>(null)
 
   const pastDue = ar.overdueAmount > 0
   const pill = pastDue ? { tone: 'alert' as Tone, label: `Past due ${money(ar.overdueAmount)}` } : GROUP_PILL[group]
@@ -96,10 +97,14 @@ export function ClientCockpitHeader({
   // builder. When there is nothing accepted to copy, fall back to a new proposal.
   async function handleRebook() {
     setRebooking(true)
+    setRebookError(null)
     try {
       const res = await createProposalFromLastAccepted(orgId, customer.id)
       if (res) router.push(`/${orgSlug}/leads/${res.leadId}/proposals/${res.proposalId}`)
       else onNewProposal()
+    } catch (err) {
+      console.error('Re-book failed', err)
+      setRebookError("Couldn't start a re-book. Please try again.")
     } finally {
       setRebooking(false)
     }
@@ -107,7 +112,9 @@ export function ClientCockpitHeader({
 
   // Fire-and-forget contact log; the native mailto:/tel: href still fires.
   function logContact(kind: 'emailed' | 'called') {
-    void logContactActivity(orgId, { parent_type: 'customer', parent_id: customer.id, kind })
+    logContactActivity(orgId, { parent_type: 'customer', parent_id: customer.id, kind }).catch((err) => {
+      console.error('Failed to log contact activity', err)
+    })
   }
 
   // ONE filled primary button whose behavior is driven by nba.kind. 'none' is
@@ -205,7 +212,13 @@ export function ClientCockpitHeader({
               </MenuContent>
             </Menu>
           </div>
-          {nba.reason && <p className="max-w-xs text-right text-xs text-muted-foreground">{nba.reason}</p>}
+          {rebookError ? (
+            <p role="alert" className="max-w-xs text-right text-xs text-destructive">
+              {rebookError}
+            </p>
+          ) : (
+            nba.reason && <p className="max-w-xs text-right text-xs text-muted-foreground">{nba.reason}</p>
+          )}
         </div>
       </div>
     </header>
