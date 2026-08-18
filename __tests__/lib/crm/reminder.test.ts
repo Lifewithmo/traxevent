@@ -1,0 +1,46 @@
+import { describe, it, expect } from 'vitest'
+import { buildReminderMailto } from '@/lib/crm/reminder'
+import type { Invoice } from '@/lib/types'
+
+// Minimal invoice factory — only the fields the reminder builder reads.
+function inv(p: Partial<Invoice>): Invoice {
+  return {
+    id: 'i', org_id: 'o', lead_id: 'L1', type: 'final', lifecycle: 'sent',
+    number: 'INV-1042', due_date: '2026-08-01', token: 'tok-abc',
+    line_items: [{ description: 'Cart', quantity: 1, unit_price: 300 }],
+    payments: [], created_at: '2026-01-01T00:00:00.000Z',
+    ...p,
+  } as Invoice
+}
+
+describe('buildReminderMailto', () => {
+  it('produces a mailto: href addressed to the customer', () => {
+    const href = buildReminderMailto('client@example.com', inv({}))
+    expect(href.startsWith('mailto:client@example.com?')).toBe(true)
+  })
+
+  it('encodes a subject carrying the invoice number, balance, and due date', () => {
+    const href = buildReminderMailto('client@example.com', inv({ number: 'INV-1042', due_date: '2026-08-01' }))
+    const url = new URL(href)
+    const subject = url.searchParams.get('subject') ?? ''
+    expect(subject).toContain('INV-1042')
+    expect(subject).toContain('300') // balance
+    expect(subject).toContain('2026-08-01')
+  })
+
+  it('includes the token pay link in the (encoded) body', () => {
+    const href = buildReminderMailto('client@example.com', inv({ token: 'tok-abc' }))
+    const url = new URL(href)
+    const body = url.searchParams.get('body') ?? ''
+    expect(body).toContain('/invoices/tok-abc')
+  })
+
+  it('escapes special characters in the subject so the query is well-formed', () => {
+    // The raw (unescaped) em-dash separator must be percent-encoded in the href.
+    const href = buildReminderMailto('client@example.com', inv({}))
+    expect(href).toContain('%')
+    // And it must round-trip back to a readable subject via URL parsing.
+    const url = new URL(href)
+    expect(url.searchParams.get('subject')).toContain('Reminder: Invoice INV-1042')
+  })
+})
