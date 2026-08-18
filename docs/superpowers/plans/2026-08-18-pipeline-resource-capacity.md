@@ -174,7 +174,12 @@ export async function deleteCapacityUnit(orgId: string, id: string): Promise<voi
 **Interfaces — Consumes:** `listCapacityUnits`/`create`/`update`/`deleteCapacityUnit` (Task 4); `CapacityUnit` (Task 1).
 **Behavior:** list units grouped by kind (Serving units / Rooms); add (name + kind), rename, retire (toggle `active`), delete; per-unit block-out date ranges (add/remove `{start,end,note?}` rows). Page is gated: `requireOrgMember`, and render the manager only when `hasMultiResourceCapacity(org)`; otherwise a locked/upsell panel ("Multiple carts & rooms is a Business-plan feature"). Use existing kit primitives (Button, Input, StatusPill, Dialog/ConfirmDialog) — read a recent settings/admin client for conventions.
 
-**Design:** Run the **design-ambition** skill before building this screen (per repo standing rule); it's a management surface — density, empty state (n=0 → "Add your first cart"), and the availability editor are the craft points.
+**Design direction (design-ambition pass, done 2026-08-18 — build to this, don't re-derive):**
+- **n:few, direct manipulation.** Two groups — "Serving units" (mobile) and "Rooms" (venue). Each unit is a row/card: inline-editable name, an active/retired toggle, and its block-outs as **removable date-range chips** ("Aug 20–22 · maintenance ✕"). "Add block-out" opens a compact start–end date pair + optional note (inclusive dates). "Add unit" per group. Degrade to a plain list past ~8 units.
+- **The move — a capacity summary line** at the top translating inventory → servable reality: *"You can serve up to {mobileCount} events a day — {venueCount} of them on-site."* Pure derivation (counts), no new data. This is what lifts the screen above a CRUD table; it must be present.
+- **Empty state = onboarding:** n=0 → "Add your first cart — the pipeline uses this to know when you're overbooked." Never a blank void.
+- **Locked (base tier):** an honest upsell panel (what it does + "Business plan"), no dark patterns.
+- **Hard gates:** WCAG 2.2 AA on the toggle, chips, and tones; keyboard-operable; labeled date inputs; `prefers-reduced-motion`. Reuse kit primitives (Button, Input, StatusPill, Dialog/ConfirmDialog) — read a recent settings/admin client for conventions.
 
 **Steps:**
 - [ ] design-ambition pass (announce it); then write a failing component test: renders unit names grouped by kind; the locked panel shows for a non-business org; "Add" calls `createCapacityUnit`.
@@ -197,7 +202,10 @@ export async function deleteCapacityUnit(orgId: string, id: string): Promise<voi
 - Delivery toggle: a small offsite/on-site control, default offsite, persisted via the lead actions. Render it only when the org is business-tier AND has ≥1 `venue` unit (nothing to choose otherwise) — pass that boolean down from the server page; do not query in the client.
 - Radar copy: in the pill block, when `row.overCapacity?.over`, render an alert `StatusPill` reading `Over capacity — {mobileDemand} events · {mobileSupply} carts ({shortDate(eventDate)})`, choosing the kind that breached (mobile vs venue: "carts" vs "rooms"; if both, lead with the larger overage). When capacity mode is OFF, keep the increment-1 `Date conflict — {shortDate}` badge exactly. Reuse the `max-w-full whitespace-normal` wrap fix from #115.
 
-**Design:** design-ambition pass on the copy/pill (announce it) — the over-capacity phrasing is the operator's read on "am I overbooked and by how much."
+**Design direction (design-ambition pass, done 2026-08-18 — build to this):**
+- **Delivery toggle:** a clean segmented offsite / on-site control, labeled plainly ("Where — Offsite / On-site"), default offsite. Only rendered when business-tier AND ≥1 venue (`showDeliveryMode` prop).
+- **Over-capacity pill (Few/Tufte — the numbers are the signal):** alert `StatusPill` reading `Over capacity — {demand} events · {supply} {carts|rooms} ({shortDate(date)})`. Lead with the breaching kind; if BOTH kinds breach, lead with the larger overage (demand−supply). The demand·supply pair must be visible so "I'm 1 over" reads at a glance — not a bare binary flag. Reuse the #115 wrap fix (`max-w-full whitespace-normal`). Base orgs keep `Date conflict — {shortDate}` exactly.
+- **Hard gate:** AA contrast on the alert pill; verify at mobile 375 (the #115 surface).
 
 **Steps:**
 - [ ] design-ambition pass; write failing tests: over-capacity row renders the "Over capacity — N events · M carts" pill; a room breach reads "rooms"; a non-over row with capacity mode keeps no capacity pill; capacity-OFF row still shows "Date conflict"; the delivery toggle renders only when `showDeliveryMode` prop is true.
