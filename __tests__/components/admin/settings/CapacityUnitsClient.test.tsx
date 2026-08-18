@@ -84,6 +84,42 @@ describe('CapacityUnitsClient', () => {
     expect(summaryText()).toMatch(/^You can serve up to 1 event a day .* 1 of them on-site\.$/)
   })
 
+  it('clamps the on-site figure to the serving-unit count (rooms cannot exceed carts)', () => {
+    render(
+      <CapacityUnitsClient
+        {...base}
+        initialUnits={[
+          unit({ id: 'm1', name: 'Kart 1', kind: 'mobile' }),
+          unit({ id: 'm2', name: 'Kart 2', kind: 'mobile' }),
+          unit({ id: 'v1', name: 'Room #1', kind: 'venue' }),
+          unit({ id: 'v2', name: 'Room #2', kind: 'venue' }),
+          unit({ id: 'v3', name: 'Room #3', kind: 'venue' }),
+          unit({ id: 'v4', name: 'Room #4', kind: 'venue' }),
+          unit({ id: 'v5', name: 'Room #5', kind: 'venue' }),
+        ]}
+      />,
+    )
+    // 2 carts, 5 rooms → still only 2 events/day, and at most 2 can be on-site
+    // (every event also needs a cart). NOT "5 of them on-site".
+    expect(summaryText()).toMatch(/^You can serve up to 2 events a day .* 2 of them on-site\.$/)
+  })
+
+  it('excludes a retired ROOM from the on-site figure', () => {
+    render(
+      <CapacityUnitsClient
+        {...base}
+        initialUnits={[
+          unit({ id: 'm1', name: 'Kart 1', kind: 'mobile' }),
+          unit({ id: 'm2', name: 'Kart 2', kind: 'mobile' }),
+          unit({ id: 'v1', name: 'Room #1', kind: 'venue' }),
+          unit({ id: 'v2', name: 'Room #2', kind: 'venue', active: false }),
+        ]}
+      />,
+    )
+    // 2 carts, 1 ACTIVE room → 2 events/day, 1 on-site (the retired room drops out).
+    expect(summaryText()).toMatch(/^You can serve up to 2 events a day .* 1 of them on-site\.$/)
+  })
+
   it('shows an onboarding empty state, not a blank void, when there are no units', () => {
     render(<CapacityUnitsClient {...base} initialUnits={[]} />)
     expect(screen.getByText(/pipeline uses this to know when you're overbooked/i)).toBeInTheDocument()
@@ -163,6 +199,36 @@ describe('CapacityUnitsClient', () => {
     fireEvent.click(screen.getByRole('button', { name: /remove block-out/i }))
     await waitFor(() =>
       expect(updateCapacityUnit).toHaveBeenCalledWith('o1', 'm1', { blockouts: [] }),
+    )
+  })
+
+  it('validates the block-out add form: start-after-end is rejected, a valid range persists', async () => {
+    updateCapacityUnit.mockResolvedValue(undefined)
+    render(
+      <CapacityUnitsClient
+        {...base}
+        initialUnits={[unit({ id: 'm1', name: 'Kart 1', kind: 'mobile' })]}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /\+ add block-out/i }))
+    const from = screen.getByLabelText('From')
+    const to = screen.getByLabelText('To')
+
+    // start AFTER end → inline error, nothing persisted.
+    fireEvent.change(from, { target: { value: '2026-09-12' } })
+    fireEvent.change(to, { target: { value: '2026-09-10' } })
+    fireEvent.click(screen.getByRole('button', { name: /^add block-out$/i }))
+    expect(screen.getByText(/start date must be on or before the end date/i)).toBeInTheDocument()
+    expect(updateCapacityUnit).not.toHaveBeenCalled()
+
+    // fix the range → the appended block-out persists.
+    fireEvent.change(to, { target: { value: '2026-09-14' } })
+    fireEvent.click(screen.getByRole('button', { name: /^add block-out$/i }))
+    await waitFor(() =>
+      expect(updateCapacityUnit).toHaveBeenCalledWith('o1', 'm1', {
+        blockouts: [{ start: '2026-09-12', end: '2026-09-14' }],
+      }),
     )
   })
 

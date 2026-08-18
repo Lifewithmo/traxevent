@@ -27,6 +27,11 @@ export function buildSettingsAreas({ org, memberCount, templateCount }: Settings
     { slug: 'public-profile', label: 'Public profile', configured: Boolean(org.public_profile?.enabled) },
     { slug: 'email-domain', label: 'Email domain', configured: org.sending_domain_status === 'verified' },
     { slug: 'event-types', label: 'Event types', configured: true },
+    // Shown to every org: a base-tier operator lands on the Business-plan upsell,
+    // a business-tier one on the inventory editor (the page itself gates). No
+    // completeness nag — `configured: true` keeps it out of the "what's left"
+    // list, since a base org has nothing it CAN configure here.
+    { slug: 'capacity', label: 'Resources & capacity', configured: true },
     { slug: 'departments', label: 'Departments', configured: true },
   ]
 }

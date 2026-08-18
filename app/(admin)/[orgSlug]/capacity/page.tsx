@@ -4,7 +4,7 @@ import { requireOrgMember } from '@/lib/auth/guards'
 import { hasMultiResourceCapacity, listCapacityUnitsCore } from '@/lib/capacity/units'
 import { CapacityUnitsClient } from '@/components/admin/settings/CapacityUnitsClient'
 
-export default async function CapacitySettingsPage({
+export default async function CapacityPage({
   params,
 }: {
   params: Promise<{ orgSlug: string }>

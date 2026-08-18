@@ -70,6 +70,10 @@ export function CapacityUnitsClient({ orgId, initialUnits, locked = false }: Cap
 
   const mobileCount = units.filter((u) => u.kind === 'mobile' && u.active).length
   const venueCount = units.filter((u) => u.kind === 'venue' && u.active).length
+  // On-site is capped by BOTH: every event needs a serving unit, and an on-site
+  // one also needs a room. So the true on-site ceiling is the smaller of the two
+  // — with 2 carts and 5 rooms you can still only serve 2 events, all on-site.
+  const onSiteCount = Math.min(mobileCount, venueCount)
 
   async function run(action: () => Promise<void>) {
     setSaving(true)
@@ -194,7 +198,7 @@ export function CapacityUnitsClient({ orgId, initialUnits, locked = false }: Cap
             You can serve up to{' '}
             <span className="font-semibold tabular-nums">{mobileCount}</span>{' '}
             event{mobileCount === 1 ? '' : 's'} a day —{' '}
-            <span className="font-semibold tabular-nums">{venueCount}</span> of them on-site.
+            <span className="font-semibold tabular-nums">{onSiteCount}</span> of them on-site.
           </p>
 
           {GROUPS.map((meta) => {
