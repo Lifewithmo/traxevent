@@ -310,10 +310,18 @@ export function PipelineListClient({
             */}
             {(row.conflict || chip) && (
               <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                {/*
+                  max-w-full + whitespace-normal so a long chip WRAPS instead of
+                  clipping: the full book-by chip ("Event … · book by … · Nd
+                  left") is ~317px and overruns a 375px phone (the avatar eats
+                  ~76px), silently cutting "…4d left". flex-wrap only breaks
+                  BETWEEN pills; a single over-wide pill needs to wrap its own
+                  text. Harmless on desktop — the text fits on one line there.
+                */}
                 {row.conflict && row.eventDate && (
-                  <StatusPill tone="alert">Date conflict — {shortDate(row.eventDate)}</StatusPill>
+                  <StatusPill tone="alert" className="max-w-full whitespace-normal">Date conflict — {shortDate(row.eventDate)}</StatusPill>
                 )}
-                {chip && <StatusPill tone={chip.tone}>{chip.text}</StatusPill>}
+                {chip && <StatusPill tone={chip.tone} className="max-w-full whitespace-normal">{chip.text}</StatusPill>}
               </div>
             )}
           </div>
