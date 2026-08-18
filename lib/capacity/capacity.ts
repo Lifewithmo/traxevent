@@ -1,8 +1,18 @@
-import type { CapacityUnit, CapacityUnitKind, Lead } from '@/lib/types'
+import type { CapacityUnit, CapacityUnitKind, Lead, Org } from '@/lib/types'
 import { OPEN_STAGES } from '@/lib/leads'
 
 // Bookable = still in play OR the booking itself, matching conflictEventDates in lib/pipeline-view.ts.
 const BOOKABLE_STAGES = new Set<Lead['stage']>([...OPEN_STAGES, 'closed_won'])
+
+/**
+ * Multi-resource capacity is a business-tier feature. The one gate — never
+ * scatter `plan === 'business'`. Lives here (firebase-free) so the radar-wiring
+ * decision that consumes it stays unit-testable without the data layer; the
+ * data layer (`lib/capacity/units.ts`) re-exports it for its own callers.
+ */
+export function hasMultiResourceCapacity(org: Pick<Org, 'plan'>): boolean {
+  return org.plan === 'business'
+}
 
 export interface CapacityShort {
   kind: CapacityUnitKind

@@ -7,9 +7,8 @@ import { listLeads } from '@/actions/leads'
 import { listCustomers } from '@/actions/customers'
 import { listTasks } from '@/actions/tasks'
 import { listProposals } from '@/actions/proposals'
-import { buildPipelineRows, closedThisMonth, conflictEventDates, DEFAULT_PREP_LEAD_DAYS } from '@/lib/pipeline-view'
+import { buildPipelineRows, closedThisMonth, radarConflictOpts, DEFAULT_PREP_LEAD_DAYS } from '@/lib/pipeline-view'
 import { hasMultiResourceCapacity, listCapacityUnitsCore } from '@/lib/capacity/units'
-import { computeCapacity } from '@/lib/capacity/capacity'
 import { todayYmd } from '@/lib/opportunity-detail'
 import { OPEN_STAGES, CLOSED_STAGES } from '@/lib/leads'
 import { PipelineListClient } from '@/components/admin/pipeline/PipelineListClient'
@@ -49,28 +48,19 @@ export default async function LeadsPage({
   // new query. `buildPipelineRows` only sees the open inputs, so the conflict
   // set is what lets a still-open opp learn it collides with a booked job.
   //
-  // Capacity mode (business tier only): the radar becomes resource-aware —
-  // conflict = a date whose demand (by kind) exceeds configured supply, not
-  // merely ≥2 bookable leads. Reads the org's capacity units once (no per-lead
-  // query) and precomputes a per-date supply/demand map for every date a
-  // bookable lead occupies. Base/solo orgs skip this entirely and keep the
-  // increment-1 conflictDates path byte-for-byte — the non-negotiable backstop.
-  let groups
-  if (hasMultiResourceCapacity(org)) {
-    const units = await listCapacityUnitsCore(orgId)
-    const dates = [
-      ...new Set(
-        leads
-          .filter((l) => l.event_date && [...OPEN_STAGES, 'closed_won'].includes(l.stage))
-          .map((l) => l.event_date!)
-      ),
-    ]
-    const capacityByDate = computeCapacity(leads, units, dates)
-    groups = buildPipelineRows(inputs, today, { prepLeadDays, capacityByDate })
-  } else {
-    const conflictDates = conflictEventDates(leads)
-    groups = buildPipelineRows(inputs, today, { prepLeadDays, conflictDates })
-  }
+  // Capacity mode (business tier WITH ≥1 configured unit): the radar becomes
+  // resource-aware — conflict = a date whose demand (by kind) exceeds configured
+  // supply, not merely ≥2 bookable leads. We fetch the org's capacity units once
+  // (only for business-tier orgs — no query otherwise) and hand them to
+  // `radarConflictOpts`, which owns the gate: base/solo orgs AND business orgs
+  // with ZERO units fall back to the increment-1 conflictDates path byte-for-byte
+  // (the non-negotiable backstop — a unit-less business org must NOT flag every
+  // dated opp as over-capacity). The gate is tested in pipeline-view.test.ts.
+  const units = hasMultiResourceCapacity(org) ? await listCapacityUnitsCore(orgId) : []
+  const groups = buildPipelineRows(inputs, today, {
+    prepLeadDays,
+    ...radarConflictOpts(org, leads, units),
+  })
   const monthly = closedThisMonth(leads, today)
   const openValue = open.reduce((s, l) => s + (l.estimated_value ?? 0), 0)
 

@@ -1,11 +1,11 @@
-import type { Lead, Task, Proposal, LeadStage } from '@/lib/types'
+import type { Lead, Task, Proposal, LeadStage, CapacityUnit, Org } from '@/lib/types'
 import { computeHealth, nextAction, type OppHealth } from '@/lib/opportunity-health'
 import { daysSince, dueStatus, lastTouchIso } from '@/lib/opportunity-detail'
 import { isProposalOpened } from '@/lib/proposal-opens'
 import { CLOSED_STAGES, OPEN_STAGES } from '@/lib/leads'
 import { wonValueInMonth, addDaysYmd } from '@/lib/pipeline-stats'
 import { DUE_TONE, shortDate, type Tone } from '@/lib/pipeline-presentation'
-import type { CapacityDay } from '@/lib/capacity/capacity'
+import { computeCapacity, hasMultiResourceCapacity, type CapacityDay } from '@/lib/capacity/capacity'
 
 /**
  * Prep an event needs before its date, in days. The pipeline ranks by the
@@ -44,6 +44,40 @@ export function conflictEventDates(leads: Lead[]): Set<string> {
   const out = new Set<string>()
   for (const [date, n] of counts) if (n >= 2) out.add(date)
   return out
+}
+
+/**
+ * Choose how the radar detects date conflicts for one org, given every lead in
+ * memory and the org's capacity units, returning the exact opts fragment
+ * `buildPipelineRows` consumes. The gate lives HERE (not inlined at the call
+ * site) so the backstop is unit-tested rather than trusted:
+ *
+ * Capacity mode is entered ONLY for a business-tier org that has ≥1 configured
+ * unit. A base/solo org (`plan !== 'business'`) OR a business org with ZERO
+ * units falls back to increment 1's `conflictEventDates` byte-for-byte — the
+ * non-negotiable backstop. The `units.length > 0` half is essential: with zero
+ * units, `computeCapacity` reports supply 0 for every kind, so any date holding
+ * even one bookable lead is `over` and every dated opp would be a false
+ * conflict — the exact reverse of the "ship dark until a unit is defined"
+ * promise. A newly-upgraded business org has no units until it opens Settings,
+ * so this is the DEFAULT state, not an edge case.
+ */
+export function radarConflictOpts(
+  org: Pick<Org, 'plan'>,
+  leads: Lead[],
+  units: CapacityUnit[],
+): { capacityByDate: Map<string, CapacityDay> } | { conflictDates: Set<string> } {
+  if (hasMultiResourceCapacity(org) && units.length > 0) {
+    const dates = [
+      ...new Set(
+        leads
+          .filter((l) => l.event_date && BOOKABLE_STAGES.includes(l.stage))
+          .map((l) => l.event_date!)
+      ),
+    ]
+    return { capacityByDate: computeCapacity(leads, units, dates) }
+  }
+  return { conflictDates: conflictEventDates(leads) }
 }
 
 /**

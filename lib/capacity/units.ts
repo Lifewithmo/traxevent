@@ -1,6 +1,11 @@
 import { adminDb } from '@/lib/firebase-admin'
 import { FieldValue } from 'firebase-admin/firestore'
-import type { CapacityBlockout, CapacityUnit, CapacityUnitKind, Org } from '@/lib/types'
+import type { CapacityBlockout, CapacityUnit, CapacityUnitKind } from '@/lib/types'
+
+// The one plan gate lives in the firebase-free capacity module so the radar
+// wiring can call it without pulling in the data layer; re-exported here for
+// this file's own callers (and existing `@/lib/capacity/units` importers).
+export { hasMultiResourceCapacity } from '@/lib/capacity/capacity'
 
 const CAPACITY_UNIT_KINDS: CapacityUnitKind[] = ['mobile', 'venue']
 
@@ -13,11 +18,6 @@ export interface CapacityUnitUpdate {
   name?: string
   active?: boolean
   blockouts?: CapacityBlockout[]
-}
-
-/** Multi-resource capacity is a business-tier feature. The one gate — never scatter `plan === 'business'`. */
-export function hasMultiResourceCapacity(org: Pick<Org, 'plan'>): boolean {
-  return org.plan === 'business'
 }
 
 /** Throws if a block-out range is malformed (missing bound, or start after end). Inclusive ranges, so start === end is valid. */

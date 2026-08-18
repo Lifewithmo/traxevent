@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { buildPipelineRows, countdownLabel, closedThisMonth, conflictEventDates, DEFAULT_PREP_LEAD_DAYS } from '@/lib/pipeline-view'
+import { buildPipelineRows, countdownLabel, closedThisMonth, conflictEventDates, radarConflictOpts, DEFAULT_PREP_LEAD_DAYS } from '@/lib/pipeline-view'
 import { DUE_TONE } from '@/lib/pipeline-presentation'
 import { wonValueInMonth } from '@/lib/pipeline-stats'
-import type { Lead, Task, Proposal } from '@/lib/types'
+import type { Lead, Task, Proposal, CapacityUnit } from '@/lib/types'
 import type { CapacityDay } from '@/lib/capacity/capacity'
 
 const today = '2026-08-07'
@@ -261,6 +261,54 @@ describe('buildPipelineRows — backstop regression (no capacityByDate ⇒ incre
     expect(g.needs_attention.find((r) => r.lead.id === 'nodate')!.conflict).toBe(false)
     // overCapacity is never populated on the backstop path.
     for (const r of g.needs_attention) expect(r.overCapacity).toBeUndefined()
+  })
+})
+
+describe('radarConflictOpts — the backstop gate (Task 3 wiring)', () => {
+  const capUnit = (over: Partial<CapacityUnit> & { kind: CapacityUnit['kind'] }): CapacityUnit => ({
+    id: 'u1', name: 'Kart', active: true, blockouts: [], created_at: '2026-01-01T00:00:00.000Z', ...over,
+  })
+  // A lone dated bookable lead — under increment 1 this is NEVER a conflict
+  // (needs ≥2 on a date). It is the exact input a zero-supply capacity engine
+  // would wrongly flag `over`, so it's the probe for the backstop.
+  const loneLead = [lead({ id: 'solo', stage: 'inquiry', event_date: '2026-09-05' })]
+
+  it('a business org with ZERO units falls back to conflictDates — a lone dated lead is NOT flagged', () => {
+    const opts = radarConflictOpts({ plan: 'business' }, loneLead, [])
+    // fallback path: conflictDates present, capacity engine NOT consulted
+    expect('capacityByDate' in opts).toBe(false)
+    expect('conflictDates' in opts).toBe(true)
+    const conflictDates = (opts as { conflictDates: Set<string> }).conflictDates
+    expect(conflictDates.has('2026-09-05')).toBe(false) // lone lead ⇒ no conflict
+    // and threaded through buildPipelineRows the row is not a conflict and has no overCapacity
+    const g = buildPipelineRows([{ lead: loneLead[0], tasks: [], proposals: [] }], today, opts)
+    expect(g.needs_attention[0].conflict).toBe(false)
+    expect(g.needs_attention[0].overCapacity).toBeUndefined()
+  })
+
+  it('a business org with ZERO units still surfaces increment-1 conflicts (≥2 on a date)', () => {
+    const two = [
+      lead({ id: 'a', stage: 'inquiry', event_date: '2026-09-05' }),
+      lead({ id: 'b', stage: 'proposal', event_date: '2026-09-05' }),
+    ]
+    const opts = radarConflictOpts({ plan: 'business' }, two, [])
+    expect('conflictDates' in opts).toBe(true)
+    expect((opts as { conflictDates: Set<string> }).conflictDates.has('2026-09-05')).toBe(true)
+  })
+
+  it('a base/standard org never enters capacity mode even if units are somehow present', () => {
+    const opts = radarConflictOpts({ plan: 'standard' }, loneLead, [capUnit({ kind: 'mobile' })])
+    expect('capacityByDate' in opts).toBe(false)
+    expect('conflictDates' in opts).toBe(true)
+  })
+
+  it('a business org WITH ≥1 unit enters capacity mode (engine consulted)', () => {
+    const opts = radarConflictOpts({ plan: 'business' }, loneLead, [capUnit({ kind: 'mobile' })])
+    expect('capacityByDate' in opts).toBe(true)
+    expect('conflictDates' in opts).toBe(false)
+    const map = (opts as { capacityByDate: Map<string, CapacityDay> }).capacityByDate
+    // 1 bookable lead, 1 mobile unit ⇒ demand 1 ≤ supply 1 ⇒ NOT over
+    expect(map.get('2026-09-05')!.over).toBe(false)
   })
 })
 

@@ -174,6 +174,21 @@ describe('computeCapacity', () => {
     expect(day.over).toBe(true) // demand 3 > supply 2
   })
 
+  /*
+    WHY THE PAGE MUST GATE ON units.length > 0. With ZERO units, supply is 0 for
+    every kind, so a lone bookable lead (demand 1 > supply 0) is `over`. Consulting
+    this engine for a unit-less business org would flag EVERY dated opp as a false
+    conflict — the reverse of "ship dark until a unit is defined". The backstop
+    (radarConflictOpts) exists precisely to keep this engine unconsulted here.
+  */
+  it('reports over:true for a lone bookable lead when there are NO units (supply 0)', () => {
+    const leads = [lead({ event_date: '2026-09-05', stage: 'inquiry' })]
+    const day = computeCapacity(leads, [], ['2026-09-05']).get('2026-09-05')!
+    expect(day.detail.find((d) => d.kind === 'mobile')!.supply).toBe(0)
+    expect(day.detail.find((d) => d.kind === 'mobile')!.demand).toBe(1)
+    expect(day.over).toBe(true) // 1 > 0 — the false positive the gate prevents
+  })
+
   it('returns a CapacityDay for every requested date, keyed by date', () => {
     const leads = [lead({ event_date: '2026-09-05', stage: 'inquiry' })]
     const map = computeCapacity(leads, mobiles(3), ['2026-09-05', '2026-09-06'])
