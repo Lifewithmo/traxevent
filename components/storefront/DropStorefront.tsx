@@ -28,7 +28,17 @@ function slotOptions(w: PublicDrop['pickup']['windows'][number]): string[] {
   return out
 }
 
-export function DropStorefront({ drop }: { drop: PublicDrop }) {
+export function DropStorefront({
+  drop,
+  titleAs: TitleTag = 'h1',
+}: {
+  drop: PublicDrop
+  // Standalone route (/p/[handle]/drops/[dropId]) needs the drop title as the
+  // page's h1; embedded contexts (e.g. the marketing StorePreview) already
+  // have their own page-level h1 and must demote this one to avoid a
+  // duplicate h1 breaking screen-reader heading navigation.
+  titleAs?: 'h1' | 'h2' | 'h3'
+}) {
   const accent = drop.org.accent_color ?? '#111827'
   const accentText = readableTextOn(accent)
   const [cart, setCart] = useState<Record<string, number>>({})
@@ -68,7 +78,7 @@ export function DropStorefront({ drop }: { drop: PublicDrop }) {
     <div className="mx-auto min-h-screen max-w-2xl px-4 py-8">
       <header className="mb-6">
         <p className="text-sm font-medium" style={{ color: accent }}>{drop.org.display_name}</p>
-        <h1 className="text-3xl font-bold">{drop.title}</h1>
+        <TitleTag className="text-3xl font-bold">{drop.title}</TitleTag>
         {drop.note && <p className="mt-2 text-sm text-gray-600">{drop.note}</p>}
         <p className="mt-2 text-sm text-gray-500">
           Pickup: {drop.pickup.location_name}
