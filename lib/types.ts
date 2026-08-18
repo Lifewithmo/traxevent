@@ -27,6 +27,7 @@ export interface Org {
   intake_token?: string              // public intake form access token; minted lazily (actions/intake.ts)
   ai_voice_note?: string              // optional "How we sound" style note fed to AI drafting
   default_proposal_terms?: string    // seeded into new proposals' `terms` (snapshot, not a live reference)
+  prep_lead_days?: number             // days of prep an event needs before the date; drives the pipeline book-by deadline (default 14)
   created_at: string
 }
 

@@ -14,7 +14,7 @@ import { cn } from '@/lib/utils'
 import { nudgeProposal } from '@/actions/nudge'
 import { setLeadStage } from '@/actions/leads'
 import { OPEN_STAGES, LEAD_STAGE_LABELS, LOST_REASON_LABELS, opportunityTitle } from '@/lib/leads'
-import { STAGE_TONE, money, shortDate } from '@/lib/pipeline-presentation'
+import { STAGE_TONE, money, shortDate, type Tone } from '@/lib/pipeline-presentation'
 import type { PipelineGroups, PipelineRow, closedThisMonth } from '@/lib/pipeline-view'
 import type { Customer, Lead, LeadStage } from '@/lib/types'
 import { NewOpportunityForm } from './NewOpportunityForm'
@@ -53,6 +53,34 @@ function nextStage(stage: LeadStage): LeadStage | null {
 }
 
 const MONEY_CLASS = 'text-sm font-medium tabular-nums text-[var(--money-green)]'
+
+/**
+ * The book-by urgency chip — the row's DOMINANT time cue (spec: increment 1).
+ *
+ * The pipeline now ranks by the event deadline, not touch-staleness, so the row
+ * has to SAY what deadline it is racing: the event date, the real book-by date
+ * (`event − prep_lead_days`, computed in buildPipelineRows), and how long is
+ * left. The tone escalates to `alert` inside the prep window (`<= 7` days to the
+ * book-by) and stays there once it is past due; further out it is a quiet
+ * `neutral` note so a calm pipeline does not read as all-alarm.
+ *
+ * Returns null for a lead with no `event_date` — those carry none of the radar
+ * datums, sort to the no-date tail, and render no chip at all (a chip that said
+ * "no date" would be louder than the nothing it describes).
+ *
+ * ONE date format: `shortDate`, the module's single date vocabulary
+ * (pipeline-presentation.ts), never a hand-rolled `new Date(ymd)` slice — the
+ * same rule the countdown, the board card and the KPI band already follow.
+ */
+export function bookByChip(row: PipelineRow): { text: string; tone: Tone } | null {
+  if (row.eventDate == null || row.bookByDate == null || row.daysToBookBy == null) return null
+  const d = row.daysToBookBy
+  const remaining = d < 0 ? `${-d}d past due` : d === 0 ? 'due today' : `${d}d left`
+  return {
+    text: `Event ${shortDate(row.eventDate)} · book by ${shortDate(row.bookByDate)} · ${remaining}`,
+    tone: d <= 7 ? 'alert' : 'neutral',
+  }
+}
 
 /**
  * A group's rule, carrying the two numbers the operator already paid to compute:
@@ -180,6 +208,37 @@ export function PipelineListClient({
       setNotice(`${opportunityTitle(row.lead)} is still moving — wait for that change to land.`)
       return
     }
+    /*
+      SAME-DAY DOUBLE-BOOK WARN. Capacity is 1 for the solo-operator anchor
+      (spec: increment 1), so winning a second job for a date that already
+      carries a `closed_won` is very likely a mistake — the operator cannot serve
+      both. We warn, we do not block: the deadline radar is advisory, and a real
+      "yes, book both" (a partner, a subcontract) must still be reachable.
+
+      The check reads props already in hand — the booked jobs are the
+      `closed_won` leads in `closed`, and we scan the open `groups` too so the
+      rule holds even if a won deal ever surfaces there. No new data, no query.
+      Cancel aborts BEFORE any `setMoving`/`setLeadStage`, so a declined confirm
+      leaves the row exactly as it was.
+    */
+    if (newStage === 'closed_won' && row.lead.event_date) {
+      const booked = [
+        ...closed,
+        ...groups.needs_attention.map((r) => r.lead),
+        ...groups.waiting.map((r) => r.lead),
+        ...groups.active.map((r) => r.lead),
+      ].some(
+        (l) =>
+          l.id !== row.lead.id &&
+          l.stage === 'closed_won' &&
+          l.event_date === row.lead.event_date,
+      )
+      if (booked && !window.confirm(
+        `Another job is already booked for ${shortDate(row.lead.event_date)}. Book this one too?`,
+      )) {
+        return
+      }
+    }
     setError(null)
     setNotice(null)
     setMoving((m) => ({ ...m, [row.lead.id]: { from: row.lead.stage, to: newStage } }))
@@ -209,6 +268,7 @@ export function PipelineListClient({
     const next = nextStage(lead.stage)
     const needsAttention = row.health === 'needs_attention'
     const isMoving = movingTo(lead) !== null
+    const chip = bookByChip(row)
     return (
       <div
         key={lead.id}
@@ -240,6 +300,22 @@ export function PipelineListClient({
             <p className={`truncate text-xs ${needsAttention ? 'text-destructive' : 'text-muted-foreground'}`}>
               {row.statusLine}
             </p>
+            {/*
+              The deadline radar, in the IDENTITY block rather than the action
+              cluster: the pipeline now ranks by this deadline, so it is primary
+              content, not a trailing badge. The task-countdown pill on the right
+              (a next-step due date, a different clock) is now the secondary cue.
+              A same-day booking conflict leads — it is the loudest signal the
+              radar carries — then the book-by urgency chip.
+            */}
+            {(row.conflict || chip) && (
+              <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                {row.conflict && row.eventDate && (
+                  <StatusPill tone="alert">Date conflict — {shortDate(row.eventDate)}</StatusPill>
+                )}
+                {chip && <StatusPill tone={chip.tone}>{chip.text}</StatusPill>}
+              </div>
+            )}
           </div>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">

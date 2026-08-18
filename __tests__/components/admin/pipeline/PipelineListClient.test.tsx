@@ -592,4 +592,128 @@ describe('PipelineListClient', () => {
     const tabBar = screen.getByRole('button', { name: /^All open/ }).parentElement as HTMLElement
     expect(tabBar.className).toContain('flex-wrap')
   })
+
+  /*
+    THE BOOK-BY RADAR (increment 1). The pipeline ranks by the event deadline
+    now, so each open row must SAY its deadline: the event date, the book-by
+    date, and how long is left — escalating to alert inside the prep window and
+    once it is past due. A same-day booking conflict gets its own loud badge, and
+    winning a second job for an already-booked date asks first.
+  */
+  describe('book-by radar (increment 1)', () => {
+    const radarRow = (over: Record<string, unknown>) => ({
+      lead: lead({ id: 'r1', name: 'Vale Wedding', stage: 'proposal', event_date: '2026-09-30' }),
+      health: 'active' as const,
+      statusLine: 'Next: call',
+      eventDate: '2026-09-30',
+      bookByDate: '2026-09-16',
+      daysToBookBy: 30,
+      ...over,
+    })
+
+    it('renders the book-by urgency chip — event, book-by and days left — as a quiet note when far out', () => {
+      render(<PipelineListClient {...baseProps} groups={{ ...emptyGroups, active: [radarRow({})] }} />)
+      const chip = screen.getByText('Event Sep 30, 2026 · book by Sep 16, 2026 · 30d left')
+      expect(chip.getAttribute('data-slot')).toBe('status-pill')
+      // 30 days out is not urgent — it must NOT wear the alert token.
+      expect(chip.className).toContain('var(--status-neutral-bg)')
+      expect(chip.className).not.toContain('var(--status-alert-bg)')
+    })
+
+    // The <= 7 threshold, pinned on both sides so an off-by-one can't pass.
+    it('escalates the chip to alert exactly at 7 days out, and stays neutral at 8', () => {
+      render(<PipelineListClient {...baseProps} groups={{
+        ...emptyGroups,
+        active: [
+          radarRow({ lead: lead({ id: 'seven', stage: 'proposal', event_date: '2026-09-30' }), daysToBookBy: 7 }),
+          radarRow({ lead: lead({ id: 'eight', stage: 'proposal', event_date: '2026-10-01' }), daysToBookBy: 8 }),
+        ],
+      }} />)
+      expect(screen.getByText(/7d left/).className).toContain('var(--status-alert-bg)')
+      expect(screen.getByText(/8d left/).className).toContain('var(--status-neutral-bg)')
+      expect(screen.getByText(/8d left/).className).not.toContain('var(--status-alert-bg)')
+    })
+
+    it('reads "past due" in the alert tone once the book-by date has slipped', () => {
+      render(<PipelineListClient {...baseProps} groups={{
+        ...emptyGroups, active: [radarRow({ daysToBookBy: -3 })],
+      }} />)
+      const chip = screen.getByText('Event Sep 30, 2026 · book by Sep 16, 2026 · 3d past due')
+      expect(chip.className).toContain('var(--status-alert-bg)')
+    })
+
+    it('renders no book-by chip at all for a lead with no event date', () => {
+      render(<PipelineListClient {...baseProps} groups={{
+        ...emptyGroups,
+        active: [{ lead: lead({ id: 'nd', stage: 'proposal' }), health: 'active', statusLine: 'Next: call' }],
+      }} />)
+      expect(screen.queryByText(/book by/)).toBeNull()
+      expect(screen.queryByText(/Date conflict/)).toBeNull()
+    })
+
+    it('renders an alert-tone conflict badge on a double-booked date, and none otherwise', () => {
+      const { rerender } = render(<PipelineListClient {...baseProps} groups={{
+        ...emptyGroups, active: [radarRow({ conflict: true })],
+      }} />)
+      const badge = screen.getByText('Date conflict — Sep 30, 2026')
+      expect(badge.getAttribute('data-slot')).toBe('status-pill')
+      expect(badge.className).toContain('var(--status-alert-bg)')
+
+      rerender(<PipelineListClient {...baseProps} groups={{
+        ...emptyGroups, active: [radarRow({ conflict: false })],
+      }} />)
+      expect(screen.queryByText(/Date conflict/)).toBeNull()
+    })
+
+    /*
+      SAME-DAY WON GUARD. Capacity is 1: closing a second job onto a date that
+      already carries a `closed_won` is warned, and a declined confirm must leave
+      the row untouched — no `setLeadStage`, no navigation.
+    */
+    it('warns before winning a second job on an already-booked date and aborts on cancel', async () => {
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+      render(<PipelineListClient {...baseProps}
+        groups={{ ...emptyGroups, active: [
+          { lead: lead({ id: 'open1', name: 'Second Wedding', stage: 'proposal', event_date: '2026-09-30' }),
+            health: 'active', statusLine: 'x', eventDate: '2026-09-30', bookByDate: '2026-09-16', daysToBookBy: 5 },
+        ] }}
+        closed={[lead({ id: 'won1', name: 'Booked Co', stage: 'closed_won', event_date: '2026-09-30' })]}
+      />)
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Move to Closed Won' })) })
+      expect(confirmSpy).toHaveBeenCalledWith('Another job is already booked for Sep 30, 2026. Book this one too?')
+      expect(setLeadStage).not.toHaveBeenCalled()
+      expect(push).not.toHaveBeenCalled()
+      confirmSpy.mockRestore()
+    })
+
+    it('proceeds with the won move when the double-book warning is confirmed', async () => {
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+      render(<PipelineListClient {...baseProps}
+        groups={{ ...emptyGroups, active: [
+          { lead: lead({ id: 'open1', stage: 'proposal', event_date: '2026-09-30' }),
+            health: 'active', statusLine: 'x' },
+        ] }}
+        closed={[lead({ id: 'won1', stage: 'closed_won', event_date: '2026-09-30' })]}
+      />)
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Move to Closed Won' })) })
+      expect(confirmSpy).toHaveBeenCalledTimes(1)
+      expect(setLeadStage).toHaveBeenCalledWith('o1', 'open1', 'closed_won')
+      confirmSpy.mockRestore()
+    })
+
+    it('does not warn when no won job shares the date', async () => {
+      const confirmSpy = vi.spyOn(window, 'confirm')
+      render(<PipelineListClient {...baseProps}
+        groups={{ ...emptyGroups, active: [
+          { lead: lead({ id: 'open1', stage: 'proposal', event_date: '2026-09-30' }),
+            health: 'active', statusLine: 'x' },
+        ] }}
+        closed={[lead({ id: 'won1', stage: 'closed_won', event_date: '2026-10-15' })]}
+      />)
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Move to Closed Won' })) })
+      expect(confirmSpy).not.toHaveBeenCalled()
+      expect(setLeadStage).toHaveBeenCalledWith('o1', 'open1', 'closed_won')
+      confirmSpy.mockRestore()
+    })
+  })
 })

@@ -38,8 +38,9 @@ const mono11 = {
 
 function flatten(groups: PipelineGroups): PipelineRow[] {
   // Order matters: needs_attention first, then waiting, then active — each
-  // already sorted oldest-touch-first by buildPipelineRows. The empty-column CTA
-  // below takes the FIRST match in a stage, so it offers the most neglected deal.
+  // sorted deadline-first (conflict → soonest book-by → no-date tail) by
+  // buildPipelineRows. The empty-column CTA below takes the FIRST match in a
+  // stage, so it offers the most time-sensitive deal (closest book-by deadline).
   return [...groups.needs_attention, ...groups.waiting, ...groups.active]
 }
 
@@ -276,9 +277,9 @@ export function PipelineBoardView({
           // GroupHeader (PipelineListClient.tsx:61).
           const unpriced = cards.filter((r) => r.lead.estimated_value == null).length
           // R4: an empty column offered NOTHING before — it rendered blank. The
-          // forward move out of an empty stage is to advance the most neglected
-          // deal sitting in the stage before it; failing that (Inquiry, or an
-          // equally empty predecessor) it is to create one.
+          // forward move out of an empty stage is to advance the most
+          // time-sensitive deal sitting in the stage before it; failing that
+          // (Inquiry, or an equally empty predecessor) it is to create one.
           const prevStage = OPEN_STAGES[OPEN_STAGES.indexOf(stage) - 1]
           const candidate = prevStage ? rows.find((r) => r.lead.stage === prevStage) : undefined
           return (
@@ -349,10 +350,11 @@ export function PipelineBoardView({
                     description={
                       candidate
                         // The CTA takes the FIRST match in flatten() order —
-                        // needs_attention before waiting before active — so it
-                        // offers the most NEGLECTED deal, not the oldest one.
-                        // The copy has to say what the button does.
-                        ? `Drag one across, or advance the most neglected ${LEAD_STAGE_LABELS[prevStage]}.`
+                        // needs_attention before waiting before active, each
+                        // sorted deadline-first — so it offers the most
+                        // time-sensitive deal. The copy has to say what the
+                        // button does.
+                        ? `Drag one across, or advance the most time-sensitive ${LEAD_STAGE_LABELS[prevStage]}.`
                         : 'Drag a card across, or start a new opportunity.'
                     }
                     action={

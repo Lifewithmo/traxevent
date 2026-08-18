@@ -6,7 +6,7 @@ import { listLeads } from '@/actions/leads'
 import { listCustomers } from '@/actions/customers'
 import { listTasks } from '@/actions/tasks'
 import { listProposals } from '@/actions/proposals'
-import { buildPipelineRows, closedThisMonth } from '@/lib/pipeline-view'
+import { buildPipelineRows, closedThisMonth, conflictEventDates, DEFAULT_PREP_LEAD_DAYS } from '@/lib/pipeline-view'
 import { todayYmd } from '@/lib/opportunity-detail'
 import { OPEN_STAGES, CLOSED_STAGES } from '@/lib/leads'
 import { PipelineListClient } from '@/components/admin/pipeline/PipelineListClient'
@@ -25,6 +25,7 @@ export default async function LeadsPage({
   const orgSnap = await adminDb.collection('orgs').where('slug', '==', orgSlug).limit(1).get()
   if (orgSnap.empty) notFound()
   const orgId = orgSnap.docs[0].id
+  const prepLeadDays = (orgSnap.docs[0].data().prep_lead_days as number | undefined) ?? DEFAULT_PREP_LEAD_DAYS
 
   const [leads, customers] = await Promise.all([listLeads(orgId), listCustomers(orgId)])
   const open = leads.filter((l) => OPEN_STAGES.includes(l.stage))
@@ -38,7 +39,12 @@ export default async function LeadsPage({
   }))
 
   const today = todayYmd()
-  const groups = buildPipelineRows(inputs, today)
+  // Same-day booking conflicts across every lead that occupies a calendar slot
+  // (open ∪ closed_won) — computed in-memory from the leads already loaded, no
+  // new query. `buildPipelineRows` only sees the open inputs, so the conflict
+  // set is what lets a still-open opp learn it collides with a booked job.
+  const conflictDates = conflictEventDates(leads)
+  const groups = buildPipelineRows(inputs, today, { prepLeadDays, conflictDates })
   const monthly = closedThisMonth(leads, today)
   const openValue = open.reduce((s, l) => s + (l.estimated_value ?? 0), 0)
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildPipelineRows, countdownLabel, closedThisMonth } from '@/lib/pipeline-view'
+import { buildPipelineRows, countdownLabel, closedThisMonth, conflictEventDates, DEFAULT_PREP_LEAD_DAYS } from '@/lib/pipeline-view'
 import { DUE_TONE } from '@/lib/pipeline-presentation'
 import { wonValueInMonth } from '@/lib/pipeline-stats'
 import type { Lead, Task, Proposal } from '@/lib/types'
@@ -99,6 +99,107 @@ describe('buildPipelineRows', () => {
   it('excludes closed leads', () => {
     const g = buildPipelineRows([{ lead: lead({ stage: 'closed_won' }), tasks: [], proposals: [] }], today)
     expect(g.needs_attention.length + g.waiting.length + g.active.length).toBe(0)
+  })
+})
+
+describe('buildPipelineRows — book-by radar', () => {
+  const nod = (over: Partial<Lead>) => ({ lead: lead(over), tasks: [], proposals: [] })
+
+  it('derives book-by = event − DEFAULT_PREP_LEAD_DAYS and signed days-to-book-by (no opts)', () => {
+    expect(DEFAULT_PREP_LEAD_DAYS).toBe(14)
+    const g = buildPipelineRows([nod({ event_date: '2026-08-22' })], today)
+    const r = g.needs_attention[0]
+    expect(r.eventDate).toBe('2026-08-22')
+    expect(r.bookByDate).toBe('2026-08-08')       // 2026-08-22 minus 14 days
+    expect(r.daysToBookBy).toBe(1)                 // today 2026-08-07 → 2026-08-08
+  })
+
+  it('reports a past-due book-by as a negative day count', () => {
+    // event already inside the prep window: book-by was 2026-08-04, three days ago.
+    const g = buildPipelineRows([nod({ event_date: '2026-08-18' })], today)
+    expect(g.needs_attention[0].bookByDate).toBe('2026-08-04')
+    expect(g.needs_attention[0].daysToBookBy).toBe(-3)
+  })
+
+  it('honours a custom prepLeadDays', () => {
+    const g = buildPipelineRows([nod({ event_date: '2026-08-22' })], today, { prepLeadDays: 30 })
+    expect(g.needs_attention[0].bookByDate).toBe('2026-07-23')
+  })
+
+  it('ranks the sooner event first even when its touch is newer (book-by beats staleness)', () => {
+    const g = buildPipelineRows([
+      // 9 months out, but the STALER touch — old sort would float this to the top.
+      nod({ id: 'far', event_date: '2027-05-07', last_touch_at: '2026-07-01T00:00:00.000Z' }),
+      // 8 days out, fresher touch — must still win on the imminent deadline.
+      nod({ id: 'soon', event_date: '2026-08-15', last_touch_at: '2026-08-06T00:00:00.000Z' }),
+    ], today)
+    expect(g.needs_attention.map((r) => r.lead.id)).toEqual(['soon', 'far'])
+  })
+
+  it('sorts no-date rows to the tail behind every dated row', () => {
+    const g = buildPipelineRows([
+      nod({ id: 'nodate' }),
+      nod({ id: 'dated', event_date: '2027-01-01' }),
+    ], today)
+    expect(g.needs_attention.map((r) => r.lead.id)).toEqual(['dated', 'nodate'])
+    expect(g.needs_attention[1].bookByDate).toBeUndefined()
+    expect(g.needs_attention[1].daysToBookBy).toBeUndefined()
+    expect(g.needs_attention[1].conflict).toBe(false)
+  })
+
+  it('flags conflict rows and floats them above a sooner non-conflicting deadline', () => {
+    const conflictDates = new Set(['2026-08-20'])
+    const g = buildPipelineRows([
+      // sooner book-by, but no conflict — must yield to the two conflicting rows.
+      nod({ id: 'sooner', event_date: '2026-08-12' }),
+      nod({ id: 'confA', event_date: '2026-08-20' }),
+      nod({ id: 'confB', event_date: '2026-08-20' }),
+    ], today, { conflictDates })
+    const order = g.needs_attention.map((r) => r.lead.id)
+    expect(order.slice(0, 2).sort()).toEqual(['confA', 'confB'])
+    expect(order[2]).toBe('sooner')
+    expect(g.needs_attention.find((r) => r.lead.id === 'confA')!.conflict).toBe(true)
+    expect(g.needs_attention.find((r) => r.lead.id === 'sooner')!.conflict).toBe(false)
+  })
+})
+
+describe('conflictEventDates', () => {
+  it('flags a date carried by two open leads', () => {
+    const s = conflictEventDates([
+      lead({ id: 'a', stage: 'inquiry', event_date: '2026-09-01' }),
+      lead({ id: 'b', stage: 'proposal', event_date: '2026-09-01' }),
+    ])
+    expect(s.has('2026-09-01')).toBe(true)
+    expect(s.size).toBe(1)
+  })
+
+  it('counts a closed_won job as occupying its date — an open opp that day conflicts', () => {
+    const s = conflictEventDates([
+      lead({ id: 'won', stage: 'closed_won', event_date: '2026-09-01' }),
+      lead({ id: 'open', stage: 'consultation', event_date: '2026-09-01' }),
+    ])
+    expect(s.has('2026-09-01')).toBe(true)
+    // and the open row learns of it through buildPipelineRows
+    const g = buildPipelineRows([{ lead: lead({ id: 'open', stage: 'consultation', event_date: '2026-09-01' }), tasks: [], proposals: [] }], today, { conflictDates: s })
+    expect(g.needs_attention[0].conflict).toBe(true)
+  })
+
+  it('ignores closed_lost — a dead deal does not block a date', () => {
+    const s = conflictEventDates([
+      lead({ id: 'lost', stage: 'closed_lost', event_date: '2026-09-01' }),
+      lead({ id: 'open', stage: 'consultation', event_date: '2026-09-01' }),
+    ])
+    expect(s.has('2026-09-01')).toBe(false)
+  })
+
+  it('does not flag distinct dates or a lone lead, and skips no-date leads', () => {
+    const s = conflictEventDates([
+      lead({ id: 'a', stage: 'inquiry', event_date: '2026-09-01' }),
+      lead({ id: 'b', stage: 'inquiry', event_date: '2026-09-02' }),
+      lead({ id: 'c', stage: 'inquiry' }),
+      lead({ id: 'd', stage: 'inquiry' }),
+    ])
+    expect(s.size).toBe(0)
   })
 })
 
