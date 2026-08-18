@@ -2,7 +2,6 @@
 // marketing pages (layout nav/footer, landing hero, vs/Hot Plate, etc).
 export const BREWTRAX = {
   nav: [
-    { label: 'Features', href: '/brand/brewtrax/features' },
     { label: 'Pricing', href: '/brand/brewtrax/pricing' },
     { label: 'vs Hot Plate', href: '/brand/brewtrax/vs/hotplate' },
   ],
