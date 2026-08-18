@@ -51,4 +51,43 @@ describe('NewOpportunityForm linked mode', () => {
     expect(screen.getByRole('button', { name: 'Clear' })).toBeInTheDocument()
     expect(screen.queryByText(/^for /i)).not.toBeInTheDocument()
   })
+
+  /*
+    DELIVERY MODE (capacity increment 1). The offsite / on-site toggle exists
+    only for a business-tier org with a room to host in — the server hands that
+    down as `showDeliveryMode`. Off by default, so no control and no persisted
+    flag; on, the operator's choice rides along on createLead (offsite is the
+    default and stays unwritten).
+  */
+  describe('delivery-mode toggle', () => {
+    it('renders no delivery control unless showDeliveryMode is set', () => {
+      render(<NewOpportunityForm orgId="o1" open onClose={() => {}} customer={customer} />)
+      expect(screen.queryByRole('group', { name: 'Where' })).not.toBeInTheDocument()
+    })
+
+    it('offers a labelled offsite / on-site group when showDeliveryMode is set', () => {
+      render(<NewOpportunityForm orgId="o1" open onClose={() => {}} customer={customer} showDeliveryMode />)
+      const group = screen.getByRole('group', { name: 'Where' })
+      expect(group).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Offsite', pressed: true })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'On-site', pressed: false })).toBeInTheDocument()
+    })
+
+    it('persists an on-site choice through createLead', async () => {
+      render(<NewOpportunityForm orgId="o1" open onClose={() => {}} customer={customer} showDeliveryMode />)
+      fireEvent.click(screen.getByRole('button', { name: 'On-site' }))
+      expect(screen.getByRole('button', { name: 'On-site', pressed: true })).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+      await waitFor(() => expect(createLead).toHaveBeenCalledWith('o1', expect.objectContaining({
+        delivery_mode: 'onsite',
+      })))
+    })
+
+    it('leaves delivery_mode unwritten when the operator keeps the offsite default', async () => {
+      render(<NewOpportunityForm orgId="o1" open onClose={() => {}} customer={customer} showDeliveryMode />)
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+      await waitFor(() => expect(createLead).toHaveBeenCalled())
+      expect(vi.mocked(createLead).mock.calls[0][1]).not.toHaveProperty('delivery_mode')
+    })
+  })
 })

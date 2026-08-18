@@ -89,7 +89,12 @@ export default async function LeadsPage({
   // screen exactly once, as `stats.openPipeline` on the KPI band below; the
   // separate prop was declared, destructured and never read on both surfaces.
   // Rendering it a second time would put the same figure on the page twice.
-  const shared = { orgId, orgSlug, groups, monthly }
+  // The delivery-mode toggle only makes sense with a room to host in: a
+  // business-tier org with ≥1 ACTIVE venue unit. Derived from the units already
+  // loaded above — no extra read — and false for every base/solo org (empty
+  // `units`). Both pipeline surfaces get it so their create forms match.
+  const showDeliveryMode = units.some((u) => u.kind === 'venue' && u.active)
+  const shared = { orgId, orgSlug, groups, monthly, showDeliveryMode }
   return (
     <div>
       <PipelineSubNav orgSlug={orgSlug} active="opportunities" openCount={open.length} dueTodayCount={owedTaskCount} />

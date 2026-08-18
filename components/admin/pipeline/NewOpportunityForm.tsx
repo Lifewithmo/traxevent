@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { createLead } from '@/actions/leads'
 import { CustomerPicker } from './CustomerPicker'
+import { DeliveryModeToggle, type DeliveryMode } from './DeliveryModeToggle'
 import type { Customer } from '@/lib/types'
 
 interface NewOpportunityFormProps {
@@ -16,9 +17,13 @@ interface NewOpportunityFormProps {
   onClose: () => void
   customer?: Customer
   customers?: Customer[]
+  // Business-tier org with a room to host in: offer the offsite / on-site
+  // delivery toggle (default offsite). The server decides this — nothing to
+  // choose for an org with no venue, so the control simply does not render.
+  showDeliveryMode?: boolean
 }
 
-export function NewOpportunityForm({ orgId, open, onClose, customer, customers }: NewOpportunityFormProps) {
+export function NewOpportunityForm({ orgId, open, onClose, customer, customers, showDeliveryMode }: NewOpportunityFormProps) {
   const router = useRouter()
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -35,10 +40,12 @@ export function NewOpportunityForm({ orgId, open, onClose, customer, customers }
   const [guestCount, setGuestCount] = useState('')
   const [estimatedValue, setEstimatedValue] = useState('')
   const [notes, setNotes] = useState('')
+  const [deliveryMode, setDeliveryMode] = useState<DeliveryMode>('offsite')
 
   function resetForm() {
     setTitle(''); setName(''); setOrganization(''); setEmail(''); setPhone('')
     setEventType(''); setEventDate(''); setGuestCount(''); setEstimatedValue(''); setNotes('')
+    setDeliveryMode('offsite')
     setPicked(null)
     setError(null)
   }
@@ -64,6 +71,10 @@ export function NewOpportunityForm({ orgId, open, onClose, customer, customers }
         notes: notes.trim() || undefined,
         ...(parsedValue != null && !Number.isNaN(parsedValue) ? { estimated_value: parsedValue } : {}),
         ...(parsedGuests != null && !Number.isNaN(parsedGuests) ? { guest_count: parsedGuests } : {}),
+        // Only a business-tier org with a venue is asked; offsite is the default
+        // and needs no stored flag, so we persist the choice only when the
+        // control was shown and the operator picked on-site.
+        ...(showDeliveryMode && deliveryMode === 'onsite' ? { delivery_mode: 'onsite' as const } : {}),
       })
       resetForm()
       onClose()
@@ -122,6 +133,9 @@ export function NewOpportunityForm({ orgId, open, onClose, customer, customers }
           <Label htmlFor="leadEventDate">Event date</Label>
           <Input id="leadEventDate" type="date" value={eventDate} onChange={(e) => setEventDate(e.target.value)} />
         </div>
+        {showDeliveryMode && (
+          <DeliveryModeToggle value={deliveryMode} onChange={setDeliveryMode} idPrefix="new-lead-delivery" />
+        )}
         <div className="space-y-1">
           <Label htmlFor="leadGuestCount">Guest count</Label>
           <Input id="leadGuestCount" type="number" value={guestCount} onChange={(e) => setGuestCount(e.target.value)} placeholder="0" />
