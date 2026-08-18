@@ -92,7 +92,9 @@ function QueueRow({ row, orgSlug, isActive }: { row: ClientRow; orgSlug: string;
       </span>
       <span className="shrink-0">
         {dormant ? (
-          <StatusPill tone="alert">{signal}</StatusPill>
+          // Beat-urgency signal ("2mo overdue" / "due in 3mo") when the row carries
+          // one; otherwise fall back to the raw time-ago label.
+          <StatusPill tone="alert">{row.beatLabel ?? signal}</StatusPill>
         ) : (
           <span className="text-xs text-muted-foreground">{signal}</span>
         )}
