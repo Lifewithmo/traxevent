@@ -15,6 +15,7 @@ function makeRow(over: {
   wonCount?: number
   lastEventDate?: string
   monthsSinceLastEvent?: number
+  beatLabel?: string
   detail?: string
 }): ClientRow {
   return {
@@ -29,6 +30,7 @@ function makeRow(over: {
     group: over.group,
     lastEventDate: over.lastEventDate,
     monthsSinceLastEvent: over.monthsSinceLastEvent,
+    beatLabel: over.beatLabel,
     detail: over.detail ?? '',
   }
 }
@@ -97,6 +99,25 @@ describe('ClientQueueRail', () => {
     expect(screen.getByText('Tessa Lund')).toBeInTheDocument()
     expect(screen.queryByText('Marisol Vega')).not.toBeInTheDocument()
     expect(screen.queryByText('Cass Reyes')).not.toBeInTheDocument()
+  })
+
+  it('the dormant pill shows beatLabel, falling back to the time-ago label', () => {
+    // Reyes (dormant, no beatLabel) → falls back to lastEventLabel: 14mo = "1y 2mo ago".
+    const overdue = makeRow({
+      id: 'over',
+      name: 'Over Due',
+      group: 'dormant_repeat',
+      wonCount: 3,
+      lastEventDate: '2026-05-01',
+      monthsSinceLastEvent: 3,
+      beatLabel: '2mo overdue',
+    })
+    render(<ClientQueueRail orgSlug="acme" rows={[overdue, ...rows]} />)
+    // beatLabel wins when present…
+    expect(screen.getByText('2mo overdue')).toBeInTheDocument()
+    expect(screen.queryByText('3 months ago')).not.toBeInTheDocument()
+    // …and the raw time-ago label shows when a dormant row carries no beatLabel.
+    expect(screen.getByText('1y 2mo ago')).toBeInTheDocument()
   })
 
   it('shows the group count in the header', () => {

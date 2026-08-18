@@ -101,19 +101,98 @@ describe('buildClientList', () => {
     expect(data.repeat).toBe(1)
   })
 
-  it('within a group, longest-quiet comes first', () => {
+  it('booked_now / never_booked groups keep longest-quiet-first ordering', () => {
     const older = customer({ id: 'o', name: 'Older' })
     const newer = customer({ id: 'n', name: 'Newer' })
     const data = buildClientList(
       {
         customers: [newer, older],
         leadsByCustomerId: {
-          o: [won('o1', '2024-01-10'), won('o2', '2024-06-10')],
-          n: [won('n1', '2025-01-10'), won('n2', '2025-06-10')],
+          // Both have a FUTURE booking → booked_now, so the quiet-key sort applies.
+          o: [won('o1', '2024-01-10'), won('o2', '2026-12-10')],
+          n: [won('n1', '2025-01-10'), won('n2', '2026-12-11')],
         },
       },
       today
     )
-    expect(data.blocks[0].rows.map((r) => r.customer.id)).toEqual(['o', 'n'])
+    const booked = data.blocks.find((b) => b.group === 'booked_now')!
+    expect(booked.rows.map((r) => r.customer.id)).toEqual(['o', 'n'])
+  })
+})
+
+describe('buildClientList — dormant_repeat ranked by re-book beat-urgency', () => {
+  it('ranks a quarterly client 2mo overdue above a yearly client 1mo overdue', () => {
+    const t = '2026-10-10'
+    const quarterly = customer({ id: 'q', name: 'Quarterly' })
+    const yearly = customer({ id: 'y', name: 'Yearly' })
+    const data = buildClientList(
+      {
+        // Yearly listed first AND given the larger book of business, so a plain
+        // value/quiet sort would rank it first — only beat-urgency puts q ahead.
+        customers: [yearly, quarterly],
+        leadsByCustomerId: {
+          q: [won('q1', '2025-11-10'), won('q2', '2026-02-10'), won('q3', '2026-05-10')],
+          y: [won('y1', '2023-09-10', 5000), won('y2', '2024-09-10', 5000), won('y3', '2025-09-10', 5000)],
+        },
+      },
+      t
+    )
+    const dormant = data.blocks.find((b) => b.group === 'dormant_repeat')!
+    expect(dormant.rows.map((r) => r.offBeatMonths)).toEqual([2, 1])
+    expect(dormant.rows.map((r) => r.customer.id)).toEqual(['q', 'y'])
+  })
+
+  it('breaks a tie at equal urgency by won value, highest first', () => {
+    const t = '2026-10-10'
+    const lo = customer({ id: 'lo', name: 'Low' })
+    const hi = customer({ id: 'hi', name: 'High' })
+    const data = buildClientList(
+      {
+        // Same dates → identical offBeatMonths; only totalWonValue separates them.
+        customers: [lo, hi],
+        leadsByCustomerId: {
+          lo: [won('l1', '2025-11-10', 1000), won('l2', '2026-02-10', 1000), won('l3', '2026-05-10', 1000)],
+          hi: [won('h1', '2025-11-10', 3000), won('h2', '2026-02-10', 3000), won('h3', '2026-05-10', 3000)],
+        },
+      },
+      t
+    )
+    const dormant = data.blocks.find((b) => b.group === 'dormant_repeat')!
+    expect(dormant.rows.map((r) => r.offBeatMonths)).toEqual([2, 2])
+    expect(dormant.rows.map((r) => r.customer.id)).toEqual(['hi', 'lo'])
+  })
+})
+
+describe('beatLabel — the queue-pill signal', () => {
+  it('reads "Nmo overdue" when past their own beat', () => {
+    const row = buildClientRow(
+      customer({}),
+      [won('a', '2025-11-10'), won('b', '2026-02-10'), won('c', '2026-05-10')],
+      '2026-10-10'
+    )
+    expect(row.offBeatMonths).toBe(2)
+    expect(row.beatLabel).toBe('2mo overdue')
+  })
+
+  it('reads "due in Nmo" for a dormant client not yet off-beat', () => {
+    // Single event → yearly beat; projected 2027-06-10, ten months out.
+    const row = buildClientRow(customer({}), [won('a', '2026-06-10')], '2026-08-05')
+    expect(row.group).toBe('dormant_repeat')
+    expect(row.offBeatMonths).toBeUndefined()
+    expect(row.beatLabel).toBe('due in 10mo')
+  })
+
+  it('reads "due soon" when the projected re-book is under a month away', () => {
+    // Projected 2026-08-20 vs today 2026-08-05 → monthsBetween rounds to 0.
+    const row = buildClientRow(customer({}), [won('a', '2025-08-20')], '2026-08-05')
+    expect(row.group).toBe('dormant_repeat')
+    expect(row.beatLabel).toBe('due soon')
+  })
+
+  it('is undefined (rail falls back to time-ago) when projected lands exactly today', () => {
+    const row = buildClientRow(customer({}), [won('a', '2025-08-05')], '2026-08-05')
+    expect(row.group).toBe('dormant_repeat')
+    expect(row.offBeatMonths).toBeUndefined()
+    expect(row.beatLabel).toBeUndefined()
   })
 })
