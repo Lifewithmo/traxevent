@@ -1,11 +1,10 @@
-import type { Lead, Task, Proposal } from '@/lib/types'
+import type { Lead, Task, Proposal, LeadStage } from '@/lib/types'
 import { computeHealth, nextAction, type OppHealth } from '@/lib/opportunity-health'
 import { daysSince, dueStatus, lastTouchIso } from '@/lib/opportunity-detail'
 import { isProposalOpened } from '@/lib/proposal-opens'
 import { CLOSED_STAGES, OPEN_STAGES } from '@/lib/leads'
 import { wonValueInMonth, addDaysYmd } from '@/lib/pipeline-stats'
 import { DUE_TONE, shortDate, type Tone } from '@/lib/pipeline-presentation'
-import type { LeadStage } from '@/lib/types'
 
 /**
  * Prep an event needs before its date, in days. The pipeline ranks by the

@@ -143,6 +143,7 @@ describe('buildPipelineRows — book-by radar', () => {
     ], today)
     expect(g.needs_attention.map((r) => r.lead.id)).toEqual(['dated', 'nodate'])
     expect(g.needs_attention[1].bookByDate).toBeUndefined()
+    expect(g.needs_attention[1].daysToBookBy).toBeUndefined()
     expect(g.needs_attention[1].conflict).toBe(false)
   })
 
