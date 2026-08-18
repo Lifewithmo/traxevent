@@ -3,7 +3,7 @@ import { offBeatMonths } from '@/lib/crm/cadence'
 import { formatMoney } from '@/lib/money'
 import type { ClientRow } from '@/lib/crm/client-list'
 import type { CustomerAR } from '@/lib/crm/ar-rollup'
-import type { Invoice, Lead, LeadStage } from '@/lib/types'
+import type { Lead, LeadStage } from '@/lib/types'
 
 /**
  * The single most valuable next move for one client, computed and ranked so the
@@ -26,7 +26,6 @@ export interface NextBestAction {
 export interface NextBestActionInput {
   row: ClientRow
   opportunities: Lead[]
-  invoices: Invoice[]
   ar: CustomerAR
   todayYmd: string
 }

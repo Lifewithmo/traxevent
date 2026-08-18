@@ -52,6 +52,11 @@ export function projectedNextBooking(
  * overdue on their own pattern; null when they are on beat or have no cadence.
  */
 export function offBeatMonths(row: ClientRow, todayYmd: string): number | null {
+  // A client with a FUTURE booking on the books is on-beat by definition — never
+  // "overdue on their pattern," even if their PAST events were off-cadence. This
+  // stops a false "Re-book — N mo overdue" nudge (and story dormancy) the moment
+  // a client is re-booked.
+  if (row.nextEventDate) return null
   const projected = projectedNextBooking(row.lastEventDate ?? null, effectiveCadenceMonths(row))
   if (!projected) return null
   const past = monthsBetween(projected, todayYmd)

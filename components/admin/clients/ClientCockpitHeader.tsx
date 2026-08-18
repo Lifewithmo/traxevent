@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Mail, Phone, Plus, MoreHorizontal, ArrowRight, RefreshCw, Send, type LucideIcon } from 'lucide-react'
 import { Avatar } from '@/components/ui/avatar'
@@ -77,20 +77,45 @@ export function ClientCockpitHeader({
   const pill = pastDue ? { tone: 'alert' as Tone, label: `Past due ${money(ar.overdueAmount)}` } : GROUP_PILL[group]
   const subtitle = [customer.company, customer.email, customer.phone].filter(Boolean).join(' · ')
 
-  // The computed, ranked next move. Reads real AR (via `ar`), the client's
-  // re-book cadence (via `row`), and open opportunities — never quoted pipeline.
   const now = new Date()
-  const nba = nextBestAction({ row, opportunities, invoices, ar, todayYmd: todayYmd(now) })
-  const Icon = KIND_ICON[nba.kind]
+  const today = todayYmd(now)
 
   // Wiring targets for the action kinds that link/route.
   const openLead = opportunities.find((l) => (OPEN_STAGES as LeadStage[]).includes(l.stage))
   const overdue = overdueInvoices(invoices, now)
   const reminderHref = customer.email && overdue[0] ? buildReminderMailto(customer.email, overdue[0]) : undefined
 
+  // The computed, ranked next move. Reads real AR (via `ar`), the client's
+  // re-book cadence (via `row`), and open opportunities — never quoted pipeline.
+  const rawNba = nextBestAction({ row, opportunities, ar, todayYmd: today })
+  // A 'reminder' we cannot actually send (no email on file, or no matching
+  // invoice to reference) would render a dead, disabled primary. Fall back to the
+  // next actionable move instead — the "Past due" pill still surfaces the debt —
+  // and explain the blocker on the reason line rather than dead-ending the CTA.
+  const reminderBlocked = rawNba.kind === 'reminder' && !reminderHref
+  const nba = reminderBlocked
+    ? nextBestAction({ row, opportunities, ar: { ...ar, overdueAmount: 0 }, todayYmd: today })
+    : rawNba
+  const Icon = KIND_ICON[nba.kind]
+  const reasonLine =
+    reminderBlocked && !customer.email ? 'Add an email to send a reminder.' : nba.reason
+
+  // A failed re-book alert must not linger and hide the reason line once the
+  // recommended move changes (e.g. the client got re-booked, or AR was paid).
+  useEffect(() => {
+    setRebookError(null)
+  }, [nba.kind, nba.label])
+
   async function copyLink() {
     if (typeof window === 'undefined') return
-    await navigator.clipboard.writeText(`${window.location.origin}/${orgSlug}/clients/${customer.id}`)
+    setRebookError(null)
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}/${orgSlug}/clients/${customer.id}`)
+    } catch (err) {
+      // A clipboard rejection (permissions, insecure context) must not surface as
+      // an unhandled promise rejection from this fire-and-forget onClick.
+      console.error('Failed to copy client link', err)
+    }
   }
 
   // Re-book: seed a fresh proposal from the last accepted one and jump into the
@@ -112,6 +137,7 @@ export function ClientCockpitHeader({
 
   // Fire-and-forget contact log; the native mailto:/tel: href still fires.
   function logContact(kind: 'emailed' | 'called') {
+    setRebookError(null)
     logContactActivity(orgId, { parent_type: 'customer', parent_id: customer.id, kind }).catch((err) => {
       console.error('Failed to log contact activity', err)
     })
@@ -217,7 +243,7 @@ export function ClientCockpitHeader({
               {rebookError}
             </p>
           ) : (
-            nba.reason && <p className="max-w-xs text-right text-xs text-muted-foreground">{nba.reason}</p>
+            reasonLine && <p className="max-w-xs text-right text-xs text-muted-foreground">{reasonLine}</p>
           )}
         </div>
       </div>

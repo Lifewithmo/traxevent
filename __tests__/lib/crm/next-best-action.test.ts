@@ -21,7 +21,6 @@ const call = (over: Partial<Parameters<typeof nextBestAction>[0]>) =>
   nextBestAction({
     row: rowOf([], '2026-08-15'),
     opportunities: [],
-    invoices: [],
     ar: emptyAR,
     todayYmd: '2026-08-15',
     ...over,
@@ -72,9 +71,12 @@ describe('nextBestAction — followup branch', () => {
   })
 
   it('ignores closed leads — a closed_won is not an open opportunity', () => {
+    // Single won event 2026-06-05, yearly projection → not yet off-beat, nothing
+    // owed, nothing open. The one healthy outcome is 'none', so assert it exactly
+    // rather than merely `not followup` (which would also pass for rebook, etc.).
     const leads = [won('a', '2026-06-05')]
     const nba = call({ opportunities: leads, row: rowOf(leads, '2026-08-15') })
-    expect(nba.kind).not.toBe('followup')
+    expect(nba.kind).toBe('none')
   })
 })
 
@@ -86,6 +88,20 @@ describe('nextBestAction — rebook branch', () => {
     const nba = call({ row, opportunities: leads, todayYmd: '2026-08-15' })
     expect(nba.kind).toBe('rebook')
     expect(nba.label).toMatch(/^Re-book — \d+mo overdue on their pattern$/)
+  })
+
+  it('does NOT re-book a repeat client off-beat on PAST events once a FUTURE booking exists', () => {
+    // Same off-beat past pattern as above's spirit, but a Dec booking is on the
+    // books → the client is on-beat, so the move must not be 'rebook'.
+    const leads = [
+      won('a', '2025-11-05'), won('b', '2025-12-05'), won('c', '2026-01-05'), won('d', '2026-02-05'),
+      won('future', '2026-12-05'),
+    ]
+    const row = rowOf(leads, '2026-08-05')
+    expect(row.nextEventDate).toBe('2026-12-05')
+    const nba = call({ row, opportunities: leads, todayYmd: '2026-08-05' })
+    expect(nba.kind).not.toBe('rebook')
+    expect(nba.kind).toBe('none')
   })
 })
 

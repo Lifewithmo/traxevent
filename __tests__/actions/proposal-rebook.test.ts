@@ -76,11 +76,13 @@ function makeProposal(over: Partial<Proposal>): Proposal {
   }
 }
 
-// Older accepted proposal on L1
+// Older-RESPONSE accepted proposal on L1. Its created_at is deliberately LATER
+// than the winner's so ordering can only be proven by client_response_at.
 const propOld = makeProposal({
   id: 'p-old',
   lead_id: 'l1',
   status: 'accepted',
+  created_at: '2025-06-01T00:00:00.000Z',
   client_response_at: '2025-02-01T00:00:00.000Z',
   selection: { optional_item_ids: [], selected_total: 8000, selected_at: '2025-02-01T00:00:00.000Z' },
   packages,
@@ -93,11 +95,13 @@ const propOld = makeProposal({
   notes: 'Prior notes',
   blocks: [{ id: 'b1', type: 'paragraph', text: 'Hello' }],
 })
-// Newer accepted proposal on L2 — should win
+// Later-RESPONSE accepted proposal on L2 — should win. Its created_at is EARLIER
+// than propOld's, so a win proves ordering keys on client_response_at, not creation.
 const propNew = makeProposal({
   id: 'p-new',
   lead_id: 'l2',
   status: 'accepted',
+  created_at: '2024-01-01T00:00:00.000Z',
   client_response_at: '2026-03-01T00:00:00.000Z',
   selection: { optional_item_ids: [], selected_total: 9000, selected_at: '2026-03-01T00:00:00.000Z' },
   packages,
@@ -123,7 +127,11 @@ describe('lastAcceptedProposalForCustomer', () => {
     wireStandard()
   })
 
-  it('picks the newest accepted proposal across the customer’s leads', async () => {
+  it('picks the newest accepted proposal by client_response_at, not created_at', async () => {
+    // Isolation guard: the winner (p-new) was CREATED earlier than the loser
+    // (p-old) but RESPONDED to later. If ranking used created_at, p-old would win.
+    expect(propNew.created_at < propOld.created_at!).toBe(true)
+    expect(propNew.client_response_at! > propOld.client_response_at!).toBe(true)
     const res = await lastAcceptedProposalForCustomer('o1', 'c1')
     expect(assertOrgMember).toHaveBeenCalledWith('o1')
     expect(res?.proposal.id).toBe('p-new')

@@ -58,10 +58,30 @@ describe('offBeatMonths — cadence-relative dormancy', () => {
     expect(offBeatMonths(row, '2025-08-15')).toBeNull()
   })
 
-  it('flags a monthly client three months silent even though it is under six', () => {
+  it('flags a monthly client exactly two months past their projected re-book', () => {
+    // Monthly client, last event 2026-05-05 → projected re-book 2026-06-05.
+    // By today (2026-08-05) they are EXACTLY two months past their own beat —
+    // pin the magnitude, not just `> 0`, so an off-by-N regression is caught.
     const row = rowOf([won('a', '2026-03-05'), won('b', '2026-04-05'), won('c', '2026-05-05')], '2026-08-05')
     expect(row.cadenceMonths).toBe(1)
-    expect(offBeatMonths(row, '2026-08-05')).toBeGreaterThan(0)
+    expect(projectedNextBooking(row.lastEventDate!, effectiveCadenceMonths(row))).toBe('2026-06-05')
+    expect(offBeatMonths(row, '2026-08-05')).toBe(2)
+  })
+
+  it('does NOT flag a repeat client off-beat on PAST events once a FUTURE booking exists', () => {
+    // Monthly through Feb (last past event 2026-02-05 → projected 2026-05-05, so
+    // three months overdue on the raw pattern) BUT a Dec booking is on the books.
+    // A future booking means on-beat by definition → null, never a re-book nudge.
+    const leads = [
+      won('a', '2025-11-05'), won('b', '2025-12-05'), won('c', '2026-01-05'), won('d', '2026-02-05'),
+      won('future', '2026-12-05'),
+    ]
+    const row = rowOf(leads, '2026-08-05')
+    expect(row.nextEventDate).toBe('2026-12-05')
+    expect(row.lastEventDate).toBe('2026-02-05')
+    // Sanity: without the future booking the same past pattern IS off-beat.
+    expect(offBeatMonths(rowOf(leads.slice(0, 4), '2026-08-05'), '2026-08-05')).toBeGreaterThan(0)
+    expect(offBeatMonths(row, '2026-08-05')).toBeNull()
   })
 
   it('flags a two-event client past their single-gap beat', () => {

@@ -60,7 +60,9 @@ export function ActivityTimeline({ orgId, parentType, parentId, activity }: Acti
             value={body}
             onChange={(e) => setBody(e.target.value)}
             onKeyDown={(e) => {
-              if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+              // Mirror the "Add note" button's `disabled={busy}` guard so the
+              // shortcut cannot fire a second submit while one is in flight.
+              if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && !busy) {
                 e.preventDefault()
                 handleAddNote()
               }
