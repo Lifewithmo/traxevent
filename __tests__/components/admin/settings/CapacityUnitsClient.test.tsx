@@ -120,10 +120,25 @@ describe('CapacityUnitsClient', () => {
       />,
     )
 
-    fireEvent.click(screen.getByRole('switch', { name: /active/i }))
+    fireEvent.click(screen.getByRole('switch', { name: /Kart 1 — active/i }))
     await waitFor(() =>
       expect(updateCapacityUnit).toHaveBeenCalledWith('o1', 'm1', { active: false }),
     )
+  })
+
+  it('gives each unit switch a distinct, unit-scoped accessible name', () => {
+    render(
+      <CapacityUnitsClient
+        {...base}
+        initialUnits={[
+          unit({ id: 'm1', name: 'Kart 1', kind: 'mobile' }),
+          unit({ id: 'm2', name: 'Kart 2', kind: 'mobile', active: false }),
+        ]}
+      />,
+    )
+    // Screen-reader users must be able to tell which unit each switch controls.
+    expect(screen.getByRole('switch', { name: /Kart 1 — active/i })).toBeInTheDocument()
+    expect(screen.getByRole('switch', { name: /Kart 2 — retired/i })).toBeInTheDocument()
   })
 
   it('renders block-outs as removable date-range chips and removes through updateCapacityUnit', async () => {

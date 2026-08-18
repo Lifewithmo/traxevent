@@ -371,7 +371,7 @@ function UnitRow({
             <Input
               id={nameId}
               value={name}
-              aria-label={`${meta.noun} name`}
+              aria-label={`${unit.name} — ${meta.noun} name`}
               className="h-8 max-w-56 font-medium"
               onChange={(e) => setName(e.target.value)}
               onBlur={commitName}
@@ -386,6 +386,7 @@ function UnitRow({
               type="button"
               role="switch"
               aria-checked={unit.active}
+              aria-label={`${unit.name} — ${unit.active ? 'active' : 'retired'}`}
               disabled={saving}
               onClick={() => onToggleActive(unit.id, !unit.active)}
               className={
