@@ -34,6 +34,9 @@ export function buildBrewtraxSeed(today: Date): BrewtraxSeed {
     { key: 'cust-lakeview', input: { name: 'Erin Cole', email: 'erin@lakeviewrealty.example.com', phone: '208-555-0210', company: 'Lakeview Realty Group' } },
     { key: 'cust-ironhaus', input: { name: 'Devon Marsh', email: 'devon@ironhausgym.example.com', phone: '208-555-0221', company: 'Ironhaus CrossFit' } },
     { key: 'cust-galleria', input: { name: 'Bianca Lott', email: 'bianca@galleriaevents.example.com', phone: '208-555-0232', company: 'Galleria Event Center' } },
+    // Two clients chasing the SAME Saturday — the book-by conflict-radar demo.
+    { key: 'cust-brightside', input: { name: 'Maya Brightside', email: 'maya@brightsidegardens.example.com', phone: '208-555-0243', company: 'Brightside Garden Events' } },
+    { key: 'cust-crestline', input: { name: 'Theo Crestline', email: 'theo@crestlinecapital.example.com', phone: '208-555-0254', company: 'Crestline Capital' } },
   ]
 
   const leads: BrewtraxSeed['leads'] = [
@@ -160,6 +163,31 @@ export function buildBrewtraxSeed(today: Date): BrewtraxSeed {
         event_type: 'Festival', event_date: daysFrom(today, -21), estimated_value: 3600,
         stage: 'closed_won', created_at: isoFrom(today, -100),
         notes: 'Delivered. Festival office short-paid the deposit and the balance is still open.',
+      },
+    },
+    {
+      // SAME-DAY BOOKING CONFLICT demo. This wedding is already BOOKED for a
+      // Saturday ~18 days out (event − 14-day prep ⇒ book-by in ~4 days), and
+      // the Crestline mixer below wants the very same day. A solo operator's
+      // capacity is 1, so the pipeline flags the still-open Crestline deal with
+      // a conflict badge and warns if you try to win it too.
+      key: 'lead-brightside-wedding', customerKey: 'cust-brightside',
+      lead: {
+        id: 'demo-lead-21', name: 'Maya Brightside', title: 'Brightside garden wedding — espresso bar',
+        email: 'maya@brightsidegardens.example.com', phone: '208-555-0243', organization: 'Brightside Garden Events',
+        event_type: 'Wedding', event_date: daysFrom(today, 18), estimated_value: 2600,
+        stage: 'closed_won', created_at: isoFrom(today, -40),
+        notes: 'Booked. Same Saturday the Crestline mixer is chasing — capacity is one.',
+      },
+    },
+    {
+      key: 'lead-crestline-mixer', customerKey: 'cust-crestline',
+      lead: {
+        id: 'demo-lead-22', name: 'Theo Crestline', title: 'Crestline investor mixer — cold brew',
+        email: 'theo@crestlinecapital.example.com', phone: '208-555-0254', organization: 'Crestline Capital',
+        event_type: 'Corporate', event_date: daysFrom(today, 18), estimated_value: 1900,
+        stage: 'consultation', created_at: isoFrom(today, -3),
+        notes: 'Wants the same Saturday as the Brightside wedding — double-booking risk.',
       },
     },
   ]
