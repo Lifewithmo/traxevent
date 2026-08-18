@@ -204,8 +204,11 @@ export function ClientCockpitHeader({
           </div>
         </div>
 
-        <div className="flex w-full flex-col items-stretch gap-1 sm:w-auto sm:shrink-0 sm:items-end">
-          <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap">
+        {/* Right-aligned shrink-0 cluster only at lg+, where the queue AND record
+            have room; below lg (incl. tablet, where the queue eats ~215px) it goes
+            full-width and the button row wraps so nothing clips. */}
+        <div className="flex w-full flex-col items-stretch gap-1 lg:w-auto lg:shrink-0 lg:items-end">
+          <div className="flex flex-wrap items-center gap-2 lg:flex-nowrap">
             {primaryCta()}
             {customer.email && (
               <Button
@@ -239,11 +242,11 @@ export function ClientCockpitHeader({
             </Menu>
           </div>
           {rebookError ? (
-            <p role="alert" className="max-w-xs text-left text-xs text-destructive sm:text-right">
+            <p role="alert" className="max-w-xs text-left text-xs text-destructive lg:text-right">
               {rebookError}
             </p>
           ) : (
-            reasonLine && <p className="max-w-xs text-left text-xs text-muted-foreground sm:text-right">{reasonLine}</p>
+            reasonLine && <p className="max-w-xs text-left text-xs text-muted-foreground lg:text-right">{reasonLine}</p>
           )}
         </div>
       </div>
