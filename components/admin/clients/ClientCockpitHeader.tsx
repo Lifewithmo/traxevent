@@ -204,8 +204,8 @@ export function ClientCockpitHeader({
           </div>
         </div>
 
-        <div className="flex shrink-0 flex-col items-end gap-1">
-          <div className="flex items-center gap-2">
+        <div className="flex w-full flex-col items-stretch gap-1 sm:w-auto sm:shrink-0 sm:items-end">
+          <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap">
             {primaryCta()}
             {customer.email && (
               <Button
@@ -239,11 +239,11 @@ export function ClientCockpitHeader({
             </Menu>
           </div>
           {rebookError ? (
-            <p role="alert" className="max-w-xs text-right text-xs text-destructive">
+            <p role="alert" className="max-w-xs text-left text-xs text-destructive sm:text-right">
               {rebookError}
             </p>
           ) : (
-            reasonLine && <p className="max-w-xs text-right text-xs text-muted-foreground">{reasonLine}</p>
+            reasonLine && <p className="max-w-xs text-left text-xs text-muted-foreground sm:text-right">{reasonLine}</p>
           )}
         </div>
       </div>
