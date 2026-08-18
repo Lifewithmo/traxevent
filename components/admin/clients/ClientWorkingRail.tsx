@@ -38,6 +38,24 @@ function money(n: number): string {
 // Mirrors CustomerDetailClient's `opt` helper.
 const opt = (v: string): string | null => (v.trim() === '' ? null : v.trim())
 
+// Format guards so the cockpit header's mailto:/tel: CTAs never dead-link on a
+// value the operator fat-fingered. Blank is always allowed — it clears the
+// field (see `opt`). Returns an error message, or null when acceptable.
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+function validateEmail(v: string): string | null {
+  const t = v.trim()
+  if (t === '') return null
+  return EMAIL_RE.test(t) ? null : 'Enter a valid email address'
+}
+
+function validatePhone(v: string): string | null {
+  const t = v.trim()
+  if (t === '') return null
+  const digits = t.match(/\d/g)?.length ?? 0
+  const wellFormed = /^\+?[\d\s().-]+$/.test(t)
+  return wellFormed && digits >= 7 ? null : 'Enter a valid phone number'
+}
+
 const JOB_TONE: Record<LeadStage, Tone> = {
   inquiry: 'neutral',
   consultation: 'pending',
@@ -86,30 +104,46 @@ const OVERDUE_AGING_BUCKETS = new Set(['d1_30', 'd31_60', 'd61_90', 'd90_plus'])
 // an input that commits via `onSave` on blur/Enter. Generalizes the
 // page-level toggle in FactsGrid.tsx into a per-field toggle.
 function EditableFact({
-  label, value, onSave,
+  label, value, onSave, type = 'text', validate,
 }: {
   label: string
   value: string
   onSave: (next: string) => Promise<void>
+  type?: 'text' | 'email' | 'tel'
+  validate?: (next: string) => string | null
 }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(value)
   const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   function startEditing() {
     setDraft(value)
+    setError(null)
     setEditing(true)
   }
 
   async function commit() {
     if (draft.trim() === value.trim()) {
       setEditing(false)
+      setError(null)
+      return
+    }
+    // Block an unusable value before it reaches the record — keep the draft in
+    // the still-open input so the operator can fix it, not lose it.
+    const invalid = validate?.(draft) ?? null
+    if (invalid) {
+      setError(invalid)
       return
     }
     setBusy(true)
+    setError(null)
     try {
       await onSave(draft)
       setEditing(false)
+    } catch (e: unknown) {
+      // Keep the draft + stay in edit mode so the operator can retry.
+      setError(e instanceof Error ? e.message : `Could not save ${label.toLowerCase()}`)
     } finally {
       setBusy(false)
     }
@@ -119,25 +153,31 @@ function EditableFact({
     <div className="min-w-0">
       <dt className="text-xs text-muted-foreground">{label}</dt>
       {editing ? (
-        <input
-          autoFocus
-          aria-label={label}
-          value={draft}
-          disabled={busy}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={commit}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault()
-              commit()
-            }
-            if (e.key === 'Escape') {
-              setDraft(value)
-              setEditing(false)
-            }
-          }}
-          className="mt-0.5 w-full rounded border border-border bg-background px-1.5 py-0.5 text-sm"
-        />
+        <>
+          <input
+            autoFocus
+            type={type}
+            aria-label={label}
+            aria-invalid={error ? true : undefined}
+            value={draft}
+            disabled={busy}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={commit}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                commit()
+              }
+              if (e.key === 'Escape') {
+                setDraft(value)
+                setError(null)
+                setEditing(false)
+              }
+            }}
+            className="mt-0.5 w-full rounded border border-border bg-background px-1.5 py-0.5 text-sm"
+          />
+          {error && <p className="mt-1 text-sm text-destructive" role="alert">{error}</p>}
+        </>
       ) : value ? (
         <dd className="mt-0.5">
           <button type="button" onClick={startEditing} title={value} className="block max-w-full truncate text-left text-sm font-medium text-foreground hover:underline">
@@ -180,8 +220,8 @@ function MetadataCard({ orgId, customer }: { orgId: string; customer: Customer }
         <h4 className="text-[13px] font-semibold">Details</h4>
       </header>
       <dl className="grid grid-cols-2 gap-x-4 gap-y-3 p-3">
-        <EditableFact label="Email" value={customer.email ?? ''} onSave={(v) => saveField('email', v)} />
-        <EditableFact label="Phone" value={customer.phone ?? ''} onSave={(v) => saveField('phone', v)} />
+        <EditableFact label="Email" type="email" validate={validateEmail} value={customer.email ?? ''} onSave={(v) => saveField('email', v)} />
+        <EditableFact label="Phone" type="tel" validate={validatePhone} value={customer.phone ?? ''} onSave={(v) => saveField('phone', v)} />
         <EditableFact label="Company" value={customer.company ?? ''} onSave={(v) => saveField('company', v)} />
         <div className="col-span-2">
           <dt className="text-xs text-muted-foreground">Tags</dt>

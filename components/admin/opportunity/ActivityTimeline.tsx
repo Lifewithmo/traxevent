@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -40,12 +40,6 @@ export function ActivityTimeline({ orgId, parentType, parentId, activity }: Acti
   const [body, setBody] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [composerOpen, setComposerOpen] = useState(false)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
-
-  useEffect(() => {
-    if (composerOpen) textareaRef.current?.focus()
-  }, [composerOpen])
 
   async function handleAddNote() {
     if (!body.trim()) return
@@ -62,27 +56,21 @@ export function ActivityTimeline({ orgId, parentType, parentId, activity }: Acti
       <CardHeader><CardTitle className="text-base">Activity</CardTitle></CardHeader>
       <CardContent className="space-y-4">
         <div className="space-y-2">
-          {composerOpen ? (
-            <div
-              className="space-y-2"
-              onBlur={(e) => {
-                if (!e.currentTarget.contains(e.relatedTarget as Node) && !body.trim()) setComposerOpen(false)
-              }}
-            >
-              <textarea
-                ref={textareaRef}
-                value={body}
-                onChange={(e) => setBody(e.target.value)}
-                placeholder="Add a note…"
-                className="flex min-h-16 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              />
-              <div className="flex justify-end">
-                <Button size="sm" onClick={handleAddNote} disabled={busy || !body.trim()}>Add note</Button>
-              </div>
-            </div>
-          ) : (
-            <Button variant="ghost" size="sm" onClick={() => setComposerOpen(true)}>Add a note</Button>
-          )}
+          <textarea
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            onKeyDown={(e) => {
+              if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                e.preventDefault()
+                handleAddNote()
+              }
+            }}
+            placeholder="Add a note…"
+            className="flex min-h-16 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          />
+          <div className="flex justify-end">
+            <Button size="sm" onClick={handleAddNote} disabled={busy || !body.trim()}>Add note</Button>
+          </div>
           {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
         </div>
 
