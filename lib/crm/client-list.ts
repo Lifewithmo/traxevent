@@ -10,6 +10,8 @@ export interface ClientRow {
   group: ClientGroup
   /** Event date of the most recent won opportunity. */
   lastEventDate?: string
+  /** Event date of the earliest won opportunity — used to derive the single gap for two-event clients. */
+  firstEventDate?: string
   /** Soonest future event date across won opportunities. */
   nextEventDate?: string
   /** Whole months since lastEventDate; undefined when they've never booked. */
@@ -43,7 +45,7 @@ const GROUP_META: Record<ClientGroup, { label: string; tone: 'urgent' | 'normal'
 
 const GROUP_ORDER: ClientGroup[] = ['dormant_repeat', 'booked_now', 'never_booked']
 
-function monthsBetween(fromYmd: string, toYmd: string): number {
+export function monthsBetween(fromYmd: string, toYmd: string): number {
   const a = new Date(`${fromYmd.slice(0, 10)}T00:00:00.000Z`)
   const b = new Date(`${toYmd.slice(0, 10)}T00:00:00.000Z`)
   if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) return 0
@@ -88,6 +90,7 @@ export function buildClientRow(customer: Customer, leads: Lead[], today: string)
   const future = wonEventDates.filter((d) => d > today)
   const lastEventDate = past[past.length - 1]
   const nextEventDate = future[0]
+  const firstEventDate = wonEventDates[0]
 
   const group: ClientGroup =
     rollup.wonCount > 0 && rollup.openCount === 0 && !nextEventDate
@@ -102,6 +105,7 @@ export function buildClientRow(customer: Customer, leads: Lead[], today: string)
     rollup,
     group,
     lastEventDate,
+    firstEventDate,
     nextEventDate,
     monthsSinceLastEvent: lastEventDate ? monthsBetween(lastEventDate, today) : undefined,
     cadenceMonths,

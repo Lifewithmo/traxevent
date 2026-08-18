@@ -1,5 +1,6 @@
 import { LEAD_STAGE_LABELS, OPEN_STAGES, opportunityTitle } from '@/lib/leads'
 import { cadenceLabel, type ClientRow } from '@/lib/crm/client-list'
+import { offBeatMonths } from '@/lib/crm/cadence'
 import type { Lead, LeadStage } from '@/lib/types'
 
 /**
@@ -36,7 +37,7 @@ function money(n: number): string {
   return `$${n.toLocaleString()}`
 }
 
-export function buildClientStory(row: ClientRow, leads: Lead[]): ClientStory {
+export function buildClientStory(row: ClientRow, leads: Lead[], today: string): ClientStory {
   const { rollup } = row
   const parts: string[] = []
 
@@ -57,7 +58,9 @@ export function buildClientStory(row: ClientRow, leads: Lead[]): ClientStory {
 
   if (row.nextEventDate) {
     parts.push(`next one booked for ${monthYear(row.nextEventDate)}`)
-  } else if (row.monthsSinceLastEvent !== undefined && row.monthsSinceLastEvent >= 6) {
+  } else if (offBeatMonths(row, today) != null && row.monthsSinceLastEvent !== undefined) {
+    // Dormancy is now cadence-relative: flag them only when they are past their
+    // own re-book beat, not on a flat six-month timer.
     parts.push(`nothing booked in ${row.monthsSinceLastEvent} months`)
   }
 

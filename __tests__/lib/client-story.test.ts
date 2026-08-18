@@ -12,7 +12,7 @@ const lead = (over: Partial<Lead>): Lead => ({
 const won = (id: string, event_date: string, value = 1000, extra: Partial<Lead> = {}): Lead =>
   lead({ id, stage: 'closed_won', event_date, estimated_value: value, ...extra })
 
-const story = (leads: Lead[]) => buildClientStory(buildClientRow(customer, leads, today), leads)
+const story = (leads: Lead[]) => buildClientStory(buildClientRow(customer, leads, today), leads, today)
 
 describe('buildClientStory', () => {
   it('a brand-new client has no story', () => {
