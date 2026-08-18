@@ -62,12 +62,14 @@ export function ClientCockpit({ orgId, orgSlug, customer, opportunities, notes, 
         onNewProposal={goToNewProposal}
       />
 
-      {/* Below lg this is a single implicit grid column (no `grid-cols-*` applies
-          until lg:), so the working rail — second in DOM order — folds under
-          the spine automatically; only lg: introduces the two-pane split. */}
-      <div className="grid gap-4 lg:grid-cols-5">
+      {/* Below lg this is one explicit `grid-cols-1` column (minmax(0,1fr)) so the
+          record + rail SHRINK to the viewport — a bare implicit `auto` column grows
+          to content instead, which clipped the record on phones/tablets. Both
+          children carry `min-w-0` so their content wraps rather than forcing width.
+          Only lg: introduces the two-pane split (rail second in DOM order). */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
         {/* Left: the record */}
-        <div className="space-y-4 lg:col-span-3">
+        <div className="min-w-0 space-y-4 lg:col-span-3">
           <ClientKpiBand ar={ar} rollup={row.rollup} />
 
           {story.parts.length > 0 && (

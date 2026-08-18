@@ -327,7 +327,7 @@ export function ClientWorkingRail({ orgId, orgSlug, customer, opportunities, inv
   )
 
   return (
-    <aside className="space-y-4 lg:col-span-2">
+    <aside className="min-w-0 space-y-4 lg:col-span-2">
       <MetadataCard orgId={orgId} customer={customer} />
 
       {/* Empty context blocks (no rows, just an empty-state CTA) hide below md —
