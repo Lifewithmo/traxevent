@@ -5,6 +5,7 @@ import { isProposalOpened } from '@/lib/proposal-opens'
 import { CLOSED_STAGES, OPEN_STAGES } from '@/lib/leads'
 import { wonValueInMonth, addDaysYmd } from '@/lib/pipeline-stats'
 import { DUE_TONE, shortDate, type Tone } from '@/lib/pipeline-presentation'
+import type { CapacityDay } from '@/lib/capacity/capacity'
 
 /**
  * Prep an event needs before its date, in days. The pipeline ranks by the
@@ -69,7 +70,11 @@ export interface PipelineRow {
   eventDate?: string      // the lead's event_date, echoed for the row's time cue
   bookByDate?: string     // event_date − prepLeadDays: the real deadline to close
   daysToBookBy?: number   // signed days from today to bookByDate; negative = past due
-  conflict?: boolean      // another bookable lead shares this event_date
+  conflict?: boolean      // capacity mode: this date is over capacity; else another bookable lead shares this event_date
+  // Capacity mode only (business tier w/ configured units): the per-date supply
+  // vs demand breakdown for this row's event_date. Undefined on the base/solo
+  // backstop path AND when the row's date has no capacity entry.
+  overCapacity?: CapacityDay
 }
 export interface PipelineGroups {
   needs_attention: PipelineRow[]
@@ -98,10 +103,18 @@ export function unopenedSentProposal(proposals: Proposal[]): Proposal | null {
 export function buildPipelineRows(
   inputs: Array<{ lead: Lead; tasks: Task[]; proposals: Proposal[] }>,
   today: string,
-  opts: { prepLeadDays?: number; conflictDates?: Set<string> } = {}
+  opts: {
+    prepLeadDays?: number
+    conflictDates?: Set<string>
+    // Capacity mode. When provided, the radar is resource-aware: a row's
+    // `conflict` and `overCapacity` come from this map (keyed by event_date),
+    // and `conflictDates` is IGNORED. Absent ⇒ exactly increment-1 behavior.
+    capacityByDate?: Map<string, CapacityDay>
+  } = {}
 ): PipelineGroups {
   const prepLeadDays = opts.prepLeadDays ?? DEFAULT_PREP_LEAD_DAYS
   const conflictDates = opts.conflictDates ?? new Set<string>()
+  const capacityMode = opts.capacityByDate != null
   const groups: PipelineGroups = { needs_attention: [], waiting: [], active: [] }
   for (const { lead, tasks, proposals } of inputs) {
     if (CLOSED_STAGES.includes(lead.stage)) continue
@@ -111,11 +124,18 @@ export function buildPipelineRows(
     // these — it can't conflict and it sorts to the no-date tail.
     const eventDate = lead.event_date
     const bookByDate = eventDate ? addDaysYmd(eventDate, -prepLeadDays) : undefined
+    // Capacity mode: resolve the day's supply/demand and let `over` drive
+    // `conflict`. Off (the backstop): fall back to increment-1's ≥2-on-a-date set.
+    const overCapacity = capacityMode && eventDate != null ? opts.capacityByDate!.get(eventDate) : undefined
+    const conflict = capacityMode
+      ? (overCapacity?.over ?? false)
+      : eventDate != null && conflictDates.has(eventDate)
     const radar = {
       eventDate,
       bookByDate,
       daysToBookBy: bookByDate ? daysBetweenYmd(today, bookByDate) : undefined,
-      conflict: eventDate != null && conflictDates.has(eventDate),
+      conflict,
+      overCapacity,
     }
     if (health === 'needs_attention') {
       const unopened = unopenedSentProposal(proposals)
