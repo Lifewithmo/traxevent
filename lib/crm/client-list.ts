@@ -222,8 +222,17 @@ export function buildClientList(
     if (aOff !== bOff) return bOff - aOff
     return b.rollup.totalWonValue - a.rollup.totalWonValue
   }
+  // Group is the PRIMARY key so cross-group pairs never interleave with a
+  // within-group key — that interleaving made the comparator intransitive (a
+  // dormant beat-order pair vs a booked quiet-order pair could form a cycle),
+  // which left the dormant block's beat ranking undefined on real inputs.
+  // Group is the PRIMARY key so cross-group pairs never interleave with a
+  // within-group key — that interleaving made the comparator intransitive (a
+  // dormant beat-order pair vs a booked quiet-order pair could form a cycle),
+  // which left the dormant block's beat ranking undefined on real inputs.
   rows.sort((a, b) => {
-    if (a.group === 'dormant_repeat' && b.group === 'dormant_repeat') return beatCompare(a, b)
+    if (a.group !== b.group) return GROUP_ORDER.indexOf(a.group) - GROUP_ORDER.indexOf(b.group)
+    if (a.group === 'dormant_repeat') return beatCompare(a, b)
     return quietKey(a).localeCompare(quietKey(b))
   })
 

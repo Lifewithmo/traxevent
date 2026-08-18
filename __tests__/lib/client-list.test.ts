@@ -161,6 +161,43 @@ describe('buildClientList — dormant_repeat ranked by re-book beat-urgency', ()
     expect(dormant.rows.map((r) => r.offBeatMonths)).toEqual([2, 2])
     expect(dormant.rows.map((r) => r.customer.id)).toEqual(['hi', 'lo'])
   })
+
+  it('holds the beat ranking with an interleaved booked_now client, regardless of input order', () => {
+    // Regression for an INTRANSITIVE comparator: the dormant group sorted by
+    // beat-urgency while every other pair sorted by quiet-key (lastEventDate).
+    // The feature's premise is a MORE off-beat client can have a MORE RECENT
+    // last event than a LESS off-beat one — so a booked client whose lastEvent
+    // falls between two dormant clients' lastEvents forms a comparison cycle
+    // (d1 < b, b < d2 by quiet; d2 < d1 by beat) and scrambles the dormant order.
+    const t = '2026-10-10'
+    // more_off: 4mo overdue, but MOST RECENT last event (2026-05-10).
+    const moreOff = customer({ id: 'more_off', name: 'More Off Beat' })
+    // less_off: only 1mo overdue, but OLDEST last event (2025-09-10).
+    const lessOff = customer({ id: 'less_off', name: 'Less Off Beat' })
+    // booked: lastEvent 2026-01-10 sits BETWEEN the two dormant last events,
+    // and a future booking keeps it in booked_now — this is the interleaver.
+    const booked = customer({ id: 'booked', name: 'Booked' })
+    const leadsByCustomerId: Record<string, Lead[]> = {
+      more_off: [won('mo1', '2026-03-10'), won('mo2', '2026-04-10'), won('mo3', '2026-05-10')],
+      less_off: [won('lo1', '2023-09-10'), won('lo2', '2024-09-10'), won('lo3', '2025-09-10')],
+      booked: [won('bk1', '2026-01-10'), won('bk2', '2027-01-10')],
+    }
+    // Every permutation of the DB fetch order must yield the same dormant block.
+    const permutations: Customer[][] = [
+      [moreOff, lessOff, booked],
+      [lessOff, moreOff, booked],
+      [booked, moreOff, lessOff],
+      [booked, lessOff, moreOff],
+      [moreOff, booked, lessOff],
+      [lessOff, booked, moreOff],
+    ]
+    for (const customers of permutations) {
+      const data = buildClientList({ customers, leadsByCustomerId }, t)
+      const dormant = data.blocks.find((b) => b.group === 'dormant_repeat')!
+      expect(dormant.rows.map((r) => r.offBeatMonths)).toEqual([4, 1])
+      expect(dormant.rows.map((r) => r.customer.id)).toEqual(['more_off', 'less_off'])
+    }
+  })
 })
 
 describe('beatLabel — the queue-pill signal', () => {
