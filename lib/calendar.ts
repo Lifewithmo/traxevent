@@ -2,6 +2,7 @@ import type { ComplianceDoc, Drop, Event, Lead, NormalizedInvoice, Task } from '
 import { invoiceBalance } from '@/lib/invoices'
 import { OPEN_STAGES, opportunityTitle } from '@/lib/leads'
 import { addDays } from '@/lib/opportunity-detail'
+import { DEFAULT_PREP_LEAD_DAYS } from '@/lib/pipeline-view'
 
 export type CalendarKind = 'event' | 'lead' | 'task' | 'follow_up' | 'compliance' | 'invoice_due' | 'drop'
 
@@ -11,6 +12,19 @@ export interface CalendarItem {
   date: string          // ISO date (YYYY-MM-DD or full ISO)
   kind: CalendarKind
   href: string
+  /** Present only on DERIVED signals (never on facts read from a document).
+   *  Every derived signal must be able to explain itself and point at the field
+   *  that produced it, so the operator can check it and fix it at the source. */
+  derived?: {
+    /** Stable machine id for the rule, e.g. 'capacity.over' | 'leadtime.past-book-by'. */
+    rule: string
+    /** The concrete values the rule fired on, for display: e.g. { needed: 2, available: 1 }. */
+    inputs: Record<string, string | number | boolean>
+    /** One human sentence naming the binding constraint. */
+    reason: string
+    /** Deep link to the record/setting that produced it, so a wrong verdict is fixable at source. */
+    fixHref?: string
+  }
   /** Second line under the title — who it's for, what it blocks. */
   detail?: string
   /** invoice_due only: the outstanding balance. */
@@ -31,6 +45,11 @@ export interface CalendarItem {
   tentative?: boolean
   /** event only: expected guests, for the header count. */
   headcount?: number
+}
+
+/** A fact is anything the feed read from a document; a derived item explains itself. */
+export function isDerived(item: CalendarItem): boolean {
+  return item.derived != null
 }
 
 export const CALENDAR_KIND_LABELS: Record<CalendarKind, string> = {
@@ -249,6 +268,105 @@ export function buildCalendarFeed(orgSlug: string, s: CalendarFeedSources): Cale
   }
 
   return items.sort((a, b) => a.date.localeCompare(b.date))
+}
+
+/** The two kinds of work that can exist without a date. */
+export type UnscheduledKind = Extract<CalendarKind, 'event' | 'lead'>
+
+/**
+ * A piece of work with no date on it — the rows buildCalendarFeed drops.
+ * No `date` field, deliberately: that absence IS the item.
+ */
+export interface UnscheduledItem {
+  id: string
+  title: string
+  kind: UnscheduledKind
+  href: string
+  /** Second line under the title — why it is in this list. */
+  detail?: string
+  /** Ranking input, and the ONLY money here: the opportunity's estimated_value
+   *  (for an event, its source lead's). NEVER Event.payment_amount (a
+   *  registration fee) or Event.booth_fee (an expense) — see bookedValue. */
+  value?: number
+  /** Ranking input: the day this must be booked BY (promised event_date −
+   *  prep lead days). Only an undated event can carry one — its opportunity
+   *  still holds the promised date the job itself lost. */
+  bookByDate?: string
+  /** Ranking input: how long this has sat without a date. */
+  createdAt: string
+  /** The opportunity behind the row — where a drag-to-schedule writes the date. */
+  leadId?: string
+}
+
+/** Sorts after every real ISO date, so "no deadline" lands at the tail. */
+const NO_BOOK_BY = '9999-12-31'
+
+// Deadline, then money, then age, then id. Every key is a total order and they
+// are applied lexicographically, so the comparator is transitive — an
+// intransitive one corrupts Array.sort() silently (see PR #114).
+function compareUnscheduled(a: UnscheduledItem, b: UnscheduledItem): number {
+  const aBy = a.bookByDate ?? NO_BOOK_BY
+  const bBy = b.bookByDate ?? NO_BOOK_BY
+  if (aBy !== bBy) return aBy < bBy ? -1 : 1
+  const av = a.value ?? 0
+  const bv = b.value ?? 0
+  if (av !== bv) return bv - av
+  if (a.createdAt !== b.createdAt) return a.createdAt < b.createdAt ? -1 : 1
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
+}
+
+/** Dated work is on the calendar; this is the work that is NOT, ranked by what
+ *  should get a date first. Same sources as buildCalendarFeed, opposite filter.
+ *
+ *  buildCalendarFeed guards both its event loop (on event_start) and its lead
+ *  loop (on event_date), so undated work vanishes from every calendar surface —
+ *  and "the ones I haven't scheduled yet" is the list a scheduler needs most.
+ *  A separate function, not a widened feed: the ICS route and the cockpit both
+ *  depend on the feed carrying only dated items. */
+export function buildUnscheduled(orgSlug: string, s: CalendarFeedSources): UnscheduledItem[] {
+  const isOpen = (l: Lead) => (OPEN_STAGES as Lead['stage'][]).includes(l.stage)
+  const leadById = new Map(s.leads.map((l) => [l.id, l]))
+  const liveEvents = s.events.filter((e) => e.status !== 'archived')
+  // A lead that owns a live event is represented BY that event — dated (so it
+  // is scheduled, and out of this list) or undated (so the event row below
+  // already carries it). Archived events don't count: archiving the job leaves
+  // the opportunity unscheduled again.
+  const leadsWithLiveEvent = new Set(liveEvents.map((e) => e.lead_id).filter((id): id is string => !!id))
+  const items: UnscheduledItem[] = []
+
+  // Booked work that has no day. Rare — conversion demands a date — but legacy
+  // and imported events arrive without one, and such a job is invisible on
+  // every calendar surface while still being owed to a customer.
+  for (const e of liveEvents) {
+    if (e.event_start) continue
+    const lead = e.lead_id ? leadById.get(e.lead_id) : undefined
+    items.push({
+      id: e.id, title: e.name, kind: 'event',
+      href: `/${orgSlug}/${e.slug}/dashboard`,
+      detail: 'booked · no date set',
+      createdAt: e.created_at,
+      ...(lead?.estimated_value != null ? { value: lead.estimated_value } : {}),
+      // the pipeline's book-by deadline, reused: event_date − prep lead days
+      ...(lead?.event_date ? { bookByDate: addDays(lead.event_date.slice(0, 10), -DEFAULT_PREP_LEAD_DAYS) } : {}),
+      ...(e.lead_id ? { leadId: e.lead_id } : {}),
+    })
+  }
+
+  // Open opportunities nobody has put a day against — the drag source for a
+  // later increment's Unscheduled drawer. Lost and closed deals are not work.
+  for (const l of s.leads) {
+    if (l.event_date || !isOpen(l) || leadsWithLiveEvent.has(l.id)) continue
+    items.push({
+      id: l.id, title: opportunityTitle(l), kind: 'lead',
+      href: `/${orgSlug}/leads/${l.id}`,
+      detail: 'no date set',
+      createdAt: l.created_at,
+      leadId: l.id,
+      ...(l.estimated_value != null ? { value: l.estimated_value } : {}),
+    })
+  }
+
+  return items.sort(compareUnscheduled)
 }
 
 export function filterFeed(items: CalendarItem[], kinds: CalendarKind[]): CalendarItem[] {
