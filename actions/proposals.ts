@@ -10,6 +10,7 @@ import { MAX_TERMS_CHARS } from '@/lib/proposals/draft'
 import type { ProposalDraftInput } from '@/lib/proposals/draft'
 import type { Org, Proposal, ProposalLineItem, ProposalPackage, ProposalDiscount, ProposalDeposit, ProposalBlock } from '@/lib/types'
 import { blocksToVoiceText, pushVoiceExample, type VoiceExample } from '@/lib/ai/voice'
+import { evaluateSendGate, SEND_GATE_MESSAGES } from '@/lib/proposals/send-gate'
 
 function proposalsRef(orgId: string) {
   return adminDb.collection('orgs').doc(orgId).collection('proposals')
@@ -74,7 +75,11 @@ export async function createProposal(orgId: string, leadId: string, input: Creat
   return proposal
 }
 
-export async function sendProposal(orgId: string, proposalId: string): Promise<void> {
+export async function sendProposal(
+  orgId: string,
+  proposalId: string,
+  override?: { reason: string },
+): Promise<void> {
   await assertOrgAdmin(orgId)
   const ref = proposalsRef(orgId).doc(proposalId)
   const snap = await ref.get()
@@ -82,6 +87,24 @@ export async function sendProposal(orgId: string, proposalId: string): Promise<v
   if (proposalBeforeSend) {
     if (proposalBeforeSend.signature || proposalBeforeSend.pending_signature) {
       throw new Error('This proposal is signed and can no longer be edited')
+    }
+
+    // The polish gate (spec §12). It lives HERE and not in SendDialog because a
+    // server action is a public POST endpoint and the dialog is documented
+    // "Presentational only" — its warnings sit beside an always-enabled button.
+    // This action is the only writer of status:'sent' in the codebase.
+    const failed = evaluateSendGate(proposalBeforeSend, new Date())
+    if (failed.length > 0 && !override?.reason?.trim()) {
+      throw new Error(failed.map((c) => SEND_GATE_MESSAGES[c]).join(' '))
+    }
+    if (failed.length > 0 && override?.reason?.trim()) {
+      await ref.update({
+        sent_override: {
+          reason: override.reason.trim(),
+          checks: failed,
+          at: new Date().toISOString(),
+        },
+      })
     }
   }
   await ref.update({ status: 'sent', updated_at: new Date().toISOString() })

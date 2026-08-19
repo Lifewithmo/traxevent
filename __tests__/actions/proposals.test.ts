@@ -145,6 +145,15 @@ describe('proposals actions', () => {
   })
 
   it('sendProposal updates status to sent and sets updated_at', async () => {
+    proposalDocGetSpy.mockResolvedValue({
+      exists: true,
+      data: () => ({
+        id: 'p1',
+        status: 'draft',
+        line_items: [{ id: 'i1', description: 'Cart', quantity: 1, unit_price: 500 }],
+        blocks: [{ id: 'b1', type: 'paragraph', text: 'Real content' }],
+      }),
+    })
     await sendProposal('org-1', 'p1')
     expect(proposalDocUpdateSpy).toHaveBeenCalledWith(
       expect.objectContaining({ status: 'sent', updated_at: expect.any(String) })
@@ -159,6 +168,7 @@ describe('proposals actions', () => {
           id: 'p1',
           title: 'Wedding Package',
           status: 'draft',
+          line_items: [{ id: 'i1', description: 'Cart', quantity: 1, unit_price: 500 }],
           blocks: [{ id: '1', type: 'paragraph', text: 'A full espresso bar with two baristas.' }],
         }),
       })
@@ -176,9 +186,16 @@ describe('proposals actions', () => {
     })
 
     it('is a no-op when there are no blocks', async () => {
+      // An image block satisfies the send gate (present, non-placeholder
+      // content) but carries no voice text — the case this test targets.
       proposalDocGetSpy.mockResolvedValue({
         exists: true,
-        data: () => ({ id: 'p1', status: 'draft' }),
+        data: () => ({
+          id: 'p1',
+          status: 'draft',
+          line_items: [{ id: 'i1', description: 'Cart', quantity: 1, unit_price: 500 }],
+          blocks: [{ id: '1', type: 'image', url: 'https://example.com/x.png' }],
+        }),
       })
       await sendProposal('org-1', 'p1')
       expect(voiceDocSetSpy).not.toHaveBeenCalled()
@@ -191,6 +208,7 @@ describe('proposals actions', () => {
           id: 'p1',
           title: 'Wedding Package',
           status: 'draft',
+          line_items: [{ id: 'i1', description: 'Cart', quantity: 1, unit_price: 500 }],
           blocks: [{ id: '1', type: 'paragraph', text: 'A full espresso bar with two baristas.' }],
         }),
       })
@@ -261,7 +279,15 @@ describe('proposals actions', () => {
     })
 
     it('sendProposal still works normally when neither signature nor pending_signature is present', async () => {
-      proposalDocGetSpy.mockResolvedValue({ exists: true, data: () => ({ id: 'p1', status: 'draft' }) })
+      proposalDocGetSpy.mockResolvedValue({
+        exists: true,
+        data: () => ({
+          id: 'p1',
+          status: 'draft',
+          line_items: [{ id: 'i1', description: 'Cart', quantity: 1, unit_price: 500 }],
+          blocks: [{ id: 'b1', type: 'paragraph', text: 'Real content' }],
+        }),
+      })
       await sendProposal('org-1', 'p1')
       expect(proposalDocUpdateSpy).toHaveBeenCalledWith(
         expect.objectContaining({ status: 'sent', updated_at: expect.any(String) })

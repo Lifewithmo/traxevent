@@ -98,7 +98,11 @@ describe('sendProposal — logs a proposal-sent activity event', () => {
   it('logs kind:"proposal" with a "sent" summary after the authoritative status write', async () => {
     sendProposalGetSpy.mockResolvedValue({
       exists: true,
-      data: () => ({ id: 'p1', org_id: 'org-1', lead_id: 'lead-1', title: 'Spring Wedding', status: 'draft' }),
+      data: () => ({
+        id: 'p1', org_id: 'org-1', lead_id: 'lead-1', title: 'Spring Wedding', status: 'draft',
+        line_items: [{ id: 'i1', description: 'Cart', quantity: 1, unit_price: 500 }],
+        blocks: [{ id: 'b1', type: 'paragraph', text: 'Real content' }],
+      }),
     })
     await sendProposal('org-1', 'p1')
     expect(sendProposalUpdateSpy).toHaveBeenCalledWith(expect.objectContaining({ status: 'sent' }))
@@ -113,7 +117,11 @@ describe('sendProposal — logs a proposal-sent activity event', () => {
   it('falls back to "Untitled proposal" when the proposal has no title', async () => {
     sendProposalGetSpy.mockResolvedValue({
       exists: true,
-      data: () => ({ id: 'p1', org_id: 'org-1', lead_id: 'lead-1', status: 'draft' }),
+      data: () => ({
+        id: 'p1', org_id: 'org-1', lead_id: 'lead-1', status: 'draft',
+        line_items: [{ id: 'i1', description: 'Cart', quantity: 1, unit_price: 500 }],
+        blocks: [{ id: 'b1', type: 'paragraph', text: 'Real content' }],
+      }),
     })
     await sendProposal('org-1', 'p1')
     expect(logActivitySpy).toHaveBeenCalledWith('org-1', expect.objectContaining({
