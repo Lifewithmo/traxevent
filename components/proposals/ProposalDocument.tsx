@@ -1,4 +1,4 @@
-import { parseInline } from '@/lib/proposals/blocks'
+import { isVisibleBlock, parseInline } from '@/lib/proposals/blocks'
 import type { ProposalBlock as PlaceholderBlock } from '@/lib/types'
 import type { ProposalBlock } from '@/lib/types'
 
@@ -87,7 +87,7 @@ export function ProposalDocument({
   blocks?: PlaceholderBlock[]
   showPlaceholders?: boolean
 }) {
-  const visible = (blocks ?? []).filter((b) => showPlaceholders || b.placeholder !== true)
+  const visible = (blocks ?? []).filter((b) => isVisibleBlock(b, showPlaceholders))
   if (visible.length === 0) return null
   return (
     <div className="mb-8">
