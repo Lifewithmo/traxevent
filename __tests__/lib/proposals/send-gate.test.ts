@@ -42,4 +42,60 @@ describe('evaluateSendGate', () => {
     const all = evaluateSendGate({ line_items: [], blocks: [], expires_at: '2026-01-01' }, NOW)
     for (const check of all) expect(SEND_GATE_MESSAGES[check]).toBeTruthy()
   })
+
+  // Regression: the gate previously read only `p.blocks`, which is empty for
+  // any proposal authored through the archetype layer (`p.sections`) — full
+  // content there was invisible to `empty_document`, and a placeholder
+  // inside a section's blocks passed unchecked. Unreachable today (nothing
+  // authors `sections` yet), but this is a money gate and increment 2 hits
+  // it immediately.
+  describe('sections-authored proposals', () => {
+    const sectionsOk = {
+      line_items: [{ id: 'i1', description: 'Cart', quantity: 1, unit_price: 500 }],
+      blocks: [],
+      sections: [
+        { id: 's1', type: 'prose' as const, blocks: [{ id: 'b1', type: 'paragraph' as const, text: 'Real content' }] },
+        { id: 's2', type: 'investment' as const },
+        { id: 's3', type: 'accept' as const },
+      ],
+    }
+
+    it('passes a full sections-authored proposal — not blind to `blocks: []`', () => {
+      expect(evaluateSendGate(sectionsOk, NOW)).toEqual([])
+    })
+
+    it('flags a placeholder block nested inside a section', () => {
+      const sections = [
+        {
+          id: 's1',
+          type: 'prose' as const,
+          blocks: [{ id: 'b1', type: 'heading' as const, text: 'TBD', placeholder: true as const }],
+        },
+      ]
+      expect(evaluateSendGate({ ...sectionsOk, sections }, NOW)).toContain('placeholders')
+    })
+
+    it('flags a section-level `placeholder: true`, even with visible blocks inside it', () => {
+      const sections = [
+        {
+          id: 's1',
+          type: 'letter' as const,
+          placeholder: true as const,
+          blocks: [{ id: 'b1', type: 'paragraph' as const, text: 'Skeleton copy' }],
+        },
+      ]
+      expect(evaluateSendGate({ ...sectionsOk, sections }, NOW)).toContain('placeholders')
+    })
+
+    it('flags an empty document when every section is placeholder-only', () => {
+      const sections = [
+        {
+          id: 's1',
+          type: 'prose' as const,
+          blocks: [{ id: 'b1', type: 'paragraph' as const, text: 'x', placeholder: true as const }],
+        },
+      ]
+      expect(evaluateSendGate({ ...sectionsOk, sections }, NOW)).toContain('empty_document')
+    })
+  })
 })

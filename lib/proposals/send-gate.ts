@@ -10,7 +10,7 @@ export const SEND_GATE_MESSAGES: Record<SendGateCheck, string> = {
   empty_document: 'There is nothing for the customer to read yet.',
 }
 
-type GateInput = Pick<Proposal, 'line_items' | 'blocks' | 'packages' | 'expires_at'>
+type GateInput = Pick<Proposal, 'line_items' | 'blocks' | 'sections' | 'packages' | 'expires_at'>
 
 /**
  * The blocking craft checks, all computable from the proposal document with no
@@ -30,12 +30,31 @@ export function evaluateSendGate(p: GateInput, now: Date): SendGateCheck[] {
   })
   if (range.max <= 0) failed.push('no_price')
 
+  // Content lives in EITHER the legacy `blocks` array OR the archetype
+  // layer's `sections[].blocks` (never both — sectionsFromProposal only
+  // projects `blocks` into a section when `sections` is absent). Reading
+  // only `p.blocks` made this gate blind to a sections-authored proposal:
+  // `empty_document` would fire on a full document, and a section-level
+  // `placeholder: true` (an authored section skipped on public/print, see
+  // ProposalSection's type comment) would pass unchecked because it carries
+  // no per-block placeholder flags of its own.
   const blocks = p.blocks ?? []
-  if (blocks.some((b) => b.placeholder === true)) failed.push('placeholders')
+  const sections = p.sections ?? []
+  const sectionBlocks = sections.flatMap((s) => s.blocks ?? [])
+  const allBlocks = [...blocks, ...sectionBlocks]
+  const anyPlaceholderSection = sections.some((s) => s.placeholder === true)
 
-  // The customer never sees placeholder blocks (ProposalDocument strips them),
-  // so "empty" must be judged on what actually ships.
-  if (blocks.filter((b) => b.placeholder !== true).length === 0) failed.push('empty_document')
+  if (allBlocks.some((b) => b.placeholder === true) || anyPlaceholderSection) {
+    failed.push('placeholders')
+  }
+
+  // The customer never sees placeholder blocks (ProposalDocument strips
+  // them), so "empty" must be judged on what actually ships. Derived
+  // sections (tiers/add_ons/investment/accept/terms) never carry blocks —
+  // same as before this fix, they don't count as "content" here, matching
+  // the legacy blocks-only check's intent (price/accept are covered by
+  // `no_price`, not `empty_document`).
+  if (allBlocks.filter((b) => b.placeholder !== true).length === 0) failed.push('empty_document')
 
   // proposalExpiryInstant already returns epoch milliseconds (Infinity for an
   // unparseable date, which must never read as expired) — compare directly.
