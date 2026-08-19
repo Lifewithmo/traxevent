@@ -38,4 +38,16 @@ describe('ProseSection', () => {
     expect(plain.querySelector('section')!.className).not.toContain('--warm-50')
     expect(tinted.querySelector('section')!.className).toContain('--warm-50')
   })
+
+  // Regression: print renders through this same section, and its own header
+  // comment says "restrained ink — no background fills". Without these
+  // print-neutralising classes, a tinted band prints as a filled grey block
+  // and stacks its own padding on top of print's already-padded shell.
+  it('neutralises the tint fill and its own gutters for print', () => {
+    const { container } = render(<ProseSection blocks={blocks} treatment="tinted" />)
+    const className = container.querySelector('section')!.className
+    expect(className).toContain('print:bg-transparent')
+    expect(className).toContain('print:px-0')
+    expect(className).toContain('print:py-6')
+  })
 })

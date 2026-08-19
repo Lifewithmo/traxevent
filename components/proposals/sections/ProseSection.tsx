@@ -31,8 +31,15 @@ export function ProseSection({
 
   return (
     <section
+      // Print renders through this same composition (see print/page.tsx's
+      // header: "restrained ink — no background fills"), so the tinted
+      // treatment's grey fill and this section's own gutters must both back
+      // off on paper: print:bg-transparent drops the fill, and
+      // print:px-0 print:py-6 replaces this band's own padding with print's
+      // already-padded max-w-3xl px-8 py-10 shell instead of stacking on
+      // top of it.
       className={[
-        'w-full px-6 py-12 sm:py-16',
+        'w-full px-6 py-12 sm:py-16 print:bg-transparent print:px-0 print:py-6',
         treatment === 'tinted' ? 'bg-[var(--warm-50)]' : '',
       ].join(' ')}
     >
