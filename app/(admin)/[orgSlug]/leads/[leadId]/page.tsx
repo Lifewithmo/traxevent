@@ -15,7 +15,10 @@ import { listEventsByLead } from '@/actions/events'
 import { listOrgEventTypes } from '@/actions/event-types'
 import { listCalendarRange } from '@/actions/calendar'
 import { hasMultiResourceCapacity, listCapacityUnitsCore } from '@/lib/capacity/units'
-import type { BillingPlan } from '@/lib/types'
+import { BOOKABLE_STAGES } from '@/lib/capacity/capacity'
+import { unitAnnotations } from '@/lib/capacity/assignment'
+import { leadsRef } from '@/lib/crm/leads'
+import type { BillingPlan, Lead } from '@/lib/types'
 import { OpportunityDetailClient } from '@/components/admin/OpportunityDetailClient'
 
 export default async function LeadDetailPage({ params }: { params: Promise<{ orgSlug: string; leadId: string }> }) {
@@ -31,8 +34,24 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ org
   // The delivery-mode control appears only when there is a room to choose: a
   // business-tier org with ≥1 active venue unit. Gated read — base/solo orgs
   // never touch the capacity collection (matches the pipeline page's gate).
-  const capacityUnits = hasMultiResourceCapacity(org) ? await listCapacityUnitsCore(orgId) : []
+  const hasCapacity = hasMultiResourceCapacity(org)
+  const capacityUnits = hasCapacity ? await listCapacityUnitsCore(orgId) : []
   const showDeliveryMode = capacityUnits.some((u) => u.kind === 'venue' && u.active)
+
+  // Unit-assignment control: same gate as the radar (business tier + ≥1 active
+  // unit) plus a date to assign against. One targeted same-date read annotates
+  // each unit free/taken/blocked; the Map is serialized to a plain object for
+  // the client boundary. Retired units are excluded from the pickers.
+  const activeUnits = capacityUnits.filter((u) => u.active)
+  const showAssignment = hasCapacity && activeUnits.length > 0 && !!lead.event_date
+  let assignmentAnnotations: Record<string, { takenBy?: string; blocked?: boolean }> = {}
+  if (showAssignment && lead.event_date) {
+    const sameDateSnap = await leadsRef(orgId).where('event_date', '==', lead.event_date).get()
+    const sameDateLeads = sameDateSnap.docs
+      .map((d) => d.data() as Lead)
+      .filter((l) => l.id !== lead.id && BOOKABLE_STAGES.has(l.stage))
+    assignmentAnnotations = Object.fromEntries(unitAnnotations(lead, activeUnits, sameDateLeads))
+  }
 
   const today = todayYmd()
   const center = lead.event_date ?? today
@@ -84,6 +103,9 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ org
       today={today}
       calendarItems={calendarItems}
       showDeliveryMode={showDeliveryMode}
+      showAssignment={showAssignment}
+      capacityUnits={activeUnits}
+      unitAnnotations={assignmentAnnotations}
     />
   )
 }

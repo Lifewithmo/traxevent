@@ -37,7 +37,8 @@ import { ConvertToWorkCard, PROPOSALS_ANCHOR } from '@/components/admin/opportun
 import { LeadProposalsClient } from '@/components/admin/LeadProposalsClient'
 import { LeadInvoicesClient } from '@/components/admin/LeadInvoicesClient'
 import { LeadVendorsClient } from '@/components/admin/LeadVendorsClient'
-import type { ActivityEvent, Customer, Event, Lead, NormalizedInvoice, Proposal, Task, Vendor } from '@/lib/types'
+import type { ActivityEvent, CapacityUnit, Customer, Event, Lead, NormalizedInvoice, Proposal, Task, Vendor } from '@/lib/types'
+import type { UnitAnnotation } from '@/lib/capacity/assignment'
 import type { EventType } from '@/lib/event-types'
 import type { ConvertBlocker } from '@/lib/opportunity-detail'
 import type { CalendarItem } from '@/lib/calendar'
@@ -64,6 +65,14 @@ interface OpportunityDetailClientProps {
   // delivery control. Computed on the server page; the client never queries the
   // plan or units. Undefined ⇒ hidden (nothing to choose without a room).
   showDeliveryMode?: boolean
+  // Business-tier org with ≥1 active unit AND a dated lead: show the per-unit
+  // assignment control. Server-gated; the client never queries plan/units/dates.
+  showAssignment?: boolean
+  // Active units offered by the assignment pickers (server-filtered to active).
+  capacityUnits?: CapacityUnit[]
+  // Serialized `unitAnnotations` map (Map → plain object across the RSC boundary):
+  // per-unit-id free/taken/blocked hint for the lead's own event_date.
+  unitAnnotations?: Record<string, UnitAnnotation>
 }
 
 type QuickFact = 'value' | 'date'
@@ -234,6 +243,145 @@ function DeliveryModeControl({ orgId, lead }: { orgId: string; lead: Lead }) {
   )
 }
 
+// Matches the settings selects (EventTypesClient) — full-width, kit border/ring
+// so the pickers are keyboard-focus-visible (WCAG 2.2 AA focus appearance).
+const assignSelectClass =
+  'w-full rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50'
+
+/** The picker option label: `‹name› — free | taken by ‹title› | blocked`.
+ *  Blocked wins over taken — an unusable unit is the stronger caveat to surface. */
+function unitOptionLabel(name: string, ann: UnitAnnotation | undefined): string {
+  if (ann?.blocked) return `${name} — blocked`
+  if (ann?.takenBy) return `${name} — taken by ${ann.takenBy}`
+  return `${name} — free`
+}
+
+/**
+ * Optional per-unit assignment beside DeliveryModeControl — pin this booking to
+ * a specific serving unit (and, on-site, a room). Business-tier + has-units +
+ * dated only (`showAssignment`, gated on the server).
+ *
+ * THE MOVE — prevent, don't just detect: the instant the CURRENT selection is a
+ * unit another same-date booking already holds, an inline alert says so
+ * ("Double-booked with ‹title›") right under the select — Nielsen
+ * error-prevention, catching the clash AT the pick where the pipeline badge
+ * only catches it after. A blocked unit warns the same way. Both signals are
+ * already in `annotations`; no extra query.
+ *
+ * Persisted OPTIMISTICALLY (mirrors DeliveryModeControl): the select updates at
+ * once, `updateLead` writes the MERGED `assigned_units` (so setting a cart never
+ * clobbers a room), `router.refresh()` re-pulls. A rejected write rolls the
+ * selection back and shows why. The merge DROPS a cleared key rather than
+ * writing `undefined` — Firestore rejects nested `undefined` (no
+ * ignoreUndefinedProperties), so `''` means delete-the-key, not write-undefined.
+ */
+function UnitAssignmentControl({
+  orgId, lead, units, annotations,
+}: {
+  orgId: string
+  lead: Lead
+  units: CapacityUnit[]
+  annotations: Record<string, UnitAnnotation>
+}) {
+  const router = useRouter()
+  const [assigned, setAssigned] = useState<NonNullable<Lead['assigned_units']>>(lead.assigned_units ?? {})
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const mobileUnits = units.filter((u) => u.kind === 'mobile')
+  const venueUnits = units.filter((u) => u.kind === 'venue')
+  const showRoom = lead.delivery_mode === 'onsite'
+
+  async function change(kind: 'mobile' | 'venue', value: string) {
+    if (saving) return
+    const prev = assigned
+    const next: NonNullable<Lead['assigned_units']> = { ...assigned }
+    if (value) next[kind] = value
+    else delete next[kind]
+    setAssigned(next)
+    setSaving(true)
+    setError(null)
+    try {
+      await updateLead(orgId, lead.id, { assigned_units: next })
+      router.refresh()
+    } catch (e: unknown) {
+      setAssigned(prev)
+      setError(e instanceof Error ? e.message : 'Could not save')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // The inline alert reflects the CURRENT selection, not every option.
+  function currentAlert(id: string | undefined): string | null {
+    if (!id) return null
+    const ann = annotations[id]
+    if (ann?.takenBy) return `Double-booked with ${ann.takenBy}`
+    if (ann?.blocked) return 'Unavailable — blocked on that date'
+    return null
+  }
+
+  // A stale/retired id (not among the active options) shows as Unassigned.
+  const mobileValue = mobileUnits.some((u) => u.id === assigned.mobile) ? assigned.mobile : ''
+  const venueValue = venueUnits.some((u) => u.id === assigned.venue) ? assigned.venue : ''
+  const mobileAlert = currentAlert(mobileValue)
+  const venueAlert = showRoom ? currentAlert(venueValue) : null
+
+  const mobileId = `assign-mobile-${lead.id}`
+  const venueId = `assign-venue-${lead.id}`
+
+  return (
+    <Card>
+      <CardContent className="space-y-3 pt-4">
+        <div className="space-y-1.5">
+          <Label htmlFor={mobileId}>Serving unit</Label>
+          <select
+            id={mobileId}
+            className={assignSelectClass}
+            value={mobileValue ?? ''}
+            disabled={saving}
+            onChange={(e) => change('mobile', e.target.value)}
+          >
+            <option value="">Unassigned</option>
+            {mobileUnits.map((u) => (
+              <option key={u.id} value={u.id}>{unitOptionLabel(u.name, annotations[u.id])}</option>
+            ))}
+          </select>
+          {mobileAlert && (
+            <p role="alert" className="max-w-full text-sm whitespace-normal text-destructive">{mobileAlert}</p>
+          )}
+        </div>
+
+        {showRoom && (
+          <div className="space-y-1.5">
+            <Label htmlFor={venueId}>Room</Label>
+            <select
+              id={venueId}
+              className={assignSelectClass}
+              value={venueValue ?? ''}
+              disabled={saving}
+              onChange={(e) => change('venue', e.target.value)}
+            >
+              <option value="">Unassigned</option>
+              {venueUnits.map((u) => (
+                <option key={u.id} value={u.id}>{unitOptionLabel(u.name, annotations[u.id])}</option>
+              ))}
+            </select>
+            {venueAlert && (
+              <p role="alert" className="max-w-full text-sm whitespace-normal text-destructive">{venueAlert}</p>
+            )}
+          </div>
+        )}
+
+        <p className="text-xs text-muted-foreground">
+          Pin this booking to a specific unit. Optional — leave Unassigned to skip.
+        </p>
+        {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+      </CardContent>
+    </Card>
+  )
+}
+
 /**
  * The opportunity cockpit.
  *
@@ -264,7 +412,7 @@ function DeliveryModeControl({ orgId, lead }: { orgId: string; lead: Lead }) {
  * ledes stacked would render the same facts twice — see buildClientStory on the
  * Clients cockpit, where the header carries no equivalent narrative.
  */
-export function OpportunityDetailClient({ orgId, orgSlug, lead, customer, tasks, activity, job, eventTypes, proposals, invoices, vendors, acceptedProposals, pastBookings = 0, convertBlockReason, convertBlocker, today, calendarItems, showDeliveryMode }: OpportunityDetailClientProps) {
+export function OpportunityDetailClient({ orgId, orgSlug, lead, customer, tasks, activity, job, eventTypes, proposals, invoices, vendors, acceptedProposals, pastBookings = 0, convertBlockReason, convertBlocker, today, calendarItems, showDeliveryMode, showAssignment, capacityUnits = [], unitAnnotations = {} }: OpportunityDetailClientProps) {
   const searchParams = useSearchParams()
   const [convertOpen, setConvertOpen] = useState(searchParams.get('convert') === '1')
   /**
@@ -408,6 +556,9 @@ export function OpportunityDetailClient({ orgId, orgSlug, lead, customer, tasks,
           />
           <FactsGrid orgId={orgId} orgSlug={orgSlug} lead={lead} customer={customer} />
           {showDeliveryMode && <DeliveryModeControl orgId={orgId} lead={lead} />}
+          {showAssignment && (
+            <UnitAssignmentControl orgId={orgId} lead={lead} units={capacityUnits} annotations={unitAnnotations} />
+          )}
           <DatesPanel orgId={orgId} orgSlug={orgSlug} lead={lead} today={today} initialItems={calendarItems} />
           {/* LeadVendorsClient hard-codes its KpiBand to `grid-cols-3` with a
               max-[420px] escape hatch — a VIEWPORT query, which never fires when
