@@ -10,6 +10,11 @@ export interface NormalizeResult {
   adjustments: string[]
 }
 
+/** The single visible-block rule. Duplicating it risks the renderers disagreeing about whether a section is empty. */
+export function isVisibleBlock(b: ProposalBlock, showPlaceholders = false): boolean {
+  return showPlaceholders || b.placeholder !== true
+}
+
 export interface InlineToken {
   text: string
   bold?: boolean

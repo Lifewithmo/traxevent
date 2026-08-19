@@ -3,6 +3,7 @@
 // explicit var(--warm-N) literals only — never semantic tokens, which carry
 // .dark overrides the warm ramp does not have.
 import { ProposalDocument } from '@/components/proposals/ProposalDocument'
+import { isVisibleBlock } from '@/lib/proposals/blocks'
 import type { SectionTreatment } from '@/lib/proposals/sections'
 import type { ProposalBlock } from '@/lib/types'
 
@@ -23,7 +24,7 @@ export function ProseSection({
   treatment: SectionTreatment
   showPlaceholders?: boolean
 }) {
-  const visible = (blocks ?? []).filter((b) => showPlaceholders || b.placeholder !== true)
+  const visible = (blocks ?? []).filter((b) => isVisibleBlock(b, showPlaceholders))
   // The absence rule: an empty section renders nothing at all rather than an
   // empty band, so removing content changes the rhythm and not the integrity.
   if (visible.length === 0) return null
