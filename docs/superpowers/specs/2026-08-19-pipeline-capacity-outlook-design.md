@@ -38,6 +38,28 @@ serviceable_days?: {
 
 A date is **serviceable** when its weekday ∈ `weekdays` (or `weekdays` absent) AND it falls in none of `closures`.
 
+### New: `Org.resource_labels` — operator-labeled kinds (DE-SILOING)
+
+The platform is horizontal; "cart"/"room" is BrewTrax's flavour of the two kinds. The operator names the CATEGORY in the same Resources settings where they name units and set quantity:
+
+```ts
+// interface Org (lib/types.ts)
+resource_labels?: {
+  mobile?: { one: string; many: string }   // default { one: 'serving unit', many: 'serving units' }
+  venue?:  { one: string; many: string }   // default { one: 'room',          many: 'rooms' }
+}
+```
+
+One helper is the single source of this vocabulary:
+
+```ts
+// lib/capacity/labels.ts
+export function kindLabel(org: Pick<Org,'resource_labels'>, kind: CapacityUnitKind, count: number): string
+  // count===1 → the `one` label, else `many`; falls back to the neutral defaults above.
+```
+
+**Every** capacity surface routes its kind noun through `kindLabel` — the Inc-3 forecast and schedule, AND a RETROFIT of the shipped Inc-1 over-capacity pill (`overCapacityChip`, currently hardcodes `'cart'`/`'room'`) and the Inc-2 double-booked badge label. No literal `'cart'` / `'room'` survives in copy.
+
 ## Engines (pure, `lib/capacity/`)
 
 ### `serviceable.ts`
@@ -81,13 +103,15 @@ export function buildSchedule(leads, units, org, today: string, days = 84): Sche
 
 *(design-ambition + dataviz pass at build time; this fixes scope, not the exact chart form.)*
 
-### 1. Serviceable-days editor — Settings → Resources & capacity (extend `CapacityUnitsClient` host page)
+### 1. Settings → Resources & capacity extensions (host page around `CapacityUnitsClient`)
 
-A new "When you're open" section above/below the unit inventory: **weekday toggles** (Sun–Sat, all on by default) + a **closures** list (add/remove `{start, end, note?}` date-range chips — same control idiom as the per-unit block-outs). Optimistic save via a new `updateServiceableDays` action.
+Two additions on the existing page, both optimistic via new actions:
+- **"When you're open"** — **weekday toggles** (Sun–Sat, all on by default) + a **closures** list (add/remove `{start, end, note?}` date-range chips — same idiom as the per-unit block-outs). Action: `updateServiceableDays`.
+- **Resource labels** — an inline label per kind so the two unit groups read in the operator's words: the "Serving units" group header/label is editable (BrewTrax → "Carts"), likewise "Rooms". Stored as `Org.resource_labels`; action: `updateResourceLabels`. The group already shows the units + quantity; this just names the category.
 
 ### 2. Capacity Outlook — new pipeline tab (`PipelineSubNav` gains `'capacity'` → route `app/(admin)/[orgSlug]/leads/capacity/page.tsx`)
 
-- **Forecast (top):** one row per month (default 3), each reading e.g. **"September — 4 of 27 cart-slots open · 2 of 6 rooms open · ~$9k headroom · over 13 working days."** Booked-vs-ceiling is shown (not a bare "open"), so the ratio gives honest context. Carts and rooms both. This is the hero planning number.
+- **Forecast (top):** one row per month (default 3), each reading e.g. **"September — 4 of 27 cart-slots open · 2 of 6 rooms open · ~$9k headroom · over 13 working days"** — where "cart"/"room" come from `kindLabel(org, …)` (a truck op reads "trucks"). Booked-vs-ceiling is shown (not a bare "open"), so the ratio gives honest context. Both kinds. This is the hero planning number.
 - **Schedule (below):** the per-unit lanes — units down the side, dates across, bookings as blocks; non-serviceable/blocked cells muted; the `unassigned` lane surfaces bookings still needing a unit (links to the opportunity to assign). Column strategy (day grid w/ horizontal scroll vs week grouping vs serviceable-days-only) is the **dataviz/design-ambition** decision at build; the data supports any.
 - The tab renders only for `hasMultiResourceCapacity(org)` with ≥1 unit; otherwise the tab is hidden (base/solo never see it).
 
@@ -101,6 +125,7 @@ A new "When you're open" section above/below the unit inventory: **weekday toggl
 
 ## Testing
 
+- **`labels.test.ts`:** `kindLabel` returns `one` at count 1 and `many` otherwise; falls back to neutral defaults ('serving unit(s)'/'room(s)') when `resource_labels` is absent; honours an org override ('cart'/'carts').
 - **`serviceable.test.ts`:** `weekdayOf` (UTC-safe, boundary dates); `isServiceable` respects the weekday set AND closures (inclusive); absent config ⇒ all days serviceable; `weekdays: []` ⇒ none.
 - **`forecast.test.ts`:** ceiling counts available carts over serviceable days only (a closure/blocked unit lowers it); `booked = min(events, supply)` never exceeds ceiling; a day at capacity contributes 0 open; venue booked counts on-site only; `headroomValue = openCarts × avg`; no-value ⇒ 0; `months` window length.
 - **`schedule.test.ts`:** a lead assigned to a unit on a date marks that unit's cell booked; an unassigned in-window dated lead lands in the `unassigned` lane; non-serviceable and unit-blocked cells flag correctly; window bounds respected.
@@ -113,7 +138,7 @@ A new "When you're open" section above/below the unit inventory: **weekday toggl
 
 ## Scope boundaries
 
-**In (Inc 3):** serviceable-days calendar (weekly + closures) in settings; the per-month headroom forecast; the per-unit schedule view; the new Capacity tab; tier gate.
+**In (Inc 3):** serviceable-days calendar (weekly + closures) in settings; **operator-labeled resource kinds** (`resource_labels` + `kindLabel`, with the Inc-1/2 pill copy retrofitted to it — no literal 'cart'/'room' left); the per-month headroom forecast; the per-unit schedule view; the new Capacity tab; tier gate.
 
 **Out (Inc 4 — the final increment):** auto-suggested/auto assignment, drag-to-assign ON the schedule (Inc 3 schedule is read-only), server-side hard block on over-capacity/clash won-moves, per-event-type resource profiles (relaxes the fixed cart+room rule), per-org `daily_event_capacity > per-unit` abstractions.
 
