@@ -1,4 +1,5 @@
 import { normalizeBlocks } from '@/lib/proposals/blocks'
+import type { Proposal } from '@/lib/types'
 import {
   PROPOSAL_SECTION_TYPES,
   DERIVED_SECTION_TYPES,
@@ -71,4 +72,49 @@ export function normalizeSections(input: unknown): NormalizeSectionsResult {
   })
 
   return { sections, adjustments }
+}
+
+type LegacySource = Pick<
+  Proposal,
+  'sections' | 'blocks' | 'packages' | 'line_items' | 'terms' | 'notes'
+>
+
+/**
+ * The renderable ordered section list for ANY proposal, old or new.
+ *
+ * Upgrade-on-read, never upgrade-on-write: a legacy proposal (blocks, no
+ * sections) is projected to one `prose` section plus the derived pricing
+ * sections. Nothing is persisted, so opening a signed or sent proposal can
+ * never mutate it and no hash is disturbed. Mirrors the precedent in
+ * lib/proposals/upgrade.ts, which upgrades packages on open.
+ */
+export function sectionsFromProposal(p: LegacySource): ProposalSection[] {
+  if (p.sections?.length) return p.sections
+
+  const out: ProposalSection[] = []
+  if (p.blocks?.length) out.push({ id: 'sec-prose', type: 'prose', blocks: p.blocks })
+  if (p.packages?.length) out.push({ id: 'sec-tiers', type: 'tiers' })
+  if ((p.line_items ?? []).some((i) => i.optional === true && i.id)) {
+    out.push({ id: 'sec-addons', type: 'add_ons' })
+  }
+  // Synthesize a REAL paragraph block from notes rather than an empty section:
+  // an empty section renders nothing yet still consumes an alternation slot
+  // in sectionTreatments, producing two adjacent identical bands — the exact
+  // failure the absence rule (spec §15.1) exists to prevent.
+  if (p.notes?.trim()) {
+    out.push({
+      id: 'sec-notes',
+      type: 'prose',
+      blocks: [{ id: 'sec-notes-b0', type: 'paragraph', text: p.notes.trim() }],
+    })
+  }
+
+  // investment + accept are unconditional: every proposal states a price and
+  // offers a decision. terms sits AFTER accept by design (spec §4.1) — the two
+  // lowest-value sections must not sit above the highest-value moment.
+  out.push({ id: 'sec-investment', type: 'investment' })
+  out.push({ id: 'sec-accept', type: 'accept' })
+  if (p.terms?.trim()) out.push({ id: 'sec-terms', type: 'terms' })
+
+  return out
 }

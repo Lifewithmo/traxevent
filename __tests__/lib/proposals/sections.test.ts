@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { normalizeSections, MAX_SECTIONS } from '@/lib/proposals/sections'
+import { normalizeSections, MAX_SECTIONS, sectionsFromProposal } from '@/lib/proposals/sections'
 
 describe('normalizeSections', () => {
   it('returns empty for non-array input', () => {
@@ -53,5 +53,61 @@ describe('normalizeSections', () => {
       { id: 's1', type: 'tiers', blocks: [{ id: 'b1', type: 'paragraph', text: 'ignored' }] },
     ])
     expect(sections[0].blocks).toBeUndefined()
+  })
+})
+
+describe('sectionsFromProposal', () => {
+  const base = { line_items: [], blocks: undefined, sections: undefined }
+
+  it('returns explicit sections unchanged when present', () => {
+    const sections = [{ id: 's1', type: 'letter' as const }]
+    expect(sectionsFromProposal({ ...base, sections })).toEqual(sections)
+  })
+
+  it('maps a legacy blocks-only proposal to one prose section plus derived ones', () => {
+    const blocks = [{ id: 'b1', type: 'paragraph' as const, text: 'Legacy' }]
+    const out = sectionsFromProposal({ ...base, blocks })
+    expect(out.map((s) => s.type)).toEqual(['prose', 'investment', 'accept'])
+    expect(out[0].blocks).toEqual(blocks)
+  })
+
+  it('includes tiers only when the proposal has packages', () => {
+    const out = sectionsFromProposal({
+      ...base,
+      packages: [{ id: 'p1', name: 'Basic', price: 100 }],
+    })
+    expect(out.map((s) => s.type)).toContain('tiers')
+  })
+
+  it('includes add_ons only when an optional line item exists', () => {
+    const withAddon = sectionsFromProposal({
+      ...base,
+      line_items: [{ id: 'i1', description: 'Extra', quantity: 1, unit_price: 5, optional: true }],
+    })
+    expect(withAddon.map((s) => s.type)).toContain('add_ons')
+
+    const without = sectionsFromProposal({
+      ...base,
+      line_items: [{ id: 'i1', description: 'Base', quantity: 1, unit_price: 5 }],
+    })
+    expect(without.map((s) => s.type)).not.toContain('add_ons')
+  })
+
+  it('places terms AFTER accept, never before it', () => {
+    const out = sectionsFromProposal({ ...base, terms: 'Legal text' })
+    const types = out.map((s) => s.type)
+    expect(types.indexOf('terms')).toBeGreaterThan(types.indexOf('accept'))
+  })
+
+  it('never returns an empty list, even for a bare proposal', () => {
+    expect(sectionsFromProposal(base).length).toBeGreaterThan(0)
+  })
+
+  it('synthesizes a real prose section from notes, never an empty one', () => {
+    const out = sectionsFromProposal({ ...base, notes: '  Thanks for considering us!  ' })
+    const notesSection = out.find((s) => s.id === 'sec-notes')
+    expect(notesSection).toBeDefined()
+    expect(notesSection?.blocks?.length).toBeGreaterThan(0)
+    expect(notesSection?.blocks?.[0]).toMatchObject({ type: 'paragraph', text: 'Thanks for considering us!' })
   })
 })
