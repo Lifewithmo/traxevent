@@ -73,12 +73,18 @@ describe('ProposalPackageOption', () => {
 describe('AA compliance', () => {
   const optional = [{ id: 'o1', description: 'Extra cart', quantity: 1, unit_price: 200, optional: true }]
 
-  it('gives the add-on checkbox a 44px touch target', () => {
+  it('gives the add-on checkbox row a 44px touch TARGET via the label, not the glyph', () => {
+    // WCAG 2.2 AA requires a 24px GLYPH minimum and a 44px TARGET minimum —
+    // the target does not have to be the glyph itself. The label already
+    // wraps the whole row (min-h-[44px] flex-1), so it supplies the target;
+    // the input only needs to be legible at 24px.
     const { container } = render(
       <ProposalOptionalItems items={optional} selectedIds={[]} onToggle={() => {}} />,
     )
+    const label = container.querySelector('label')!
+    expect(label.className).toContain('min-h-[44px]')
     const box = container.querySelector('input[type="checkbox"]')!
-    expect(box.className).toContain('size-[44px]')
+    expect(box.className).toContain('size-6')
   })
 
   it('does not use gray-400 for the expiry line', () => {

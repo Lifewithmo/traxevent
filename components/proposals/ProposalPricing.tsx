@@ -190,11 +190,25 @@ export function ProposalOptionalItems({
                   checked={chosen}
                   disabled={disabled}
                   onChange={() => onToggle(id)}
-                  /* 44px, not 16px: WCAG 2.2 AA target-size minimum is 24px and
-                     the touch bar is 44. This is the upsell control on a
-                     phone-first customer document — the single control most
-                     responsible for average job value. */
-                  className="size-[44px] shrink-0 rounded border-[var(--warm-300)] accent-[var(--proposal-accent,#111827)]"
+                  /* 24px GLYPH, not a 44px one: WCAG 2.2 AA's target-size
+                     minimum is 24px for the glyph, not the touch target — the
+                     wrapping <label> above already supplies the 44px TARGET
+                     via min-h-[44px] flex-1, so the glyph only needs to be
+                     legible, not tap-sized itself. A 44px glyph on the
+                     highest-stakes upsell control looked absurd.
+
+                     No accent-[...] here, deliberately: accent-color sets
+                     BOTH the checked fill AND the checkmark the browser
+                     auto-picks to contrast it, and no single CSS variable on
+                     this surface (including --proposal-accent-text, which is
+                     for TEXT drawn ON TOP of the accent, not for supplying
+                     the accent itself) can guarantee that pairing stays
+                     legible for an arbitrary operator-chosen accent — a pale
+                     accent (e.g. #ffe600) can leave a near-invisible
+                     checkmark. Falling back to the browser's own default
+                     accent-color keeps the mark reliably legible regardless
+                     of branding. */
+                  className="size-6 shrink-0 rounded border-[var(--warm-300)]"
                 />
                 {label}
               </label>
