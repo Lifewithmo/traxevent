@@ -18,7 +18,7 @@ const data: TodayData = {
 }
 
 const agenda: Agenda = {
-  today: [{ eventId: 'e1', slug: 'gala', name: 'Gala', date: '2026-08-05', multiDay: false }],
+  today: [{ eventId: 'e1', slug: 'gala', name: 'Gala', date: '2026-08-05', daysUntil: 0, multiDay: false }],
   upcoming: [],
   windowDays: ['2026-08-06', '2026-08-07', '2026-08-08', '2026-08-09', '2026-08-10', '2026-08-11', '2026-08-12'],
 }
@@ -31,11 +31,22 @@ describe('TodayClient', () => {
     expect(screen.getByText(/1 event today/)).toBeInTheDocument()
   })
 
-  it('mounts the queue and the agenda rail', () => {
+  it('mounts the queue and the agenda rail with the pinned next job', () => {
     render(<TodayClient orgId="o1" orgSlug="acme" data={data} agenda={agenda} />)
     expect(screen.getByText('Due today · 1')).toBeInTheDocument()
-    expect(screen.getByText('On the cart today')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Gala' })).toBeInTheDocument()
+    expect(screen.getByText('Next job')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Gala/ })).toHaveAttribute('href', '/acme/gala/dashboard')
+  })
+
+  it('puts the rail before the queue in DOM order — rail on top below md, queue first at md+ via order classes', () => {
+    const { container } = render(<TodayClient orgId="o1" orgSlug="acme" data={data} agenda={agenda} />)
+    const aside = container.querySelector('aside')
+    const h1 = screen.getByRole('heading', { level: 1 })
+    expect(aside).not.toBeNull()
+    // The rail (aside) precedes the queue column in the DOM = first on phones.
+    expect(aside!.compareDocumentPosition(h1) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    // The queue column reclaims the left slot on md+ screens.
+    expect(h1.closest('.md\\:order-first')).not.toBeNull()
   })
 
   it('renders the KPI band', () => {

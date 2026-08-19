@@ -1,6 +1,8 @@
 import type { TodayData } from '@/lib/today'
-import type { Event } from '@/lib/types'
+import type { Event, OpsPlan } from '@/lib/types'
 import { addDays } from '@/lib/opportunity-detail'
+// Pure math, no Firestore — explicitly safe in client components (see its header).
+import { computeReadiness, type Readiness } from '@/lib/ops/readiness'
 
 export type MoveGroup = 'overdue' | 'due_today' | 'no_next_step' | 'waiting' | 'won_unscheduled'
 
@@ -163,8 +165,12 @@ export interface AgendaEntry {
   slug: string
   name: string
   date: string
+  /** Whole days from `today` to this entry's date; 0 = today. */
+  daysUntil: number
   headcount?: number
   multiDay: boolean
+  /** Present only for client jobs whose ops plan was read (today+7 fan-out in actions/today.ts). */
+  ops?: AgendaOps
 }
 
 export interface Agenda {
@@ -172,6 +178,11 @@ export interface Agenda {
   upcoming: AgendaEntry[]
   /** Every day in the window, so empty days can still be shown. */
   windowDays: string[]
+}
+
+/** Whole days between two YYYY-MM-DD dates (to - from). */
+function dayDiff(from: string, to: string): number {
+  return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000)
 }
 
 /** Booked work for today and the following seven days — not pipeline dates. */
@@ -184,6 +195,7 @@ export function buildAgenda(events: Event[], today: string, days = 7): Agenda {
     slug: e.slug,
     name: e.name,
     date,
+    daysUntil: dayDiff(today, date),
     headcount: e.headcount,
     multiDay: !!e.event_end && e.event_end.slice(0, 10) !== e.event_start.slice(0, 10),
   })
@@ -207,4 +219,36 @@ export function buildAgenda(events: Event[], today: string, days = 7): Agenda {
     upcoming: upcoming.filter((e) => e.date <= end),
     windowDays,
   }
+}
+
+// ── Agenda readiness enrichment ──────────────────────────────────────
+// The rail's job is "what's my next physical commitment, and is it ready".
+// buildAgenda stays pure; actions/today.ts does the plan reads and folds
+// them in through these two pure helpers.
+
+export interface AgendaOps {
+  /** false = the plan doc genuinely doesn't exist (a failed read attaches nothing at all). */
+  hasPlan: boolean
+  readiness?: Readiness
+  /** Load lists only (shopping + packing) — the physical "is it packed" count. */
+  packed?: { done: number; total: number }
+}
+
+/** Pure: fold one plan read into what AgendaRail renders. `plan` null = no plan doc. */
+export function agendaOpsOf(plan: OpsPlan | null, eventStart: string, today: string): AgendaOps {
+  if (!plan) return { hasPlan: false }
+  const items = [...plan.shopping_list, ...plan.packing_list]
+  return {
+    hasPlan: true,
+    readiness: computeReadiness(plan, eventStart, new Date(`${today}T00:00:00.000Z`)),
+    packed: { done: items.filter((i) => i.checked).length, total: items.length },
+  }
+}
+
+/** Pure: attach ops info to every occurrence of its event (today + upcoming).
+ *  Entries with no key in the map are left untouched — no chip, no claim. */
+export function attachAgendaOps(agenda: Agenda, opsByEventId: Record<string, AgendaOps>): Agenda {
+  const enrich = (e: AgendaEntry): AgendaEntry =>
+    opsByEventId[e.eventId] ? { ...e, ops: opsByEventId[e.eventId] } : e
+  return { ...agenda, today: agenda.today.map(enrich), upcoming: agenda.upcoming.map(enrich) }
 }

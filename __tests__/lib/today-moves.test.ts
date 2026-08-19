@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { buildMoves, buildAgenda, moveCount } from '@/lib/today-moves'
+import { buildMoves, buildAgenda, moveCount, agendaOpsOf, attachAgendaOps } from '@/lib/today-moves'
 import type { TodayData } from '@/lib/today'
-import type { Event } from '@/lib/types'
+import type { Event, OpsPlan } from '@/lib/types'
 
 const today = '2026-08-05'
 
@@ -124,5 +124,78 @@ describe('buildAgenda', () => {
     )
     expect(agenda.today).toHaveLength(0)
     expect(agenda.upcoming).toHaveLength(0)
+  })
+
+  it('stamps each entry with whole days until its date', () => {
+    const agenda = buildAgenda(
+      [
+        ev({ id: 'now', event_start: '2026-08-05', event_end: '2026-08-06' }),
+        ev({ id: 'soon', slug: 'soon', event_start: '2026-08-08', event_end: '2026-08-08' }),
+      ],
+      today
+    )
+    expect(agenda.today[0].daysUntil).toBe(0)
+    expect(agenda.upcoming.map((e) => [e.eventId, e.daysUntil])).toEqual([
+      ['now', 1],
+      ['soon', 3],
+    ])
+  })
+})
+
+const plan = (over: Partial<OpsPlan> = {}): OpsPlan => ({
+  package_ids: [],
+  requirements: { guests: 40 },
+  deadlines: [],
+  shopping_list: [],
+  packing_list: [],
+  checklists: [],
+  needs_review: false,
+  change_log: [],
+  created_at: '2026-08-01T00:00:00.000Z',
+  ...over,
+})
+
+const item = (checked: boolean, resource_id = 'r1') => ({ resource_id, name: 'Cups', qty: 2, checked })
+
+describe('agendaOpsOf', () => {
+  it('a missing plan carries only hasPlan:false — no readiness, no packed count', () => {
+    expect(agendaOpsOf(null, '2026-08-08', today)).toEqual({ hasPlan: false })
+  })
+
+  it('packed counts load lists only, while readiness spans deadlines and checklists too', () => {
+    const ops = agendaOpsOf(
+      plan({
+        deadlines: [{ id: 'd1', label: 'Order ice', due: '2026-08-01', done: false }],
+        shopping_list: [item(true, 's1'), item(false, 's2')],
+        packing_list: [item(true, 'p1')],
+        checklists: [{ id: 'c1', name: 'Prep', phase: 'setup', steps: [{ text: 'Load van', evidence: 'none', done: true }] }],
+      }),
+      '2026-08-08',
+      today
+    )
+    expect(ops.hasPlan).toBe(true)
+    // Physical load count: shopping + packing only (2 of 3).
+    expect(ops.packed).toEqual({ done: 2, total: 3 })
+    // Readiness: deadline (undone) + 3 list items (2 done) + 1 step (done) = 3/5, one overdue.
+    expect(ops.readiness).toMatchObject({ done: 3, total: 5, pct: 60, overdue: 1, days_until: 3 })
+  })
+})
+
+describe('attachAgendaOps', () => {
+  it('attaches by eventId to every occurrence and leaves unread events without a claim', () => {
+    const agenda = buildAgenda(
+      [
+        ev({ id: 'multi', event_start: '2026-08-05', event_end: '2026-08-06' }),
+        ev({ id: 'other', slug: 'other', event_start: '2026-08-07', event_end: '2026-08-07' }),
+      ],
+      today
+    )
+    const enriched = attachAgendaOps(agenda, { multi: { hasPlan: false } })
+    expect(enriched.today[0].ops).toEqual({ hasPlan: false })
+    const multiUpcoming = enriched.upcoming.find((e) => e.eventId === 'multi')
+    expect(multiUpcoming?.ops).toEqual({ hasPlan: false })
+    const other = enriched.upcoming.find((e) => e.eventId === 'other')
+    expect(other?.ops).toBeUndefined()
+    expect(other && 'ops' in other).toBe(false)
   })
 })

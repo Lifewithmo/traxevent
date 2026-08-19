@@ -27,7 +27,11 @@ export function TodayClient({ orgId, orgSlug, data, agenda }: TodayClientProps) 
 
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col md:flex-row">
-      <div className="min-w-0 flex-1">
+      {/* Below md the agenda rail leads — the walk found the next job buried 2-3
+          scrolls under the moves queue on phones. At md and up the queue column
+          takes the left slot back via md:order-first and the rail stays right. */}
+      <AgendaRail orgSlug={orgSlug} agenda={agenda} />
+      <div className="min-w-0 flex-1 md:order-first">
         <div className="flex items-baseline justify-between gap-3 border-b border-border px-5 py-3">
           <div className="flex items-baseline gap-3">
             <h1 className="text-base font-semibold">{heading}</h1>
@@ -47,7 +51,6 @@ export function TodayClient({ orgId, orgSlug, data, agenda }: TodayClientProps) 
         <TodayKpiBand tiles={data.tiles} eventsToday={eventsToday} />
         <TodayQueue orgId={orgId} orgSlug={orgSlug} data={data} />
       </div>
-      <AgendaRail orgSlug={orgSlug} agenda={agenda} />
     </div>
   )
 }
