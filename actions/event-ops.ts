@@ -3,7 +3,8 @@
 import { assertEventPage, assertOrgAdmin } from '@/lib/auth/assert'
 import {
   getOpsPlanCore, instantiateOpsPlanCore, updateOpsRequirementsCore,
-  toggleListItemCore, completeChecklistStepCore, toggleDeadlineCore, acknowledgeReviewCore,
+  toggleListItemCore, bulkSetListCheckedCore, recomputeOpsListsCore,
+  completeChecklistStepCore, toggleDeadlineCore, acknowledgeReviewCore,
   type InstantiateOpsPlanInput,
 } from '@/lib/ops/event-ops'
 import { createIssueCore, resolveIssueCore, listIssuesCore } from '@/lib/ops/issues'
@@ -56,6 +57,26 @@ export async function toggleListItem(
 ): Promise<void> {
   await assertEventPage(orgId, eventId, 'ops')
   return toggleListItemCore(orgId, eventId, list, resourceId, checked, unit)
+}
+
+/** Load-out "check all" — one transaction for the whole group, not N toggles. */
+export async function bulkSetListChecked(
+  orgId: string, eventId: string,
+  list: 'shopping_list' | 'packing_list', checked: boolean,
+  keys?: { resource_id: string; unit?: string }[],
+): Promise<void> {
+  await assertEventPage(orgId, eventId, 'ops')
+  return bulkSetListCheckedCore(orgId, eventId, list, checked, keys)
+}
+
+/** Load-out Recompute — unconditional re-derive from current packages/resources
+ *  (spec 2026-08-19 B5). Returns the fresh plan so the client can swap state. */
+export async function recomputeOpsLists(
+  orgId: string, eventId: string,
+  opts?: { guests?: number },
+): Promise<OpsPlan> {
+  const member = await assertEventPage(orgId, eventId, 'ops')
+  return recomputeOpsListsCore(orgId, eventId, member.uid, opts)
 }
 
 export async function completeChecklistStep(

@@ -1,9 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 vi.mock('@/lib/auth/assert', () => ({
-  assertOrgMember: vi.fn().mockResolvedValue({ role: 'admin', event_access: {} }),
-  assertOrgAdmin: vi.fn().mockResolvedValue({ role: 'admin', event_access: {} }),
-  assertEventPage: vi.fn().mockResolvedValue({ role: 'admin', event_access: {} }),
+  assertOrgMember: vi.fn().mockResolvedValue({ uid: 'admin-1', role: 'admin', event_access: {} }),
+  assertOrgAdmin: vi.fn().mockResolvedValue({ uid: 'admin-1', role: 'admin', event_access: {} }),
+  assertEventPage: vi.fn().mockResolvedValue({ uid: 'admin-1', role: 'admin', event_access: {} }),
+}))
+
+// updateEvent's headcount hook reads/re-derives the ops plan through these
+// cores; mocked so the existing firestore chain mock stays event-doc-only.
+vi.mock('@/lib/ops/event-ops', () => ({
+  getOpsPlanCore: vi.fn().mockResolvedValue(null),
+  recomputeOpsListsCore: vi.fn().mockResolvedValue({}),
 }))
 
 const { eventUpdateSpy, eventDocGetSpy, slugQueryGetSpy } = vi.hoisted(() => ({
@@ -32,6 +39,7 @@ vi.mock('firebase-admin/firestore', () => ({
 }))
 
 import { buildEventSlug } from '@/lib/slug'
+import { getOpsPlanCore, recomputeOpsListsCore } from '@/lib/ops/event-ops'
 import { createEvent, updateEvent } from '@/actions/events'
 
 describe('buildEventSlug', () => {
@@ -182,5 +190,46 @@ describe('updateEvent', () => {
     // toEqual() ignores keys whose value is `undefined`, which would mask the bug —
     // use toStrictEqual() so an explicit `phone: undefined` key fails the assertion.
     expect(payload.key_contacts).toStrictEqual([{ name: 'Sam', role: 'Coordinator' }])
+  })
+})
+
+describe('updateEvent — headcount re-derive hook (spec 2026-08-19 B5)', () => {
+  beforeEach(() => {
+    eventDocGetSpy.mockResolvedValue({ exists: true, data: () => ({ id: 'camp-1', headcount: 100 }) })
+    eventUpdateSpy.mockClear()
+    vi.mocked(getOpsPlanCore).mockClear()
+    vi.mocked(getOpsPlanCore).mockResolvedValue(null)
+    vi.mocked(recomputeOpsListsCore).mockClear()
+  })
+
+  it('re-derives the ops plan (with the new guest count) when headcount changes and a plan exists', async () => {
+    vi.mocked(getOpsPlanCore).mockResolvedValue({ package_ids: ['wp1'] } as never)
+    await updateEvent('org-1', 'camp-1', { headcount: 120 })
+    expect(eventUpdateSpy).toHaveBeenCalledWith(expect.objectContaining({ headcount: 120 }))
+    expect(recomputeOpsListsCore).toHaveBeenCalledWith('org-1', 'camp-1', 'admin-1', { guests: 120 })
+  })
+
+  it('skips the re-derive when no ops plan exists (headcount still saved)', async () => {
+    await updateEvent('org-1', 'camp-1', { headcount: 120 })
+    expect(getOpsPlanCore).toHaveBeenCalledWith('org-1', 'camp-1')
+    expect(recomputeOpsListsCore).not.toHaveBeenCalled()
+    expect(eventUpdateSpy).toHaveBeenCalledWith(expect.objectContaining({ headcount: 120 }))
+  })
+
+  it('does not touch ops at all when headcount is unchanged', async () => {
+    await updateEvent('org-1', 'camp-1', { headcount: 100, name: 'Renamed' })
+    expect(getOpsPlanCore).not.toHaveBeenCalled()
+    expect(recomputeOpsListsCore).not.toHaveBeenCalled()
+  })
+
+  it('does not touch ops when headcount is not among the updates', async () => {
+    await updateEvent('org-1', 'camp-1', { name: 'Renamed' })
+    expect(getOpsPlanCore).not.toHaveBeenCalled()
+  })
+
+  it('skips the re-derive for a non-positive headcount (lists cannot derive from 0 guests)', async () => {
+    await updateEvent('org-1', 'camp-1', { headcount: 0 })
+    expect(getOpsPlanCore).not.toHaveBeenCalled()
+    expect(recomputeOpsListsCore).not.toHaveBeenCalled()
   })
 })

@@ -10,6 +10,8 @@ vi.mock('@/lib/ops/event-ops', () => ({
   instantiateOpsPlanCore: vi.fn().mockResolvedValue({}),
   updateOpsRequirementsCore: vi.fn().mockResolvedValue(undefined),
   toggleListItemCore: vi.fn().mockResolvedValue(undefined),
+  bulkSetListCheckedCore: vi.fn().mockResolvedValue(undefined),
+  recomputeOpsListsCore: vi.fn().mockResolvedValue({}),
   completeChecklistStepCore: vi.fn().mockResolvedValue(undefined),
   toggleDeadlineCore: vi.fn().mockResolvedValue(undefined),
   acknowledgeReviewCore: vi.fn().mockResolvedValue(undefined),
@@ -27,8 +29,10 @@ vi.mock('@/lib/ops/closeout', () => ({
 }))
 
 import { assertOrgAdmin, assertEventPage } from '@/lib/auth/assert'
+import { recomputeOpsListsCore, bulkSetListCheckedCore } from '@/lib/ops/event-ops'
 import {
   getOpsPlan, instantiateOpsPlan, updateOpsRequirements, toggleListItem,
+  bulkSetListChecked, recomputeOpsLists,
   completeChecklistStep, toggleDeadline, acknowledgeReview,
   listIssues, createIssue, resolveIssue,
   getCloseout, saveActuals, getCloseoutSummary, completeCloseout,
@@ -50,6 +54,18 @@ describe('event-scoped actions gate on assertEventPage(orgId, eventId, "ops")', 
   it('toggleListItem', async () => {
     await toggleListItem('o1', 'e1', 'shopping_list', 'r1', true)
     expect(assertEventPage).toHaveBeenCalledWith('o1', 'e1', 'ops')
+  })
+
+  it('bulkSetListChecked', async () => {
+    await bulkSetListChecked('o1', 'e1', 'packing_list', true)
+    expect(assertEventPage).toHaveBeenCalledWith('o1', 'e1', 'ops')
+    expect(bulkSetListCheckedCore).toHaveBeenCalledWith('o1', 'e1', 'packing_list', true, undefined)
+  })
+
+  it('recomputeOpsLists — passes the member uid and options through', async () => {
+    await recomputeOpsLists('o1', 'e1', { guests: 120 })
+    expect(assertEventPage).toHaveBeenCalledWith('o1', 'e1', 'ops')
+    expect(recomputeOpsListsCore).toHaveBeenCalledWith('o1', 'e1', 'member-1', { guests: 120 })
   })
 
   it('completeChecklistStep', async () => {
