@@ -439,6 +439,49 @@ export function OpportunityDetailClient({ orgId, orgSlug, lead, customer, tasks,
     if (searchParams.get('focus') === 'task') taskInputRef.current?.openComposer()
   }, [searchParams])
 
+  /**
+   * Strip the one-shot deep-link parameters once they have been consumed.
+   *
+   * All three (`?convert=1`, `?focus=lost`, `?focus=task`) are COMMANDS, not
+   * state: the latches above and the composer effect fire them on mount and
+   * nothing ever clears the URL. Leaving the parameter behind meant every
+   * FRESH MOUNT re-fired the command — a reload, browser back/forward, a
+   * restored tab or a pasted link. `?focus=lost` is destructive with it:
+   * `markLeadLost` unconditionally rewrites `lost.reason` and appends another
+   * "Lost — …" activity entry, so a reload silently rewrote why a deal died.
+   *
+   * `window.history.replaceState`, not `router.replace()`. Next.js supports
+   * the native History API and routes it through the router, so `usePathname`
+   * and `useSearchParams` stay in sync (app/getting-started/linking-and-
+   * navigating, "Native History API") — without the RSC round-trip
+   * `router.replace()` would pay on every load of a deep-linked opportunity,
+   * for what is only a URL cleanup. Pages-router `shallow` does not exist here.
+   *
+   * What is load-bearing is that this is an EFFECT rather than render-time
+   * work: the latches above read `searchParams` DURING render, so stripping
+   * any earlier silently kills all three features (that mutation fails nine
+   * tests). Declaration order among the effects is NOT load-bearing, despite
+   * how it may read — `useState` initializers run during render and the
+   * composer effect closes over the mount-render `searchParams`, so hoisting
+   * this above the composer effect is behaviourally identical. The re-render
+   * this triggers re-runs that effect with the parameter gone, where its
+   * guard makes it a no-op.
+   *
+   * Only the exact key/VALUE pairs this component acts on are removed: a
+   * `focus` or `convert` carrying anything else was not consumed, so it stays,
+   * as does every unrelated parameter and the hash. Runs once — these are read
+   * at mount and never again.
+   */
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const consumed = ([['convert', '1'], ['focus', 'lost'], ['focus', 'task']] as const)
+      .filter(([key, value]) => params.get(key) === value)
+    if (consumed.length === 0) return
+    for (const [key] of consumed) params.delete(key)
+    const query = params.toString()
+    window.history.replaceState(null, '', `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`)
+  }, [])
+
   const rollup = opportunityRollup({ lead, invoices, tasks, pastBookings, today })
   const name = customer?.name ?? lead.name
   const email = customer?.email ?? lead.email
