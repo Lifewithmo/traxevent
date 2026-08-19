@@ -313,11 +313,14 @@ function UnitAssignmentControl({
   }
 
   // The inline alert reflects the CURRENT selection, not every option.
+  // Blocked-first, MATCHING `unitOptionLabel`'s precedence: a unit that is both
+  // blocked and taken must not read "— blocked" in the dropdown yet
+  // "Double-booked with X" in the alert — one unit, one story.
   function currentAlert(id: string | undefined): string | null {
     if (!id) return null
     const ann = annotations[id]
-    if (ann?.takenBy) return `Double-booked with ${ann.takenBy}`
     if (ann?.blocked) return 'Unavailable — blocked on that date'
+    if (ann?.takenBy) return `Double-booked with ${ann.takenBy}`
     return null
   }
 

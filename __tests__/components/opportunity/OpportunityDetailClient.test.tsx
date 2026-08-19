@@ -464,6 +464,59 @@ describe('OpportunityDetailClient', () => {
       expect(screen.getByRole('alert')).toHaveTextContent(/Unavailable — blocked/)
     })
 
+    it('clears a selection by OMITTING the key, never writing undefined', async () => {
+      // firebase-admin (no ignoreUndefinedProperties) throws on nested undefined —
+      // clearing must delete the key, not set it undefined.
+      render(
+        <OpportunityDetailClient
+          {...base}
+          lead={{ ...lead, event_date: '2026-09-27', assigned_units: { mobile: 'k1' } }}
+          showAssignment
+          capacityUnits={[k1, k2]}
+          unitAnnotations={{ k1: {}, k2: {} }}
+        />
+      )
+      fireEvent.change(screen.getByLabelText('Serving unit'), { target: { value: '' } })
+      await waitFor(() => expect(updateLead).toHaveBeenCalledTimes(1))
+      const update = updateLead.mock.calls[0][2] as { assigned_units: Record<string, unknown> }
+      expect('mobile' in update.assigned_units).toBe(false)
+    })
+
+    it('reverts the selection and surfaces the error when the save is rejected', async () => {
+      updateLead.mockRejectedValueOnce(new Error('write failed'))
+      render(
+        <OpportunityDetailClient
+          {...base}
+          lead={{ ...lead, event_date: '2026-09-27', assigned_units: { mobile: 'k1' } }}
+          showAssignment
+          capacityUnits={[k1, k2]}
+          unitAnnotations={{ k1: {}, k2: {} }}
+        />
+      )
+      const select = screen.getByLabelText('Serving unit') as HTMLSelectElement
+      fireEvent.change(select, { target: { value: 'k2' } })
+      // optimistic k2 → rejection rolls the select back to k1 and shows the error
+      await waitFor(() => expect(select.value).toBe('k1'))
+      expect(screen.getByRole('alert')).toHaveTextContent('write failed')
+    })
+
+    it('reads "blocked" (matching the option label) when a unit is BOTH blocked and taken', () => {
+      render(
+        <OpportunityDetailClient
+          {...base}
+          lead={{ ...lead, event_date: '2026-09-27', assigned_units: { mobile: 'k1' } }}
+          showAssignment
+          capacityUnits={[k1, k2]}
+          unitAnnotations={{ k1: { blocked: true, takenBy: 'Benoit shower' }, k2: {} }}
+        />
+      )
+      // One unit, one story: the option label gives blocked precedence, so the
+      // inline alert must too — not "— blocked" in the dropdown yet "Double-booked" below.
+      const alert = screen.getByRole('alert')
+      expect(alert).toHaveTextContent(/Unavailable — blocked/)
+      expect(alert).not.toHaveTextContent(/Double-booked/)
+    })
+
     it('hides the room picker when the lead is offsite, shows it on-site', () => {
       const { rerender } = render(
         <OpportunityDetailClient
