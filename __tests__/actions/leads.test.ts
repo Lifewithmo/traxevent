@@ -135,6 +135,24 @@ describe('leads actions', () => {
     expect(leadDocUpdateSpy.mock.calls[0][0].delivery_mode).toBe('onsite')
   })
 
+  it('createLead persists assigned_units when supplied', async () => {
+    findOrCreateCustomerCore.mockResolvedValue({ customer: { id: 'c1', name: 'Dana Kim', created_at: 'x' }, created: true })
+    const lead = await createLead('o1', { name: 'Dana Kim', assigned_units: { mobile: 'k1' } })
+    expect(leadDocSetSpy).toHaveBeenCalledWith(expect.objectContaining({ assigned_units: { mobile: 'k1' } }))
+    expect(lead.assigned_units).toEqual({ mobile: 'k1' })
+  })
+
+  it('createLead omits assigned_units entirely when not supplied', async () => {
+    findOrCreateCustomerCore.mockResolvedValue({ customer: { id: 'c1', name: 'Dana Kim', created_at: 'x' }, created: true })
+    await createLead('o1', { name: 'Dana Kim' })
+    expect(leadDocSetSpy.mock.calls[0][0]).not.toHaveProperty('assigned_units')
+  })
+
+  it('updateLead persists an assigned_units change', async () => {
+    await updateLead('org-1', 'l1', { assigned_units: { mobile: 'k2' } })
+    expect(leadDocUpdateSpy.mock.calls[0][0].assigned_units).toEqual({ mobile: 'k2' })
+  })
+
   it('createLead throws "Name is required" for blank name and does not write', async () => {
     await expect(createLead('org-1', { name: '   ' })).rejects.toThrow('Name is required')
     expect(leadDocSetSpy).not.toHaveBeenCalled()

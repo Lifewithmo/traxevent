@@ -21,6 +21,7 @@ export interface LeadUpdate {
   closed_at?: string | null
   lost?: { reason: LostReason; note?: string } | null
   delivery_mode?: 'offsite' | 'onsite'
+  assigned_units?: Lead['assigned_units']
 }
 
 export function leadsRef(orgId: string) {
@@ -52,6 +53,7 @@ export interface CreateLeadCoreInput {
   notes?: string
   source?: 'intake' | 'manual'
   delivery_mode?: 'offsite' | 'onsite'
+  assigned_units?: Lead['assigned_units']
 }
 
 /** Guard-free lead create. Validates name/stage; performs no auth, no customer
@@ -77,6 +79,7 @@ export async function createLeadCore(orgId: string, input: CreateLeadCoreInput):
     ...(input.notes?.trim() ? { notes: input.notes.trim() } : {}),
     ...(input.source ? { source: input.source } : {}),
     ...(input.delivery_mode ? { delivery_mode: input.delivery_mode } : {}),
+    ...(input.assigned_units ? { assigned_units: input.assigned_units } : {}),
   }
   await leadsRef(orgId).doc(id).set(lead)
   return lead
