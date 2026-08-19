@@ -5,7 +5,7 @@ import { isProposalOpened } from '@/lib/proposal-opens'
 import { CLOSED_STAGES, OPEN_STAGES } from '@/lib/leads'
 import { wonValueInMonth, addDaysYmd } from '@/lib/pipeline-stats'
 import { DUE_TONE, shortDate, type Tone } from '@/lib/pipeline-presentation'
-import { computeCapacity, hasMultiResourceCapacity, type CapacityDay } from '@/lib/capacity/capacity'
+import { computeCapacity, hasMultiResourceCapacity, rowOwnsClash, type CapacityDay } from '@/lib/capacity/capacity'
 
 /**
  * Prep an event needs before its date, in days. The pipeline ranks by the
@@ -158,11 +158,15 @@ export function buildPipelineRows(
     // these — it can't conflict and it sorts to the no-date tail.
     const eventDate = lead.event_date
     const bookByDate = eventDate ? addDaysYmd(eventDate, -prepLeadDays) : undefined
-    // Capacity mode: resolve the day's supply/demand and let `over` drive
-    // `conflict`. Off (the backstop): fall back to increment-1's ≥2-on-a-date set.
+    // Capacity mode: resolve the day's supply/demand and let `over` OR a clash
+    // on THIS row's own assigned unit drive `conflict` — so a double-booked-but-
+    // under-capacity row floats up like an over-capacity one instead of being
+    // buried. `conflict` stays a clean boolean, keeping the (conflict, bookBy,
+    // lastTouch) comparator transitive (#114). Off (the backstop): fall back to
+    // increment-1's ≥2-on-a-date set, byte-for-byte.
     const overCapacity = capacityMode && eventDate != null ? opts.capacityByDate!.get(eventDate) : undefined
     const conflict = capacityMode
-      ? (overCapacity?.over ?? false)
+      ? (overCapacity?.over ?? false) || rowOwnsClash(lead, overCapacity).length > 0
       : eventDate != null && conflictDates.has(eventDate)
     const radar = {
       eventDate,
