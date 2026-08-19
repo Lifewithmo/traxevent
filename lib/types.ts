@@ -553,6 +553,31 @@ export type ProposalBlock =
   | { id: string; type: 'image'; url: string; alt?: string; caption?: string; placeholder?: boolean }
   | { id: string; type: 'testimonial'; quote: string; attribution?: string; placeholder?: boolean }
 
+// Section archetypes (customer document spec §10). A section layer sits ABOVE
+// ProposalBlock rather than replacing it: legacy proposals carry only `blocks`
+// and map to one implicit `prose` section (see sectionsFromProposal), so no
+// migration runs and no signed document is touched.
+//
+// AUTHORED sections carry `blocks`. DERIVED sections (tiers/investment/accept/
+// terms) render from Proposal fields and must never carry blocks — normalization
+// strips them so the two can never disagree.
+export const PROPOSAL_SECTION_TYPES = [
+  'cover', 'letter', 'video', 'gallery', 'team', 'testimonial', 'menu',
+  'day_plan', 'logistics', 'tiers', 'add_ons', 'investment', 'accept',
+  'terms', 'prose',
+] as const
+export type ProposalSectionType = (typeof PROPOSAL_SECTION_TYPES)[number]
+
+/** Sections that render from Proposal fields, never from authored blocks. */
+export const DERIVED_SECTION_TYPES = ['tiers', 'add_ons', 'investment', 'accept', 'terms'] as const
+
+export interface ProposalSection {
+  id: string
+  type: ProposalSectionType
+  blocks?: ProposalBlock[]
+  placeholder?: boolean
+}
+
 export interface ProposalDiscount { type: 'percent' | 'fixed'; value: number }
 export interface ProposalDeposit { type: 'percent' | 'fixed'; value: number }  // captured now, collected later
 
@@ -578,6 +603,7 @@ export interface Proposal {
   expires_at?: string          // ISO; enforced both when signing (signProposal) and when starting a before_accept deposit payment (proposal-deposit/intent route)
   notes?: string
   blocks?: ProposalBlock[]     // document content, rendered above the pricing section
+  sections?: ProposalSection[]  // ordered archetypes; absent = legacy, see sectionsFromProposal
   selection?: ProposalSelection
   client_response_at?: string  // set when the client accepts/rejects
   first_opened_at?: string // first portal view of a sent proposal
@@ -593,6 +619,7 @@ export interface Proposal {
   signature?: ProposalSignature
   deposit_payment?: ProposalDepositPayment
   pending_signature?: PendingSignature
+  sent_override?: { reason: string; checks: string[]; at: string }  // polish gate bypass (spec §12)
   events?: ProposalEvent[]
 }
 
@@ -605,6 +632,7 @@ export interface ProposalTemplate {
   name: string
   description?: string
   blocks?: ProposalBlock[]
+  sections?: ProposalSection[]  // ordered archetypes; absent = legacy, see sectionsFromProposal
   line_items: ProposalLineItem[]
   packages?: ProposalPackage[]
   discount?: ProposalDiscount
