@@ -256,6 +256,19 @@ describe('computeCapacity — unit clashes', () => {
     expect(day.clashes).toEqual([])
   })
 
+  it('never clashes on a well-formed id pointing at a live unit of the WRONG kind', () => {
+    // Both leads pin their MOBILE slot to 'r1' — but r1 is a live VENUE. A
+    // wrong-kind resolution is not a real assignment, so the mobile clash count
+    // must ignore it. This pins the `u.kind === kind` guard in the live-unit
+    // lookup: drop that predicate and this goes red (r1 would resolve, count 2).
+    const leads = [
+      lead({ event_date: '2026-09-05', stage: 'inquiry', assigned_units: { mobile: 'r1' } }),
+      lead({ event_date: '2026-09-05', stage: 'proposal', assigned_units: { mobile: 'r1' } }),
+    ]
+    const day = computeCapacity(leads, [k1(), r1()], ['2026-09-05']).get('2026-09-05')!
+    expect(day.clashes).toEqual([])
+  })
+
   it('never clashes on an id pointing at a RETIRED (inactive) unit', () => {
     const leads = [
       lead({ event_date: '2026-09-05', stage: 'inquiry', assigned_units: { mobile: 'k1' } }),
