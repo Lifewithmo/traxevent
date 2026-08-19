@@ -215,6 +215,41 @@ describe('getPublicProposal', () => {
     expect(result.lead_id).toBeUndefined()
     expect(result.id).toBeUndefined()
   })
+
+  // The `contact` allowlist is the only thing standing between the raw Lead
+  // doc and this unauthenticated page. A construction-correct implementation
+  // is worthless without a test that would actually catch someone widening
+  // it later (e.g. `contact: lead` or `{ ...lead }`) — see the mutation
+  // check recorded in the task report for proof this test detects that.
+  it('projects only name and email from the lead into `contact` — never the rest of the lead doc', async () => {
+    mockSnapshot(fullDoc('sent'))
+    leadGetSpy.mockResolvedValueOnce({
+      data: () => ({
+        name: 'Jane',
+        email: 'jane@x.com',
+        phone: '555-0100',
+        notes: 'internal — haggled on price',
+        owner_uid: 'u1',
+      }),
+    })
+    const result = await getPublicProposal('tok')
+    expect(result?.contact).toEqual({ name: 'Jane', email: 'jane@x.com' })
+  })
+
+  it('omits `contact` when the lead doc does not exist, and does not throw', async () => {
+    mockSnapshot(fullDoc('sent'))
+    leadGetSpy.mockResolvedValueOnce({ data: () => undefined })
+    const result = await getPublicProposal('tok')
+    expect('contact' in (result as object)).toBe(false)
+  })
+
+  it('projects a partial lead — email only, no `name` key when the lead has none', async () => {
+    mockSnapshot(fullDoc('sent'))
+    leadGetSpy.mockResolvedValueOnce({ data: () => ({ email: 'jane@x.com' }) })
+    const result = await getPublicProposal('tok')
+    expect(result?.contact).toEqual({ email: 'jane@x.com' })
+    expect(result?.contact && 'name' in result.contact).toBe(false)
+  })
 })
 
 describe('respondToProposal', () => {
