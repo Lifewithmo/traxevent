@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
-import { ProposalPackageOption } from '@/components/proposals/ProposalPricing'
+import { ProposalPackageOption, ProposalOptionalItems, ProposalTotals } from '@/components/proposals/ProposalPricing'
 import type { ProposalPackage } from '@/lib/types'
 
 const legacyPkg: ProposalPackage = {
@@ -67,5 +67,29 @@ describe('ProposalPackageOption', () => {
     )
     fireEvent.click(screen.getByRole('button'))
     expect(onSelect).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('AA compliance', () => {
+  const optional = [{ id: 'o1', description: 'Extra cart', quantity: 1, unit_price: 200, optional: true }]
+
+  it('gives the add-on checkbox a 44px touch target', () => {
+    const { container } = render(
+      <ProposalOptionalItems items={optional} selectedIds={[]} onToggle={() => {}} />,
+    )
+    const box = container.querySelector('input[type="checkbox"]')!
+    expect(box.className).toContain('size-[44px]')
+  })
+
+  it('does not use gray-400 for the expiry line', () => {
+    const { container } = render(
+      <ProposalTotals total={{ min: 100, max: 100 }} expiresAt="2026-12-01" />,
+    )
+    expect(container.innerHTML).not.toContain('text-gray-400')
+  })
+
+  it('still states the expiry date', () => {
+    render(<ProposalTotals total={{ min: 100, max: 100 }} expiresAt="2026-12-01" />)
+    expect(screen.getByText(/expires/i)).toBeInTheDocument()
   })
 })

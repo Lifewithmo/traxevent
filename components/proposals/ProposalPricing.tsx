@@ -184,13 +184,17 @@ export function ProposalOptionalItems({
         return (
           <li key={id} className="flex items-center justify-between py-2 text-sm">
             {onToggle ? (
-              <label className="flex items-center gap-3 text-gray-900">
+              <label className="flex min-h-[44px] flex-1 cursor-pointer items-center gap-3 text-[var(--warm-900)]">
                 <input
                   type="checkbox"
                   checked={chosen}
                   disabled={disabled}
                   onChange={() => onToggle(id)}
-                  className="h-4 w-4 rounded border-gray-300"
+                  /* 44px, not 16px: WCAG 2.2 AA target-size minimum is 24px and
+                     the touch bar is 44. This is the upsell control on a
+                     phone-first customer document — the single control most
+                     responsible for average job value. */
+                  className="size-[44px] shrink-0 rounded border-[var(--warm-300)] accent-[var(--proposal-accent,#111827)]"
                 />
                 {label}
               </label>
@@ -241,11 +245,11 @@ export function ProposalTotals({
       )}
       {depositPaid && <p className="text-sm font-medium text-green-700">Deposit paid.</p>}
       {expiresAt && (
-        <p className="text-xs text-gray-400">
-          {/* Rendered from the same instant the signing/deposit guards
-              use (proposalExpiryInstant), so a date-only expires_at
-              (end of that UTC day) never shows a date the guards
-              would already treat as expired, or vice versa. */}
+        <p className="mt-1 text-sm font-medium text-[var(--warm-600)]">
+          {/* Rendered from the same instant the signing/deposit guards use
+              (proposalExpiryInstant), so a date-only expires_at never shows a
+              date the guards would already treat as expired, or vice versa.
+              Was text-gray-400 — #9ca3af on white is ~2.5:1 and fails AA. */}
           This proposal expires{' '}
           {new Date(proposalExpiryInstant(expiresAt)).toLocaleDateString()}
         </p>
