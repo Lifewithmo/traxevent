@@ -161,6 +161,13 @@ export default async function ProposalPrintPage({
                       expiresAt={signed || declined ? undefined : proposal.expires_at}
                     />
                   </section>
+                  {/* Deliberately shown even after signing/decline, unlike the
+                      public page (whose deposit terms live inside `showForm`
+                      and disappear once there's a decision). This matches
+                      pre-migration print behaviour exactly — the printed
+                      record keeps stating the deposit policy that applied
+                      when the proposal was live — and is not a regression;
+                      do not "fix" it into matching the public page. */}
                   {proposal.deposit_terms?.trim() && (
                     <section className="mt-8">
                       <h2 className="mb-2 text-lg font-bold">Deposit terms</h2>
