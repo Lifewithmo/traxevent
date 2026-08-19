@@ -119,10 +119,14 @@ Clash rule in `computeCapacity`: over bookable leads on the date, count each lea
 **Server (`[leadId]/page.tsx`):** when `hasMultiResourceCapacity(org)` and `capacityUnits.length>0` and `lead.event_date`, read the same-date bookable leads — `leadsRef(orgId).where('event_date','==',lead.event_date).get()` filtered to `OPEN_STAGES∪{'closed_won'}` and excluding `lead.id` — build `unitAnnotations(lead, capacityUnits, sameDateLeads)`, and pass `{ units: capacityUnits, annotations, assigned: lead.assigned_units }` to the client (serialize the Map as a plain object). Compute `showAssignment = hasCapacity && units.length>0 && !!lead.event_date`.
 **Client (`UnitAssignmentControl`):** a **cart** select (all mobile units) always; a **room** select (venue units) only when `lead.delivery_mode==='onsite'`. Each: an "Unassigned" option + one per unit labelled `‹name› (free | taken by ‹title› | blocked)` from annotations. On change, optimistic `updateLead(orgId, leadId, { assigned_units: { ...current, [kind]: value||undefined } })` with rollback (mirror `DeliveryModeControl` ~:196). Hidden when `!showAssignment`.
 
-**Design direction:** run **design-ambition** first (baked block will be added to this task before build).
+**Design direction (design-ambition pass, done 2026-08-18 — build to this):**
+- Two labelled selects (kit `Label` + `select`/kit Select, mirror the pattern in `DeliveryModeControl` / a settings client): **"Serving unit"** (all `mobile` units) always; **"Room"** (`venue` units) only when `delivery_mode==='onsite'`. Each: an **"Unassigned"** default option + one per unit labelled `‹name› — free | taken by ‹title› | blocked`.
+- **THE MOVE — prevent, don't just detect:** when the CURRENT selection is a *taken* unit, render an inline alert-tone line directly under that select — `Double-booked with ‹title›`; when *blocked*, `Unavailable — blocked on that date`. This catches the clash AT the pick (Nielsen error-prevention), where the pipeline badge only catches it after. The data is already in `annotations` (`takenBy`/`blocked`) — no extra query. This line is REQUIRED, not optional.
+- Optimistic `updateLead` with rollback (mirror `DeliveryModeControl` ~:196); the alert uses `role="alert"`. Hidden when `!showAssignment`.
+- **Hard gates:** WCAG 2.2 AA on selects + the inline alert; labelled; keyboard-operable; `prefers-reduced-motion`.
 
 **Steps:**
-- [ ] design-ambition pass; write failing component test: pickers render Unassigned + annotated options; selecting a cart calls `updateLead` with a MERGED `assigned_units` (keeps an existing room); the room picker is absent when offsite; hidden when `showAssignment` is false.
+- [ ] design-ambition direction above; write failing component test: pickers render Unassigned + annotated options; selecting a cart calls `updateLead` with a MERGED `assigned_units` (keeps an existing room); selecting a `taken` unit shows the inline `Double-booked with ‹title›` alert; the room picker is absent when offsite; hidden when `showAssignment` is false.
 - [ ] Run → FAIL.
 - [ ] Implement the server threading + the control.
 - [ ] Run tests → PASS; `npm run build`.
@@ -139,10 +143,13 @@ Clash rule in `computeCapacity`: over bookable leads on the date, count each lea
 **Interfaces — Consumes:** `rowOwnsClash` (Task 1); `PipelineRow.overCapacity`, `Lead.assigned_units`.
 **Behavior:** compute `const clash = rowOwnsClash(row.lead, row.overCapacity)`; when non-empty, render an alert `StatusPill` `‹names joined by " & "› double-booked — ‹shortDate(row.overCapacity.date)›` (reuse `max-w-full whitespace-normal`). Independent of the over-capacity pill (a row may show both). Base/solo orgs (no `overCapacity`) show neither — increment-1 "Date conflict" path intact.
 
-**Design direction:** run **design-ambition** first (baked block will be added before build).
+**Design direction (design-ambition pass, done 2026-08-18 — build to this):**
+- A read-only alert `StatusPill` naming the SPECIFIC unit(s) — `‹name(s) joined by " & "› double-booked — ‹shortDate(date)›` — because "Kart 1" is actionable where a bare flag isn't (Few: the specific is the signal). Reuse the #115 `max-w-full whitespace-normal` wrap.
+- Independent of the over-capacity pill — a row may show both (day over AND its unit clashed); render the clash badge alongside, not instead. Base/solo orgs (no `overCapacity`) show neither — the increment-1 "Date conflict" path is untouched.
+- **Hard gate:** AA contrast on the alert pill; verify the wrap at mobile 375 (the #115 surface).
 
 **Steps:**
-- [ ] design-ambition pass; failing tests: a row whose assigned unit clashes renders "Kart 1 double-booked — <date>"; a two-unit clash reads "Kart 1 & Room A double-booked"; a row without a clash renders no clash pill; a base-mode row still shows "Date conflict".
+- [ ] design-ambition direction above; failing tests: a row whose assigned unit clashes renders "Kart 1 double-booked — <date>"; a two-unit clash reads "Kart 1 & Room A double-booked"; a row without a clash renders no clash pill; a base-mode row still shows "Date conflict".
 - [ ] Run → FAIL.
 - [ ] Implement the badge.
 - [ ] Run tests + full suite → PASS; `npm run build`.
