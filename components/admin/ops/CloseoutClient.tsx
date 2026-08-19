@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -10,8 +10,9 @@ import { StatTile } from '@/components/ui/stat-tile'
 import { StatusPill } from '@/components/ui/status-pill'
 import { saveActuals, getCloseoutSummary, completeCloseout } from '@/actions/event-ops'
 import { generateCloseoutInvoice } from '@/actions/invoices'
+import { computeCloseoutSummary } from '@/lib/ops/derive'
 import { formatMoney } from '@/lib/utils'
-import type { OpsPlan, OpsCloseout, CloseoutSummary, Lead } from '@/lib/types'
+import type { OpsPlan, OpsCloseout, CloseoutSummary, Lead, WorkPackage, OpsResource } from '@/lib/types'
 
 export interface CloseoutClientProps {
   orgId: string
@@ -20,6 +21,11 @@ export interface CloseoutClientProps {
   isAdmin: boolean
   eventName: string
   plan: OpsPlan
+  /** The plan's packages + org resources (the same reads closeoutSummaryCore does
+   *  server-side). Optional: without them the margin card falls back to the saved
+   *  server summary instead of recomputing live. */
+  packages?: WorkPackage[]
+  resources?: OpsResource[]
   closeout: OpsCloseout | null
   summary: CloseoutSummary | null
   summaryError: string | null
@@ -28,8 +34,20 @@ export interface CloseoutClientProps {
   linkBroken?: boolean
 }
 
+/** Signed planned-vs-actual delta as a chip. `goodWhenPositive` flips the tone
+ *  for cost-like figures where coming in above plan is the bad direction. */
+function DeltaChip({ delta, goodWhenPositive = true }: { delta: number; goodWhenPositive?: boolean }) {
+  if (Math.abs(delta) < 0.005) return <StatusPill tone="neutral">on plan</StatusPill>
+  const good = goodWhenPositive ? delta > 0 : delta < 0
+  return (
+    <StatusPill tone={good ? 'confirmed' : 'alert'} className="tabular-nums">
+      {delta < 0 ? '−' : '+'}{formatMoney(Math.abs(delta))} vs plan
+    </StatusPill>
+  )
+}
+
 export function CloseoutClient(props: CloseoutClientProps) {
-  const { orgId, eventId, plan } = props
+  const { orgId, eventId, plan, packages, resources } = props
   const saved = props.closeout?.actuals
   const savedQty = new Map((saved?.consumables ?? []).map((c) => [c.resource_id, c.qty_used]))
 
@@ -47,7 +65,41 @@ export function CloseoutClient(props: CloseoutClientProps) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [leadId, setLeadId] = useState(props.linkedLead?.id ?? '')
+  // True once a compute-relevant field (quantities, sales) diverges from what the
+  // saved summary reflects; the margin card shows the live recompute while dirty
+  // and returns to the saved summary — the source of truth — after each save.
+  const [dirty, setDirty] = useState(false)
   const router = useRouter()
+
+  // Live recompute of the same pure function the server runs, on every
+  // actuals/sales change. Replicates closeoutSummaryCore's deleted-package
+  // guard; Number() coercion with NaN guards mirrors the save payload
+  // (blank/invalid quantities contribute nothing, like unsaved fields).
+  const live = useMemo<{ summary: CloseoutSummary | null; error: string | null } | null>(() => {
+    if (!packages || !resources) return null
+    const foundIds = new Set(packages.map((p) => p.id))
+    const missing = plan.package_ids.find((id) => !foundIds.has(id))
+    if (missing) return { summary: null, error: `Package no longer exists: ${missing}` }
+    const salesNum = Number(sales)
+    return {
+      summary: computeCloseoutSummary({
+        packages,
+        resources,
+        guests: plan.requirements.guests,
+        actual_consumables: plan.shopping_list
+          .filter((i) => (qtyUsed[i.resource_id] ?? '') !== '')
+          .map((i) => ({ resource_id: i.resource_id, qty_used: Number(qtyUsed[i.resource_id]) }))
+          .filter((c) => Number.isFinite(c.qty_used)),
+        sales: sales !== '' && Number.isFinite(salesNum) ? salesNum : 0,
+      }),
+      error: null,
+    }
+  }, [packages, resources, plan, qtyUsed, sales])
+
+  const shownSummary = dirty && live?.summary ? live.summary : summary
+  const shownError = shownSummary ? null : dirty && live?.error ? live.error : props.summaryError
+  // Planned revenue = the packages alone; the delta is what on-site sales added.
+  const plannedRevenue = packages ? packages.reduce((sum, p) => sum + p.price, 0) : null
 
   async function handleSaveActuals() {
     setSaving(true); setError(null)
@@ -62,6 +114,7 @@ export function CloseoutClient(props: CloseoutClientProps) {
       })
       setHasActuals(true)
       setSummary(await getCloseoutSummary(orgId, eventId))
+      setDirty(false)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to save')
     } finally {
@@ -110,7 +163,7 @@ export function CloseoutClient(props: CloseoutClientProps) {
                 aria-label={`Actual ${i.name} used`}
                 type="number" step="0.01" className="w-28"
                 value={qtyUsed[i.resource_id] ?? ''}
-                onChange={(e) => setQtyUsed((prev) => ({ ...prev, [i.resource_id]: e.target.value }))}
+                onChange={(e) => { setQtyUsed((prev) => ({ ...prev, [i.resource_id]: e.target.value })); setDirty(true) }}
               />
               <span className="text-xs text-muted-foreground">{i.unit ?? ''} (planned {i.qty})</span>
             </div>
@@ -122,7 +175,7 @@ export function CloseoutClient(props: CloseoutClientProps) {
             </div>
             <div>
               <Label htmlFor="co-sales">Tips &amp; on-site sales ($)</Label>
-              <Input id="co-sales" type="number" step="0.01" className="w-36" value={sales} onChange={(e) => setSales(e.target.value)} />
+              <Input id="co-sales" type="number" step="0.01" className="w-36" value={sales} onChange={(e) => { setSales(e.target.value); setDirty(true) }} />
             </div>
           </div>
           <div>
@@ -134,36 +187,62 @@ export function CloseoutClient(props: CloseoutClientProps) {
       </Card>
 
       <Card>
-        <CardHeader><CardTitle className="text-base">2 · Margin vs plan</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle className="text-base">2 · Margin vs plan</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            {live ? 'Updates as you type · ' : ''}consumables + sales only — excludes labor
+          </p>
+        </CardHeader>
         <CardContent>
-          {props.summaryError && !summary ? (
+          {shownError ? (
             <div className="text-sm text-destructive">
-              <p className="font-medium">{props.summaryError}</p>
+              <p className="font-medium">{shownError}</p>
               <p className="mt-1">
                 A package on this plan was deleted from the catalog. Restore it in the catalog (same name and lines)
                 or contact support — the summary can&apos;t be computed without it.
               </p>
             </div>
-          ) : summary ? (
+          ) : shownSummary ? (
             <div className="space-y-3">
               <div className="grid grid-cols-3 gap-2.5 max-[700px]:grid-cols-1">
-                <StatTile label="Revenue" value={formatMoney(summary.revenue)} tone="money" note="Packages + sales" />
-                <StatTile
-                  label="Actual margin"
-                  value={formatMoney(summary.actual_margin)}
-                  tone={summary.actual_margin < 0 ? 'alert' : 'money'}
-                />
-                <StatTile label="Planned margin" value={formatMoney(summary.planned_margin)} />
+                <div className="flex flex-col items-start gap-1.5">
+                  <StatTile
+                    label="Revenue" value={formatMoney(shownSummary.revenue)} tone="money"
+                    note="Packages + sales" className="w-full flex-1"
+                  />
+                  {plannedRevenue !== null && Math.abs(shownSummary.revenue - plannedRevenue) >= 0.005 && (
+                    <DeltaChip delta={shownSummary.revenue - plannedRevenue} />
+                  )}
+                </div>
+                <div className="flex flex-col items-start gap-1.5">
+                  <StatTile
+                    label="Actual margin"
+                    value={formatMoney(shownSummary.actual_margin)}
+                    tone={shownSummary.actual_margin < 0 ? 'alert' : 'money'}
+                    className="w-full flex-1"
+                  />
+                  <DeltaChip delta={shownSummary.actual_margin - shownSummary.planned_margin} />
+                </div>
+                <StatTile label="Planned margin" value={formatMoney(shownSummary.planned_margin)} />
               </div>
               <p className="text-xs text-muted-foreground">
                 Consumables: planned{' '}
-                <span className="font-medium tabular-nums text-foreground">{formatMoney(summary.planned_consumable_cost)}</span>
+                <span className="font-medium tabular-nums text-foreground">{formatMoney(shownSummary.planned_consumable_cost)}</span>
                 {' '}· actual{' '}
-                <span className="font-medium tabular-nums text-foreground">{formatMoney(summary.actual_consumable_cost)}</span>
+                <span className="font-medium tabular-nums text-foreground">{formatMoney(shownSummary.actual_consumable_cost)}</span>
+                {Math.abs(shownSummary.actual_consumable_cost - shownSummary.planned_consumable_cost) >= 0.005 && (
+                  <>
+                    {' '}·{' '}
+                    <DeltaChip
+                      delta={shownSummary.actual_consumable_cost - shownSummary.planned_consumable_cost}
+                      goodWhenPositive={false}
+                    />
+                  </>
+                )}
               </p>
-              {summary.cost_gaps && summary.cost_gaps.length > 0 && (
+              {shownSummary.cost_gaps && shownSummary.cost_gaps.length > 0 && (
                 <p className="rounded-lg border border-[var(--warn-border)] bg-[var(--warn-bg)] px-3 py-2 text-sm text-[var(--warn-fg)]">
-                  Planned cost omits {summary.cost_gaps.length} resource(s) with no unit conversion: {summary.cost_gaps.join(', ')}
+                  Planned cost omits {shownSummary.cost_gaps.length} resource(s) with no unit conversion: {shownSummary.cost_gaps.join(', ')}
                 </p>
               )}
             </div>
