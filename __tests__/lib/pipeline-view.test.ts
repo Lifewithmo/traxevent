@@ -173,6 +173,7 @@ describe('buildPipelineRows — capacity mode (Task 3)', () => {
       { kind: 'mobile', demand: over ? 4 : 3, supply: 3 },
       { kind: 'venue', demand: 0, supply: 2 },
     ],
+    clashes: [],
   })
 
   it('drives conflict + overCapacity from capacityByDate, not conflictDates', () => {
