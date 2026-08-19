@@ -4,7 +4,7 @@ import { notFound } from 'next/navigation'
 import { orgCalendarFeed, orgIdBySlug } from '@/lib/calendar-fetch'
 import { filterFeed, PIPELINE_KINDS } from '@/lib/calendar'
 import { feedInWindow, normalizeView } from '@/lib/calendar-window'
-import { todayYmd } from '@/lib/opportunity-detail'
+import { todayYmd, normalizeYmd } from '@/lib/opportunity-detail'
 import { CalendarCanvas } from '@/components/admin/calendar/CalendarCanvas'
 
 /**
@@ -28,7 +28,11 @@ export default async function CalendarPage({
 
   const today = todayYmd()
   const view = normalizeView(sp.view)
-  const anchor = (sp.week ?? today).slice(0, 10)
+  // `?week` is untrusted and was NOT normalised the way `view` is: a garbage
+  // value reached date construction and threw RangeError, killing the cockpit.
+  // A bad query param falls back to the current week — it must not 404 or 500
+  // an otherwise-valid page.
+  const anchor = normalizeYmd(sp.week, today)
   const kinds = sp.kinds === 'pipeline' ? 'pipeline' : undefined
 
   const feed = await orgCalendarFeed(orgId, orgSlug)
