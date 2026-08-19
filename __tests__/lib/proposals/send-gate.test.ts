@@ -29,6 +29,10 @@ describe('evaluateSendGate', () => {
     expect(evaluateSendGate({ ...ok, expires_at: '2026-12-01' }, NOW)).not.toContain('expired')
   })
 
+  it('does not flag an unparseable expiry (proposalExpiryInstant returns Infinity)', () => {
+    expect(evaluateSendGate({ ...ok, expires_at: 'not-a-date' }, NOW)).not.toContain('expired')
+  })
+
   it('flags an empty document once placeholders are stripped', () => {
     const blocks = [{ id: 'b1', type: 'paragraph' as const, text: 'x', placeholder: true }]
     expect(evaluateSendGate({ ...ok, blocks }, NOW)).toContain('empty_document')

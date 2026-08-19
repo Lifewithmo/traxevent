@@ -80,7 +80,7 @@ export async function sendProposal(
   proposalId: string,
   override?: { reason: string },
 ): Promise<void> {
-  await assertOrgAdmin(orgId)
+  const member = await assertOrgAdmin(orgId)
   const ref = proposalsRef(orgId).doc(proposalId)
   const snap = await ref.get()
   const proposalBeforeSend = snap?.exists ? (snap.data() as Proposal) : undefined
@@ -102,6 +102,7 @@ export async function sendProposal(
         sent_override: {
           reason: override.reason.trim(),
           checks: failed,
+          by: member.uid,
           at: new Date().toISOString(),
         },
       })

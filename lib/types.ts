@@ -619,7 +619,7 @@ export interface Proposal {
   signature?: ProposalSignature
   deposit_payment?: ProposalDepositPayment
   pending_signature?: PendingSignature
-  sent_override?: { reason: string; checks: string[]; at: string }  // polish gate bypass (spec §12)
+  sent_override?: { reason: string; checks: string[]; by: string; at: string }  // polish gate bypass (spec §12); by is the admin uid who overrode
   events?: ProposalEvent[]
 }
 

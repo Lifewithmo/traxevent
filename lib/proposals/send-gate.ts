@@ -37,7 +37,9 @@ export function evaluateSendGate(p: GateInput, now: Date): SendGateCheck[] {
   // so "empty" must be judged on what actually ships.
   if (blocks.filter((b) => b.placeholder !== true).length === 0) failed.push('empty_document')
 
-  if (p.expires_at && now.getTime() > new Date(proposalExpiryInstant(p.expires_at)).getTime()) {
+  // proposalExpiryInstant already returns epoch milliseconds (Infinity for an
+  // unparseable date, which must never read as expired) — compare directly.
+  if (p.expires_at && now.getTime() > proposalExpiryInstant(p.expires_at)) {
     failed.push('expired')
   }
 

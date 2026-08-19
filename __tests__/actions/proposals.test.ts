@@ -46,8 +46,8 @@ vi.mock('@/lib/firebase-admin', () => {
 })
 
 vi.mock('@/lib/auth/assert', () => ({
-  assertOrgMember: vi.fn().mockResolvedValue({ role: 'admin' }),
-  assertOrgAdmin: vi.fn().mockResolvedValue({ role: 'admin' }),
+  assertOrgMember: vi.fn().mockResolvedValue({ uid: 'admin-1', role: 'admin' }),
+  assertOrgAdmin: vi.fn().mockResolvedValue({ uid: 'admin-1', role: 'admin' }),
 }))
 
 vi.mock('@/lib/tokens', () => ({
@@ -217,6 +217,45 @@ describe('proposals actions', () => {
       expect(proposalDocUpdateSpy).toHaveBeenCalledWith(
         expect.objectContaining({ status: 'sent' })
       )
+    })
+  })
+
+  // Task 4 fix round 1: nothing exercised the gate through sendProposal
+  // itself — evaluateSendGate was only unit-tested in isolation. A refactor
+  // that severed the throw or the override path could ship with a green
+  // suite. These pin the wiring at the one call site that matters: the
+  // action that is the sole writer of status:'sent'.
+  describe('sendProposal — send gate wiring', () => {
+    function gateFailingDoc() {
+      return { exists: true, data: () => ({ id: 'p1', status: 'draft', line_items: [], blocks: [] }) }
+    }
+
+    it('rejects a gate-failing proposal and writes nothing', async () => {
+      proposalDocGetSpy.mockResolvedValue(gateFailingDoc())
+      await expect(sendProposal('org-1', 'p1')).rejects.toThrow(/no price/i)
+      expect(proposalDocUpdateSpy).not.toHaveBeenCalled()
+    })
+
+    it('an override with a reason bypasses the gate, sends, and persists sent_override with reason/checks/by/at', async () => {
+      proposalDocGetSpy.mockResolvedValue(gateFailingDoc())
+      await sendProposal('org-1', 'p1', { reason: 'client asked for it early' })
+      expect(proposalDocUpdateSpy).toHaveBeenCalledWith({
+        sent_override: {
+          reason: 'client asked for it early',
+          checks: expect.arrayContaining(['no_price', 'empty_document']),
+          by: 'admin-1',
+          at: expect.any(String),
+        },
+      })
+      expect(proposalDocUpdateSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'sent', updated_at: expect.any(String) })
+      )
+    })
+
+    it('an override with an empty/whitespace reason still rejects, mirroring voidProposal', async () => {
+      proposalDocGetSpy.mockResolvedValue(gateFailingDoc())
+      await expect(sendProposal('org-1', 'p1', { reason: '   ' })).rejects.toThrow(/no price/i)
+      expect(proposalDocUpdateSpy).not.toHaveBeenCalled()
     })
   })
 
