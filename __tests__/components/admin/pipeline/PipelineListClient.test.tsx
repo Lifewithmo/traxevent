@@ -801,4 +801,104 @@ describe('PipelineListClient', () => {
       expect(screen.queryByText(/Over capacity/)).toBeNull()
     })
   })
+
+  /*
+    UNIT DOUBLE-BOOKED BADGE (increment 2). Where the over-capacity pill names a
+    type-level shortfall ("3 events · 2 carts"), the clash badge names the
+    SPECIFIC unit(s) this row's own booking shares with another on the date —
+    "Kart 1 double-booked — <date>" — because "Kart 1" is actionable where a bare
+    flag is not. It reads off `rowOwnsClash(row.lead, row.overCapacity)`, is
+    independent of the over pill (a row may show both), and never appears for a
+    base/solo org that carries no `overCapacity` (the increment-1 path is intact).
+  */
+  describe('unit double-booked badge (increment 2)', () => {
+    // A CapacityDay whose `clashes` name the units double-booked on the date.
+    const day = (over: boolean, clashes: Record<string, unknown>[]) => ({
+      date: '2026-09-30', over, detail: [], clashes,
+    })
+    const clashRow = (over: Record<string, unknown>) => ({
+      lead: lead({ id: 'cl1', name: 'Saturday Rush', stage: 'proposal', event_date: '2026-09-30' }),
+      health: 'active' as const,
+      statusLine: 'Next: call',
+      eventDate: '2026-09-30',
+      conflict: true,
+      ...over,
+    })
+
+    it('names the specific double-booked unit — "Kart 1 double-booked — <date>"', () => {
+      render(<PipelineListClient {...baseProps} groups={{
+        ...emptyGroups,
+        active: [clashRow({
+          lead: lead({ id: 'cl1', stage: 'proposal', event_date: '2026-09-30', assigned_units: { mobile: 'k1' } }),
+          overCapacity: day(false, [{ unitId: 'k1', unitName: 'Kart 1', kind: 'mobile', count: 2 }]),
+        })],
+      }} />)
+      const pill = screen.getByText('Kart 1 double-booked — Sep 30, 2026')
+      expect(pill.getAttribute('data-slot')).toBe('status-pill')
+      expect(pill.className).toContain('var(--status-alert-bg)')
+      // Reuses the #115 wrap so the copy does not clip at 375.
+      expect(pill.className).toContain('max-w-full')
+      expect(pill.className).toContain('whitespace-normal')
+    })
+
+    it('names both units when a row owns two clashing units — "Kart 1 & Room A double-booked"', () => {
+      render(<PipelineListClient {...baseProps} groups={{
+        ...emptyGroups,
+        active: [clashRow({
+          lead: lead({
+            id: 'cl1', stage: 'proposal', event_date: '2026-09-30',
+            delivery_mode: 'onsite', assigned_units: { mobile: 'k1', venue: 'r1' },
+          }),
+          overCapacity: day(false, [
+            { unitId: 'k1', unitName: 'Kart 1', kind: 'mobile', count: 2 },
+            { unitId: 'r1', unitName: 'Room A', kind: 'venue', count: 2 },
+          ]),
+        })],
+      }} />)
+      expect(screen.getByText('Kart 1 & Room A double-booked — Sep 30, 2026')).toBeInTheDocument()
+    })
+
+    it('renders no clash pill for a row whose own unit is not among the day’s clashes', () => {
+      render(<PipelineListClient {...baseProps} groups={{
+        ...emptyGroups,
+        active: [clashRow({
+          lead: lead({ id: 'cl1', stage: 'proposal', event_date: '2026-09-30', assigned_units: { mobile: 'k2' } }),
+          // The day has a clash, but on a DIFFERENT unit than this row owns.
+          overCapacity: day(false, [{ unitId: 'k1', unitName: 'Kart 1', kind: 'mobile', count: 2 }]),
+          conflict: false,
+        })],
+      }} />)
+      expect(screen.queryByText(/double-booked/)).toBeNull()
+    })
+
+    it('shows the clash badge ALONGSIDE the over-capacity pill when the day is both', () => {
+      render(<PipelineListClient {...baseProps} groups={{
+        ...emptyGroups,
+        active: [clashRow({
+          lead: lead({ id: 'cl1', stage: 'proposal', event_date: '2026-09-30', assigned_units: { mobile: 'k1' } }),
+          overCapacity: {
+            date: '2026-09-30', over: true,
+            detail: [{ kind: 'mobile', demand: 4, supply: 3 }, { kind: 'venue', demand: 0, supply: 2 }],
+            clashes: [{ unitId: 'k1', unitName: 'Kart 1', kind: 'mobile', count: 2 }],
+          },
+        })],
+      }} />)
+      // Both signals show — the type-level shortfall AND the specific clash.
+      expect(screen.getByText('Over capacity — 4 events · 3 carts (Sep 30, 2026)')).toBeInTheDocument()
+      expect(screen.getByText('Kart 1 double-booked — Sep 30, 2026')).toBeInTheDocument()
+    })
+
+    it('shows no clash badge for a base/solo org that carries no capacity data', () => {
+      render(<PipelineListClient {...baseProps} groups={{
+        ...emptyGroups,
+        active: [{
+          lead: lead({ id: 'b1', stage: 'proposal', event_date: '2026-09-30', assigned_units: { mobile: 'k1' } }),
+          health: 'active', statusLine: 'x', eventDate: '2026-09-30', conflict: true,
+        }],
+      }} />)
+      // No overCapacity ⇒ rowOwnsClash returns [] ⇒ the increment-1 path only.
+      expect(screen.queryByText(/double-booked/)).toBeNull()
+      expect(screen.getByText('Date conflict — Sep 30, 2026')).toBeInTheDocument()
+    })
+  })
 })

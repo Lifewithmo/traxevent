@@ -16,7 +16,7 @@ import { setLeadStage } from '@/actions/leads'
 import { OPEN_STAGES, LEAD_STAGE_LABELS, LOST_REASON_LABELS, opportunityTitle } from '@/lib/leads'
 import { STAGE_TONE, money, shortDate, type Tone } from '@/lib/pipeline-presentation'
 import type { PipelineGroups, PipelineRow, closedThisMonth } from '@/lib/pipeline-view'
-import type { CapacityDay } from '@/lib/capacity/capacity'
+import { rowOwnsClash, type CapacityDay } from '@/lib/capacity/capacity'
 import type { Customer, Lead, LeadStage } from '@/lib/types'
 import { NewOpportunityForm } from './NewOpportunityForm'
 import { IntakeLinkCard } from './IntakeLinkCard'
@@ -305,6 +305,15 @@ export function PipelineListClient({
     const needsAttention = row.health === 'needs_attention'
     const isMoving = movingTo(lead) !== null
     const chip = bookByChip(row)
+    /*
+      The unit(s) THIS row's own booking double-books on its date (increment 2).
+      Read straight off the CapacityDay the row already carries — no new data.
+      Independent of the over-capacity pill above: a day can be over AND clash,
+      and both pills then show. Empty for a base/solo org (no `overCapacity`) and
+      for any row whose assigned unit isn't among the day's clashes, so the
+      increment-1 "Date conflict" path is untouched.
+    */
+    const clash = rowOwnsClash(lead, row.overCapacity)
     return (
       <div
         key={lead.id}
@@ -344,7 +353,7 @@ export function PipelineListClient({
               A same-day booking conflict leads — it is the loudest signal the
               radar carries — then the book-by urgency chip.
             */}
-            {(row.conflict || chip) && (
+            {(row.conflict || clash.length > 0 || chip) && (
               <div className="mt-1 flex flex-wrap items-center gap-1.5">
                 {/*
                   max-w-full + whitespace-normal so a long chip WRAPS instead of
@@ -374,6 +383,21 @@ export function PipelineListClient({
                 ) : row.conflict && row.eventDate ? (
                   <StatusPill tone="alert" className="max-w-full whitespace-normal">Date conflict — {shortDate(row.eventDate)}</StatusPill>
                 ) : null}
+                {/*
+                  The SPECIFIC unit-clash badge (increment 2): names the unit(s)
+                  this row's own booking shares with another on the date — "Kart
+                  1" is actionable where the over pill's "N carts" only says a
+                  kind ran short. Rendered ALONGSIDE the over/date pill, never
+                  instead of it (a row may show both). Reuses the #115
+                  max-w-full/whitespace-normal wrap so the copy does not clip at
+                  375. `row.overCapacity` is defined whenever `clash` is
+                  non-empty (rowOwnsClash returns [] for an undefined day).
+                */}
+                {clash.length > 0 && row.overCapacity && (
+                  <StatusPill tone="alert" className="max-w-full whitespace-normal">
+                    {clash.map((c) => c.unitName).join(' & ')} double-booked — {shortDate(row.overCapacity.date)}
+                  </StatusPill>
+                )}
                 {chip && <StatusPill tone={chip.tone} className="max-w-full whitespace-normal">{chip.text}</StatusPill>}
               </div>
             )}
