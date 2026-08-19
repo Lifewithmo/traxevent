@@ -56,4 +56,17 @@ describe('print route', () => {
     render(await ProposalPrintPage({ params: Promise.resolve({ token: 't' }) }))
     expect(screen.queryByText('Deposit terms')).not.toBeInTheDocument()
   })
+
+  it('prints no "Deposit terms" heading when deposit_terms is whitespace-only', async () => {
+    const { getPublicProposal } = await import('@/actions/proposals-public')
+    vi.mocked(getPublicProposal).mockResolvedValueOnce({
+      status: 'sent',
+      title: 'Launch Party',
+      line_items: [{ id: 'i1', description: 'Cart', quantity: 1, unit_price: 500 }],
+      blocks: [{ id: 'b1', type: 'paragraph', text: 'Print body' }],
+      deposit_terms: '   \n  ',
+    } as never)
+    render(await ProposalPrintPage({ params: Promise.resolve({ token: 't' }) }))
+    expect(screen.queryByText('Deposit terms')).not.toBeInTheDocument()
+  })
 })

@@ -161,7 +161,7 @@ export default async function ProposalPrintPage({
                       expiresAt={signed || declined ? undefined : proposal.expires_at}
                     />
                   </section>
-                  {proposal.deposit_terms && (
+                  {proposal.deposit_terms?.trim() && (
                     <section className="mt-8">
                       <h2 className="mb-2 text-lg font-bold">Deposit terms</h2>
                       <p className="whitespace-pre-wrap text-sm text-gray-700">{proposal.deposit_terms}</p>
