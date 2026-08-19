@@ -56,6 +56,11 @@ export function ProposalComposition({
   proposal: CompositionProposal
   branding?: OrgBranding
   clientName?: string
+  // inc2: intentionally unpopulated — no caller (ProposalResponseClient, the
+  // print route, or the builder) supplies this today. Threaded through to
+  // CoverSection and AcceptedState so both are ready the moment a caller
+  // has an actual date to give them (see AcceptedState's own eventDate
+  // comment for what that requires).
   eventDate?: string
   showPlaceholders?: boolean
   /** Interactive on the public page, static in print — see the plan's Task 8. */

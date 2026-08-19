@@ -97,16 +97,19 @@ export async function createProposalFromLastAccepted(
     ...(proposal.deposit_terms ? { deposit_terms: proposal.deposit_terms } : {}),
   })
 
-  // The source's document body (blocks) and notes only reach the copy through a
-  // second full-state draft write. Because draft-core clears absent clearable
-  // fields, re-send the full state (title/pricing terms) so the org-default
-  // terms createProposal just seeded are not wiped.
-  const hasBody = (proposal.blocks?.length ?? 0) > 0 || !!proposal.notes?.trim()
+  // The source's document body (blocks, or sections for the archetype layer)
+  // and notes only reach the copy through a second full-state draft write.
+  // Because draft-core clears absent clearable fields, re-send the full
+  // state (title/pricing terms) so the org-default terms createProposal just
+  // seeded are not wiped.
+  const hasBody =
+    (proposal.blocks?.length ?? 0) > 0 || (proposal.sections?.length ?? 0) > 0 || !!proposal.notes?.trim()
   if (hasBody) {
     await updateProposalDraftCore(orgId, created.id, {
       title,
       ...(proposal.notes ? { notes: proposal.notes } : {}),
       ...(proposal.blocks ? { blocks: proposal.blocks } : {}),
+      ...(proposal.sections ? { sections: proposal.sections } : {}),
       line_items: proposal.line_items,
       ...(proposal.packages ? { packages: proposal.packages } : {}),
       ...(proposal.discount ? { discount: proposal.discount } : {}),

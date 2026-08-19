@@ -148,7 +148,12 @@ export default async function ProposalPrintPage({
                       <ProposalIncludedItems items={requiredItems} />
                     </section>
                   )}
-                  <section className="mt-8 border-t pt-4">
+                  {/* border-[var(--warm-200)], not the bare `border-t`
+                      utility: globals.css applies `@apply border-border` to
+                      `*`, and --border HAS a .dark override that the warm
+                      ramp does not — inside <ProposalTheme> (permanently
+                      white paper) that's a COLOUR RULE violation. */}
+                  <section className="mt-8 border-t border-[var(--warm-200)] pt-4">
                     <ProposalTotals
                       total={total}
                       deposit={signed ? undefined : proposal.deposit}

@@ -7,6 +7,7 @@ import type { ProposalDraftInput, ProposalDraftUpdate } from '@/lib/proposals/dr
 
 export const TEMPLATE_CONTENT_FIELDS = [
   'blocks',
+  'sections',
   'line_items',
   'packages',
   'discount',

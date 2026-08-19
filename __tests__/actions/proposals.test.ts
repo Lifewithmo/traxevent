@@ -54,6 +54,9 @@ vi.mock('@/lib/tokens', () => ({
   generateAccessToken: vi.fn().mockReturnValue('tok_test'),
 }))
 
+const logActivitySpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
+vi.mock('@/lib/activity', () => ({ logActivity: logActivitySpy }))
+
 import {
   listProposals,
   listAllProposals,
@@ -256,6 +259,41 @@ describe('proposals actions', () => {
       proposalDocGetSpy.mockResolvedValue(gateFailingDoc())
       await expect(sendProposal('org-1', 'p1', { reason: '   ' })).rejects.toThrow(/no price/i)
       expect(proposalDocUpdateSpy).not.toHaveBeenCalled()
+    })
+
+    // Regression: sent_override was written to the document and never
+    // surfaced anywhere a human looks, and the activity-log entry was
+    // identical for an overridden send vs. a clean one — an overridden send
+    // was invisible in the one place ops actually reviews activity.
+    it('records the override reason in the activity log summary', async () => {
+      proposalDocGetSpy.mockResolvedValue({
+        exists: true,
+        data: () => ({ id: 'p1', lead_id: 'lead-1', status: 'draft', line_items: [], blocks: [], title: 'Gala' }),
+      })
+      await sendProposal('org-1', 'p1', { reason: 'client asked for it early' })
+      expect(logActivitySpy).toHaveBeenCalledWith(
+        'org-1',
+        expect.objectContaining({
+          summary: expect.stringContaining('send gate overridden — client asked for it early'),
+        }),
+      )
+    })
+
+    it('does not mention an override in the activity log for a clean send', async () => {
+      proposalDocGetSpy.mockResolvedValue({
+        exists: true,
+        data: () => ({
+          id: 'p1', lead_id: 'lead-1', status: 'draft',
+          line_items: [{ id: 'i1', description: 'Cart', quantity: 1, unit_price: 500 }],
+          blocks: [{ id: 'b1', type: 'paragraph', text: 'Real content' }],
+          title: 'Gala',
+        }),
+      })
+      await sendProposal('org-1', 'p1')
+      expect(logActivitySpy).toHaveBeenCalledWith(
+        'org-1',
+        expect.objectContaining({ summary: 'Proposal sent — Gala' }),
+      )
     })
   })
 

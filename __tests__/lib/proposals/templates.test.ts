@@ -33,6 +33,16 @@ describe('templateContentFromDraft', () => {
     expect(content.packages![0].item_ids).toEqual(['li1'])
     expect(content.tax_rate).toBe(8.25)
   })
+
+  // Regression: `sections` (the archetype layer) was declared on
+  // ProposalTemplate but missing from TEMPLATE_CONTENT_FIELDS, so
+  // save-as-template silently dropped the document body for any proposal
+  // authored in sections.
+  it('carries sections through, once they exist', () => {
+    const sections = [{ id: 's1', type: 'prose' as const, blocks }]
+    const content = templateContentFromDraft({ title: 'x', sections })
+    expect(content.sections).toEqual(sections)
+  })
 })
 
 describe('proposalDraftFromTemplate', () => {
@@ -48,6 +58,13 @@ describe('proposalDraftFromTemplate', () => {
     expect(draft.blocks).toEqual(blocks)
     expect((draft.line_items as { id?: string }[])[0].id).toBe('li1')
     expect(draft).not.toHaveProperty('expires_at')
+  })
+
+  it('copies sections through, once they exist', () => {
+    const sections = [{ id: 's1', type: 'prose' as const, blocks }]
+    const t = template({ sections })
+    const draft = proposalDraftFromTemplate(t, { title: 'T' })
+    expect(draft.sections).toEqual(sections)
   })
 
   it('falls back to org default terms when the template has none', () => {

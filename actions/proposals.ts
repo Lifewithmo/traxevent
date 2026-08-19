@@ -84,6 +84,11 @@ export async function sendProposal(
   const ref = proposalsRef(orgId).doc(proposalId)
   const snap = await ref.get()
   const proposalBeforeSend = snap?.exists ? (snap.data() as Proposal) : undefined
+  // Tracks whether this send actually used the override, so the activity log
+  // below (and any future surface) can say so — sent_override was previously
+  // written to the document and never surfaced anywhere a human looks; the
+  // activity-log entry for an overridden send read identical to a clean one.
+  let overrideReason: string | undefined
   if (proposalBeforeSend) {
     if (proposalBeforeSend.signature || proposalBeforeSend.pending_signature) {
       throw new Error('This proposal is signed and can no longer be edited')
@@ -98,9 +103,10 @@ export async function sendProposal(
       throw new Error(failed.map((c) => SEND_GATE_MESSAGES[c]).join(' '))
     }
     if (failed.length > 0 && override?.reason?.trim()) {
+      overrideReason = override.reason.trim()
       await ref.update({
         sent_override: {
-          reason: override.reason.trim(),
+          reason: overrideReason,
           checks: failed,
           by: member.uid,
           at: new Date().toISOString(),
@@ -112,11 +118,14 @@ export async function sendProposal(
 
   // Best-effort activity log, after the authoritative status write.
   if (proposalBeforeSend) {
+    const title = proposalBeforeSend.title ?? 'Untitled proposal'
     await logActivity(orgId, {
       parent_type: 'opportunity',
       parent_id: proposalBeforeSend.lead_id,
       kind: 'proposal',
-      summary: `Proposal sent — ${proposalBeforeSend.title ?? 'Untitled proposal'}`,
+      summary: overrideReason
+        ? `Proposal sent (send gate overridden — ${overrideReason}) — ${title}`
+        : `Proposal sent — ${title}`,
     })
   }
 

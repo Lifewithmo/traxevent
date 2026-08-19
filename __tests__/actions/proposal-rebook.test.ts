@@ -236,6 +236,25 @@ describe('createProposalFromLastAccepted', () => {
     expect(updateDraftCoreSpy).not.toHaveBeenCalled()
   })
 
+  // Regression: a re-book copied blocks but not sections (the archetype
+  // layer's document body), so a proposal authored in sections would
+  // silently lose its body when rebooked.
+  it('copies sections through the second draft write, and triggers it even with no blocks', async () => {
+    const propSections = makeProposal({
+      id: 'p-sections',
+      lead_id: 'l1',
+      status: 'accepted',
+      sections: [{ id: 's1', type: 'prose', blocks: [{ id: 'b1', type: 'paragraph', text: 'Body' }] }],
+    })
+    listLeadsByCustomerCoreSpy.mockResolvedValue([leadL1])
+    listProposalsSpy.mockResolvedValue([propSections])
+    createLeadCoreSpy.mockResolvedValue({ ...leadL1, id: 'fresh-lead' })
+    await createProposalFromLastAccepted('o1', 'c1')
+    expect(updateDraftCoreSpy).toHaveBeenCalledTimes(1)
+    const [, , draft] = updateDraftCoreSpy.mock.calls[0]
+    expect(draft.sections).toEqual(propSections.sections)
+  })
+
   it('returns the new proposal + fresh lead ids for redirect', async () => {
     const res = await createProposalFromLastAccepted('o1', 'c1')
     expect(res).toEqual({ proposalId: 'new-p', leadId: 'fresh-lead' })

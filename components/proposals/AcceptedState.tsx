@@ -16,6 +16,12 @@ export function AcceptedState({
   signerName: string
   signedAt?: string
   depositPaid: boolean
+  // inc2: intentionally unpopulated. No caller supplies this today — the
+  // lead's event_date never made it into PublicProposal's projection
+  // (actions/proposals-public.ts), so "You're booked for <date>." can never
+  // actually render its date. Threading it through requires a data-plumbing
+  // change (project event_date onto PublicProposal, pass it down from both
+  // ProposalResponseClient and the print route), not a display fix.
   eventDate?: string
   orgName?: string
 }) {

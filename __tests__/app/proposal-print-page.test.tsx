@@ -200,4 +200,21 @@ describe('proposal print route — pricing', () => {
     await renderPage()
     expect(screen.getByText(/Deposit due to accept: \$250\.00/)).toBeInTheDocument()
   })
+
+  // Regression (COLOUR RULE): globals.css applies `@apply border-border` to
+  // `*`, and --border HAS a .dark override the warm ramp does not. A bare
+  // `border-t` on the totals divider would resolve through that global rule
+  // instead of a fixed warm value inside <ProposalTheme>'s permanently-white
+  // paper.
+  it('gives the totals divider an explicit warm border, not the bare border-t utility', async () => {
+    getPublicProposalSpy.mockResolvedValue(
+      proposal({ line_items: [{ id: 'l1', description: 'Bar service', quantity: 1, unit_price: 500 }] }),
+    )
+    const { container } = await renderPage()
+    const divider = Array.from(container.querySelectorAll('section')).find((el) =>
+      el.className.includes('border-t'),
+    )
+    expect(divider).toBeTruthy()
+    expect(divider!.className).toContain('border-[var(--warm-200)]')
+  })
 })
