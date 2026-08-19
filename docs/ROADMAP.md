@@ -145,6 +145,26 @@ EventTrax pivot (neutralization, multi-brand, ops core). Detailed designs live i
   drop↔market pickup linkage → registration retirement R2. Manual browser
   walkthrough of the occasion flows still owed.
 
+- **Pipeline Resource Capacity — increment 1** (PR #117, merged 2026-08-18,
+  live) — the same-day conflict radar is now **capacity-aware by resource
+  type** instead of assuming capacity = 1, gated to the **business** tier
+  (modeling >1 resource is the paid upgrade). A business org defines named
+  **capacity units** (`orgs/{orgId}/capacity_units`, kind mobile/venue) with
+  availability (active + block-out dates) in Settings → Resources & capacity
+  (`/[orgSlug]/capacity`); each lead carries an optional `delivery_mode`
+  (offsite → needs a cart; on-site → needs a cart + a room). A pure engine
+  computes per-date, per-kind demand vs supply; the radar shows "Over capacity
+  — 3 events · 2 rooms" instead of a bare flag. **The backstop:**
+  `radarConflictOpts` enters capacity mode only for a business org with ≥1 unit
+  — base/solo AND unit-less business orgs fall back to increment-1 behavior
+  byte-for-byte (additive, migration-free, ships dark). Walked live
+  desktop/tablet/mobile: the multi-cart false-flag fix (Sep 5 clear) + an
+  over-capacity flag (Sep 27). Whole-branch review caught the settings page
+  orphaned/at the wrong path (a business operator couldn't reach it). Deferred:
+  Inc 2 per-unit assignment, Inc 3 serviceable-ceiling forecast + capacity view,
+  Inc 4 per-event-type resource profiles + recurring availability + server-side
+  hard block. Spec/plan: `superpowers/{specs,plans}/2026-08-18-pipeline-resource-capacity*`.
+
 - **Pipeline Book-By Capacity Radar — increment 1** (PR #114 + mobile hotfix
   #115, merged 2026-08-18, live) — the Pipeline now ranks by the **event
   deadline** (`event_date − org.prep_lead_days`, default 14), not
