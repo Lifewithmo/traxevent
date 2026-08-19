@@ -2,7 +2,7 @@ import type { CapacityUnit, CapacityUnitKind, Lead, Org } from '@/lib/types'
 import { OPEN_STAGES } from '@/lib/leads'
 
 // Bookable = still in play OR the booking itself, matching conflictEventDates in lib/pipeline-view.ts.
-const BOOKABLE_STAGES = new Set<Lead['stage']>([...OPEN_STAGES, 'closed_won'])
+export const BOOKABLE_STAGES = new Set<Lead['stage']>([...OPEN_STAGES, 'closed_won'])
 
 /**
  * Multi-resource capacity is a business-tier feature. The one gate — never
@@ -20,10 +20,20 @@ export interface CapacityShort {
   supply: number
 }
 
+// A single unit pinned to ≥2 bookable leads (that consume its kind) on one date.
+// Orthogonal to `over` — a day can be over, clashing, both, or neither.
+export interface UnitClash {
+  unitId: string
+  unitName: string
+  kind: CapacityUnitKind
+  count: number // number of consuming bookable leads on the date (≥2)
+}
+
 export interface CapacityDay {
   date: string
-  over: boolean // demand exceeds supply for at least one kind
+  over: boolean // demand exceeds supply for at least one kind — UNCHANGED, type-level
   detail: CapacityShort[]
+  clashes: UnitClash[] // units assigned to ≥2 bookable leads that consume that kind
 }
 
 /** A unit is usable on `date` when it's active and the date falls in NONE of its block-outs (inclusive). */
@@ -67,8 +77,63 @@ export function computeCapacity(
 
     const over = mobileDemand > mobileSupply || venueDemand > venueSupply
 
-    result.set(date, { date, over, detail })
+    result.set(date, { date, over, detail, clashes: computeClashes(bookable, units) })
   }
 
   return result
+}
+
+/** A unit id "consumes" a kind only when it resolves to a live (active, matching-kind) unit.
+ *  Stale/retired/wrong-kind ids resolve to undefined and never count toward a clash. */
+function liveUnit(units: CapacityUnit[], id: string, kind: CapacityUnitKind): CapacityUnit | undefined {
+  return units.find((u) => u.id === id && u.kind === kind && u.active)
+}
+
+/**
+ * Per-date unit clashes: count each bookable lead's consumed unit ids (mobile
+ * always; venue only when on-site), skipping ids that don't resolve to a live
+ * unit of that kind. Any unit reaching count ≥ 2 is a clash. Blockouts do NOT
+ * suppress a clash — a unit booked twice on a blocked day is doubly wrong.
+ */
+function computeClashes(bookable: Lead[], units: CapacityUnit[]): UnitClash[] {
+  const counts = new Map<string, { unit: CapacityUnit; count: number }>()
+  const bump = (u: CapacityUnit) => {
+    const entry = counts.get(u.id)
+    if (entry) entry.count += 1
+    else counts.set(u.id, { unit: u, count: 1 })
+  }
+  for (const lead of bookable) {
+    const au = lead.assigned_units
+    if (!au) continue
+    if (au.mobile) {
+      const u = liveUnit(units, au.mobile, 'mobile')
+      if (u) bump(u)
+    }
+    if (au.venue && lead.delivery_mode === 'onsite') {
+      const u = liveUnit(units, au.venue, 'venue')
+      if (u) bump(u)
+    }
+  }
+  const clashes: UnitClash[] = []
+  for (const { unit, count } of counts.values()) {
+    if (count >= 2) clashes.push({ unitId: unit.id, unitName: unit.name, kind: unit.kind, count })
+  }
+  return clashes
+}
+
+/**
+ * The clashing units THIS lead is assigned to (mobile always; venue only when
+ * on-site). Empty when the day is undefined or the lead owns no clashing unit.
+ * Pure — used to float a double-booked row up and to render its badge.
+ */
+export function rowOwnsClash(lead: Lead, day: CapacityDay | undefined): UnitClash[] {
+  if (!day) return []
+  const au = lead.assigned_units
+  if (!au) return []
+  const owned: UnitClash[] = []
+  for (const clash of day.clashes) {
+    if (clash.kind === 'mobile' && au.mobile === clash.unitId) owned.push(clash)
+    else if (clash.kind === 'venue' && lead.delivery_mode === 'onsite' && au.venue === clash.unitId) owned.push(clash)
+  }
+  return owned
 }

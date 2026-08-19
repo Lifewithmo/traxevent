@@ -173,6 +173,7 @@ describe('buildPipelineRows — capacity mode (Task 3)', () => {
       { kind: 'mobile', demand: over ? 4 : 3, supply: 3 },
       { kind: 'venue', demand: 0, supply: 2 },
     ],
+    clashes: [],
   })
 
   it('drives conflict + overCapacity from capacityByDate, not conflictDates', () => {
@@ -229,6 +230,50 @@ describe('buildPipelineRows — capacity mode (Task 3)', () => {
     ], today, { capacityByDate })
     expect(g.needs_attention[0].overCapacity).toBeUndefined()
     expect(g.needs_attention[0].conflict).toBe(false)
+  })
+})
+
+describe('buildPipelineRows — capacity mode clash float-up (Task 2)', () => {
+  const nod = (over: Partial<Lead>) => ({ lead: lead(over), tasks: [], proposals: [] })
+  // A day UNDER capacity (over:false) that nonetheless carries a unit clash on 'k1'.
+  const clashDay = (date: string): CapacityDay => ({
+    date,
+    over: false,
+    detail: [
+      { kind: 'mobile', demand: 2, supply: 3 },
+      { kind: 'venue', demand: 0, supply: 2 },
+    ],
+    clashes: [{ unitId: 'k1', unitName: 'Kart 1', kind: 'mobile', count: 2 }],
+  })
+
+  it('marks a clash-only row (over:false) as conflict:true when it owns the clashing unit', () => {
+    const capacityByDate = new Map<string, CapacityDay>([['2026-08-20', clashDay('2026-08-20')]])
+    const g = buildPipelineRows([
+      nod({ id: 'owner', event_date: '2026-08-20', assigned_units: { mobile: 'k1' } }),
+    ], today, { capacityByDate })
+    const owner = g.needs_attention.find((r) => r.lead.id === 'owner')!
+    expect(owner.conflict).toBe(true)
+    expect(owner.overCapacity?.over).toBe(false) // the day itself is NOT over — clash alone floated it
+  })
+
+  it('leaves a same-day non-owner row (over:false, not assigned to the clashing unit) conflict:false', () => {
+    const capacityByDate = new Map<string, CapacityDay>([['2026-08-20', clashDay('2026-08-20')]])
+    const g = buildPipelineRows([
+      nod({ id: 'other', event_date: '2026-08-20', assigned_units: { mobile: 'k2' } }),
+      nod({ id: 'unassigned', event_date: '2026-08-20' }),
+    ], today, { capacityByDate })
+    expect(g.needs_attention.find((r) => r.lead.id === 'other')!.conflict).toBe(false)
+    expect(g.needs_attention.find((r) => r.lead.id === 'unassigned')!.conflict).toBe(false)
+  })
+
+  it('floats a clash-only row above a sooner non-conflicting deadline (conflict-first sort)', () => {
+    const capacityByDate = new Map<string, CapacityDay>([['2026-08-20', clashDay('2026-08-20')]])
+    const g = buildPipelineRows([
+      // sooner book-by, under capacity, no clash — must yield to the clashing row.
+      nod({ id: 'sooner', event_date: '2026-08-12' }),
+      nod({ id: 'owner', event_date: '2026-08-20', assigned_units: { mobile: 'k1' } }),
+    ], today, { capacityByDate })
+    expect(g.needs_attention.map((r) => r.lead.id)).toEqual(['owner', 'sooner'])
   })
 })
 

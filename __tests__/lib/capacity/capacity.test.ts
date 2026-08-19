@@ -3,6 +3,7 @@ import {
   unitAvailableOn,
   supply,
   computeCapacity,
+  rowOwnsClash,
 } from '@/lib/capacity/capacity'
 import type { CapacityUnit, Lead } from '@/lib/types'
 
@@ -196,5 +197,165 @@ describe('computeCapacity', () => {
     expect(map.get('2026-09-06')!.date).toBe('2026-09-06')
     expect(map.get('2026-09-06')!.over).toBe(false)
     expect(map.get('2026-09-06')!.detail.find((d) => d.kind === 'mobile')!.demand).toBe(0)
+  })
+})
+
+// --- Unit-clash pass ---------------------------------------------------------
+
+describe('computeCapacity — unit clashes', () => {
+  const k1 = () => unit({ id: 'k1', kind: 'mobile', name: 'Kart 1' })
+  const k2 = () => unit({ id: 'k2', kind: 'mobile', name: 'Kart 2' })
+  const k3 = () => unit({ id: 'k3', kind: 'mobile', name: 'Kart 3' })
+  const r1 = () => unit({ id: 'r1', kind: 'venue', name: 'Room A' })
+
+  it('flags a mobile unit assigned to two bookable leads on a date (count 2)', () => {
+    const leads = [
+      lead({ event_date: '2026-09-05', stage: 'inquiry', assigned_units: { mobile: 'k1' } }),
+      lead({ event_date: '2026-09-05', stage: 'proposal', assigned_units: { mobile: 'k1' } }),
+    ]
+    const day = computeCapacity(leads, [k1(), k2(), k3()], ['2026-09-05']).get('2026-09-05')!
+    expect(day.clashes).toHaveLength(1)
+    expect(day.clashes[0]).toMatchObject({ unitId: 'k1', unitName: 'Kart 1', kind: 'mobile', count: 2 })
+  })
+
+  it('does NOT clash when the two leads are on distinct units — even at/over capacity', () => {
+    const leads = [
+      lead({ event_date: '2026-09-05', stage: 'inquiry', assigned_units: { mobile: 'k1' } }),
+      lead({ event_date: '2026-09-05', stage: 'proposal', assigned_units: { mobile: 'k2' } }),
+    ]
+    // 1 unit ⇒ over capacity, but distinct assignments (k1/k2 don't even resolve) ⇒ no clash
+    const day = computeCapacity(leads, [k1()], ['2026-09-05']).get('2026-09-05')!
+    expect(day.over).toBe(true)
+    expect(day.clashes).toEqual([])
+  })
+
+  it('ignores a venue assigned to an OFFSITE lead (no venue clash)', () => {
+    const leads = [
+      lead({ event_date: '2026-09-05', stage: 'inquiry', delivery_mode: 'offsite', assigned_units: { venue: 'r1' } }),
+      lead({ event_date: '2026-09-05', stage: 'proposal', delivery_mode: 'offsite', assigned_units: { venue: 'r1' } }),
+    ]
+    const day = computeCapacity(leads, [k1(), r1()], ['2026-09-05']).get('2026-09-05')!
+    expect(day.clashes).toEqual([])
+  })
+
+  it('clashes a venue only across on-site leads', () => {
+    const leads = [
+      lead({ event_date: '2026-09-05', stage: 'inquiry', delivery_mode: 'onsite', assigned_units: { venue: 'r1' } }),
+      lead({ event_date: '2026-09-05', stage: 'proposal', delivery_mode: 'onsite', assigned_units: { venue: 'r1' } }),
+    ]
+    const day = computeCapacity(leads, [k1(), r1()], ['2026-09-05']).get('2026-09-05')!
+    expect(day.clashes).toEqual([{ unitId: 'r1', unitName: 'Room A', kind: 'venue', count: 2 }])
+  })
+
+  it('never clashes on a stale id that resolves to no live unit of that kind', () => {
+    const leads = [
+      lead({ event_date: '2026-09-05', stage: 'inquiry', assigned_units: { mobile: 'ghost' } }),
+      lead({ event_date: '2026-09-05', stage: 'proposal', assigned_units: { mobile: 'ghost' } }),
+    ]
+    const day = computeCapacity(leads, [k1(), k2()], ['2026-09-05']).get('2026-09-05')!
+    expect(day.clashes).toEqual([])
+  })
+
+  it('never clashes on a well-formed id pointing at a live unit of the WRONG kind', () => {
+    // Both leads pin their MOBILE slot to 'r1' — but r1 is a live VENUE. A
+    // wrong-kind resolution is not a real assignment, so the mobile clash count
+    // must ignore it. This pins the `u.kind === kind` guard in the live-unit
+    // lookup: drop that predicate and this goes red (r1 would resolve, count 2).
+    const leads = [
+      lead({ event_date: '2026-09-05', stage: 'inquiry', assigned_units: { mobile: 'r1' } }),
+      lead({ event_date: '2026-09-05', stage: 'proposal', assigned_units: { mobile: 'r1' } }),
+    ]
+    const day = computeCapacity(leads, [k1(), r1()], ['2026-09-05']).get('2026-09-05')!
+    expect(day.clashes).toEqual([])
+  })
+
+  it('never clashes on an id pointing at a RETIRED (inactive) unit', () => {
+    const leads = [
+      lead({ event_date: '2026-09-05', stage: 'inquiry', assigned_units: { mobile: 'k1' } }),
+      lead({ event_date: '2026-09-05', stage: 'proposal', assigned_units: { mobile: 'k1' } }),
+    ]
+    const retired = unit({ id: 'k1', kind: 'mobile', name: 'Kart 1', active: false })
+    const day = computeCapacity(leads, [retired, k2()], ['2026-09-05']).get('2026-09-05')!
+    expect(day.clashes).toEqual([])
+  })
+
+  it('still clashes on a blocked-out date (blocked and double-booked both show)', () => {
+    const leads = [
+      lead({ event_date: '2026-09-05', stage: 'inquiry', assigned_units: { mobile: 'k1' } }),
+      lead({ event_date: '2026-09-05', stage: 'proposal', assigned_units: { mobile: 'k1' } }),
+    ]
+    const blocked = unit({ id: 'k1', kind: 'mobile', name: 'Kart 1', blockouts: [{ start: '2026-09-05', end: '2026-09-05' }] })
+    const day = computeCapacity(leads, [blocked, k2()], ['2026-09-05']).get('2026-09-05')!
+    expect(day.clashes).toHaveLength(1)
+    expect(day.clashes[0].unitId).toBe('k1')
+  })
+
+  it('clash and not-over co-occur (2 leads, 3 carts, both Kart 1 ⇒ over false, clash present)', () => {
+    const leads = [
+      lead({ event_date: '2026-09-05', stage: 'inquiry', assigned_units: { mobile: 'k1' } }),
+      lead({ event_date: '2026-09-05', stage: 'proposal', assigned_units: { mobile: 'k1' } }),
+    ]
+    const day = computeCapacity(leads, [k1(), k2(), k3()], ['2026-09-05']).get('2026-09-05')!
+    expect(day.over).toBe(false)
+    expect(day.clashes).toHaveLength(1)
+    expect(day.clashes[0].unitId).toBe('k1')
+  })
+
+  it('leaves `over` byte-for-byte unchanged by any assignment (regression pin)', () => {
+    const base = [
+      lead({ event_date: '2026-09-05', stage: 'inquiry' }),
+      lead({ event_date: '2026-09-05', stage: 'proposal' }),
+      lead({ event_date: '2026-09-05', stage: 'closed_won' }),
+      lead({ event_date: '2026-09-05', stage: 'consultation' }),
+    ]
+    const assigned = base.map((l, i) =>
+      lead({ ...l, assigned_units: { mobile: i % 2 === 0 ? 'k1' : 'k2' } }),
+    )
+    const units = [k1(), k2(), k3()]
+    for (const date of ['2026-09-05']) {
+      const withoutA = computeCapacity(base, units, [date]).get(date)!
+      const withA = computeCapacity(assigned, units, [date]).get(date)!
+      expect(withA.over).toBe(withoutA.over)
+      expect(withA.detail).toEqual(withoutA.detail)
+    }
+  })
+})
+
+describe('rowOwnsClash', () => {
+  const k1Clash = { unitId: 'k1', unitName: 'Kart 1', kind: 'mobile' as const, count: 2 }
+  const r1Clash = { unitId: 'r1', unitName: 'Room A', kind: 'venue' as const, count: 2 }
+  const capDay = { date: '2026-09-05', over: false, detail: [], clashes: [k1Clash, r1Clash] }
+
+  it('returns the clash for a lead assigned to a clashing mobile unit', () => {
+    const l = lead({ assigned_units: { mobile: 'k1' } })
+    expect(rowOwnsClash(l, capDay)).toEqual([k1Clash])
+  })
+
+  it('returns [] for an unassigned lead', () => {
+    expect(rowOwnsClash(lead({}), capDay)).toEqual([])
+  })
+
+  it('returns [] when the day is undefined', () => {
+    expect(rowOwnsClash(lead({ assigned_units: { mobile: 'k1' } }), undefined)).toEqual([])
+  })
+
+  it('ignores a clashing venue when the lead is offsite', () => {
+    const l = lead({ delivery_mode: 'offsite', assigned_units: { venue: 'r1' } })
+    expect(rowOwnsClash(l, capDay)).toEqual([])
+  })
+
+  it('owns a clashing venue only when onsite', () => {
+    const l = lead({ delivery_mode: 'onsite', assigned_units: { venue: 'r1' } })
+    expect(rowOwnsClash(l, capDay)).toEqual([r1Clash])
+  })
+
+  it('returns both when the lead owns two clashing units', () => {
+    const l = lead({ delivery_mode: 'onsite', assigned_units: { mobile: 'k1', venue: 'r1' } })
+    expect(rowOwnsClash(l, capDay)).toEqual([k1Clash, r1Clash])
+  })
+
+  it('returns [] when the assigned unit is not among the day clashes', () => {
+    const l = lead({ assigned_units: { mobile: 'k2' } })
+    expect(rowOwnsClash(l, capDay)).toEqual([])
   })
 })

@@ -28,7 +28,12 @@ vi.mock('@/actions/calendar', () => ({ listCalendarRange: vi.fn().mockResolvedVa
 vi.mock('@/actions/client-portal', () => ({ ensureClientPortalToken: vi.fn() }))
 
 import { OpportunityDetailClient } from '@/components/admin/OpportunityDetailClient'
-import type { Lead, NormalizedInvoice } from '@/lib/types'
+import type { CapacityUnit, Lead, NormalizedInvoice } from '@/lib/types'
+
+// Only the fields the assignment picker reads; the rest satisfy the type.
+function unit(p: Partial<CapacityUnit> & Pick<CapacityUnit, 'id' | 'name' | 'kind'>): CapacityUnit {
+  return { active: true, blockouts: [], created_at: '2026-01-01T00:00:00.000Z', ...p }
+}
 
 // Only the fields the money helpers and the invoice pills read.
 function invoice(p: Partial<NormalizedInvoice>): NormalizedInvoice {
@@ -386,6 +391,160 @@ describe('OpportunityDetailClient', () => {
       expect(bandOpenBalance(container)).toContain('$1,200')
       expect(invoicesFooter()).toContain('1200.00')
       expect(invoicesFooter()).not.toContain('6200')
+    })
+  })
+
+  /**
+   * The unit-assignment control (business tier + units + a date). It prevents a
+   * double-booking AT THE PICK — an inline alert the moment the current
+   * selection is a unit another same-date booking already holds — rather than
+   * only flagging it downstream on the pipeline row.
+   */
+  describe('the unit-assignment control', () => {
+    const k1 = unit({ id: 'k1', name: 'Kart 1', kind: 'mobile' })
+    const k2 = unit({ id: 'k2', name: 'Kart 2', kind: 'mobile' })
+    const roomA = unit({ id: 'r1', name: 'Room A', kind: 'venue' })
+
+    it('renders Unassigned plus one annotated option per unit', () => {
+      render(
+        <OpportunityDetailClient
+          {...base}
+          lead={{ ...lead, event_date: '2026-09-27' }}
+          showAssignment
+          capacityUnits={[k1, k2]}
+          unitAnnotations={{ k1: { takenBy: 'Benoit shower' }, k2: {} }}
+        />
+      )
+      const select = screen.getByLabelText('Serving unit') as HTMLSelectElement
+      const options = Array.from(select.options).map((o) => o.textContent)
+      expect(options).toContain('Unassigned')
+      expect(options).toContain('Kart 1 — taken by Benoit shower')
+      expect(options).toContain('Kart 2 — free')
+    })
+
+    it('persists a MERGED assignment that keeps the existing room', async () => {
+      render(
+        <OpportunityDetailClient
+          {...base}
+          lead={{ ...lead, event_date: '2026-09-27', delivery_mode: 'onsite', assigned_units: { venue: 'r1' } }}
+          showAssignment
+          capacityUnits={[k1, roomA]}
+          unitAnnotations={{ k1: {}, r1: {} }}
+        />
+      )
+      fireEvent.change(screen.getByLabelText('Serving unit'), { target: { value: 'k1' } })
+      await waitFor(() =>
+        expect(updateLead).toHaveBeenCalledWith('o1', 'l1', { assigned_units: { venue: 'r1', mobile: 'k1' } })
+      )
+    })
+
+    it('warns inline the moment the current serving unit is double-booked', () => {
+      render(
+        <OpportunityDetailClient
+          {...base}
+          lead={{ ...lead, event_date: '2026-09-27', assigned_units: { mobile: 'k1' } }}
+          showAssignment
+          capacityUnits={[k1, k2]}
+          unitAnnotations={{ k1: { takenBy: 'Benoit shower' }, k2: {} }}
+        />
+      )
+      expect(screen.getByRole('alert')).toHaveTextContent('Double-booked with Benoit shower')
+    })
+
+    it('warns inline when the current serving unit is blocked on the date', () => {
+      render(
+        <OpportunityDetailClient
+          {...base}
+          lead={{ ...lead, event_date: '2026-09-27', assigned_units: { mobile: 'k2' } }}
+          showAssignment
+          capacityUnits={[k1, k2]}
+          unitAnnotations={{ k1: {}, k2: { blocked: true } }}
+        />
+      )
+      expect(screen.getByRole('alert')).toHaveTextContent(/Unavailable — blocked/)
+    })
+
+    it('clears a selection by OMITTING the key, never writing undefined', async () => {
+      // firebase-admin (no ignoreUndefinedProperties) throws on nested undefined —
+      // clearing must delete the key, not set it undefined.
+      render(
+        <OpportunityDetailClient
+          {...base}
+          lead={{ ...lead, event_date: '2026-09-27', assigned_units: { mobile: 'k1' } }}
+          showAssignment
+          capacityUnits={[k1, k2]}
+          unitAnnotations={{ k1: {}, k2: {} }}
+        />
+      )
+      fireEvent.change(screen.getByLabelText('Serving unit'), { target: { value: '' } })
+      await waitFor(() => expect(updateLead).toHaveBeenCalledTimes(1))
+      const update = updateLead.mock.calls[0][2] as { assigned_units: Record<string, unknown> }
+      expect('mobile' in update.assigned_units).toBe(false)
+    })
+
+    it('reverts the selection and surfaces the error when the save is rejected', async () => {
+      updateLead.mockRejectedValueOnce(new Error('write failed'))
+      render(
+        <OpportunityDetailClient
+          {...base}
+          lead={{ ...lead, event_date: '2026-09-27', assigned_units: { mobile: 'k1' } }}
+          showAssignment
+          capacityUnits={[k1, k2]}
+          unitAnnotations={{ k1: {}, k2: {} }}
+        />
+      )
+      const select = screen.getByLabelText('Serving unit') as HTMLSelectElement
+      fireEvent.change(select, { target: { value: 'k2' } })
+      // optimistic k2 → rejection rolls the select back to k1 and shows the error
+      await waitFor(() => expect(select.value).toBe('k1'))
+      expect(screen.getByRole('alert')).toHaveTextContent('write failed')
+    })
+
+    it('reads "blocked" (matching the option label) when a unit is BOTH blocked and taken', () => {
+      render(
+        <OpportunityDetailClient
+          {...base}
+          lead={{ ...lead, event_date: '2026-09-27', assigned_units: { mobile: 'k1' } }}
+          showAssignment
+          capacityUnits={[k1, k2]}
+          unitAnnotations={{ k1: { blocked: true, takenBy: 'Benoit shower' }, k2: {} }}
+        />
+      )
+      // One unit, one story: the option label gives blocked precedence, so the
+      // inline alert must too — not "— blocked" in the dropdown yet "Double-booked" below.
+      const alert = screen.getByRole('alert')
+      expect(alert).toHaveTextContent(/Unavailable — blocked/)
+      expect(alert).not.toHaveTextContent(/Double-booked/)
+    })
+
+    it('hides the room picker when the lead is offsite, shows it on-site', () => {
+      const { rerender } = render(
+        <OpportunityDetailClient
+          {...base}
+          lead={{ ...lead, event_date: '2026-09-27', delivery_mode: 'offsite' }}
+          showAssignment
+          capacityUnits={[k1, roomA]}
+          unitAnnotations={{ k1: {}, r1: {} }}
+        />
+      )
+      expect(screen.getByLabelText('Serving unit')).toBeInTheDocument()
+      expect(screen.queryByLabelText('Room')).toBeNull()
+
+      rerender(
+        <OpportunityDetailClient
+          {...base}
+          lead={{ ...lead, event_date: '2026-09-27', delivery_mode: 'onsite' }}
+          showAssignment
+          capacityUnits={[k1, roomA]}
+          unitAnnotations={{ k1: {}, r1: {} }}
+        />
+      )
+      expect(screen.getByLabelText('Room')).toBeInTheDocument()
+    })
+
+    it('is absent entirely when showAssignment is false', () => {
+      render(<OpportunityDetailClient {...base} lead={lead} />)
+      expect(screen.queryByLabelText('Serving unit')).toBeNull()
     })
   })
 

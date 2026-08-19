@@ -481,6 +481,10 @@ export interface Lead {
   guest_count?: number     // estimated guests; prefills convert headcount
   source?: 'intake' | 'manual'  // how the lead entered the pipeline; absent on pre-2026-08 leads
   delivery_mode?: 'offsite' | 'onsite'  // capacity demand signal; optional, defaults to offsite (mobile unit, no venue)
+  assigned_units?: {                     // optional per-unit pin; unassigned = each field absent
+    mobile?: string   // CapacityUnit id (kind 'mobile'); undefined = unassigned
+    venue?: string    // CapacityUnit id (kind 'venue'); only meaningful when delivery_mode === 'onsite'
+  }
   last_touch_at?: string   // ISO; stamped by logActivity; fallback updated_at ?? created_at
   closed_at?: string       // ISO; stamped entering closed_won/closed_lost, cleared on reopen
   lost?: { reason: LostReason; note?: string }

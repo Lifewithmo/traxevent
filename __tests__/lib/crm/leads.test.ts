@@ -27,6 +27,12 @@ describe('updateLeadCore', () => {
     await updateLeadCore('o1', 'l1', { stage: 'closed_won' })
     expect(leadDoc.update).toHaveBeenCalledTimes(1)
   })
+  it('persists an assigned_units change', async () => {
+    await updateLeadCore('o1', 'l1', { assigned_units: { mobile: 'k2' } })
+    expect(leadDoc.update).toHaveBeenCalledWith(
+      expect.objectContaining({ assigned_units: { mobile: 'k2' }, updated_at: expect.any(String) })
+    )
+  })
 })
 
 describe('listLeadsCore', () => {
@@ -65,6 +71,19 @@ describe('createLeadCore', () => {
     expect('source' in lead).toBe(false)
   })
 
+
+  it('round-trips assigned_units when supplied', async () => {
+    const lead = await createLeadCore('o1', {
+      name: 'Ada', stage: 'inquiry', customer_id: 'c1', assigned_units: { mobile: 'k1', venue: 'r1' },
+    })
+    expect(lead.assigned_units).toEqual({ mobile: 'k1', venue: 'r1' })
+    expect(leadDoc.set).toHaveBeenCalledWith(lead)
+  })
+
+  it('omits assigned_units entirely when not supplied', async () => {
+    const lead = await createLeadCore('o1', { name: 'Ada', stage: 'inquiry', customer_id: 'c1' })
+    expect('assigned_units' in lead).toBe(false)
+  })
 
   it('omits blank optional fields entirely', async () => {
     const lead = await createLeadCore('o1', {
