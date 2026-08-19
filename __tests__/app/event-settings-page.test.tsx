@@ -1,11 +1,12 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // The settings page is a client component that loads its data in an effect.
 // Mock the actions + navigation so none of the firebase-admin graph is pulled in.
-const { refreshSpy, updateEventSpy } = vi.hoisted(() => ({
+const { refreshSpy, updateEventSpy, modulesSpy } = vi.hoisted(() => ({
   refreshSpy: vi.fn(),
   updateEventSpy: vi.fn().mockResolvedValue(undefined),
+  modulesSpy: vi.fn((): string[] => []),
 }))
 
 vi.mock('next/navigation', () => ({
@@ -40,10 +41,15 @@ vi.mock('@/actions/departments', () => ({
   listDepartments: vi.fn().mockResolvedValue([]),
 }))
 vi.mock('@/lib/industry-packs', () => ({
-  resolveEnabledModules: () => [],
+  resolveEnabledModules: modulesSpy,
 }))
 
 import EventSettingsPage from '@/app/(admin)/[orgSlug]/[eventSlug]/settings/page'
+
+beforeEach(() => {
+  updateEventSpy.mockClear()
+  modulesSpy.mockReturnValue([])
+})
 
 describe('Event settings — client-job booking time', () => {
   it('renders start/end time inputs for a client-job event (not only market days)', async () => {
@@ -80,5 +86,62 @@ describe('Event settings — client-job booking time', () => {
     fireEvent.click(screen.getByRole('button', { name: /save settings/i }))
     expect(await screen.findByText(/end time must be after/i)).toBeInTheDocument()
     expect(updateEventSpy).not.toHaveBeenCalled()
+  })
+})
+
+describe('Event settings — client-job venue', () => {
+  it('renders venue fields for a client job and persists the location', async () => {
+    render(<EventSettingsPage />)
+    fireEvent.change(await screen.findByLabelText(/venue name/i), { target: { value: 'Basque Center' } })
+    fireEvent.change(screen.getByLabelText(/venue address/i), { target: { value: '601 W Grove St, Boise' } })
+    fireEvent.click(screen.getByRole('button', { name: /save settings/i }))
+    await waitFor(() =>
+      expect(updateEventSpy).toHaveBeenCalledWith(
+        'org1',
+        'evt1',
+        expect.objectContaining({ location: { name: 'Basque Center', address: '601 W Grove St, Boise' } }),
+      ),
+    )
+  })
+
+  it('clears the location when the name is blanked', async () => {
+    render(<EventSettingsPage />)
+    await screen.findByLabelText(/venue name/i)
+    fireEvent.click(screen.getByRole('button', { name: /save settings/i }))
+    await waitFor(() =>
+      expect(updateEventSpy).toHaveBeenCalledWith('org1', 'evt1', expect.objectContaining({ location: null })),
+    )
+  })
+
+  it('refuses an address without a venue name instead of silently dropping it', async () => {
+    render(<EventSettingsPage />)
+    fireEvent.change(await screen.findByLabelText(/venue address/i), { target: { value: '601 W Grove St' } })
+    fireEvent.click(screen.getByRole('button', { name: /save settings/i }))
+    expect(await screen.findByText(/add a venue name/i)).toBeInTheDocument()
+    expect(updateEventSpy).not.toHaveBeenCalled()
+  })
+})
+
+// B8: contacts split OUT of the roster gate — a roster org's client job still
+// has people worth calling on the day.
+describe('Event settings — key contacts for roster orgs', () => {
+  it('renders the contacts editor without the headcount field, and saves contacts', async () => {
+    modulesSpy.mockReturnValue(['attendee-roster'])
+    render(<EventSettingsPage />)
+    expect(await screen.findByRole('button', { name: /add contact/i })).toBeInTheDocument()
+    expect(screen.queryByLabelText(/expected headcount/i)).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: /add contact/i }))
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Site Manager' } })
+    fireEvent.click(screen.getByRole('button', { name: /save settings/i }))
+    await waitFor(() =>
+      expect(updateEventSpy).toHaveBeenCalledWith(
+        'org1',
+        'evt1',
+        expect.objectContaining({ key_contacts: [{ name: 'Site Manager', role: '' }] }),
+      ),
+    )
+    // headcount stays out of a roster org's payload — the roster is the count.
+    expect('headcount' in updateEventSpy.mock.calls[0][2]).toBe(false)
   })
 })
