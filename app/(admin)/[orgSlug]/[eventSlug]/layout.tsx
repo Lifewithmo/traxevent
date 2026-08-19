@@ -1,6 +1,7 @@
 import { AdminSidebar } from '@/components/layout/AdminSidebar'
 import { EventSpineHeader } from '@/components/admin/events/EventSpineHeader'
 import { EventSubNav } from '@/components/admin/events/EventSubNav'
+import { EventBandGate } from '@/components/admin/events/EventBandGate'
 import { EventKpiBand } from '@/components/admin/events/EventKpiBand'
 import { requireEvent, allowedEventPages } from '@/lib/auth/guards'
 import { buildEventNav } from '@/lib/event-nav'
@@ -40,6 +41,10 @@ export default async function EventLayout({
           // 'reports' also unlocks the families read in the aggregator, so it
           // must be stripped alongside 'families' or the gate is defeated.
           allowedPages: rosterEnabled ? allowed : allowed.filter((p) => p !== 'families' && p !== 'reports'),
+          // B4: money (families-financial AND lead-AR) is owner/admin only —
+          // a role gate from the already-loaded member doc, deliberately
+          // independent of the roster-less allowedPages strip above.
+          includeMoney: member.role === 'owner' || member.role === 'admin',
         })
       : null
 
@@ -65,10 +70,14 @@ export default async function EventLayout({
       <main className="flex-1 bg-background overflow-auto">
         <EventSpineHeader event={event} />
         <EventSubNav orgSlug={orgSlug} eventSlug={eventSlug} items={navItems} />
+        {/* B1: the band is leaf-gated — suppressed on 'dashboard' (the brief
+            replaces it) and 'checkin' (fold budget) via the client wrapper. */}
         {kpis && (
-          <div className="px-5 pt-4 print:hidden">
-            <EventKpiBand event={event} kpis={kpis} today={today} />
-          </div>
+          <EventBandGate>
+            <div className="px-5 pt-4 print:hidden">
+              <EventKpiBand event={event} kpis={kpis} today={today} />
+            </div>
+          </EventBandGate>
         )}
         {children}
       </main>
