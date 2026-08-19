@@ -1,11 +1,12 @@
-import { getOrgBySlug } from '@/actions/orgs'
 import { listEvents } from '@/actions/events'
 import { listDepartments } from '@/actions/departments'
 import { listSeries } from '@/actions/series'
+import { requireOrgMember, allowedEventPages } from '@/lib/auth/guards'
+import { getOpsPlanCore } from '@/lib/ops/event-ops'
+import { selectHorizonWindow, selectReadinessHorizon } from '@/lib/ops/readiness-horizon'
 import { kindOf } from '@/lib/occasions/kind'
 import { EVENT_STATUS_TONE, EVENT_STATUS_LABEL, formatEventDateRange } from '@/lib/event-ui'
 import { todayYmd } from '@/lib/opportunity-detail'
-import { redirect } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { KpiBand } from '@/components/ui/kpi-band'
@@ -13,6 +14,7 @@ import { StatTile } from '@/components/ui/stat-tile'
 import { StatusPill } from '@/components/ui/status-pill'
 import { EmptyState } from '@/components/ui/empty-state'
 import { DuplicateEventMenu } from '@/components/admin/DuplicateEventButton'
+import { ReadinessHorizonRail } from '@/components/admin/events/ReadinessHorizonRail'
 import { CalendarDays } from 'lucide-react'
 import Link from 'next/link'
 
@@ -24,19 +26,39 @@ export default async function OrgHomePage({
   params: Promise<{ orgSlug: string }>
 }) {
   const { orgSlug } = await params
-  const org = await getOrgBySlug(orgSlug)
-  if (!org) redirect('/login')
+  // requireOrgMember (was getOrgBySlug): the readiness horizon row-gates by the
+  // MEMBER's per-event/department ops grants — pure math over the member doc,
+  // zero extra reads (the guard already fetched it).
+  const { orgId, member } = await requireOrgMember(orgSlug)
 
   const [events, departments, seriesList] = await Promise.all([
-    listEvents(org.id),
-    listDepartments(org.id),
-    listSeries(org.id),
+    listEvents(orgId),
+    listDepartments(orgId),
+    listSeries(orgId),
   ])
 
   const clientJobs = events.filter((e) => kindOf(e) === 'client_job')
   const marketDays = events.filter((e) => kindOf(e) === 'market_day')
 
   const today = todayYmd()
+
+  // ── Readiness horizon (S4) ─────────────────────────────────────────────
+  // Row-gate BEFORE windowing so the 12-slot cap never spends slots on events
+  // whose ops page this member can't open (owner/admin pass everything).
+  const opsVisible = events.filter(
+    (e) => allowedEventPages(member, e.id, ['ops'], e.department_id).length > 0
+  )
+  const horizonEvents = selectHorizonWindow(opsVisible, today)
+  // Windowed fan-out: ≤12 plan-doc gets, only for events in the 14-day window —
+  // cost ≤ Today's existing per-nav fan-out, zero new indexes. Caveat carried
+  // from the spec: plan docs include an unbounded change_log; that bandwidth is
+  // accepted today (a field mask on this fan-out is the named future trim).
+  const horizonPlans = await Promise.all(horizonEvents.map((e) => getOpsPlanCore(orgId, e.id)))
+  const horizon = selectReadinessHorizon(
+    horizonEvents,
+    new Map(horizonEvents.map((e, i) => [e.id, horizonPlans[i]])),
+    today
+  )
   const upcoming = events.filter((e) => e.status !== 'archived' && e.event_start >= today)
   const nextStart = upcoming.length > 0
     ? upcoming.reduce((min, e) => (e.event_start < min ? e.event_start : min), upcoming[0].event_start)
@@ -68,7 +90,7 @@ export default async function OrgHomePage({
           <span className="whitespace-nowrap text-xs text-muted-foreground">{meta}</span>
           {showYear && <Badge variant="outline">{event.year}</Badge>}
         </Link>
-        <DuplicateEventMenu orgId={org.id} orgSlug={orgSlug} sourceEventId={event.id} sourceName={event.name} />
+        <DuplicateEventMenu orgId={orgId} orgSlug={orgSlug} sourceEventId={event.id} sourceName={event.name} />
       </div>
     )
   }
@@ -129,58 +151,69 @@ export default async function OrgHomePage({
             </KpiBand>
           </div>
 
-          <div className="space-y-8 px-5 py-5">
-            {clientJobs.length > 0 && (
-              <section>
-                <h2 className={SECTION_HEADING}>Client jobs</h2>
-                {departments.length === 0 ? (
-                  renderGroup(clientJobs)
-                ) : (
-                  <div className="space-y-6">
-                    {departments.map((dept) => {
-                      const deptEvents = clientJobs.filter((c) => c.department_id === dept.id)
-                      if (deptEvents.length === 0) return null
-                      return (
-                        <section key={dept.id}>
-                          <h2 className={SECTION_HEADING}>{dept.name}</h2>
-                          {renderGroup(deptEvents)}
+          {/* Breakpoint contract: below lg the rail FOLDS ON TOP of the ledger —
+              "what needs me next" beats the full filing view on a phone; at lg+
+              it sits beside the ledger as a fixed 320px right rail
+              (lg:grid-cols-[minmax(0,1fr)_320px], explicit col/row starts keep
+              the DOM-first rail out of the 1fr column). */}
+          <div className="grid items-start gap-x-6 gap-y-6 px-5 py-5 lg:grid-cols-[minmax(0,1fr)_320px]">
+            <aside className="lg:col-start-2 lg:row-start-1">
+              <ReadinessHorizonRail orgSlug={orgSlug} rows={horizon} />
+            </aside>
+
+            <div className="min-w-0 space-y-8 lg:col-start-1 lg:row-start-1">
+              {clientJobs.length > 0 && (
+                <section>
+                  <h2 className={SECTION_HEADING}>Client jobs</h2>
+                  {departments.length === 0 ? (
+                    renderGroup(clientJobs)
+                  ) : (
+                    <div className="space-y-6">
+                      {departments.map((dept) => {
+                        const deptEvents = clientJobs.filter((c) => c.department_id === dept.id)
+                        if (deptEvents.length === 0) return null
+                        return (
+                          <section key={dept.id}>
+                            <h2 className={SECTION_HEADING}>{dept.name}</h2>
+                            {renderGroup(deptEvents)}
+                          </section>
+                        )
+                      })}
+                      {unassigned.length > 0 && (
+                        <section>
+                          <h2 className={SECTION_HEADING}>Unassigned</h2>
+                          {renderGroup(unassigned)}
                         </section>
+                      )}
+                    </div>
+                  )}
+                </section>
+              )}
+
+              {marketDays.length > 0 && (
+                <section>
+                  <h2 className={SECTION_HEADING}>Market days</h2>
+                  <div className="space-y-6">
+                    {seriesList.map((s) => {
+                      const seriesDays = marketDays.filter((e) => e.series_id === s.id)
+                      if (seriesDays.length === 0) return null
+                      return (
+                        <div key={s.id}>
+                          <Link
+                            href={`/${orgSlug}/series/${s.id}`}
+                            className={`${SECTION_HEADING} block hover:text-foreground`}
+                          >
+                            {s.name}
+                          </Link>
+                          {renderGroup(seriesDays)}
+                        </div>
                       )
                     })}
-                    {unassigned.length > 0 && (
-                      <section>
-                        <h2 className={SECTION_HEADING}>Unassigned</h2>
-                        {renderGroup(unassigned)}
-                      </section>
-                    )}
+                    {standalone.length > 0 && renderGroup(standalone)}
                   </div>
-                )}
-              </section>
-            )}
-
-            {marketDays.length > 0 && (
-              <section>
-                <h2 className={SECTION_HEADING}>Market days</h2>
-                <div className="space-y-6">
-                  {seriesList.map((s) => {
-                    const seriesDays = marketDays.filter((e) => e.series_id === s.id)
-                    if (seriesDays.length === 0) return null
-                    return (
-                      <div key={s.id}>
-                        <Link
-                          href={`/${orgSlug}/series/${s.id}`}
-                          className={`${SECTION_HEADING} block hover:text-foreground`}
-                        >
-                          {s.name}
-                        </Link>
-                        {renderGroup(seriesDays)}
-                      </div>
-                    )
-                  })}
-                  {standalone.length > 0 && renderGroup(standalone)}
-                </div>
-              </section>
-            )}
+                </section>
+              )}
+            </div>
           </div>
         </>
       )}
