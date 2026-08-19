@@ -21,13 +21,14 @@ const proposal: PublicProposal = {
 }
 
 describe('ProposalResponseClient terms', () => {
-  it('renders the terms card above the sign form', () => {
+  it('renders the terms card below the sign form (spec §4.1: terms sits after accept)', () => {
     render(<ProposalResponseClient token="tok" proposal={proposal} />)
     expect(screen.getByText('Terms')).toBeInTheDocument()
     expect(screen.getByText('A 50% deposit reserves your date.')).toBeInTheDocument()
-    // Order: the Terms heading must precede the sign form heading in the document
+    // Order: the Terms heading must FOLLOW the sign form heading in the document
     const headings = screen.getAllByText(/Terms|Sign to accept/)
-    expect(headings[0]).toHaveTextContent('Terms')
+    expect(headings[0]).toHaveTextContent('Sign to accept')
+    expect(headings[headings.length - 1]).toHaveTextContent('Terms')
   })
 
   it('renders no terms card when the proposal has none', () => {

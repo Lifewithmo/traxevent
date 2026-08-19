@@ -5,11 +5,9 @@ import type { PublicProposal } from '@/actions/proposals-public'
 import { respondToProposal, signProposal, recordProposalView, getPublicProposal } from '@/actions/proposals-public'
 import { computeSelectedTotal, depositAmount } from '@/lib/proposals'
 import type { PaymentStatus } from '@/lib/types'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { ProposalDocument } from '@/components/proposals/ProposalDocument'
 // Shared with the print route so the two renderings of the same offer cannot
 // drift apart again — see components/proposals/ProposalPricing.tsx.
 import {
@@ -21,6 +19,8 @@ import {
 } from '@/components/proposals/ProposalPricing'
 import { ProposalDepositPayment } from './ProposalDepositPayment'
 import { ProposalTheme } from '@/components/proposals/ProposalTheme'
+import { ProposalComposition } from '@/components/proposals/ProposalComposition'
+import { AcceptedState } from '@/components/proposals/AcceptedState'
 import type { OrgBranding } from '@/lib/types'
 
 // Local, immediate confirmation shown right after a successful `signProposal`
@@ -50,8 +50,8 @@ export function ProposalResponseClient({
     proposal.selection?.optional_item_ids ?? [],
   )
 
-  const [signerName, setSignerName] = useState('')
-  const [signerEmail, setSignerEmail] = useState('')
+  const [signerName, setSignerName] = useState(proposal.contact?.name ?? '')
+  const [signerEmail, setSignerEmail] = useState(proposal.contact?.email ?? '')
   const [consent, setConsent] = useState(false)
 
   const [submitting, setSubmitting] = useState(false)
@@ -116,8 +116,8 @@ export function ProposalResponseClient({
 
   if (effectiveProposal.status === 'voided') {
     return (
-      <main className="flex min-h-screen flex-col items-center justify-center bg-gray-50 px-6 text-center">
-        <p className="text-lg font-medium text-gray-500">This proposal is no longer available.</p>
+      <main className="flex min-h-screen flex-col items-center justify-center bg-[var(--warm-50)] px-6 text-center">
+        <p className="text-lg font-medium text-[var(--warm-500)]">This proposal is no longer available.</p>
       </main>
     )
   }
@@ -213,7 +213,7 @@ export function ProposalResponseClient({
 
   return (
     <ProposalTheme branding={branding}>
-    <main className="flex min-h-screen flex-col bg-gray-50">
+    <main className="flex min-h-screen flex-col bg-white">
       {hasHero && (
         <div
           data-testid="proposal-hero"
@@ -224,7 +224,12 @@ export function ProposalResponseClient({
               : { backgroundColor: 'var(--proposal-accent, #111827)' }
           }
         >
-          <div className="bg-black/40">
+          {/* Fixed-alpha scrim: alpha >= 0.535 guarantees 4.5:1 for white text
+              against any cover image (see CoverSection.SCRIM_CLASS). No scrim
+              (and no white-text override) when there's no image — the
+              background is the theme's own accent, so the WCAG-derived
+              --proposal-accent-text variable already guarantees contrast. */}
+          <div className={branding?.cover_image_url ? 'bg-black/60' : ''}>
             <div className="mx-auto w-full max-w-3xl px-6 py-16">
               {branding?.logo_url && (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -234,223 +239,226 @@ export function ProposalResponseClient({
                   className="mb-4 h-12 w-auto"
                 />
               )}
-              <h1 className="text-3xl font-bold text-white">{proposal.title || 'Proposal'}</h1>
+              <h1
+                className="text-3xl font-bold"
+                style={{
+                  color: branding?.cover_image_url ? '#ffffff' : 'var(--proposal-accent-text, #ffffff)',
+                }}
+              >
+                {proposal.title || 'Proposal'}
+              </h1>
               {branding?.display_name && (
-                <p className="mt-1 text-sm text-white/80">{branding.display_name}</p>
+                <p
+                  className="mt-1 text-sm"
+                  style={{
+                    color: branding?.cover_image_url
+                      ? 'rgba(255,255,255,0.8)'
+                      : 'var(--proposal-accent-text, #ffffff)',
+                    opacity: branding?.cover_image_url ? undefined : 0.8,
+                  }}
+                >
+                  {branding.display_name}
+                </p>
               )}
             </div>
           </div>
         </div>
       )}
-      <div className="mx-auto w-full max-w-3xl flex-1 px-6 py-10">
+      <div className="mx-auto w-full max-w-3xl px-6 py-10">
         {!hasHero && (
-          <h1 className="mb-6 text-2xl font-bold text-gray-900">{proposal.title || 'Proposal'}</h1>
+          <h1 className="mb-6 text-2xl font-bold text-[var(--warm-950)]">{proposal.title || 'Proposal'}</h1>
         )}
 
         <a href={`/proposals/${token}/print`} target="_blank" rel="noreferrer"
-           className="mb-6 inline-block text-sm text-gray-600 underline print:hidden">
+           className="mb-6 inline-block text-sm text-[var(--warm-600)] underline print:hidden">
           Download PDF
         </a>
-
-        <ProposalDocument blocks={proposal.blocks} />
-
-        {packaged && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Choose an option</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                {proposal.packages!.map((pkg) => (
-                  <ProposalPackageOption
-                    key={pkg.id}
-                    pkg={pkg}
-                    selected={packageId === pkg.id}
-                    selectable={editable}
-                    onSelect={() => setPackageId(pkg.id)}
-                    {...packageOptionDisplay(pkg, proposal.packages!, proposal.line_items)}
-                  />
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {requiredItems.length > 0 && (
-          <Card className="mt-6">
-            <CardHeader>
-              <CardTitle>What&apos;s included</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ProposalIncludedItems items={requiredItems} />
-            </CardContent>
-          </Card>
-        )}
-
-        {optionalItems.length > 0 && (
-          <Card className="mt-6">
-            <CardHeader>
-              <CardTitle>Optional add-ons</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ProposalOptionalItems
-                items={optionalItems}
-                selectedIds={optionalIds}
-                onToggle={toggleOptional}
-                disabled={!editable}
-              />
-            </CardContent>
-          </Card>
-        )}
-
-        {proposal.notes && (
-          <Card className="mt-6">
-            <CardHeader>
-              <CardTitle>Notes</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="whitespace-pre-wrap text-sm text-gray-700">{proposal.notes}</p>
-            </CardContent>
-          </Card>
-        )}
-
-        {proposal.terms && (
-          <Card className="mt-6">
-            <CardHeader>
-              <CardTitle>Terms</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="whitespace-pre-wrap text-sm text-gray-700">{proposal.terms}</p>
-            </CardContent>
-          </Card>
-        )}
-
-        {showForm && (
-          <Card className="mt-6">
-            <CardHeader>
-              <CardTitle>Sign to accept</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div className="space-y-1.5">
-                  <Label htmlFor="signer_name">Full name</Label>
-                  <Input
-                    id="signer_name"
-                    value={signerName}
-                    disabled={!editable}
-                    onChange={(e) => setSignerName(e.target.value)}
-                    placeholder="Jane Smith"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="signer_email">Email</Label>
-                  <Input
-                    id="signer_email"
-                    type="email"
-                    value={signerEmail}
-                    disabled={!editable}
-                    onChange={(e) => setSignerEmail(e.target.value)}
-                    placeholder="jane@example.com"
-                  />
-                </div>
-              </div>
-              {proposal.deposit_terms && (
-                <p className="whitespace-pre-wrap rounded-md bg-gray-50 p-3 text-sm text-gray-700">
-                  {proposal.deposit_terms}
-                </p>
-              )}
-              <label className="flex items-start gap-2 text-sm text-gray-900">
-                <input
-                  type="checkbox"
-                  checked={consent}
-                  disabled={!editable}
-                  onChange={(e) => setConsent(e.target.checked)}
-                  className="mt-0.5 h-4 w-4 rounded border-gray-300"
-                />
-                <span>I agree to the terms above and consent to sign electronically.</span>
-              </label>
-            </CardContent>
-          </Card>
-        )}
-
-        {showPayment && (
-          <Card className="mt-6">
-            <CardHeader>
-              <CardTitle>Pay deposit to accept</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ProposalDepositPayment
-                token={token}
-                depositAmount={depositAmount(total, proposal.deposit)}
-                beforeAccept
-                signer={{ signer_name: signerName.trim(), signer_email: signerEmail.trim() }}
-                consent={consent}
-                selection={{ package_id: packageId, optional_item_ids: optionalIds }}
-                onSuccess={() => setBeforeAcceptStep('finalizing')}
-              />
-              <button
-                type="button"
-                className="mt-3 text-sm text-gray-500 underline"
-                onClick={() => setBeforeAcceptStep('idle')}
-              >
-                Back
-              </button>
-            </CardContent>
-          </Card>
-        )}
-
-        {showFinalizing && (
-          <Card className="mt-6">
-            <CardContent className="py-6">
-              <p className="text-sm font-medium text-gray-900">
-                Payment received — finalizing your acceptance…
-              </p>
-              {pollExhausted && (
-                <div className="mt-3">
-                  <p className="text-sm text-gray-500">
-                    This is taking longer than expected. You can check again in a moment.
-                  </p>
-                  <Button variant="outline" className="mt-2" onClick={refreshStatus}>
-                    Check again
-                  </Button>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        )}
-
-        {signedInfo && (
-          <Card className="mt-6">
-            <CardHeader>
-              <CardTitle>Signed</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <p className="text-sm text-gray-700">
-                Signed by <span className="font-medium text-gray-900">{signedInfo.signer_name}</span>
-                {signedInfo.signed_at && (
-                  <> on {new Date(signedInfo.signed_at).toLocaleString()}</>
-                )}
-                .
-              </p>
-              {paymentStatus === 'deposit_paid' && (
-                <p className="text-sm font-medium text-green-700">Deposit paid.</p>
-              )}
-              {paymentStatus === 'deposit_pending' && (
-                <div className="rounded-md border border-gray-200 p-4">
-                  <p className="mb-3 text-sm font-medium text-gray-900">Pay deposit now (optional)</p>
-                  <ProposalDepositPayment
-                    token={token}
-                    depositAmount={depositDueNow}
-                    onSuccess={() => setDepositPaidLocally(true)}
-                  />
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        )}
       </div>
 
-      <div className="sticky bottom-0 border-t border-gray-200 bg-white/95 backdrop-blur">
+      <ProposalComposition
+        proposal={proposal}
+        branding={branding}
+        clientName={proposal.contact?.name}
+        renderDerived={(type, treatment) => {
+          const band = [
+            'w-full px-6 py-12 sm:py-16',
+            treatment === 'tinted' ? 'bg-[var(--warm-50)]' : '',
+          ].join(' ')
+          switch (type) {
+            case 'tiers':
+              return packaged ? (
+                <section className={band}>
+                  <div className="mx-auto max-w-3xl">
+                    <h2 className="mb-6 text-2xl font-bold text-[var(--warm-950)]">Choose an option</h2>
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                      {proposal.packages!.map((pkg) => (
+                        <ProposalPackageOption
+                          key={pkg.id}
+                          pkg={pkg}
+                          selected={packageId === pkg.id}
+                          selectable={editable}
+                          onSelect={() => setPackageId(pkg.id)}
+                          {...packageOptionDisplay(pkg, proposal.packages!, proposal.line_items)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </section>
+              ) : null
+            case 'add_ons':
+              return optionalItems.length > 0 ? (
+                <section className={band}>
+                  <div className="mx-auto max-w-3xl">
+                    <h2 className="mb-4 text-xl font-bold text-[var(--warm-950)]">Optional add-ons</h2>
+                    <ProposalOptionalItems
+                      items={optionalItems}
+                      selectedIds={optionalIds}
+                      onToggle={toggleOptional}
+                      disabled={!editable}
+                    />
+                  </div>
+                </section>
+              ) : null
+            case 'investment':
+              return (
+                <section className={band}>
+                  <div className="mx-auto max-w-3xl space-y-6">
+                    {requiredItems.length > 0 && (
+                      <div>
+                        <h2 className="mb-4 text-xl font-bold text-[var(--warm-950)]">What&apos;s included</h2>
+                        <ProposalIncludedItems items={requiredItems} />
+                      </div>
+                    )}
+                  </div>
+                </section>
+              )
+            case 'accept':
+              return (
+                <section className={band}>
+                  <div className="mx-auto max-w-3xl space-y-6">
+                    {showForm && (
+                      <div className="space-y-4">
+                        <h2 className="text-xl font-bold text-[var(--warm-950)]">Sign to accept</h2>
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                          <div className="space-y-1.5">
+                            <Label htmlFor="signer_name">Full name</Label>
+                            <Input
+                              id="signer_name"
+                              value={signerName}
+                              disabled={!editable}
+                              onChange={(e) => setSignerName(e.target.value)}
+                              placeholder="Jane Smith"
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label htmlFor="signer_email">Email</Label>
+                            <Input
+                              id="signer_email"
+                              type="email"
+                              value={signerEmail}
+                              disabled={!editable}
+                              onChange={(e) => setSignerEmail(e.target.value)}
+                              placeholder="jane@example.com"
+                            />
+                          </div>
+                        </div>
+                        {proposal.deposit_terms && (
+                          <p className="whitespace-pre-wrap rounded-md bg-[var(--warm-50)] p-3 text-sm text-[var(--warm-700)]">
+                            {proposal.deposit_terms}
+                          </p>
+                        )}
+                        <label className="flex items-start gap-2 text-sm text-[var(--warm-900)]">
+                          <input
+                            type="checkbox"
+                            checked={consent}
+                            disabled={!editable}
+                            onChange={(e) => setConsent(e.target.checked)}
+                            className="mt-0.5 h-4 w-4 rounded border-[var(--warm-300)]"
+                          />
+                          <span>I agree to the terms above and consent to sign electronically.</span>
+                        </label>
+                      </div>
+                    )}
+
+                    {showPayment && (
+                      <div className="space-y-3">
+                        <h2 className="text-xl font-bold text-[var(--warm-950)]">Pay deposit to accept</h2>
+                        <ProposalDepositPayment
+                          token={token}
+                          depositAmount={depositAmount(total, proposal.deposit)}
+                          beforeAccept
+                          signer={{ signer_name: signerName.trim(), signer_email: signerEmail.trim() }}
+                          consent={consent}
+                          selection={{ package_id: packageId, optional_item_ids: optionalIds }}
+                          onSuccess={() => setBeforeAcceptStep('finalizing')}
+                        />
+                        <button
+                          type="button"
+                          className="mt-3 text-sm text-[var(--warm-500)] underline"
+                          onClick={() => setBeforeAcceptStep('idle')}
+                        >
+                          Back
+                        </button>
+                      </div>
+                    )}
+
+                    {showFinalizing && (
+                      <div className="py-6">
+                        <p className="text-sm font-medium text-[var(--warm-900)]">
+                          Payment received — finalizing your acceptance…
+                        </p>
+                        {pollExhausted && (
+                          <div className="mt-3">
+                            <p className="text-sm text-[var(--warm-500)]">
+                              This is taking longer than expected. You can check again in a moment.
+                            </p>
+                            <Button variant="outline" className="mt-2" onClick={refreshStatus}>
+                              Check again
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {signedInfo && (
+                      <>
+                        <AcceptedState
+                          signerName={signedInfo.signer_name}
+                          signedAt={signedInfo.signed_at}
+                          depositPaid={paymentStatus === 'deposit_paid'}
+                          orgName={branding?.display_name}
+                        />
+                        {paymentStatus === 'deposit_pending' && (
+                          <div className="rounded-md border border-[var(--warm-200)] p-4">
+                            <p className="mb-3 text-sm font-medium text-[var(--warm-900)]">Pay deposit now (optional)</p>
+                            <ProposalDepositPayment
+                              token={token}
+                              depositAmount={depositDueNow}
+                              onSuccess={() => setDepositPaidLocally(true)}
+                            />
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </section>
+              )
+            case 'terms':
+              return proposal.terms ? (
+                <section className={band}>
+                  <div className="mx-auto max-w-3xl">
+                    <h2 className="mb-4 text-xl font-bold text-[var(--warm-950)]">Terms</h2>
+                    <p className="whitespace-pre-wrap text-sm text-[var(--warm-700)]">{proposal.terms}</p>
+                  </div>
+                </section>
+              ) : null
+            default:
+              return null
+          }
+        }}
+      />
+
+      <div className="sticky bottom-0 border-t border-[var(--warm-200)] bg-white/95 backdrop-blur">
         <div className="mx-auto max-w-3xl px-6 py-4">
           {error && <p className="mb-2 text-sm text-red-600">{error}</p>}
           <div className="flex flex-wrap items-end justify-between gap-4">
@@ -478,7 +486,7 @@ export function ProposalResponseClient({
                 Thanks — you&apos;ve accepted this proposal.
               </p>
             ) : declined ? (
-              <p className="text-sm font-medium text-gray-700">
+              <p className="text-sm font-medium text-[var(--warm-700)]">
                 You&apos;ve declined this proposal.
               </p>
             ) : null}

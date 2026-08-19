@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
+import { readableTextOn } from '@/lib/branding'
 
 vi.mock('@/actions/proposals-public', () => ({
   recordProposalView: vi.fn().mockResolvedValue(undefined),
@@ -168,5 +169,69 @@ describe('ProposalResponseClient — themed presentation (behavior-preserving re
     expect(screen.getByText("What's included")).toBeInTheDocument()
     expect(screen.getAllByText(/Venue liaison/)).toHaveLength(1)
     expect(screen.getAllByText(/Espresso bar/)).toHaveLength(1)
+  })
+})
+
+describe('document composition', () => {
+  const proposal = {
+    status: 'sent' as const,
+    line_items: [{ id: 'i1', description: 'Cart', quantity: 1, unit_price: 500 }],
+    blocks: [{ id: 'b1', type: 'paragraph' as const, text: 'Body copy' }],
+    terms: 'Legal terms text',
+  }
+
+  it('renders terms after the sign box, not above it', () => {
+    const { container } = render(<ProposalResponseClient token="t" proposal={proposal as never} />)
+    const html = container.innerHTML
+    expect(html.indexOf('Legal terms text')).toBeGreaterThan(html.indexOf('Sign to accept'))
+  })
+
+  it('does not wrap document content in admin Card chrome', () => {
+    const { container } = render(<ProposalResponseClient token="t" proposal={proposal as never} />)
+    expect(container.querySelector('[data-slot="card-title"]')).toBeNull()
+  })
+
+  it('pre-fills the signer name and email from the lead contact', () => {
+    render(
+      <ProposalResponseClient
+        token="t"
+        proposal={{ ...proposal, contact: { name: 'Jane Smith', email: 'jane@example.com' } } as never}
+      />,
+    )
+    expect(screen.getByLabelText(/full name/i)).toHaveValue('Jane Smith')
+    expect(screen.getByLabelText(/email/i)).toHaveValue('jane@example.com')
+  })
+})
+
+// CRITICAL: CoverSection-style contrast text (`var(--proposal-accent-text,
+// #ffffff)`) only resolves when this page renders INSIDE <ProposalTheme> —
+// outside it, the #ffffff fallback silently wins and the AA guarantee
+// evaporates with no test failing. jsdom cannot resolve CSS custom
+// properties through getComputedStyle, so this asserts the RESOLVED VALUE
+// the theme wrapper attaches (not merely that the var name appears in the
+// markup), and that the hero consumes that same variable rather than a
+// hardcoded literal.
+describe('ProposalResponseClient — theme wrapper actually resolves', () => {
+  it('uses the WCAG-derived dark ink for a light accent, no cover image', () => {
+    const branding = { logo_url: 'https://cdn/logo.png', accent_color: '#ffe600' }
+    const { container } = render(
+      <ProposalResponseClient
+        token="t"
+        proposal={{ status: 'sent', line_items: [], created_at: '2026-08-01T00:00:00.000Z', title: 'X' } as never}
+        branding={branding as never}
+      />,
+    )
+    // 1. ProposalTheme actually set the CSS variable to the resolved value —
+    // not just the raw accent, and not the neutral default.
+    const themeWrapper = container.firstElementChild as HTMLElement
+    const expectedInk = readableTextOn('#ffe600')
+    expect(expectedInk).toBe('#111827')
+    expect(themeWrapper.style.getPropertyValue('--proposal-accent-text')).toBe(expectedInk)
+
+    // 2. The hero title is wired to CONSUME that variable (not a hardcoded
+    // white literal) — the only way the resolved value in (1) ever reaches
+    // the page the customer actually sees.
+    const heading = screen.getByRole('heading', { name: 'X' })
+    expect(heading.getAttribute('style')).toContain('var(--proposal-accent-text, #ffffff)')
   })
 })

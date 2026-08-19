@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-const { getSpy, proposalUpdateSpy, leadUpdateSpy, leadDocSpy, orgGetSpy } = vi.hoisted(() => ({
+const { getSpy, proposalUpdateSpy, leadUpdateSpy, leadDocSpy, orgGetSpy, leadGetSpy } = vi.hoisted(() => ({
   getSpy: vi.fn(),
   proposalUpdateSpy: vi.fn().mockResolvedValue(undefined),
   leadUpdateSpy: vi.fn().mockResolvedValue(undefined),
@@ -9,6 +9,10 @@ const { getSpy, proposalUpdateSpy, leadUpdateSpy, leadDocSpy, orgGetSpy } = vi.h
   // org with no branding — the neutral theme — so every existing projection
   // assertion is exercised with the lookup in place.
   orgGetSpy: vi.fn().mockResolvedValue({ data: () => undefined }),
+  // The lead read behind the public `contact` pre-fill (name/email only —
+  // see the allowlist comment on PublicProposal.contact). Defaults to no
+  // lead data so every existing projection assertion is unaffected.
+  leadGetSpy: vi.fn().mockResolvedValue({ data: () => undefined }),
 }))
 
 vi.mock('@/lib/firebase-admin', () => ({
@@ -17,8 +21,15 @@ vi.mock('@/lib/firebase-admin', () => ({
     where: vi.fn().mockReturnThis(),
     limit: vi.fn().mockReturnThis(),
     get: getSpy,
+    // orgs/{orgId} supports both `.get()` (branding) and
+    // `.collection('leads').doc(leadId).get()` (contact pre-fill).
     collection: vi.fn().mockReturnValue({
-      doc: vi.fn().mockReturnValue({ get: orgGetSpy }),
+      doc: vi.fn().mockReturnValue({
+        get: orgGetSpy,
+        collection: vi.fn().mockReturnValue({
+          doc: vi.fn().mockReturnValue({ get: leadGetSpy }),
+        }),
+      }),
     }),
   },
 }))

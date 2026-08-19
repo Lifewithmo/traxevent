@@ -41,6 +41,10 @@ export interface PublicProposal {
   // The org's public brand kit (spec §2 — every field public-safe by
   // construction; validated server-side before it is ever stored).
   branding?: OrgBranding
+  // Pre-fill only. The lead doc holds far more than this; the allowlist is the
+  // boundary for an unauthenticated public page, so widen it deliberately or
+  // not at all.
+  contact?: { name?: string; email?: string }
 }
 
 async function findProposalByToken(token: string) {
@@ -102,6 +106,20 @@ export async function getPublicProposal(token: string): Promise<PublicProposal |
     const orgSnap = await adminDb.collection('orgs').doc(proposal.org_id).get()
     const branding = (orgSnap.data() as { branding?: OrgBranding } | undefined)?.branding
     if (branding !== undefined) publicProposal.branding = branding
+    // Pre-fill only — name/email, never the rest of the lead doc (see the
+    // `contact` field comment on PublicProposal).
+    if (proposal.lead_id) {
+      const leadSnap = await adminDb
+        .collection('orgs').doc(proposal.org_id)
+        .collection('leads').doc(proposal.lead_id).get()
+      const lead = leadSnap.data() as { name?: string; email?: string } | undefined
+      if (lead?.name || lead?.email) {
+        publicProposal.contact = {
+          ...(lead.name ? { name: lead.name } : {}),
+          ...(lead.email ? { email: lead.email } : {}),
+        }
+      }
+    }
   }
   return publicProposal
 }
