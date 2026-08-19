@@ -2,7 +2,6 @@ export const dynamic = 'force-dynamic'
 
 import { notFound } from 'next/navigation'
 import { getPublicProposal } from '@/actions/proposals-public'
-import { ProposalDocument } from '@/components/proposals/ProposalDocument'
 import { PrintButton } from '@/components/admin/ops/PrintButton'
 import {
   ProposalPackageOption,
@@ -13,6 +12,7 @@ import {
 } from '@/components/proposals/ProposalPricing'
 import { proposalDisplayRange } from '@/lib/proposals'
 import { ProposalTheme } from '@/components/proposals/ProposalTheme'
+import { ProposalComposition } from '@/components/proposals/ProposalComposition'
 import type { OrgBranding } from '@/lib/types'
 
 export default async function ProposalPrintPage({
@@ -61,7 +61,8 @@ export default async function ProposalPrintPage({
 
   const packages = proposal.packages ?? []
   // Same base-scope rule as ProposalResponseClient: package member items live
-  // in their tier card, not in the always-included list.
+  // in their tier card, not in the always-included list. Not a composition
+  // archetype of its own — it prints alongside the investment/pricing summary.
   const memberIds = new Set((proposal.packages ?? []).flatMap((p) => p.item_ids ?? []))
   const requiredItems = proposal.line_items.filter(
     (i) => i.optional !== true && !memberIds.has(i.id ?? ''),
@@ -110,72 +111,74 @@ export default async function ProposalPrintPage({
         </div>
       )}
 
-      <ProposalDocument blocks={proposal.blocks} />
-
-      {packages.length > 0 && (
-        <section className="mt-8">
-          <h2 className="mb-3 text-lg font-bold">Options</h2>
-          <div className="grid grid-cols-1 gap-4 break-inside-avoid sm:grid-cols-3">
-            {packages.map((pkg) => (
-              <ProposalPackageOption
-                key={pkg.id}
-                pkg={pkg}
-                selected={pkg.id === selectedPackageId}
-                {...packageOptionDisplay(pkg, packages, proposal.line_items)}
-              />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {requiredItems.length > 0 && (
-        <section className="mt-8">
-          <h2 className="mb-2 text-lg font-bold">What&apos;s included</h2>
-          <ProposalIncludedItems items={requiredItems} />
-        </section>
-      )}
-
-      {optionalItems.length > 0 && (
-        <section className="mt-8">
-          <h2 className="mb-2 text-lg font-bold">Optional add-ons</h2>
-          <ProposalOptionalItems items={optionalItems} selectedIds={selectedOptionalIds} />
-        </section>
-      )}
-
-      <section className="mt-8 border-t pt-4">
-        <ProposalTotals
-          total={total}
-          deposit={signed ? undefined : proposal.deposit}
-          depositLabel={
-            proposal.deposit_gate === 'before_accept'
-              ? 'Deposit due to accept'
-              : 'Deposit due on acceptance'
+      <ProposalComposition
+        proposal={proposal}
+        branding={branding}
+        renderDerived={(type) => {
+          switch (type) {
+            case 'tiers':
+              return packages.length > 0 ? (
+                <section className="mt-8">
+                  <h2 className="mb-3 text-lg font-bold">Options</h2>
+                  <div className="grid grid-cols-1 gap-4 break-inside-avoid sm:grid-cols-3">
+                    {packages.map((pkg) => (
+                      <ProposalPackageOption
+                        key={pkg.id}
+                        pkg={pkg}
+                        selected={pkg.id === selectedPackageId}
+                        {...packageOptionDisplay(pkg, packages, proposal.line_items)}
+                      />
+                    ))}
+                  </div>
+                </section>
+              ) : null
+            case 'add_ons':
+              return optionalItems.length > 0 ? (
+                <section className="mt-8">
+                  <h2 className="mb-2 text-lg font-bold">Optional add-ons</h2>
+                  <ProposalOptionalItems items={optionalItems} selectedIds={selectedOptionalIds} />
+                </section>
+              ) : null
+            case 'investment':
+              return (
+                <>
+                  {requiredItems.length > 0 && (
+                    <section className="mt-8">
+                      <h2 className="mb-2 text-lg font-bold">What&apos;s included</h2>
+                      <ProposalIncludedItems items={requiredItems} />
+                    </section>
+                  )}
+                  <section className="mt-8 border-t pt-4">
+                    <ProposalTotals
+                      total={total}
+                      deposit={signed ? undefined : proposal.deposit}
+                      depositLabel={
+                        proposal.deposit_gate === 'before_accept'
+                          ? 'Deposit due to accept'
+                          : 'Deposit due on acceptance'
+                      }
+                      depositPaid={Boolean(signed) && proposal.payment_status === 'deposit_paid'}
+                      expiresAt={signed || declined ? undefined : proposal.expires_at}
+                    />
+                  </section>
+                </>
+              )
+            case 'accept':
+              // No sign box on paper — the signed/declined banners above
+              // already state the status.
+              return null
+            case 'terms':
+              return proposal.terms ? (
+                <section className="mt-8">
+                  <h2 className="mb-2 text-lg font-bold">Terms</h2>
+                  <p className="whitespace-pre-wrap text-sm text-gray-700">{proposal.terms}</p>
+                </section>
+              ) : null
+            default:
+              return null
           }
-          depositPaid={Boolean(signed) && proposal.payment_status === 'deposit_paid'}
-          expiresAt={signed || declined ? undefined : proposal.expires_at}
-        />
-      </section>
-
-      {proposal.deposit_terms && (
-        <section className="mt-8">
-          <h2 className="mb-2 text-lg font-bold">Deposit terms</h2>
-          <p className="whitespace-pre-wrap text-sm text-gray-700">{proposal.deposit_terms}</p>
-        </section>
-      )}
-
-      {proposal.notes && (
-        <section className="mt-8">
-          <h2 className="mb-2 text-lg font-bold">Notes</h2>
-          <p className="whitespace-pre-wrap text-sm text-gray-700">{proposal.notes}</p>
-        </section>
-      )}
-
-      {proposal.terms && (
-        <section className="mt-8">
-          <h2 className="mb-2 text-lg font-bold">Terms</h2>
-          <p className="whitespace-pre-wrap text-sm text-gray-700">{proposal.terms}</p>
-        </section>
-      )}
+        }}
+      />
     </main>
     </ProposalTheme>
   )
