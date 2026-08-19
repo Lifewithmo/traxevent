@@ -327,7 +327,7 @@ export function ProposalResponseClient({
                   </div>
                 </section>
               ) : null
-            case 'investment':
+            case 'included':
               // A packaged proposal where every line item is a package
               // member has no requiredItems — nothing to show here. Return
               // null (not an empty section) so ProposalComposition's probe
@@ -343,6 +343,13 @@ export function ProposalResponseClient({
                   </div>
                 </section>
               ) : null
+            case 'investment':
+              // On the public page, the totals live in the sticky footer
+              // (outside this composition) — nothing to render here. Always
+              // null, not an empty section, so ProposalComposition's probe
+              // drops it from the slot count instead of painting a blank
+              // band (spec §15.1).
+              return null
             case 'accept':
               // After a DECLINE, showForm/showPayment/showFinalizing are all
               // false and there is no signedInfo — nothing to show. Return

@@ -270,6 +270,26 @@ describe('document composition', () => {
       expect(band.textContent?.trim().length ?? 0).toBeGreaterThan(0)
     }
   })
+
+  // Browser-walk defect: the customer saw "Optional add-ons" before "What's
+  // included", with Notes wedged between — evaluating an upsell before
+  // knowing the base scope it's priced against. Base scope must render first.
+  it("renders What's included above Optional add-ons in DOM order", () => {
+    const withBoth = {
+      status: 'sent' as const,
+      line_items: [
+        { id: 'req1', description: 'Base bar service', quantity: 1, unit_price: 500 },
+        { id: 'opt1', description: 'Champagne tower', quantity: 1, unit_price: 400, optional: true },
+      ],
+    }
+    render(<ProposalResponseClient token="t" proposal={withBoth as never} />)
+    const includedHeading = screen.getByText("What's included")
+    const addOnsHeading = screen.getByText('Optional add-ons')
+    // DOCUMENT_POSITION_FOLLOWING (4) means addOnsHeading comes AFTER
+    // includedHeading in DOM order.
+    const relation = includedHeading.compareDocumentPosition(addOnsHeading)
+    expect(relation & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
 })
 
 // CRITICAL: CoverSection-style contrast text (`var(--proposal-accent-text,

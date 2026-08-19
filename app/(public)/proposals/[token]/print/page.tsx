@@ -139,15 +139,16 @@ export default async function ProposalPrintPage({
                   <ProposalOptionalItems items={optionalItems} selectedIds={selectedOptionalIds} />
                 </section>
               ) : null
+            case 'included':
+              return requiredItems.length > 0 ? (
+                <section className="mt-8">
+                  <h2 className="mb-2 text-lg font-bold">What&apos;s included</h2>
+                  <ProposalIncludedItems items={requiredItems} />
+                </section>
+              ) : null
             case 'investment':
               return (
                 <>
-                  {requiredItems.length > 0 && (
-                    <section className="mt-8">
-                      <h2 className="mb-2 text-lg font-bold">What&apos;s included</h2>
-                      <ProposalIncludedItems items={requiredItems} />
-                    </section>
-                  )}
                   {/* border-[var(--warm-200)], not the bare `border-t`
                       utility: globals.css applies `@apply border-border` to
                       `*`, and --border HAS a .dark override that the warm

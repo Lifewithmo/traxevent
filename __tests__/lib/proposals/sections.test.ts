@@ -116,6 +116,42 @@ describe('sectionsFromProposal', () => {
     const notesSection = out.find((s) => s.id === 'sec-notes')
     expect(notesSection?.blocks?.[0]).toMatchObject({ type: 'heading', text: 'Notes', level: 2 })
   })
+
+  // The defect this guards: base scope (what the customer already gets) must
+  // be shown before the paid add-ons they're deciding on top of it, and the
+  // priced totals must come after everything they're priced against.
+  it('emits included BEFORE add_ons, and investment AFTER both', () => {
+    const out = sectionsFromProposal({
+      ...base,
+      line_items: [
+        { id: 'req1', description: 'Base bar service', quantity: 1, unit_price: 500 },
+        { id: 'opt1', description: 'Champagne tower', quantity: 1, unit_price: 400, optional: true },
+      ],
+    })
+    const types = out.map((s) => s.type)
+    expect(types).toContain('included')
+    expect(types).toContain('add_ons')
+    expect(types).toContain('investment')
+    expect(types.indexOf('included')).toBeLessThan(types.indexOf('add_ons'))
+    expect(types.indexOf('add_ons')).toBeLessThan(types.indexOf('investment'))
+  })
+
+  it('omits included when every line item is a package member (no base scope of its own)', () => {
+    const out = sectionsFromProposal({
+      ...base,
+      packages: [{ id: 'p1', name: 'Basic', price: 100, item_ids: ['m1'] }],
+      line_items: [{ id: 'm1', description: 'Package item', quantity: 1, unit_price: 100 }],
+    })
+    expect(out.map((s) => s.type)).not.toContain('included')
+  })
+
+  it('includes included for a required, non-package-member item even without any optional add-on', () => {
+    const out = sectionsFromProposal({
+      ...base,
+      line_items: [{ id: 'req1', description: 'Base bar service', quantity: 1, unit_price: 500 }],
+    })
+    expect(out.map((s) => s.type)).toContain('included')
+  })
 })
 
 describe('sectionTreatments (absence rule)', () => {

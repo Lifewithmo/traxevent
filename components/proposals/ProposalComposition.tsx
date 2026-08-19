@@ -19,7 +19,7 @@ type CompositionProposal = Pick<
 
 /** Archetypes rendered from Proposal fields; the host supplies these. */
 const DERIVED = new Set<ProposalSectionType>([
-  'tiers', 'add_ons', 'investment', 'accept', 'terms',
+  'tiers', 'included', 'add_ons', 'investment', 'accept', 'terms',
 ])
 
 /**

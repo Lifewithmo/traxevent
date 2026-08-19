@@ -94,6 +94,16 @@ export function sectionsFromProposal(p: LegacySource): ProposalSection[] {
   const out: ProposalSection[] = []
   if (p.blocks?.length) out.push({ id: 'sec-prose', type: 'prose', blocks: p.blocks })
   if (p.packages?.length) out.push({ id: 'sec-tiers', type: 'tiers' })
+
+  // Base scope must render BEFORE the paid add-ons it's priced against — the
+  // customer cannot evaluate an upsell without first knowing what's already
+  // included. Same rule as ProposalResponseClient's `requiredItems`: an item
+  // is base scope when it isn't optional and isn't a member of any package
+  // (member items render inside their tier card instead).
+  const memberIds = new Set((p.packages ?? []).flatMap((pkg) => pkg.item_ids ?? []))
+  if ((p.line_items ?? []).some((i) => i.optional !== true && !memberIds.has(i.id ?? ''))) {
+    out.push({ id: 'sec-included', type: 'included' })
+  }
   if ((p.line_items ?? []).some((i) => i.optional === true && i.id)) {
     out.push({ id: 'sec-addons', type: 'add_ons' })
   }

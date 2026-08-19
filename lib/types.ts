@@ -563,13 +563,13 @@ export type ProposalBlock =
 // strips them so the two can never disagree.
 export const PROPOSAL_SECTION_TYPES = [
   'cover', 'letter', 'video', 'gallery', 'team', 'testimonial', 'menu',
-  'day_plan', 'logistics', 'tiers', 'add_ons', 'investment', 'accept',
+  'day_plan', 'logistics', 'tiers', 'included', 'add_ons', 'investment', 'accept',
   'terms', 'prose',
 ] as const
 export type ProposalSectionType = (typeof PROPOSAL_SECTION_TYPES)[number]
 
 /** Sections that render from Proposal fields, never from authored blocks. */
-export const DERIVED_SECTION_TYPES = ['tiers', 'add_ons', 'investment', 'accept', 'terms'] as const
+export const DERIVED_SECTION_TYPES = ['tiers', 'included', 'add_ons', 'investment', 'accept', 'terms'] as const
 
 export interface ProposalSection {
   id: string

@@ -217,4 +217,26 @@ describe('proposal print route — pricing', () => {
     expect(divider).toBeTruthy()
     expect(divider!.className).toContain('border-[var(--warm-200)]')
   })
+
+  // Browser-walk defect on print: "What's included" must print before
+  // "Optional add-ons", and Totals must still print AFTER the add-ons (they
+  // price everything above them, including the add-ons).
+  it("prints What's included before Optional add-ons, and Totals still after both", async () => {
+    getPublicProposalSpy.mockResolvedValue(
+      proposal({
+        line_items: [
+          { id: 'l1', description: 'Base bar service', quantity: 1, unit_price: 500 },
+          { id: 'l2', description: 'Champagne tower', quantity: 1, unit_price: 400, optional: true },
+        ],
+      }),
+    )
+    await renderPage()
+    const includedHeading = screen.getByText("What's included")
+    const addOnsHeading = screen.getByText('Optional add-ons')
+    const totalLabel = screen.getByText('Total')
+    const includedVsAddOns = includedHeading.compareDocumentPosition(addOnsHeading)
+    expect(includedVsAddOns & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    const addOnsVsTotal = addOnsHeading.compareDocumentPosition(totalLabel)
+    expect(addOnsVsTotal & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
 })
