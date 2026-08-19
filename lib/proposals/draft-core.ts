@@ -10,6 +10,7 @@ import type { Proposal } from '@/lib/types'
 const CLEARABLE_FIELDS = [
   'title',
   'notes',
+  'sections',
   'packages',
   'discount',
   'tax_rate',

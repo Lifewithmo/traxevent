@@ -1,4 +1,5 @@
 import { normalizeBlocks } from '@/lib/proposals/blocks'
+import { normalizeSections } from '@/lib/proposals/sections'
 import { isComposedPackage, packagePrice } from '@/lib/proposals'
 import type {
   Proposal,
@@ -7,6 +8,7 @@ import type {
   ProposalDiscount,
   ProposalLineItem,
   ProposalPackage,
+  ProposalSection,
 } from '@/lib/types'
 
 export const MAX_PACKAGES = 3
@@ -22,6 +24,7 @@ export interface ProposalDraftUpdate {
   title?: string
   notes?: string
   blocks?: ProposalBlock[]
+  sections?: ProposalSection[]
   line_items?: ProposalLineItem[]
   packages?: ProposalPackage[]
   discount?: ProposalDiscount
@@ -41,6 +44,7 @@ export function draftFromProposal(p: Proposal): ProposalDraftUpdate {
   if (p.title !== undefined) draft.title = p.title
   if (p.notes !== undefined) draft.notes = p.notes
   if (p.blocks !== undefined) draft.blocks = p.blocks
+  if (p.sections !== undefined) draft.sections = p.sections
   if (p.line_items !== undefined) draft.line_items = p.line_items
   if (p.packages !== undefined) draft.packages = p.packages
   if (p.discount !== undefined) draft.discount = p.discount
@@ -70,6 +74,7 @@ export interface ProposalDraftInput {
   title?: string
   notes?: string
   blocks?: unknown
+  sections?: unknown
   line_items?: unknown
   packages?: unknown
   discount?: ProposalDiscount
@@ -85,6 +90,7 @@ export interface NormalizedProposalDraft {
   title?: string
   notes?: string
   blocks: ProposalBlock[]
+  sections?: ProposalSection[]
   line_items: ProposalLineItem[]
   packages?: ProposalPackage[]
   discount?: ProposalDiscount
@@ -275,6 +281,13 @@ export function normalizeProposalDraft(
   const { blocks, adjustments: blockAdjustments } = normalizeBlocks(input.blocks ?? [])
   adjustments.push(...blockAdjustments)
 
+  let sections: ProposalSection[] | undefined
+  if (input.sections !== undefined) {
+    const result = normalizeSections(input.sections)
+    sections = result.sections
+    adjustments.push(...result.adjustments)
+  }
+
   const line_items = normalizeLineItems(input.line_items, adjustments)
   const packages = normalizePackages(input.packages, line_items, adjustments)
 
@@ -310,6 +323,7 @@ export function normalizeProposalDraft(
       ...(title ? { title } : {}),
       ...(notes ? { notes } : {}),
       blocks,
+      ...(sections !== undefined ? { sections } : {}),
       line_items,
       ...(packages ? { packages } : {}),
       ...(discount ? { discount } : {}),
