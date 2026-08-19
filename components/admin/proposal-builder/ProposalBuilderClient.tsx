@@ -1,11 +1,29 @@
 'use client'
 
 // The layout-first proposal builder (spec §4): a centered themed document
-// canvas — the customer's exact rendering, edited in place — under a command
-// bar. The rail is gone; everything non-visual (send/void/delete, the client
-// link, pricing terms, AI) now lives on the bar or the canvas itself
-// (TotalsCanvas, DraftComposer, SendDialog). Replaces the form-per-block
-// ProposalEditorClient/ProposalBlockEditor pair.
+// canvas under a command bar. The rail is gone; everything non-visual
+// (send/void/delete, the client link, pricing terms, AI) now lives on the
+// bar or the canvas itself (TotalsCanvas, DraftComposer, SendDialog).
+// Replaces the form-per-block ProposalEditorClient/ProposalBlockEditor pair.
+//
+// NOT routed through ProposalComposition (reverted from commit 971e7ca):
+// PricingCanvas is the ONLY editor for line items and the only home of "Add
+// item". sectionsFromProposal only emits a `tiers`/`add_ons` section when the
+// proposal already HAS packages or an optional line item, so composing
+// through it meant a new proposal (no packages, no optional items) never
+// mounted PricingCanvas — the operator could never add the first line item,
+// therefore could never create a package or optional item, therefore the
+// editor could never appear. A permanent deadlock, and a regression for
+// every existing proposal with plain required line items and no packages.
+// The composition collapses to exactly this same pricing-then-totals order
+// anyway, so routing through it delivered no ordering benefit while
+// introducing that deadlock. The builder shares ProposalPricing's and
+// ProposalDocument's underlying COMPONENTS with the customer document (via
+// PricingCanvas/TotalsCanvas), so typography and money formatting match —
+// but not the customer's section ORDER: the builder shows `terms` and
+// `notes` at the investment position, while the customer sees `terms` after
+// the sign box and `notes` as a prose band before pricing. Keep this direct,
+// hardcoded PricingCanvas → TotalsCanvas rendering.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { sendProposal, deleteProposal, voidProposal } from '@/actions/proposals'
@@ -15,7 +33,6 @@ import { uploadProposalImage } from '@/actions/proposal-images'
 import { proposalRange, depositAmount, packagePrice } from '@/lib/proposals'
 import { upgradeLegacyProposal } from '@/lib/proposals/upgrade'
 import type { ProposalDraftUpdate } from '@/lib/proposals/draft'
-import { ProposalComposition } from '@/components/proposals/ProposalComposition'
 import { ProposalTheme } from '@/components/proposals/ProposalTheme'
 import { BlockCanvas } from '@/components/admin/proposal-builder/BlockCanvas'
 import { PricingCanvas } from '@/components/admin/proposal-builder/PricingCanvas'
@@ -241,16 +258,6 @@ export function ProposalBuilderClient({
   // document (blocks.length === 0 also qualifies).
   const showHero = aiEnabled && !locked && blocks.filter((b) => !b.placeholder).length === 0
 
-  // The shared composition may ask for multiple pricing-shaped types (tiers,
-  // add_ons) or multiple totals-shaped types (investment, accept, terms) in
-  // one render — PricingCanvas and TotalsCanvas each already cover their
-  // whole group in one component, so only the FIRST call in each group
-  // renders it; later calls in the same group render nothing. Plain
-  // per-render locals (not refs/state): the composition's map runs
-  // synchronously within this single render pass.
-  let pricingCanvasRendered = false
-  let totalsCanvasRendered = false
-
   return (
     <div className="flex min-h-screen flex-col">
       <TopBar
@@ -370,54 +377,18 @@ export function ProposalBuilderClient({
               ) : undefined
             }
           />
-          {/* From here down, ordering and treatment come from the SAME
-              sectionsFromProposal/sectionTreatments computation the public
-              page and print use — the builder no longer hardcodes "pricing
-              then totals". blocks/notes are excluded from the composition's
-              own proposal view: BlockCanvas above already owns blocks
-              editing, and TotalsCanvas below already owns the notes field,
-              so passing them through here would render their content a
-              second time as static prose. The canvas keeps all its editing
-              chrome — renderDerived hands back the same PricingCanvas /
-              TotalsCanvas editors that rendered here before. */}
-          <ProposalComposition
-            proposal={{
-              title: draft.title,
-              sections: draft.sections,
-              blocks: [],
-              packages: draft.packages,
-              line_items: lineItems,
-              terms: draft.terms,
-              notes: undefined,
-            }}
-            branding={branding}
-            showPlaceholders
-            renderDerived={(type) => {
-              if ((type === 'tiers' || type === 'add_ons') && !pricingCanvasRendered) {
-                pricingCanvasRendered = true
-                return (
-                  <div className="mt-8 border-t pt-6">
-                    <PricingCanvas
-                      lineItems={lineItems}
-                      packages={packages}
-                      onItemsChange={(next) => update({ line_items: next })}
-                      onPackagesChange={(next) => update({ packages: next })}
-                      disabled={locked}
-                    />
-                  </div>
-                )
-              }
-              if ((type === 'investment' || type === 'accept' || type === 'terms') && !totalsCanvasRendered) {
-                totalsCanvasRendered = true
-                return (
-                  <div className="mt-8 border-t pt-6">
-                    <TotalsCanvas draft={draft} update={update} range={range} disabled={locked} />
-                  </div>
-                )
-              }
-              return null
-            }}
-          />
+          <div className="mt-8 border-t pt-6">
+            <PricingCanvas
+              lineItems={lineItems}
+              packages={packages}
+              onItemsChange={(next) => update({ line_items: next })}
+              onPackagesChange={(next) => update({ packages: next })}
+              disabled={locked}
+            />
+          </div>
+          <div className="mt-8 border-t pt-6">
+            <TotalsCanvas draft={draft} update={update} range={range} disabled={locked} />
+          </div>
         </ProposalTheme>
 
         <div className="sticky bottom-0 mx-auto mt-6 max-w-3xl rounded-t-lg border bg-card/95 px-6 py-3 backdrop-blur">

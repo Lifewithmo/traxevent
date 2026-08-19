@@ -229,6 +229,24 @@ describe('ProposalBuilderClient locked state', () => {
   })
 })
 
+describe('ProposalBuilderClient pricing editor availability', () => {
+  // Regression for the deadlock: PricingCanvas is the ONLY editor for line
+  // items and the only home of "Add item". sectionsFromProposal only emits a
+  // `tiers`/`add_ons` section when the proposal already HAS packages or an
+  // optional item, so a new proposal — or any existing one with plain
+  // required line items and no packages — must still get PricingCanvas, or
+  // the operator can never add the first line item.
+  it('renders PricingCanvas for a proposal with plain required line items and no packages or optional items', () => {
+    mount(
+      makeProposal({
+        line_items: [{ id: 'i1', description: 'Keg', quantity: 1, unit_price: 300, taxable: false }],
+        packages: undefined,
+      }),
+    )
+    expect(screen.getByText('Add included item')).toBeInTheDocument()
+  })
+})
+
 describe('ProposalBuilderClient sticky "Client sees" bar', () => {
   it('renders unchanged alongside TotalsCanvas — always-visible-while-scrolling summary vs in-document totals', () => {
     mount(
