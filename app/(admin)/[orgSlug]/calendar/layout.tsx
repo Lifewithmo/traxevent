@@ -37,6 +37,13 @@ export default async function CalendarLayout({
     ensureIcsToken(orgId),
   ])
   const origin = process.env.NEXT_PUBLIC_APP_ORIGIN ?? ''
+  // ensureIcsToken deliberately stays member-scoped, not admin-scoped. The token is
+  // the org's ONE shared feed secret and every member is a legitimate consumer of
+  // it — subscribing their own phone is the whole feature — so gating it by role
+  // would delete the feature for the crew without reducing exposure by one reader.
+  // The real narrowing is per-user feed tokens (each revocable on its own), which
+  // is its own increment; until then rotation (SubscribePanel → rotateIcsToken,
+  // owner/admin only) is the containment story for a leaked link.
   const subscribeUrl = `${origin}/ics/${orgSlug}/${icsToken}`
 
   // KPI stack summarises THIS week. Uses the SPAN-AWARE window (not a start-date

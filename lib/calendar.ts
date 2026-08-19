@@ -45,6 +45,19 @@ export interface CalendarItem {
   tentative?: boolean
   /** event only: expected guests, for the header count. */
   headcount?: number
+  /** Where the crew has to physically be — the ICS feed's LOCATION line, which is
+   *  what makes a phone calendar entry tappable-to-navigate. Fullest form
+   *  available: "Venue, 123 Main St" when both are known. */
+  location?: string
+}
+
+/** The fullest navigable place string we can build. Both parts when we have them
+ *  (a venue name alone still geocodes; a street address alone loses the venue),
+ *  undefined when we have neither — the LOCATION line is then omitted entirely
+ *  rather than emitted empty. */
+function locationLine(name?: string, address?: string): string | undefined {
+  const parts = [name?.trim(), address?.trim()].filter((p): p is string => !!p)
+  return parts.length ? parts.join(', ') : undefined
 }
 
 /** A fact is anything the feed read from a document; a derived item explains itself. */
@@ -174,6 +187,9 @@ export function buildCalendarFeed(orgSlug: string, s: CalendarFeedSources): Cale
       wonLead?.stage === 'closed_won' && wonAnchorEventId.get(e.lead_id!) === e.id
         ? wonLead.estimated_value
         : undefined
+    // Any event with a location carries it, not just market days: a client job may
+    // set one too, and the crew feed needs an address wherever there is one.
+    const place = locationLine(e.location?.name, e.location?.address)
     items.push({
       id: e.id, title: e.name, date: startYmd, kind: 'event',
       href: `/${orgSlug}/${e.slug}/dashboard`,
@@ -184,6 +200,7 @@ export function buildCalendarFeed(orgSlug: string, s: CalendarFeedSources): Cale
           ? e.location.name
           : undefined,
       headcount: e.headcount,
+      ...(place ? { location: place } : {}),
       // timed placement on the grid; absent hours ⇒ all-day "time TBD"
       ...(e.hours ? { start: e.hours.start, end: e.hours.end } : {}),
       // multi-day span: carry the end date so feedForDay can include interior days
@@ -253,6 +270,7 @@ export function buildCalendarFeed(orgSlug: string, s: CalendarFeedSources): Cale
   // carrying its own start/end so the time-grid can place it.
   for (const d of s.drops) {
     if (d.status !== 'scheduled' && d.status !== 'closed') continue
+    const place = locationLine(d.pickup.location_name, d.pickup.address)
     for (const w of d.pickup.windows) {
       items.push({
         id: `${d.id}:${w.id}`,
@@ -261,6 +279,7 @@ export function buildCalendarFeed(orgSlug: string, s: CalendarFeedSources): Cale
         kind: 'drop',
         href: `/${orgSlug}/drop-orders/${d.id}`,
         detail: d.pickup.location_name,
+        ...(place ? { location: place } : {}),
         start: w.start,
         end: w.end,
       })

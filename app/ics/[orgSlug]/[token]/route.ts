@@ -19,9 +19,23 @@ export async function GET(
   const expected = org.data().ics_token as string | undefined
   if (!expected || token !== expected) return new Response('Not found', { status: 404 })
 
-  const includeParam = new URL(request.url).searchParams.get('include')
-  const kinds = includeParam
-    ? (includeParam.split(',').filter((k): k is CalendarKind => (CALENDAR_KINDS as string[]).includes(k)))
+  // `?include=` MUST fail CLOSED. `searchParams.get('include')` returns '' for a
+  // present-but-empty param, and '' is falsy — a truthiness check therefore fell
+  // through to CALENDAR_KINDS and served the ENTIRE feed (invoice balances inlined
+  // into SUMMARY and all) for exactly the URL the subscribe panel builds when every
+  // box is unchecked. `has()` is the only thing that separates the two intents:
+  //   absent      → no filter asked for → every kind (the documented default for a
+  //                 bare subscribe URL)
+  //   present     → a filter WAS asked for → serve only what it names, and nothing
+  //                 at all when it names nothing we recognise (404, below).
+  // Unrecognised kinds are dropped, so `?include=garbage` is an empty selection too
+  // — never a silent upgrade to "everything".
+  const searchParams = new URL(request.url).searchParams
+  const kinds = searchParams.has('include')
+    ? (searchParams.get('include') ?? '')
+        .split(',')
+        .map((k) => k.trim())
+        .filter((k): k is CalendarKind => (CALENDAR_KINDS as string[]).includes(k))
     : CALENDAR_KINDS
   if (kinds.length === 0) return new Response('Not found', { status: 404 })
 

@@ -206,6 +206,52 @@ describe('buildCalendarFeed', () => {
     expect(row.detail).toBe('Capitol Blvd')
   })
 
+  // The ICS feed's LOCATION line comes from here — a crew member on a phone gets
+  // a title, a time, and (only because of this) something to tap for directions.
+  describe('location, for the ICS LOCATION line', () => {
+    const withEvent = (over: Partial<Event>) =>
+      buildCalendarFeed('acme', { ...empty, events: [event({ id: 'm1', ...over })] }).find((i) => i.id === 'm1')!
+
+    it('prefers the street address, keeping the venue name alongside it', () => {
+      expect(withEvent({ location: { name: 'Boise Farmers Market', address: '10 S 8th St, Boise ID' } }).location)
+        .toBe('Boise Farmers Market, 10 S 8th St, Boise ID')
+    })
+
+    it('falls back to the venue name when there is no street address', () => {
+      expect(withEvent({ location: { name: 'Capitol Blvd' } }).location).toBe('Capitol Blvd')
+    })
+
+    it('is absent (not empty) when the event has no location, or only a blank one', () => {
+      expect(withEvent({}).location).toBeUndefined()
+      expect('location' in withEvent({})).toBe(false)
+      expect(withEvent({ location: { name: '  ', address: '  ' } }).location).toBeUndefined()
+    })
+
+    it('carries on CLIENT JOBS too, not just market days — the detail line stays headcount-first', () => {
+      const row = withEvent({ kind: 'client_job', headcount: 40, location: { name: 'Alder Barn', address: '9 Mill Rd' } })
+      expect(row.location).toBe('Alder Barn, 9 Mill Rd')
+      expect(row.detail).toBe('40 guests')
+    })
+
+    it('drop pickups carry their pickup place on every window', () => {
+      const items = buildCalendarFeed('acme', {
+        ...empty,
+        drops: [drop({ pickup: { location_name: 'SW Boise', address: '4 Vista Ave', windows: [
+          { id: 'w1', day: '2026-08-22', start: '08:00', end: '11:00' },
+          { id: 'w2', day: '2026-08-23', start: '08:00', end: '10:00' },
+        ] } })],
+      })
+      const drops = items.filter((i) => i.kind === 'drop')
+      expect(drops).toHaveLength(2)
+      expect(drops.every((d) => d.location === 'SW Boise, 4 Vista Ave')).toBe(true)
+    })
+
+    it('a drop with no pickup address still carries the pickup name', () => {
+      const drops = buildCalendarFeed('acme', { ...empty, drops: [drop({})] }).filter((i) => i.kind === 'drop')
+      expect(drops.every((d) => d.location === 'SW Boise')).toBe(true)
+    })
+  })
+
   it('emits one drop item per pickup window for scheduled drops, skipping drafts/archived', () => {
     const items = buildCalendarFeed('acme', { ...empty, drops: [drop({})] })
     const dropItems = items.filter((i) => i.kind === 'drop')

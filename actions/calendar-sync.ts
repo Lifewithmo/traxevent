@@ -26,3 +26,35 @@ export async function regenerateIcsToken(orgId: string): Promise<string> {
   await adminDb.collection('orgs').doc(orgId).update({ ics_token: token })
   return token
 }
+
+// The subscribe panel is handed the built feed URL and nothing else, so slug —
+// not orgId — is the only identifier it can act on. Not exported: a 'use server'
+// module may only export async functions, and this is an internal lookup.
+async function orgIdForSlug(orgSlug: string): Promise<string | null> {
+  const snap = await adminDb.collection('orgs').where('slug', '==', orgSlug).limit(1).get()
+  return snap.empty ? null : snap.docs[0].id
+}
+
+/**
+ * May the caller rotate this org's feed token? Owner/admin only, via the same
+ * assertOrgAdmin guard that actually enforces it — this only decides whether the
+ * control is drawn. Deliberately non-throwing: a member who cannot rotate should
+ * see no button, not an error.
+ */
+export async function canRotateIcsToken(orgSlug: string): Promise<boolean> {
+  try {
+    const orgId = await orgIdForSlug(orgSlug)
+    if (!orgId) return false
+    await assertOrgAdmin(orgId)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** Rotate by slug, for the subscribe panel. Enforcement stays in regenerateIcsToken. */
+export async function rotateIcsToken(orgSlug: string): Promise<string> {
+  const orgId = await orgIdForSlug(orgSlug)
+  if (!orgId) throw new Error('Not found')
+  return regenerateIcsToken(orgId)
+}
