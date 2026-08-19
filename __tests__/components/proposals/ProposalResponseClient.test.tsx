@@ -117,6 +117,34 @@ describe('ProposalResponseClient — themed presentation (behavior-preserving re
     expect(screen.getByRole('heading', { name: 'Backyard Bar Service' })).toBeInTheDocument()
   })
 
+  // Regression: this hero hand-rolled its scrim as a literal 'bg-black/60'
+  // instead of importing CoverSection's SCRIM_CLASS — the same constant that
+  // exists for exactly this purpose. Nothing currently produces a `cover`
+  // section, so this hand-rolled hero is the ONLY scrim customers actually
+  // see today, and it must track the single constant rather than drift from
+  // it if SCRIM_CLASS is ever tightened after a contrast report.
+  it('scrims the cover image using the live CoverSection.SCRIM_CLASS value, not an inlined literal', async () => {
+    // A literal 'bg-black/60' baked into this component would render
+    // identically to the real SCRIM_CLASS today, so asserting the rendered
+    // class alone can't prove which source it came from. Mock the module so
+    // SCRIM_CLASS resolves to a distinctive value and assert THAT value
+    // shows up — only possible if the component actually imports it.
+    vi.doMock('@/components/proposals/sections/CoverSection', () => ({
+      SCRIM_CLASS: 'bg-fuchsia-999/99-mocked-scrim',
+      CoverSection: () => null,
+    }))
+    vi.resetModules()
+    const { ProposalResponseClient: FreshClient } = await import('@/components/proposals/ProposalResponseClient')
+    render(<FreshClient token="tok" proposal={proposal()} branding={branding} />)
+    const hero = screen.getByTestId('proposal-hero')
+    const scrimEl = Array.from(hero.querySelectorAll('div')).find(
+      (el) => el.className === 'bg-fuchsia-999/99-mocked-scrim',
+    )
+    expect(scrimEl).toBeTruthy()
+    vi.doUnmock('@/components/proposals/sections/CoverSection')
+    vi.resetModules()
+  })
+
   it('renders the plain heading with no hero when branding is absent', () => {
     render(<ProposalResponseClient token="tok" proposal={proposal()} />)
     expect(screen.queryByTestId('proposal-hero')).not.toBeInTheDocument()

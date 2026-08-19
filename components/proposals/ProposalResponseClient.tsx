@@ -21,6 +21,7 @@ import { ProposalDepositPayment } from './ProposalDepositPayment'
 import { ProposalTheme } from '@/components/proposals/ProposalTheme'
 import { ProposalComposition } from '@/components/proposals/ProposalComposition'
 import { AcceptedState } from '@/components/proposals/AcceptedState'
+import { SCRIM_CLASS } from '@/components/proposals/sections/CoverSection'
 import type { OrgBranding } from '@/lib/types'
 
 // Local, immediate confirmation shown right after a successful `signProposal`
@@ -225,11 +226,18 @@ export function ProposalResponseClient({
           }
         >
           {/* Fixed-alpha scrim: alpha >= 0.535 guarantees 4.5:1 for white text
-              against any cover image (see CoverSection.SCRIM_CLASS). No scrim
-              (and no white-text override) when there's no image — the
-              background is the theme's own accent, so the WCAG-derived
-              --proposal-accent-text variable already guarantees contrast. */}
-          <div className={branding?.cover_image_url ? 'bg-black/60' : ''}>
+              against any cover image. No scrim (and no white-text override)
+              when there's no image — the background is the theme's own
+              accent, so the WCAG-derived --proposal-accent-text variable
+              already guarantees contrast.
+
+              Imports SCRIM_CLASS from CoverSection rather than repeating the
+              literal: nothing currently produces a `cover` section (that's
+              the inc-2 authoring path), so this hand-rolled hero is the
+              ONLY scrim customers actually see today. If someone tightens
+              SCRIM_CLASS later after a contrast report, this hero has to
+              track it automatically, not silently keep the old value. */}
+          <div className={branding?.cover_image_url ? SCRIM_CLASS : ''}>
             <div className="mx-auto w-full max-w-3xl px-6 py-16">
               {branding?.logo_url && (
                 // eslint-disable-next-line @next/next/no-img-element
