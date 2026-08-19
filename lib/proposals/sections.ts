@@ -105,7 +105,10 @@ export function sectionsFromProposal(p: LegacySource): ProposalSection[] {
     out.push({
       id: 'sec-notes',
       type: 'prose',
-      blocks: [{ id: 'sec-notes-b0', type: 'paragraph', text: p.notes.trim() }],
+      blocks: [
+        { id: 'sec-notes-h', type: 'heading', text: 'Notes', level: 2 },
+        { id: 'sec-notes-b0', type: 'paragraph', text: p.notes.trim() },
+      ],
     })
   }
 

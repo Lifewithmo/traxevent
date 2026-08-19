@@ -108,7 +108,13 @@ describe('sectionsFromProposal', () => {
     const notesSection = out.find((s) => s.id === 'sec-notes')
     expect(notesSection).toBeDefined()
     expect(notesSection?.blocks?.length).toBeGreaterThan(0)
-    expect(notesSection?.blocks?.[0]).toMatchObject({ type: 'paragraph', text: 'Thanks for considering us!' })
+    expect(notesSection?.blocks?.[1]).toMatchObject({ type: 'paragraph', text: 'Thanks for considering us!' })
+  })
+
+  it('labels the synthesized notes section with a "Notes" heading, so it never reads as undifferentiated body copy', () => {
+    const out = sectionsFromProposal({ ...base, notes: '  Thanks for considering us!  ' })
+    const notesSection = out.find((s) => s.id === 'sec-notes')
+    expect(notesSection?.blocks?.[0]).toMatchObject({ type: 'heading', text: 'Notes', level: 2 })
   })
 })
 
