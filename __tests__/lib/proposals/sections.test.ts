@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { normalizeSections, MAX_SECTIONS, sectionsFromProposal } from '@/lib/proposals/sections'
+import { normalizeSections, MAX_SECTIONS, sectionsFromProposal, sectionTreatments } from '@/lib/proposals/sections'
 
 describe('normalizeSections', () => {
   it('returns empty for non-array input', () => {
@@ -109,5 +109,39 @@ describe('sectionsFromProposal', () => {
     expect(notesSection).toBeDefined()
     expect(notesSection?.blocks?.length).toBeGreaterThan(0)
     expect(notesSection?.blocks?.[0]).toMatchObject({ type: 'paragraph', text: 'Thanks for considering us!' })
+  })
+})
+
+describe('sectionTreatments (absence rule)', () => {
+  const s = (type: string) => ({ id: type, type: type as never })
+
+  it('always gives cover a full bleed', () => {
+    expect(sectionTreatments([s('cover'), s('letter')])[0]).toBe('bleed')
+  })
+
+  it('never places two tinted bands adjacent', () => {
+    const out = sectionTreatments(['letter', 'menu', 'logistics', 'tiers', 'investment'].map(s))
+    for (let i = 1; i < out.length; i++) {
+      if (out[i] === 'tinted') expect(out[i - 1]).not.toBe('tinted')
+    }
+  })
+
+  it('stays alternating when a middle section is removed', () => {
+    const full = ['letter', 'menu', 'logistics', 'tiers'].map(s)
+    const without = ['letter', 'logistics', 'tiers'].map(s)
+    for (const out of [sectionTreatments(full), sectionTreatments(without)]) {
+      for (let i = 1; i < out.length; i++) {
+        if (out[i] === 'tinted') expect(out[i - 1]).not.toBe('tinted')
+      }
+    }
+  })
+
+  it('returns one treatment per section', () => {
+    const list = ['cover', 'letter', 'tiers'].map(s)
+    expect(sectionTreatments(list)).toHaveLength(list.length)
+  })
+
+  it('handles a single-section document', () => {
+    expect(sectionTreatments([s('prose')])).toEqual(['plain'])
   })
 })

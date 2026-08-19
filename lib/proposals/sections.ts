@@ -118,3 +118,36 @@ export function sectionsFromProposal(p: LegacySource): ProposalSection[] {
 
   return out
 }
+
+export type SectionTreatment = 'plain' | 'tinted' | 'bleed'
+
+/** Archetypes that are always full-bleed regardless of position. */
+const BLEED: ReadonlySet<string> = new Set(['cover', 'video', 'gallery'])
+
+/**
+ * Visual treatment per section, derived ONLY from the rendered sequence
+ * (spec §15.1, the absence rule).
+ *
+ * Authoring the treatment per section would mean that deleting one section
+ * leaves two identical bands adjacent — "absence that looks like absence".
+ * Computing it here means every archetype is safely optional: the rhythm
+ * changes when a section is removed, the integrity does not.
+ */
+export function sectionTreatments(sections: ProposalSection[]): SectionTreatment[] {
+  const out: SectionTreatment[] = []
+  let lastFlow: SectionTreatment | null = null
+
+  for (const section of sections) {
+    if (BLEED.has(section.type)) {
+      out.push('bleed')
+      // A bleed resets the flow rhythm — the band after it starts plain again.
+      lastFlow = null
+      continue
+    }
+    const next: SectionTreatment = lastFlow === 'plain' ? 'tinted' : 'plain'
+    out.push(next)
+    lastFlow = next
+  }
+
+  return out
+}
