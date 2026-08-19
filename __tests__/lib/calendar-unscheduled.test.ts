@@ -198,6 +198,9 @@ describe('buildCalendarFeed is unchanged by the provenance + unscheduled work', 
     drops: [drop({})],
   }
 
+  // `location` is carried deliberately (it becomes ICS LOCATION: so the crew can
+  // tap-to-navigate); everything else here is the pre-existing feed contract the
+  // ICS route and the cockpit both depend on.
   it('produces exactly the same items, in the same order, with no derived marks', () => {
     const items = buildCalendarFeed('acme', mixed)
     expect(items).toEqual([
@@ -206,7 +209,7 @@ describe('buildCalendarFeed is unchanged by the provenance + unscheduled work', 
       { id: 'i1', title: 'Invoice', date: '2026-08-12', kind: 'invoice_due', href: '/acme/leads/hold', amount: 1500, detail: 'Wedding', leadId: 'hold' },
       { id: 'ev', title: 'Gala', date: '2026-08-14', kind: 'event', href: '/acme/gala/dashboard', detail: '60 guests', headcount: 60, bookedValue: 12000 },
       { id: 'hold', title: 'Wedding', date: '2026-08-15', kind: 'lead', href: '/acme/leads/hold', tentative: true, detail: 'not booked' },
-      { id: 'd1:w1', title: 'Drop pickup: Weekend Drop', date: '2026-08-22', kind: 'drop', href: '/acme/drop-orders/d1', detail: 'SW Boise', start: '08:00', end: '11:00' },
+      { id: 'd1:w1', title: 'Drop pickup: Weekend Drop', date: '2026-08-22', kind: 'drop', href: '/acme/drop-orders/d1', detail: 'SW Boise', start: '08:00', end: '11:00', location: 'SW Boise' },
     ])
     expect(items.some(isDerived)).toBe(false)
   })
