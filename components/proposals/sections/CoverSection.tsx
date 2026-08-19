@@ -55,11 +55,17 @@ export function CoverSection({
               className="mb-6 h-12 w-auto"
             />
           )}
-          <h1 className="text-balance text-4xl font-bold leading-tight text-white sm:text-5xl">
+          <h1
+            className="text-balance text-4xl font-bold leading-tight sm:text-5xl"
+            style={{ color: hasImage ? '#ffffff' : 'var(--proposal-accent-text, #ffffff)' }}
+          >
             {heading}
           </h1>
           {(clientName || eventDate) && (
-            <p className="mt-4 flex flex-wrap gap-x-3 gap-y-1 text-base text-white">
+            <p
+              className="mt-4 flex flex-wrap gap-x-3 gap-y-1 text-base"
+              style={{ color: hasImage ? '#ffffff' : 'var(--proposal-accent-text, #ffffff)' }}
+            >
               {clientName && <span>{clientName}</span>}
               {clientName && eventDate && <span aria-hidden="true">·</span>}
               {eventDate && <span>{eventDate}</span>}

@@ -36,4 +36,9 @@ describe('CoverSection', () => {
     const { container } = render(<CoverSection title="X" branding={{}} />)
     expect(container.querySelector('img')).toBeNull()
   })
+
+  it('uses the WCAG-derived accent text colour when there is no cover image', () => {
+    const { container } = render(<CoverSection title="X" branding={{ accent_color: '#ffe600' }} />)
+    expect(container.innerHTML).toContain('--proposal-accent-text')
+  })
 })
