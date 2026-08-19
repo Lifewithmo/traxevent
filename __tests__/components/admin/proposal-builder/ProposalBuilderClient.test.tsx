@@ -3,6 +3,7 @@ import { render, screen, fireEvent, act } from '@testing-library/react'
 import { ProposalBuilderClient } from '@/components/admin/proposal-builder/ProposalBuilderClient'
 import type { Proposal } from '@/lib/types'
 import type { ProposalDraftUpdate } from '@/lib/proposals/draft'
+import { SEND_GATE_MESSAGES } from '@/lib/proposals/send-gate'
 
 const updateProposalDraft = vi.fn()
 vi.mock('@/actions/proposals', () => ({
@@ -363,6 +364,55 @@ describe('ProposalBuilderClient send flow', () => {
     expect(screen.getByRole('status')).toHaveTextContent('network down')
     expect(screen.getByTestId('send-dialog-sent')).toHaveTextContent('false')
     expect(screen.getByTestId('topbar-status')).toHaveTextContent('draft')
+  })
+
+  // Regression: sendProposal's override had no caller, so a gate-blocked
+  // proposal was an unescapable dead end. Follows the window.prompt
+  // precedent used by handleVoid.
+  it('prompts for a reason and retries with the override when the send gate blocks the send', async () => {
+    vi.mocked(sendProposal).mockRejectedValueOnce(new Error(SEND_GATE_MESSAGES.no_price))
+    const promptSpy = vi.spyOn(window, 'prompt').mockReturnValue('Client verbally confirmed pricing')
+    mount()
+    fireEvent.click(screen.getByText('topbar-send'))
+    await act(async () => {
+      fireEvent.click(screen.getByText('confirm-send'))
+      await Promise.resolve()
+    })
+    expect(promptSpy).toHaveBeenCalledWith(expect.stringContaining(SEND_GATE_MESSAGES.no_price))
+    expect(sendProposal).toHaveBeenNthCalledWith(2, 'o1', 'p1', { reason: 'Client verbally confirmed pricing' })
+    expect(screen.getByTestId('send-dialog-sent')).toHaveTextContent('true')
+    expect(screen.getByTestId('topbar-status')).toHaveTextContent('sent')
+    promptSpy.mockRestore()
+  })
+
+  it('does not prompt and stays unsent when the operator declines to give an override reason', async () => {
+    vi.mocked(sendProposal).mockRejectedValueOnce(new Error(SEND_GATE_MESSAGES.empty_document))
+    const promptSpy = vi.spyOn(window, 'prompt').mockReturnValue(null)
+    mount()
+    fireEvent.click(screen.getByText('topbar-send'))
+    await act(async () => {
+      fireEvent.click(screen.getByText('confirm-send'))
+      await Promise.resolve()
+    })
+    expect(promptSpy).toHaveBeenCalled()
+    expect(sendProposal).toHaveBeenCalledTimes(1)
+    expect(screen.getByTestId('send-dialog-sent')).toHaveTextContent('false')
+    expect(screen.getByTestId('topbar-status')).toHaveTextContent('draft')
+    promptSpy.mockRestore()
+  })
+
+  it('does not prompt on a non-gate failure (e.g. network) — just flashes it', async () => {
+    vi.mocked(sendProposal).mockRejectedValueOnce(new Error('network down'))
+    const promptSpy = vi.spyOn(window, 'prompt')
+    mount()
+    fireEvent.click(screen.getByText('topbar-send'))
+    await act(async () => {
+      fireEvent.click(screen.getByText('confirm-send'))
+      await Promise.resolve()
+    })
+    expect(promptSpy).not.toHaveBeenCalled()
+    expect(screen.getByRole('status')).toHaveTextContent('network down')
+    promptSpy.mockRestore()
   })
 
   it('jumps to the first placeholder block from the dialog', () => {

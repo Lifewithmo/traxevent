@@ -32,6 +32,7 @@ import { templateContentFromDraft } from '@/lib/proposals/templates'
 import { uploadProposalImage } from '@/actions/proposal-images'
 import { proposalRange, depositAmount, packagePrice } from '@/lib/proposals'
 import { upgradeLegacyProposal } from '@/lib/proposals/upgrade'
+import { SEND_GATE_MESSAGES } from '@/lib/proposals/send-gate'
 import type { ProposalDraftUpdate } from '@/lib/proposals/draft'
 import { ProposalTheme } from '@/components/proposals/ProposalTheme'
 import { BlockCanvas } from '@/components/admin/proposal-builder/BlockCanvas'
@@ -56,6 +57,16 @@ import type {
 // document renders prices through ProposalPricing's own toFixed(2), so adopting
 // the separator-style shared formatter here would make the claim false.
 const money = (n: number) => `$${n.toFixed(2)}`
+
+// sendProposal throws a plain Error whose message is the joined
+// SEND_GATE_MESSAGES text when (and only when) the send gate (spec §12)
+// blocked the send — distinct from a network/server failure, which gets a
+// different message entirely. Used to decide whether handleSend's catch
+// offers the override prompt or just flashes the error.
+const GATE_MESSAGES = Object.values(SEND_GATE_MESSAGES)
+function isSendGateMessage(message: string): boolean {
+  return GATE_MESSAGES.some((m) => message.includes(m))
+}
 
 export function ProposalBuilderClient({
   orgId,
@@ -188,14 +199,34 @@ export function ProposalBuilderClient({
 
   // Pre-flight (placeholder/expiry warnings) now lives in SendDialog; this is
   // just the confirmed send.
+  //
+  // sendProposal's override (spec §12) previously had no caller: a proposal
+  // that failed the gate was an unescapable dead end on the revenue path.
+  // Follows the window.prompt precedent in handleVoid below — the gate's own
+  // message is surfaced in the prompt so the operator can see exactly what's
+  // wrong before deciding to override, and a non-empty reason retries with it.
   async function handleSend() {
     setBusy(true)
     try {
       await sendProposal(orgId, proposal.id)
       setDocStatus('sent')
       setSentFlag(true)
+      return
     } catch (e) {
-      showFlash(e instanceof Error ? e.message : 'Failed to send')
+      const message = e instanceof Error ? e.message : 'Failed to send'
+      if (!isSendGateMessage(message)) {
+        showFlash(message)
+        return
+      }
+      const reason = window.prompt(`${message}\n\nSend anyway? Enter a reason to override:`)
+      if (!reason || !reason.trim()) return
+      try {
+        await sendProposal(orgId, proposal.id, { reason: reason.trim() })
+        setDocStatus('sent')
+        setSentFlag(true)
+      } catch (e2) {
+        showFlash(e2 instanceof Error ? e2.message : 'Failed to send')
+      }
     } finally {
       setBusy(false)
     }
