@@ -144,4 +144,21 @@ describe('sectionTreatments (absence rule)', () => {
   it('handles a single-section document', () => {
     expect(sectionTreatments([s('prose')])).toEqual(['plain'])
   })
+
+  it('restarts the flow after a bleed instead of continuing index parity', () => {
+    // Placing the bleed at an EVEN index is the discriminator: a naive
+    // `i % 2` implementation continues counting through the bleed slot, so
+    // the two sections after it land on odd/even indices (3, 4) and come out
+    // ['tinted', 'plain']. The real implementation resets the flow at the
+    // bleed, so the section right after it is always 'plain' regardless of
+    // index, giving ['plain', 'tinted'] instead.
+    const out = sectionTreatments(['letter', 'menu', 'cover', 'logistics', 'tiers'].map(s))
+    expect(out).toEqual(['plain', 'tinted', 'bleed', 'plain', 'tinted'])
+  })
+
+  it('brings the section right after a bleed back to plain, not a continued alternation', () => {
+    const out = sectionTreatments(['menu', 'logistics', 'video', 'tiers'].map(s))
+    expect(out[2]).toBe('bleed')
+    expect(out[3]).toBe('plain')
+  })
 })
