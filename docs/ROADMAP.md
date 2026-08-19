@@ -145,6 +145,25 @@ EventTrax pivot (neutralization, multi-brand, ops core). Detailed designs live i
   drop↔market pickup linkage → registration retirement R2. Manual browser
   walkthrough of the occasion flows still owed.
 
+- **Pipeline Unit Assignment — resource-capacity increment 2** (PR #119,
+  merged 2026-08-18, live) — optional **per-unit assignment**: pin a booking to
+  a specific cart/room (`Lead.assigned_units`, never forced), plus **unit-level
+  clash detection** — the same unit double-booked on a date, *orthogonal* to the
+  Inc-1 type-level `over` (a day can be under capacity yet still double-book one
+  unit — the mistake a type-count misses; `over` is byte-for-byte unchanged by
+  assignment). The opportunity-detail assignment control annotates each option
+  (`Kart 1 — taken by "Benoit"` / `free` / `blocked`) and, per the
+  design-ambition pass, warns **inline the moment you pick a taken unit**
+  ("Double-booked with …") — error prevention at the pick, not just after. The
+  pipeline shows a read-only `Kart 1 double-booked — <date>` badge, independent
+  of the over-capacity pill; base/solo orgs keep the increment-1 "Date conflict"
+  path. Walked live desktop/mobile. Deferred: Inc 3 serviceable-ceiling forecast
+  + capacity view; Inc 4 auto-assign, drag-to-assign, server-side hard block,
+  per-event-type resource profiles. Known pre-existing (not this increment):
+  pipeline list rows crush pills to word-per-line at tablet 768 with the sidebar
+  expanded — a #110/#111-class flex fix, tracked separately. Spec/plan:
+  `superpowers/{specs,plans}/2026-08-18-pipeline-unit-assignment*`.
+
 - **Pipeline Resource Capacity — increment 1** (PR #117, merged 2026-08-18,
   live) — the same-day conflict radar is now **capacity-aware by resource
   type** instead of assuming capacity = 1, gated to the **business** tier
