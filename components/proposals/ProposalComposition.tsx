@@ -23,23 +23,24 @@ const DERIVED = new Set<ProposalSectionType>([
 ])
 
 /**
- * Whether a section occupies an alternation slot at all.
+ * Whether a NON-DERIVED section occupies an alternation slot at all.
  *
- * Derived sections always do — the host decides whether they render, and
- * `sectionTreatments` must still count them. A non-derived section renders
- * NOTHING (see ProseSection's absence rule) when it has no visible blocks,
- * when it is itself flagged `placeholder: true` (skipped on public/print per
- * ProposalSection's type comment) and showPlaceholders is off, or when it was
- * authored/normalized with no `blocks` key at all. Any of these consuming a
- * slot leaves two adjacent bands with the SAME treatment — the "absence that
- * looks like absence" failure the absence rule (spec §15.1) exists to
- * prevent. Must be computed BEFORE sectionTreatments, not after.
+ * Derived sections are handled separately (see the probe in
+ * ProposalComposition below) — the host's renderDerived return value is the
+ * source of truth for whether they occupy a slot, not a blanket "always
+ * true". A non-derived section renders NOTHING (see ProseSection's absence
+ * rule) when it has no visible blocks, when it is itself flagged
+ * `placeholder: true` (skipped on public/print per ProposalSection's type
+ * comment) and showPlaceholders is off, or when it was authored/normalized
+ * with no `blocks` key at all. Any of these consuming a slot leaves two
+ * adjacent bands with the SAME treatment — the "absence that looks like
+ * absence" failure the absence rule (spec §15.1) exists to prevent. Must be
+ * computed BEFORE sectionTreatments, not after.
  */
 function occupiesSlot(section: ProposalSection, showPlaceholders: boolean): boolean {
-  // Derived sections and `cover` never carry blocks — they render
-  // unconditionally from Proposal fields / branding, so the empty-blocks
-  // check below does not apply to them.
-  if (DERIVED.has(section.type) || section.type === 'cover') return true
+  // `cover` never carries blocks — it renders unconditionally from
+  // title/branding, so the empty-blocks check below does not apply to it.
+  if (section.type === 'cover') return true
   if (section.placeholder === true && !showPlaceholders) return false
   return (section.blocks ?? []).some((b) => isVisibleBlock(b, showPlaceholders))
 }
@@ -60,10 +61,23 @@ export function ProposalComposition({
   /** Interactive on the public page, static in print — see the plan's Task 8. */
   renderDerived: (type: ProposalSectionType, treatment: SectionTreatment) => ReactNode
 }) {
-  // Drop non-derived sections that would render nothing BEFORE computing
-  // treatments — otherwise they still consume a plain/tinted alternation
-  // slot and leave two adjacent bands with the same treatment.
-  const sections = sectionsFromProposal(proposal).filter((s) => occupiesSlot(s, showPlaceholders))
+  // Drop sections that would render nothing BEFORE computing treatments —
+  // otherwise they still consume a plain/tinted alternation slot and leave
+  // two adjacent bands with the same treatment (spec §15.1).
+  //
+  // Derived sections are probed with a placeholder treatment purely to learn
+  // whether the host renders content for them: every current renderDerived
+  // implementation gates on proposal/response state (packages present? any
+  // required items? has the customer signed?), never on which treatment
+  // class it would receive, so the probe's treatment argument cannot change
+  // the null/non-null outcome. The probe's own JSX is discarded; a derived
+  // section that survives is rendered again below, once, with its real
+  // computed treatment — so the treatment a customer actually sees is always
+  // correct, never the placeholder's.
+  const rawSections = sectionsFromProposal(proposal)
+  const sections = rawSections.filter((s) =>
+    DERIVED.has(s.type) ? renderDerived(s.type, 'plain') != null : occupiesSlot(s, showPlaceholders),
+  )
   const treatments = sectionTreatments(sections)
 
   return (

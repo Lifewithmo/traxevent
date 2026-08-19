@@ -201,6 +201,47 @@ describe('document composition', () => {
     expect(screen.getByLabelText(/full name/i)).toHaveValue('Jane Smith')
     expect(screen.getByLabelText(/email/i)).toHaveValue('jane@example.com')
   })
+
+  // Regression (spec §15.1 absence rule): a packaged proposal where every
+  // line item is a package member has an EMPTY requiredItems list. The
+  // `investment` section must render nothing at all — not a blank tinted
+  // band between the tier picker and the sign box.
+  it('does not paint an empty investment band when every item is a package member', () => {
+    const packagedProposal = {
+      status: 'sent' as const,
+      line_items: [{ id: 'i1', description: 'Cart', quantity: 1, unit_price: 500 }],
+      packages: [{ id: 'p1', name: 'Classic', includes: [], price: 500, item_ids: ['i1'] }],
+    }
+    const { container } = render(<ProposalResponseClient token="t" proposal={packagedProposal as never} />)
+    expect(screen.queryByText("What's included")).not.toBeInTheDocument()
+    // No leftover empty band: every rendered section band must contain
+    // visible content, never an empty shell between two real ones.
+    const bands = Array.from(container.querySelectorAll('section')).filter(
+      (el) => el.className.includes('px-6 py-12'),
+    )
+    for (const band of bands) {
+      expect(band.textContent?.trim().length ?? 0).toBeGreaterThan(0)
+    }
+  })
+
+  // Regression (spec §15.1 absence rule): after a customer DECLINES,
+  // showForm/showPayment/showFinalizing are false and there is no
+  // signedInfo — `accept` must render nothing, not an empty div leaving a
+  // hole where the sign box used to be.
+  it('does not leave an empty accept band after the customer declines', () => {
+    const declinedProposal = {
+      status: 'rejected' as const,
+      line_items: [{ id: 'i1', description: 'Cart', quantity: 1, unit_price: 500 }],
+    }
+    const { container } = render(<ProposalResponseClient token="t" proposal={declinedProposal as never} />)
+    expect(screen.queryByText('Sign to accept')).not.toBeInTheDocument()
+    const bands = Array.from(container.querySelectorAll('section')).filter(
+      (el) => el.className.includes('px-6 py-12'),
+    )
+    for (const band of bands) {
+      expect(band.textContent?.trim().length ?? 0).toBeGreaterThan(0)
+    }
+  })
 })
 
 // CRITICAL: CoverSection-style contrast text (`var(--proposal-accent-text,

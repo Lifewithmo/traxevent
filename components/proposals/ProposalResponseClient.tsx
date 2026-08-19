@@ -320,19 +320,27 @@ export function ProposalResponseClient({
                 </section>
               ) : null
             case 'investment':
-              return (
+              // A packaged proposal where every line item is a package
+              // member has no requiredItems — nothing to show here. Return
+              // null (not an empty section) so ProposalComposition's probe
+              // drops it from the slot count instead of painting a blank
+              // tinted band (spec §15.1).
+              return requiredItems.length > 0 ? (
                 <section className={band}>
                   <div className="mx-auto max-w-3xl space-y-6">
-                    {requiredItems.length > 0 && (
-                      <div>
-                        <h2 className="mb-4 text-xl font-bold text-[var(--warm-950)]">What&apos;s included</h2>
-                        <ProposalIncludedItems items={requiredItems} />
-                      </div>
-                    )}
+                    <div>
+                      <h2 className="mb-4 text-xl font-bold text-[var(--warm-950)]">What&apos;s included</h2>
+                      <ProposalIncludedItems items={requiredItems} />
+                    </div>
                   </div>
                 </section>
-              )
+              ) : null
             case 'accept':
+              // After a DECLINE, showForm/showPayment/showFinalizing are all
+              // false and there is no signedInfo — nothing to show. Return
+              // null so the probe drops this section instead of leaving a
+              // ~96-128px empty hole where the sign box used to be.
+              if (!showForm && !showPayment && !showFinalizing && !signedInfo) return null
               return (
                 <section className={band}>
                   <div className="mx-auto max-w-3xl space-y-6">
