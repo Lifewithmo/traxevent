@@ -839,6 +839,10 @@ describe('PipelineListClient', () => {
       // Reuses the #115 wrap so the copy does not clip at 375.
       expect(pill.className).toContain('max-w-full')
       expect(pill.className).toContain('whitespace-normal')
+      // A capacity-mode clash on an UNDER-capacity day shows ONLY the specific
+      // badge — never ALSO the binary "Date conflict" pill. The base-mode copy
+      // is gated out of capacity mode, so the two never render together.
+      expect(screen.queryByText(/Date conflict/)).toBeNull()
     })
 
     it('names both units when a row owns two clashing units — "Kart 1 & Room A double-booked"', () => {

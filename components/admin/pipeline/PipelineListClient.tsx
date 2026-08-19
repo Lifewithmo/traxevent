@@ -380,7 +380,7 @@ export function PipelineListClient({
                       ? <StatusPill tone="alert" className="max-w-full whitespace-normal">{text}</StatusPill>
                       : null
                   })()
-                ) : row.conflict && row.eventDate ? (
+                ) : !row.overCapacity && row.conflict && row.eventDate ? (
                   <StatusPill tone="alert" className="max-w-full whitespace-normal">Date conflict — {shortDate(row.eventDate)}</StatusPill>
                 ) : null}
                 {/*
