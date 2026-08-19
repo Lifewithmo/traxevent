@@ -16,6 +16,9 @@ vi.mock('@/lib/ops/compliance', () => ({ listComplianceDocsCore: listComplianceD
 vi.mock('@/lib/crm/invoices', () => ({ listAllInvoicesCore: listAllInvoicesCoreSpy }))
 vi.mock('@/lib/crm/tasks', () => ({ listTasksCore: listTasksCoreSpy }))
 vi.mock('@/lib/storefront/drops', () => ({ listDropsCore: listDropsCoreSpy }))
+// The shared source loader (lib/calendar-fetch) that assembleCalendarFeed now
+// reads through imports firebase-admin at module scope for orgIdBySlug.
+vi.mock('@/lib/firebase-admin', () => ({ adminDb: {}, adminAuth: {}, adminBucket: {} }))
 
 // Imported after the mocks above so assembleCalendarFeed's transitive core
 // imports resolve to the spies instead of reaching firebase-admin for real.

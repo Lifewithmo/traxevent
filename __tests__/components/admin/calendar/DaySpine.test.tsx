@@ -71,6 +71,7 @@ const detail: DayDetail = {
   tasks: [task],
   blockers: [blocker],
   drops: [],
+  invoicesDue: [],
   related: { e1: { job, proposals: [proposal], invoices: [invoice] } },
 }
 
@@ -121,7 +122,7 @@ describe('DaySpine', () => {
   })
 
   it('renders one specific CTA when the day holds nothing', () => {
-    const empty: DayDetail = { ymd: '2026-08-22', events: [], tasks: [], blockers: [], drops: [], related: {} }
+    const empty: DayDetail = { ymd: '2026-08-22', events: [], tasks: [], blockers: [], drops: [], invoicesDue: [], related: {} }
     render(<DaySpine orgSlug="acme" today="2026-08-18" detail={empty} runway={[]} />)
     expect(screen.getByRole('link', { name: /book a job/i })).toHaveAttribute('href', '/acme/new-event?date=2026-08-22')
   })

@@ -1,25 +1,22 @@
-import { listEventsCore } from '@/lib/events'
-import { listAllInvoicesCore } from '@/lib/crm/invoices'
-import { listLeadsCore } from '@/lib/crm/leads'
-import { listTasksCore } from '@/lib/crm/tasks'
-import { listComplianceDocsCore } from '@/lib/ops/compliance'
-import { listDropsCore } from '@/lib/storefront/drops'
-import { OPEN_STAGES } from '@/lib/leads'
+import { loadCalendarSources, type CalendarSourceWindow } from '@/lib/calendar-fetch'
 import { buildCalendarFeed, type CalendarItem } from '@/lib/calendar'
-import type { Lead, Task } from '@/lib/types'
 
-/** Fetch every source and assemble all seven calendar kinds. No auth — callers guard. */
-export async function assembleCalendarFeed(orgId: string, orgSlug: string): Promise<CalendarItem[]> {
-  const [events, leads, complianceDocs, invoices, drops] = await Promise.all([
-    listEventsCore(orgId),
-    listLeadsCore(orgId),
-    listComplianceDocsCore(orgId),
-    listAllInvoicesCore(orgId),
-    listDropsCore(orgId),
-  ])
-  const openLeads = leads.filter((l) => (OPEN_STAGES as Lead['stage'][]).includes(l.stage))
-  const taskLists = await Promise.all(openLeads.map((l) => listTasksCore(orgId, l.id)))
-  const tasksByLeadId: Record<string, Task[]> = {}
-  openLeads.forEach((l, i) => { tasksByLeadId[l.id] = taskLists[i] })
-  return buildCalendarFeed(orgSlug, { events, leads, tasksByLeadId, complianceDocs, invoices, drops })
+/**
+ * Fetch every source and assemble all seven calendar kinds. No auth — callers guard.
+ *
+ * The fan-out lives in `loadCalendarSources` (lib/calendar-fetch.ts) and is
+ * memoised per request, so a route that renders the feed AND the day spine pays
+ * for the source reads once rather than twice.
+ *
+ * `window` bounds the date-bearing collections at the QUERY (see the loader for
+ * which are boundable and which come back whole, and why). Omit it — as the ICS
+ * export and the cockpit layout do — to assemble the full calendar.
+ */
+export async function assembleCalendarFeed(
+  orgId: string,
+  orgSlug: string,
+  window: CalendarSourceWindow = null
+): Promise<CalendarItem[]> {
+  const sources = await loadCalendarSources(orgId, window?.from ?? null, window?.to ?? null)
+  return buildCalendarFeed(orgSlug, sources)
 }

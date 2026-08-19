@@ -147,6 +147,20 @@
           "order": "DESCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "events",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "event_start",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "event_end",
+          "order": "ASCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": [
