@@ -58,7 +58,13 @@ vi.mock('@/lib/auth/assert', () => ({ assertOrgMember: assertOrgMemberSpy }))
 vi.mock('@/actions/proposals', () => ({ listAllProposals: listAllProposalsSpy }))
 vi.mock('@/lib/firebase-admin', () => ({ adminDb: {}, adminAuth: {}, adminBucket: {} }))
 
-import { loadCalendarEvents, loadCalendarSources, orgCalendarFeed, orgEvents } from '@/lib/calendar-fetch'
+import {
+  loadCalendarEvents,
+  loadCalendarSources,
+  orgCalendarFeed,
+  orgEvents,
+  orgUnscheduled,
+} from '@/lib/calendar-fetch'
 import { assembleCalendarFeed } from '@/lib/calendar-feed'
 import { getCalendarFeed, getDayDetail } from '@/actions/calendar'
 
@@ -137,6 +143,57 @@ describe('loadCalendarSources — one fan-out per request', () => {
     expect(listTasksCoreSpy).toHaveBeenCalledWith('org-1', 'l1')
   })
 
+  /**
+   * The rail's Unscheduled section is specified to cost ZERO extra reads. That
+   * is a countable claim, so count it: the exact set the calendar layout issues,
+   * with `orgUnscheduled` added, must not move a single read counter off 1.
+   */
+  it('serves the unscheduled list off the SAME load — zero extra reads', async () => {
+    listLeadsCoreSpy.mockResolvedValue([OPEN_LEAD])
+
+    const withoutUnscheduled = await Promise.all([
+      orgCalendarFeed('org-1', 'acme'),
+      orgEvents('org-1'),
+    ]).then(() => ({
+      events: listEventsCoreSpy.mock.calls.length,
+      leads: listLeadsCoreSpy.mock.calls.length,
+      invoices: listAllInvoicesCoreSpy.mock.calls.length,
+      compliance: listComplianceDocsCoreSpy.mock.calls.length,
+      drops: listDropsCoreSpy.mock.calls.length,
+      tasks: listTasksCoreSpy.mock.calls.length,
+    }))
+
+    await orgUnscheduled('org-1', 'acme')
+
+    expect({
+      events: listEventsCoreSpy.mock.calls.length,
+      leads: listLeadsCoreSpy.mock.calls.length,
+      invoices: listAllInvoicesCoreSpy.mock.calls.length,
+      compliance: listComplianceDocsCoreSpy.mock.calls.length,
+      drops: listDropsCoreSpy.mock.calls.length,
+      tasks: listTasksCoreSpy.mock.calls.length,
+    }).toEqual(withoutUnscheduled)
+    // …and the baseline it did not move really was one read each, not zero.
+    expect(withoutUnscheduled).toEqual({
+      events: 1, leads: 1, invoices: 1, compliance: 1, drops: 1, tasks: 1,
+    })
+  })
+
+  /** The tier the rail paints ("Sold") is derived from lead STAGES that only
+   *  exist on this side of the wire — so it has to be attached here. */
+  it('tags a closed_won opportunity behind an undated event as committed', async () => {
+    listLeadsCoreSpy.mockResolvedValue([
+      { id: 'l1', name: 'Dana', stage: 'closed_won', created_at: '2026-08-01T00:00:00.000Z' },
+      { id: 'l2', name: 'Sam', stage: 'inquiry', created_at: '2026-08-02T00:00:00.000Z' },
+    ])
+    listEventsCoreSpy.mockResolvedValue([
+      { id: 'e1', name: 'Alder wedding', slug: 'alder', status: 'active', lead_id: 'l1', created_at: '2026-08-03T00:00:00.000Z' },
+    ])
+
+    const rows = await orgUnscheduled('org-1', 'acme')
+    expect(Object.fromEntries(rows.map((r) => [r.id, r.committed]))).toEqual({ e1: true, l2: false })
+  })
+
   it('getCalendarFeed and getDayDetail share the same load', async () => {
     listLeadsCoreSpy.mockResolvedValue([OPEN_LEAD])
     await Promise.all([
@@ -190,6 +247,11 @@ describe('auth assertions survive the refactor', () => {
     requestScope.reset()
     await orgEvents('org-1')
     expect(assertOrgMemberSpy).toHaveBeenCalledWith('org-1')
+
+    vi.clearAllMocks()
+    requestScope.reset()
+    await orgUnscheduled('org-1', 'acme')
+    expect(assertOrgMemberSpy).toHaveBeenCalledWith('org-1')
   })
 
   it.each([
@@ -197,6 +259,7 @@ describe('auth assertions survive the refactor', () => {
     ['getDayDetail', () => getDayDetail('org-1', 'acme', '2026-08-22')],
     ['orgCalendarFeed', () => orgCalendarFeed('org-1', 'acme')],
     ['orgEvents', () => orgEvents('org-1')],
+    ['orgUnscheduled', () => orgUnscheduled('org-1', 'acme')],
   ])('%s rejects — and reads nothing — when membership fails', async (_name, call) => {
     assertOrgMemberSpy.mockRejectedValue(new Error('Forbidden'))
     await expect(call()).rejects.toThrow('Forbidden')

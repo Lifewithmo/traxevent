@@ -3,6 +3,7 @@ import { render, screen, fireEvent, within } from '@testing-library/react'
 import type { WeekRollup } from '@/lib/calendar-week'
 import type { RunwayJob } from '@/lib/calendar-cashflow'
 import { CALENDAR_KINDS, CALENDAR_KIND_LABELS } from '@/lib/calendar'
+import type { UnscheduledRow } from '@/lib/calendar-unscheduled'
 
 // The rail preserves ?view/?kinds by reading them client-side (a server layout
 // can't take searchParams). Selected day comes from the /calendar/[ymd] path.
@@ -79,6 +80,9 @@ describe('CalendarLeftRail', () => {
     pathname = '/acme/calendar/2026-08-20'
     belowMd = false
     stubMatchMedia()
+    // The Unscheduled disclosure persists its collapsed state; a test that
+    // collapses it must not decide the next test's starting shape.
+    window.localStorage.clear()
   })
 
   it('surfaces the Booked-$ KPI from rollup.bookedValue', () => {
@@ -260,6 +264,82 @@ describe('CalendarLeftRail', () => {
       n.getAttribute('data-shape')
     )
     expect(new Set(shapes).size).toBe(CALENDAR_KINDS.length)
+  })
+
+  // ── the work that has NO date ──────────────────────────────────────────────
+  // buildCalendarFeed drops undated events and leads, so this section is the
+  // only place on any calendar surface they exist.
+  describe('unscheduled work', () => {
+    const unscheduled: UnscheduledRow[] = [
+      {
+        id: 'e1', title: 'Payette barn dance', kind: 'event', href: '/acme/payette/dashboard',
+        createdAt: '2026-08-01T00:00:00.000Z', committed: true, leadId: 'L1', value: 8000,
+        bookByDate: '2026-08-30',
+      },
+      {
+        id: 'l2', title: 'Kuna market day', kind: 'lead', href: '/acme/leads/l2',
+        createdAt: '2026-08-05T00:00:00.000Z', committed: false, leadId: 'l2', value: 900,
+      },
+    ]
+
+    it('surfaces the undated rows and their count', () => {
+      render(<CalendarLeftRail {...baseProps} rollup={rollup()} runway={runway} unscheduled={unscheduled} />)
+      const section = screen.getByRole('region', { name: /unscheduled work/i })
+      expect(within(section).getByText('Payette barn dance')).toBeInTheDocument()
+      expect(within(section).getByText('Kuna market day')).toBeInTheDocument()
+      expect(within(screen.getByRole('button', { name: /unscheduled/i })).getByText('2')).toBeInTheDocument()
+    })
+
+    /**
+     * COMPOSITION, and it is the whole reason this went where it did. The rail's
+     * top half is orientation (scope filter, legend, mini-month) and its bottom
+     * half is reporting (week KPIs, cash runway, ICS). This is neither — it is a
+     * queue the operator acts on, and the drag source a later increment drags
+     * onto the grid beside it. A drag source parked under two reporting panes on
+     * a scrolling 280px rail is unreachable, so the KPI band gave up the first
+     * slot below the mini-month.
+     */
+    it('sits below the mini-month and ABOVE the week KPIs', () => {
+      render(<CalendarLeftRail {...baseProps} rollup={rollup()} runway={runway} unscheduled={unscheduled} />)
+      const grid = screen.getByRole('grid', { name: /mini calendar/i })
+      const section = screen.getByRole('region', { name: /unscheduled work/i })
+      const weekKpis = screen.getByText('This week')
+      const FOLLOWING = Node.DOCUMENT_POSITION_FOLLOWING
+      expect(grid.compareDocumentPosition(section) & FOLLOWING).toBeTruthy()
+      expect(section.compareDocumentPosition(weekKpis) & FOLLOWING).toBeTruthy()
+    })
+
+    it('renders its empty state rather than vanishing when nothing is undated', () => {
+      render(<CalendarLeftRail {...baseProps} rollup={rollup()} runway={runway} unscheduled={[]} />)
+      expect(screen.getByText('Everything is scheduled.')).toBeInTheDocument()
+    })
+
+    it('survives being rendered without the prop at all', () => {
+      render(<CalendarLeftRail {...baseProps} rollup={rollup()} runway={runway} />)
+      expect(screen.getByText('Everything is scheduled.')).toBeInTheDocument()
+    })
+
+    it('keeps working inside the mobile drawer, under the focus trap', () => {
+      belowMd = true
+      render(
+        <CalendarLeftRail
+          {...baseProps}
+          rollup={rollup()}
+          runway={runway}
+          unscheduled={unscheduled}
+          subscribeUrl="https://app.example/ics/acme/tok123"
+        />
+      )
+      fireEvent.click(screen.getByRole('button', { name: /open calendar panel/i }))
+      const panel = panelOf()
+      const rowLink = within(panel).getByText('Payette barn dance').closest('a') as HTMLAnchorElement
+      // reachable: it is inside the trapped panel and in its focusable list
+      expect(Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE))).toContain(rowLink)
+      // …and collapsing it takes those stops back OUT of the trap rather than
+      // leaving focusable anchors behind a display:none subtree.
+      fireEvent.click(within(panel).getByRole('button', { name: /unscheduled/i }))
+      expect(within(panel).queryByText('Payette barn dance')).not.toBeInTheDocument()
+    })
   })
 
   it('lets the mini-month page months without leaving the day', () => {

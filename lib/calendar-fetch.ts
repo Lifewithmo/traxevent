@@ -9,7 +9,8 @@ import { complianceDocsRef, listComplianceDocsCore } from '@/lib/ops/compliance'
 import { listDropsCore } from '@/lib/storefront/drops'
 import { normalizeInvoice } from '@/lib/invoice-normalize'
 import { OPEN_STAGES } from '@/lib/leads'
-import { buildCalendarFeed, type CalendarFeedSources, type CalendarItem } from '@/lib/calendar'
+import { buildCalendarFeed, buildUnscheduled, type CalendarFeedSources, type CalendarItem } from '@/lib/calendar'
+import { markCommitted, type UnscheduledRow } from '@/lib/calendar-unscheduled'
 import type { ComplianceDoc, Event, Lead, NormalizedInvoice, Task } from '@/lib/types'
 
 /** Resolve an org slug to its id, memoised per request — the layout, the canvas
@@ -191,4 +192,24 @@ export const orgEvents = cache(async (orgId: string): Promise<Event[]> => {
 export const orgInvoices = cache(async (orgId: string): Promise<NormalizedInvoice[]> => {
   await assertOrgMember(orgId)
   return (await loadCalendarSources(orgId, null, null)).invoices
+})
+
+/**
+ * The work that has NO date — `buildCalendarFeed`'s exact complement, off the
+ * SAME memoised unbounded source load the feed, events and invoices come from,
+ * so the rail's Unscheduled section costs ZERO extra Firestore reads.
+ *
+ * Unbounded on purpose, and not merely by inheritance: an undated row has no
+ * date to window on, so any bounded load would be the wrong question. The
+ * whole-collection `leads` read this shares is what makes the list possible at
+ * all (see `loadCalendarSources`' note on why leads cannot be bounded).
+ *
+ * `markCommitted` runs here rather than in the component because the tier —
+ * sold vs still-an-opportunity — is only knowable from the lead STAGES, which
+ * live on this side of the wire and are already in hand.
+ */
+export const orgUnscheduled = cache(async (orgId: string, orgSlug: string): Promise<UnscheduledRow[]> => {
+  await assertOrgMember(orgId)
+  const sources = await loadCalendarSources(orgId, null, null)
+  return markCommitted(buildUnscheduled(orgSlug, sources), sources.leads)
 })

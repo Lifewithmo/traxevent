@@ -11,6 +11,8 @@ import type { WeekRollup } from '@/lib/calendar-week'
 import type { RunwayJob } from '@/lib/calendar-cashflow'
 import { CalendarKpiBand } from '@/components/admin/calendar/CalendarKpiBand'
 import { RunwayStrip } from '@/components/admin/calendar/RunwayStrip'
+import { UnscheduledSection } from '@/components/admin/calendar/UnscheduledSection'
+import type { UnscheduledRow } from '@/lib/calendar-unscheduled'
 import { SubscribePanel } from '@/components/admin/calendar/SubscribePanel'
 import { KindLegend } from '@/components/admin/calendar/KindDot'
 import { Button } from '@/components/ui/button'
@@ -23,6 +25,12 @@ interface CalendarLeftRailProps {
   rollup: WeekRollup
   /** buildRunway() output over the whole feed. */
   runway: RunwayJob[]
+  /** buildUnscheduled() output, already ranked and tagged with `committed`.
+   *  The work that has NO date — dropped by buildCalendarFeed, and therefore
+   *  invisible on every other calendar surface. Optional so the rail still
+   *  renders outside the cockpit shell; the empty list is a real state, not a
+   *  missing one. */
+  unscheduled?: UnscheduledRow[]
   /** The org's ICS feed URL (origin + /ics/[orgSlug]/[token]); enables the
    *  Subscribe-in-Google/Outlook disclosure. Omitted → the entry point hides. */
   subscribeUrl?: string
@@ -95,7 +103,14 @@ function monthCells(monthKey: string): Array<{ day: string; inMonth: boolean }> 
   })
 }
 
-export function CalendarLeftRail({ orgSlug, today, rollup, runway, subscribeUrl }: CalendarLeftRailProps) {
+export function CalendarLeftRail({
+  orgSlug,
+  today,
+  rollup,
+  runway,
+  unscheduled = [],
+  subscribeUrl,
+}: CalendarLeftRailProps) {
   const params = useSearchParams()
   const pathname = usePathname() ?? ''
   const [showSubscribe, setShowSubscribe] = useState(false)
@@ -330,6 +345,18 @@ export function CalendarLeftRail({ orgSlug, today, rollup, runway, subscribeUrl 
           })}
         </div>
       </div>
+
+      {/*
+        The work with NO date — a QUEUE, not a report, so it sits with the
+        navigation half of the rail rather than the reporting half: directly
+        under the mini-month and above the this-week KPIs. It is also the drag
+        source a later increment drags onto the grid beside it, and a drag
+        source parked below two reporting panes on a scrolling 280px rail is
+        unusable. What it displaced: the KPI band's first-below-the-mini-month
+        slot. What it does NOT add: a new hierarchy level — its header is the
+        same 11px/600/uppercase/.06em eyebrow the two sections below already use.
+      */}
+      <UnscheduledSection orgSlug={orgSlug} rows={unscheduled} today={today} />
 
       {/* This-week KPIs (Booked-$ wired here) */}
       <div className="border-b border-sidebar-border">

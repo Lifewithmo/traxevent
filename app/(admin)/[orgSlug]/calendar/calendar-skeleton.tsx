@@ -123,7 +123,8 @@ export function SpineSkeleton() {
 
 /**
  * Mirrors <CalendarLeftRail/>: the mobile bar below md, then the 280px column —
- * filter tabs + legend, mini-month, this-week KPIs, runway, subscribe.
+ * filter tabs + legend, mini-month, unscheduled work, this-week KPIs, runway,
+ * subscribe.
  */
 export function RailSkeleton() {
   return (
@@ -151,6 +152,16 @@ export function RailSkeleton() {
               <Skeleton key={i} className="h-6 rounded-md" />
             ))}
           </div>
+        </div>
+        {/* Unscheduled: eyebrow + count, then up to MAX_ROWS two-line rows. */}
+        <div className="space-y-1.5 border-b border-sidebar-border px-4 py-3">
+          <div className="flex items-center justify-between">
+            <Skeleton className="h-2.5 w-24" />
+            <Skeleton className="h-3.5 w-5 rounded-full" />
+          </div>
+          {[0, 1, 2].map((r) => (
+            <Skeleton key={r} className="h-9 w-full rounded-md" />
+          ))}
         </div>
         <div className="space-y-2 border-b border-sidebar-border px-5 py-3">
           <Skeleton className="h-2.5 w-20" />

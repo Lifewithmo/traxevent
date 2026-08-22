@@ -1,7 +1,8 @@
 export const dynamic = 'force-dynamic'
 
 import { Suspense } from 'react'
-import { orgCalendarFeed, orgEvents, orgInvoices, orgIdBySlug } from '@/lib/calendar-fetch'
+import { orgCalendarFeed, orgEvents, orgInvoices, orgUnscheduled, orgIdBySlug } from '@/lib/calendar-fetch'
+import type { UnscheduledRow } from '@/lib/calendar-unscheduled'
 import { ensureIcsToken } from '@/actions/calendar-sync'
 import { feedInWindow } from '@/lib/calendar-window'
 import { weekRollup } from '@/lib/calendar-week'
@@ -57,6 +58,9 @@ interface RailData {
   today: string
   rollup: ReturnType<typeof weekRollup>
   runway: ReturnType<typeof buildRunway>
+  /** The work with no date at all — dropped by buildCalendarFeed, so it exists
+   *  on no other calendar surface. */
+  unscheduled: UnscheduledRow[]
   subscribeUrl: string
 }
 
@@ -73,10 +77,15 @@ async function loadRail(params: Promise<{ orgSlug: string }>): Promise<RailData 
   const today = todayYmd()
   // orgCalendarFeed / orgEvents are React.cache()'d, so the page (and the day
   // route) reuse this same fetch within the request instead of re-fanning out.
-  const [feed, events, invoices, icsToken] = await Promise.all([
+  const [feed, events, invoices, unscheduled, icsToken] = await Promise.all([
     orgCalendarFeed(orgId, orgSlug),
     orgEvents(orgId),
     orgInvoices(orgId),
+    // The feed's exact complement — the rows buildCalendarFeed drops for having
+    // no date. Reads the SAME React.cache()'d source load as the three above, so
+    // it adds zero Firestore reads; it joins the Promise.all rather than running
+    // after it so the memoised load is still entered once, concurrently.
+    orgUnscheduled(orgId, orgSlug),
     ensureIcsToken(orgId),
   ])
   const origin = process.env.NEXT_PUBLIC_APP_ORIGIN ?? ''
@@ -100,6 +109,7 @@ async function loadRail(params: Promise<{ orgSlug: string }>): Promise<RailData 
     // 4th arg: real invoice state, so a fully-collected job is not reported as
     // "never invoiced". Reads the same React.cache()'d sources — zero extra reads.
     runway: buildRunway(feed, events, new Date(), invoices),
+    unscheduled,
     subscribeUrl,
   }
 }
@@ -114,6 +124,7 @@ async function CalendarRail({ data }: { data: Promise<RailData | null> }) {
       today={d.today}
       rollup={d.rollup}
       runway={d.runway}
+      unscheduled={d.unscheduled}
       subscribeUrl={d.subscribeUrl}
     />
   )

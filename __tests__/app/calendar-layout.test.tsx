@@ -24,9 +24,19 @@ const orgEvents = vi.hoisted(() => vi.fn())
 // Promise.all. An unmocked spy is `undefined` and throws as the array literal is
 // evaluated left-to-right — before ensureIcsToken is ever reached.
 const orgInvoices = vi.hoisted(() => vi.fn())
+// The rail also surfaces the work with NO date — buildCalendarFeed's complement.
+// Same rule as orgInvoices: it rides in the SAME Promise.all, so an unmocked spy
+// is `undefined` and throws while the array literal is being evaluated.
+const orgUnscheduled = vi.hoisted(() => vi.fn())
 const ensureIcsToken = vi.hoisted(() => vi.fn())
 
-vi.mock('@/lib/calendar-fetch', () => ({ orgIdBySlug, orgCalendarFeed, orgEvents, orgInvoices }))
+vi.mock('@/lib/calendar-fetch', () => ({
+  orgIdBySlug,
+  orgCalendarFeed,
+  orgEvents,
+  orgInvoices,
+  orgUnscheduled,
+}))
 vi.mock('@/actions/calendar-sync', () => ({ ensureIcsToken }))
 
 import CalendarLayout from '@/app/(admin)/[orgSlug]/calendar/layout'
@@ -41,6 +51,7 @@ describe('calendar layout cold entry', () => {
     orgCalendarFeed.mockReturnValue(hang<unknown[]>())
     orgEvents.mockReturnValue(hang<unknown[]>())
     orgInvoices.mockReturnValue(hang<unknown[]>())
+    orgUnscheduled.mockReturnValue(hang<unknown[]>())
     ensureIcsToken.mockReturnValue(hang<string>())
   })
 
@@ -83,5 +94,24 @@ describe('calendar layout cold entry', () => {
     await vi.waitFor(() => expect(orgCalendarFeed).toHaveBeenCalledWith('org1', 'acme'))
     expect(orgEvents).toHaveBeenCalledWith('org1')
     expect(ensureIcsToken).toHaveBeenCalledWith('org1')
+  })
+
+  // The undated work the rail surfaces has to be fetched on the SAME cold-entry
+  // path as everything else — starting it after the Promise.all resolves would
+  // add a second serial round trip to a `force-dynamic` route, which is exactly
+  // the block this whole file exists to prevent.
+  it('starts the unscheduled read in the same non-blocking batch', async () => {
+    orgIdBySlug.mockResolvedValue('org1')
+    render(
+      CalendarLayout({
+        children: <div data-testid="canvas-slot" />,
+        params: Promise.resolve({ orgSlug: 'acme' }),
+      })
+    )
+    await vi.waitFor(() => expect(orgUnscheduled).toHaveBeenCalledWith('org1', 'acme'))
+    // …and it did NOT wait for its siblings: all four are in flight together
+    // while every one of them is still hanging.
+    expect(orgCalendarFeed).toHaveBeenCalled()
+    expect(orgInvoices).toHaveBeenCalled()
   })
 })
