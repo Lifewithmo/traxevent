@@ -1,8 +1,10 @@
 import Link from 'next/link'
+import { MapPin, Phone, PhoneOff } from 'lucide-react'
 import { buttonVariants } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { RelatedRecordCard, type RelatedRow } from '@/components/ui/related-record-card'
 import { StatusPill, type pillVariants } from '@/components/ui/status-pill'
+import { KindDot } from '@/components/admin/calendar/KindDot'
 import { formatMoney } from '@/lib/money'
 import { cn } from '@/lib/utils'
 import { LEAD_STAGE_LABELS, opportunityTitle } from '@/lib/leads'
@@ -12,19 +14,50 @@ import { derivePaymentStatus, deriveAging } from '@/lib/invoice-status'
 import type { DayDetail } from '@/actions/calendar'
 import type { RunwayJob } from '@/lib/calendar-cashflow'
 import type { CalendarItem } from '@/lib/calendar'
-import type { Event, LeadStage, ProposalStatus, InvoicePaymentStatus } from '@/lib/types'
+import type { Event, Lead, LeadStage, ProposalStatus, InvoicePaymentStatus } from '@/lib/types'
 import type { VariantProps } from 'class-variance-authority'
 
 // The live-swapping right pane. Deep-linkable at /calendar/[ymd]; on selection
 // it re-renders on the server and streams in (App-Router master-detail, mirroring
-// the Clients cockpit). The row mappings below are the ClientWorkingRail pattern
-// verbatim so a job / proposal / invoice reads the same everywhere.
+// the Clients cockpit).
+//
+// ── COMPOSITION (screen-composition, run before the JSX) ─────────────────────
+//
+// THE JOB, in the operator's words: "I'm driving the cart to a job today — get
+// me to the right place, put me in touch with whoever is meeting me there, tell
+// me how many I'm pouring for, and don't let me forget who owes me money."
+//
+// THE DECIDING VALUE: on a job day the next physical act is *leave for the
+// venue*, so the deciding pair is WHERE and WHO. They are the focal element of
+// each job block: full-width, bordered, >=44px, directly under the job's name
+// and hours. Money owed changes nothing about the next hour — it changes what
+// you say when you arrive — so it is visible but quieter and lower.
+//
+// ORDER (by decision, not by schema):
+//   1. Blocking      — a lapsed document can cancel the drive. Moved to the TOP
+//                      from the bottom; it is still folded inline, not a rail.
+//   2. Money due     — ONLY when the day holds no job. On a jobless day the
+//                      invoice IS the day, and it used to render nowhere at all.
+//   3. Jobs          — name + hours + headcount → WHERE → WHO → money/paperwork.
+//   4. Drop pickups  — the other place to physically be; now maps-linked too.
+//   5. Prep tasks    — today's desk work.
+//   6. Money due     — last, when there IS a job to drive to.
+//
+// WHAT GOT QUIETER: the Job / Proposals / Invoices trio used to be three equal-
+// weight bordered RelatedRecordCards stacked in a column inside a fourth card —
+// the textbook uniform card stack, and it ranked money above the address the
+// crew does not have. They are now ONE de-chromed "Paperwork" ledger (the same
+// kit rows, pills and amount tones; border, shadow and two of the three headers
+// deleted) sitting below a rule, under the runway line. Duplicated values went
+// with it: the job row no longer restates the event date the spine header
+// already shows, and the proposal row no longer restates the status its own
+// pill carries.
+//
+// EVERY BOX JUSTIFIED: the job card's border separates job A's address from
+// job B's when a day holds two. The maps and call borders ARE the 44px hit
+// areas. Nothing else in the block is boxed.
 
 type Tone = NonNullable<VariantProps<typeof pillVariants>['tone']>
-
-function money(n: number): string {
-  return `$${n.toLocaleString()}`
-}
 
 const JOB_TONE: Record<LeadStage, Tone> = {
   inquiry: 'neutral',
@@ -75,6 +108,139 @@ function fullDayLabel(ymd: string): string {
   })
 }
 
+/**
+ * The fullest navigable place string we can build: venue AND street when both
+ * exist ("Alder Barn, 4102 W State St"). A venue name alone still geocodes; a
+ * street alone loses the venue. Same rule as `locationLine()` in
+ * lib/calendar.ts, which builds the identical string for the ICS LOCATION line
+ * and for `CalendarItem.location` — it is module-private there, so this is one
+ * rule spelled twice rather than two rules.
+ */
+function placeLine(name?: string, address?: string): string | undefined {
+  const parts = [name?.trim(), address?.trim()].filter((p): p is string => !!p)
+  return parts.length ? parts.join(', ') : undefined
+}
+
+/**
+ * An `https:` maps URL — deliberately NOT `geo:` or `maps://`.
+ *
+ * This pane is server-rendered with no platform signal available at render
+ * time (UA-sniffing inside an RSC would fork the route's cache), so one href
+ * has to work everywhere it might be tapped. `geo:0,0?q=…` is the RFC 5870
+ * form Android resolves and iOS Safari does not; `maps://` is Apple-only;
+ * both dead-link in the desktop browser where this admin is mostly open.
+ * An https maps URL is claimed by the Google Maps app through app links on
+ * both phones and otherwise falls back to a working web map with directions.
+ * It never dead-links — the only property that matters to a driver standing
+ * in a parking lot.
+ */
+function mapsHref(place: string): string {
+  return `https://maps.google.com/?q=${encodeURIComponent(place)}`
+}
+
+/**
+ * RFC 3966 wants a dial string with no spaces or punctuation. The guard in
+ * front of it mirrors `validatePhone` in the Clients cockpit
+ * (components/admin/clients/ClientWorkingRail.tsx): a value the operator
+ * fat-fingered, or typed as prose ("ask Ben"), degrades to plain text instead
+ * of becoming a link that dials nothing.
+ */
+const MIN_DIALABLE_DIGITS = 7
+function telHref(phone: string | undefined | null): string | null {
+  const raw = phone?.trim()
+  if (!raw) return null
+  if (!/^\+?[\d\s().-]+$/.test(raw)) return null
+  const digits = raw.replace(/\D/g, '')
+  if (digits.length < MIN_DIALABLE_DIGITS) return null
+  return `tel:${raw.startsWith('+') ? '+' : ''}${digits}`
+}
+
+interface CrewContact {
+  name: string
+  role?: string
+  /** null = a real, named contact we cannot dial. Never a fabricated number. */
+  tel: string | null
+}
+
+/**
+ * Who is actually meeting the crew on site.
+ *
+ * `Event.key_contacts` first — that IS the on-site list, and it already rides
+ * along on the day's Event, so nothing had to be threaded through
+ * getDayDetail. The linked opportunity's own `phone` is the fallback, because
+ * a solo job's client often never gets promoted to a key contact. A key
+ * contact with no usable number is still shown (a name is real data, and the
+ * gap is fixable); a *lead* with no usable number is not, because the
+ * Paperwork ledger already names the job.
+ *
+ * Dialable entries sort first so the tappable one lands under the thumb.
+ */
+function crewContacts(event: Event, job: Lead | null): CrewContact[] {
+  const named = (event.key_contacts ?? [])
+    .filter((c) => c.name?.trim())
+    .map((c) => ({ name: c.name.trim(), role: c.role?.trim() || undefined, tel: telHref(c.phone) }))
+  if (named.length > 0) {
+    return named.slice().sort((a, b) => Number(b.tel != null) - Number(a.tel != null))
+  }
+  const leadName = job?.name?.trim()
+  const leadTel = telHref(job?.phone)
+  return leadName && leadTel ? [{ name: leadName, role: 'Client', tel: leadTel }] : []
+}
+
+/** Shared geometry for the two on-site tap targets: 44px minimum, one-handed,
+ *  outdoors, in a van (WCAG 2.5.5 target size, and plain physical reality). */
+const GO_TARGET =
+  'flex min-h-11 w-full items-center gap-2.5 rounded-lg border border-border px-2.5 py-1.5 ' +
+  'transition-colors motion-reduce:transition-none'
+const GO_LINK = `${GO_TARGET} bg-background hover:bg-muted focus-visible:bg-muted`
+
+function NavigateLink({ place }: { place: string }) {
+  return (
+    <a
+      href={mapsHref(place)}
+      target="_blank"
+      rel="noreferrer"
+      // Says what it does AND where it goes — never a bare "Navigate". The
+      // visible text is `place`, which the name contains (WCAG 2.5.3).
+      aria-label={`Navigate to ${place}`}
+      className={GO_LINK}
+    >
+      <MapPin className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+      <span className="min-w-0 flex-1 text-[13px] leading-tight font-medium text-foreground">{place}</span>
+    </a>
+  )
+}
+
+function CrewContactRow({ contact, settingsHref }: { contact: CrewContact; settingsHref: string }) {
+  const label = contact.role ? `${contact.name}, ${contact.role}` : contact.name
+  const body = (
+    <span className="min-w-0 flex-1 leading-tight">
+      <span className="block truncate text-[13px] font-medium text-foreground">{contact.name}</span>
+      {contact.role ? <span className="block truncate text-xs text-muted-foreground">{contact.role}</span> : null}
+    </span>
+  )
+
+  if (!contact.tel) {
+    // A named on-site contact with no number is a two-tap gap, not a dead end:
+    // the target goes to the settings tab that owns key contacts. No `tel:`
+    // link is rendered, because there is nothing real to dial.
+    return (
+      <Link href={settingsHref} aria-label={`Add a phone number for ${label}`} className={cn(GO_LINK, 'border-dashed')}>
+        <PhoneOff className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+        {body}
+        <span className="shrink-0 text-[11px] font-medium text-muted-foreground">No number</span>
+      </Link>
+    )
+  }
+
+  return (
+    <a href={contact.tel} aria-label={`Call ${label}`} className={GO_LINK}>
+      <Phone className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+      {body}
+    </a>
+  )
+}
+
 interface DaySpineProps {
   orgSlug: string
   today: string
@@ -101,14 +267,17 @@ function EventBlock({
   const proposals = related?.proposals ?? []
   const invoices = related?.invoices ?? []
 
+  // One ledger, three kinds. Ids are prefixed because a row key now spans
+  // collections that mint their own ids.
   const jobRows: RelatedRow[] = job
     ? [
         {
-          id: job.id,
+          id: `job:${job.id}`,
           title: opportunityTitle(job),
-          subtitle: [job.event_date, LEAD_STAGE_LABELS[job.stage]].filter(Boolean).join(' · '),
+          // NOT the event date: the spine header already names the day.
+          subtitle: 'Job',
           badge: <StatusPill tone={JOB_TONE[job.stage]}>{LEAD_STAGE_LABELS[job.stage]}</StatusPill>,
-          amount: job.estimated_value != null ? money(job.estimated_value) : undefined,
+          amount: job.estimated_value != null ? formatMoney(job.estimated_value) : undefined,
           href: `/${orgSlug}/leads/${job.id}`,
         },
       ]
@@ -117,11 +286,12 @@ function EventBlock({
   const proposalRows: RelatedRow[] = proposals.map((p) => {
     const { min, max } = proposalDisplayRange(p)
     return {
-      id: p.id,
+      id: `proposal:${p.id}`,
       title: p.title || 'Untitled proposal',
-      subtitle: PROPOSAL_STATUS_LABELS[p.status],
+      // NOT the status: the pill beside it already carries that.
+      subtitle: 'Proposal',
       badge: <StatusPill tone={PROPOSAL_TONE[p.status]}>{PROPOSAL_STATUS_LABELS[p.status]}</StatusPill>,
-      amount: min === max ? money(min) : `${money(min)}–${money(max)}`,
+      amount: min === max ? formatMoney(min) : `${formatMoney(min)}–${formatMoney(max)}`,
       href: `/${orgSlug}/leads/${p.lead_id}/proposals/${p.id}`,
     }
   })
@@ -137,43 +307,90 @@ function EventBlock({
     const aging = deriveAging({ dueDate: inv.due_date, balance, lifecycle: inv.lifecycle ?? 'sent' }, now)
     const overdue = inv.lifecycle === 'sent' && OVERDUE_AGING_BUCKETS.has(aging)
     return {
-      id: inv.id,
+      id: `invoice:${inv.id}`,
       title: inv.number ? `Invoice ${inv.number}` : inv.title || 'Invoice',
-      subtitle: inv.due_date ? `Due ${inv.due_date}` : undefined,
+      // Overdue is said in WORDS as well as in the red amount — colour is
+      // never the only carrier (WCAG 1.4.1).
+      subtitle: inv.due_date
+        ? `Invoice · ${overdue ? 'overdue since' : 'due'} ${inv.due_date}`
+        : 'Invoice',
       badge: <StatusPill tone={INVOICE_TONE[status]}>{INVOICE_STATUS_LABELS[status]}</StatusPill>,
-      amount: money(balance),
+      amount: formatMoney(balance),
       amountTone: overdue ? 'alert' : 'default',
       href: `/${orgSlug}/leads/${inv.lead_id}/invoices/${inv.id}`,
     }
   })
 
+  const paperwork: RelatedRow[] = [...jobRows, ...proposalRows, ...invoiceRows]
+
   const time = event.hours ? `${event.hours.start} – ${event.hours.end}` : 'Time TBD'
+  // Real field or nothing: Event.headcount, never a guess from the lead.
+  const guests =
+    event.headcount != null && event.headcount > 0
+      ? `${event.headcount.toLocaleString()} ${event.headcount === 1 ? 'guest' : 'guests'}`
+      : null
+  const place = placeLine(event.location?.name, event.location?.address)
+  const contacts = crewContacts(event, job)
+  const showRunway = runwayJob != null && runwayJob.inflowBefore > 0
 
   return (
-    <section className="space-y-3 rounded-xl border border-border bg-card p-3 shadow-xs">
-      <header>
-        <Link href={`/${orgSlug}/${event.slug}/dashboard`} className="text-sm font-semibold text-foreground hover:underline">
+    <section className="overflow-hidden rounded-xl border border-border bg-card shadow-xs">
+      <header className="px-3 pt-3 pb-2.5">
+        <Link
+          href={`/${orgSlug}/${event.slug}/dashboard`}
+          className="block text-sm leading-snug font-semibold text-foreground hover:underline"
+        >
           {event.name}
         </Link>
-        <p className="mt-0.5 text-xs tabular-nums text-muted-foreground">{time}</p>
-        {runwayJob && runwayJob.inflowBefore > 0 ? (
-          <p className="mt-1 text-xs text-muted-foreground">
-            <span className="font-semibold tabular-nums text-[var(--money-green)]">
-              {formatMoney(runwayJob.inflowBefore)}
-            </span>{' '}
-            expected to land before this job
-          </p>
-        ) : null}
+        <p className="mt-0.5 flex flex-wrap items-baseline gap-x-1.5 text-xs text-muted-foreground">
+          <span className="tabular-nums">{time}</span>
+          {guests ? (
+            <>
+              <span aria-hidden>·</span>
+              <span className="tabular-nums">{guests}</span>
+            </>
+          ) : null}
+        </p>
       </header>
 
-      {jobRows.length > 0 ? (
-        <RelatedRecordCard title="Job" count={jobRows.length} rows={jobRows} emptyTitle="No linked job" />
+      {/* WHERE + WHO — the focal pair. Everything below the rule is desk work. */}
+      {place || contacts.length > 0 ? (
+        <div className="space-y-1.5 px-3 pb-3">
+          {place ? <NavigateLink place={place} /> : null}
+          {contacts.map((c, i) => (
+            <CrewContactRow
+              key={`${c.name}:${i}`}
+              contact={c}
+              settingsHref={`/${orgSlug}/${event.slug}/settings`}
+            />
+          ))}
+        </div>
       ) : null}
-      {proposalRows.length > 0 ? (
-        <RelatedRecordCard title="Proposals" count={proposalRows.length} rows={proposalRows} emptyTitle="No proposals" />
-      ) : null}
-      {invoiceRows.length > 0 ? (
-        <RelatedRecordCard title="Invoices" count={invoiceRows.length} rows={invoiceRows} emptyTitle="No invoices" />
+
+      {showRunway || paperwork.length > 0 ? (
+        <div className={cn('space-y-2 px-3 py-2.5', showRunway && 'border-t border-border')}>
+          {showRunway ? (
+            <p className="text-xs text-muted-foreground">
+              <span className="font-semibold tabular-nums text-[var(--money-green)]">
+                {formatMoney(runwayJob.inflowBefore)}
+              </span>{' '}
+              expected to land before this job
+            </p>
+          ) : null}
+          {paperwork.length > 0 ? (
+            // The kit's row grammar, de-chromed: one hairline-ruled ledger in
+            // place of three stacked cards. previewLimit is the row count so
+            // the brick never renders its inert "View all →" line here.
+            <RelatedRecordCard
+              title="Paperwork"
+              count={paperwork.length}
+              rows={paperwork}
+              previewLimit={paperwork.length}
+              emptyTitle="No linked records"
+              className="-mx-3 rounded-none border-0 bg-transparent shadow-none"
+            />
+          ) : null}
+        </div>
       ) : null}
     </section>
   )
@@ -194,18 +411,92 @@ function SpineList({
       <h3 className="mb-1.5 text-[11px] font-semibold uppercase tracking-[.06em] text-muted-foreground">{label}</h3>
       <ul role="list" className="space-y-1">
         {items.map((i) => (
-          <li key={`${i.kind}:${i.id}`}>
+          <li
+            key={`${i.kind}:${i.id}`}
+            className={cn(
+              'flex items-stretch overflow-hidden rounded-md border border-border bg-card',
+              tone === 'alert' && 'border-l-2 border-l-destructive'
+            )}
+          >
             <Link
               href={i.href}
-              className={cn(
-                'block rounded-md border border-border bg-card px-2.5 py-2 transition-colors hover:bg-muted focus-visible:bg-muted motion-reduce:transition-none',
-                tone === 'alert' && 'border-l-2 border-l-destructive'
-              )}
+              className="flex min-h-11 min-w-0 flex-1 flex-col justify-center px-2.5 py-2 transition-colors hover:bg-muted focus-visible:bg-muted motion-reduce:transition-none"
             >
-              <span className={cn('block text-[13px] font-medium', tone === 'alert' ? 'text-destructive' : 'text-foreground')}>
+              <span
+                className={cn(
+                  'block truncate text-[13px] font-medium',
+                  tone === 'alert' ? 'text-destructive' : 'text-foreground'
+                )}
+              >
                 {i.title}
               </span>
               {i.detail ? <span className="block truncate text-xs text-muted-foreground">{i.detail}</span> : null}
+            </Link>
+            {/* A drop pickup is a place you drive to. The feed already carries
+                its LOCATION line for the ICS export, so the same string buys a
+                44x44 navigate target here. Rendered as a SIBLING of the row
+                link — an <a> may not contain another <a>. */}
+            {i.location ? (
+              <a
+                href={mapsHref(i.location)}
+                target="_blank"
+                rel="noreferrer"
+                aria-label={`Navigate to ${i.location}`}
+                className="flex min-h-11 w-11 shrink-0 items-center justify-center border-l border-border text-muted-foreground transition-colors hover:bg-muted focus-visible:bg-muted motion-reduce:transition-none"
+              >
+                <MapPin className="size-4" aria-hidden />
+              </a>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
+/**
+ * Invoices FALLING DUE on the shown day.
+ *
+ * These are the `invoice_due` items the week and month cells already render as
+ * a money chip. The spine did not render them and its empty check ignored
+ * them, so a day carrying a $4,200 balance and no booked event read "Nothing
+ * scheduled" while its own grid cell showed the money — two surfaces built
+ * from one feed disagreeing. Distinct from a job's Paperwork ledger, which
+ * lists every invoice linked to that job whatever its due date.
+ */
+function MoneyDueList({ items }: { items: CalendarItem[] }) {
+  if (items.length === 0) return null
+  const total = items.reduce((sum, i) => sum + (i.amount ?? 0), 0)
+  return (
+    <section aria-label="Invoices due this day">
+      <div className="mb-1.5 flex items-baseline justify-between gap-2">
+        <h3 className="text-[11px] font-semibold uppercase tracking-[.06em] text-muted-foreground">Money due</h3>
+        {/* Only when there is more than one — a single balance is already on
+            its own row, and restating it would be the same number twice. */}
+        {items.length > 1 && total > 0 ? (
+          <span className="text-[11px] font-semibold tabular-nums text-[var(--money-green)]">
+            {formatMoney(total)} total
+          </span>
+        ) : null}
+      </div>
+      <ul role="list" className="space-y-1">
+        {items.map((i) => (
+          <li key={`${i.kind}:${i.id}`}>
+            <Link
+              href={i.href}
+              className="flex min-h-11 items-center gap-2 rounded-md border border-border bg-card px-2.5 py-2 transition-colors hover:bg-muted focus-visible:bg-muted motion-reduce:transition-none"
+            >
+              {/* colour + shape + an sr-only kind name, same mark the grids use */}
+              <KindDot kind={i.kind} />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[13px] font-medium text-foreground">{i.title}</span>
+                {i.detail ? <span className="block truncate text-xs text-muted-foreground">{i.detail}</span> : null}
+              </span>
+              {i.amount != null ? (
+                <span className="shrink-0 text-[13px] font-semibold tabular-nums text-[var(--money-green)]">
+                  {formatMoney(i.amount)}
+                </span>
+              ) : null}
             </Link>
           </li>
         ))}
@@ -218,11 +509,17 @@ export function DaySpine({ orgSlug, today, detail, runway = [] }: DaySpineProps)
   const now = new Date()
   const runwayByEvent = new Map(runway.map((r) => [r.eventId, r]))
   const isToday = detail.ymd === today
+  const hasJobs = detail.events.length > 0
   const isEmpty =
-    detail.events.length === 0 &&
+    !hasJobs &&
     detail.tasks.length === 0 &&
     detail.blockers.length === 0 &&
-    detail.drops.length === 0
+    detail.drops.length === 0 &&
+    // The day's own money counts as something scheduled. Leaving it out here
+    // is what produced "Nothing scheduled" over a $4,200 balance.
+    detail.invoicesDue.length === 0
+
+  const moneyDue = <MoneyDueList items={detail.invoicesDue} />
 
   return (
     <aside aria-label="Day detail" className="flex h-full min-h-0 w-full flex-col overflow-y-auto bg-background">
@@ -249,6 +546,13 @@ export function DaySpine({ orgSlug, today, detail, runway = [] }: DaySpineProps)
         />
       ) : (
         <div className="space-y-4 p-4">
+          {/* Stop-work first: a lapsed document can cancel the drive. Still
+              folded into the spine (decision #3) — never a separate rail. */}
+          <SpineList label="Blocking" items={detail.blockers} tone="alert" />
+
+          {/* On a day with no job, the money IS the day. */}
+          {!hasJobs ? moneyDue : null}
+
           {detail.events.map((event) => (
             <EventBlock
               key={event.id}
@@ -260,10 +564,11 @@ export function DaySpine({ orgSlug, today, detail, runway = [] }: DaySpineProps)
             />
           ))}
 
-          {/* Blockers fold in here (decision #3) — no separate attention rail. */}
-          <SpineList label="Blocking" items={detail.blockers} tone="alert" />
-          <SpineList label="Prep tasks" items={detail.tasks} />
           <SpineList label="Drop pickups" items={detail.drops} />
+          <SpineList label="Prep tasks" items={detail.tasks} />
+
+          {/* …and the money last, when there is a job to drive to. */}
+          {hasJobs ? moneyDue : null}
         </div>
       )}
     </aside>
