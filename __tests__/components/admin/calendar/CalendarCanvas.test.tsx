@@ -10,6 +10,12 @@ vi.mock('next/navigation', () => ({
   usePathname: () => '/acme/calendar',
 }))
 
+// AgendaView (rendered by the canvas in agenda view) imports its bulk-reschedule
+// server action; without this the real module pulls in firebase-admin.
+vi.mock('@/actions/calendar-bulk', () => ({
+  bulkRescheduleAgenda: vi.fn().mockResolvedValue({ moved: 0, failures: [] }),
+}))
+
 import { CalendarCanvas } from '@/components/admin/calendar/CalendarCanvas'
 
 const items: CalendarItem[] = [
