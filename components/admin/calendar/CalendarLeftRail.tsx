@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { TabLinks } from '@/components/ui/tab-links'
@@ -12,6 +12,7 @@ import type { RunwayJob } from '@/lib/calendar-cashflow'
 import { CalendarKpiBand } from '@/components/admin/calendar/CalendarKpiBand'
 import { RunwayStrip } from '@/components/admin/calendar/RunwayStrip'
 import { SubscribePanel } from '@/components/admin/calendar/SubscribePanel'
+import { KindLegend } from '@/components/admin/calendar/KindDot'
 import { Button } from '@/components/ui/button'
 
 interface CalendarLeftRailProps {
@@ -29,6 +30,33 @@ interface CalendarLeftRailProps {
 
 const YMD = /^\d{4}-\d{2}-\d{2}$/
 const WEEKDAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S']
+
+const FOCUSABLE_SELECTOR =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+
+/** Tailwind's `md` breakpoint, as a media query — the drawer only exists below it. */
+const BELOW_MD = '(max-width: 767.98px)'
+
+/**
+ * Whether the rail is currently in its off-canvas-drawer shape.
+ *
+ * `inert` is an HTML attribute, so it cannot be media-queried in CSS the way
+ * the `-translate-x-full` that used to "hide" the drawer was — the layout has
+ * to know the breakpoint too. Starts `false` so the server HTML and the first
+ * client render agree (no hydration mismatch); the effect corrects it on the
+ * first commit.
+ */
+function useBelowMd(): boolean {
+  const [below, setBelow] = useState(false)
+  useEffect(() => {
+    const mq = window.matchMedia(BELOW_MD)
+    const sync = () => setBelow(mq.matches)
+    sync()
+    mq.addEventListener('change', sync)
+    return () => mq.removeEventListener('change', sync)
+  }, [])
+  return below
+}
 
 // Mirrors AdminSidebar / ClientQueueRail's hamburger so the drawer reads as the
 // same off-canvas pattern.
@@ -76,6 +104,13 @@ export function CalendarLeftRail({ orgSlug, today, rollup, runway, subscribeUrl 
   // mobile instead of being hidden. Always opens closed.
   const [mobileOpen, setMobileOpen] = useState(false)
 
+  const belowMd = useBelowMd()
+  const panelRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  // The drawer only EXISTS below md; at md+ the same element is the in-flow
+  // column and must stay fully interactive.
+  const drawerOpen = belowMd && mobileOpen
+
   // Navigating (picking a day / toggling scope) dismisses the drawer.
   useEffect(() => {
     setMobileOpen(false)
@@ -89,6 +124,60 @@ export function CalendarLeftRail({ orgSlug, today, rollup, runway, subscribeUrl 
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [mobileOpen])
+
+  /**
+   * Focus management for the drawer (WCAG 2.4.3 Focus Order, 2.4.7 Focus
+   * Visible, 2.4.11 Focus Not Obscured).
+   *
+   * The drawer used to be "hidden" by `-translate-x-full` alone. A translated
+   * element is still rendered, still focusable and still in the tab order, so
+   * ~40 rail controls — the filter, every day of the mini-month, the runway
+   * rows, the subscribe button — sat off the left edge of a phone screen
+   * collecting Tab stops that moved focus somewhere invisible. Nothing moved
+   * focus IN when it opened, nothing trapped it, nothing handed it back.
+   *
+   * `inert` (baseline since 2023) is what actually removes the subtree from the
+   * tab order AND the accessibility tree, and unlike unmounting it keeps the
+   * mini-month's local month cursor alive across open/close.
+   */
+  useEffect(() => {
+    if (!drawerOpen) return
+    const opener = triggerRef.current
+    // Move focus INTO the drawer; the panel itself, so the reader starts at the
+    // top of the panel rather than mid-way down whatever the first link is.
+    panelRef.current?.focus()
+    return () => {
+      // …and hand it back to the control that opened it.
+      if (opener?.isConnected) opener.focus()
+    }
+  }, [drawerOpen])
+
+  /** Wrap Tab at the drawer's edges — the page behind it is not reachable. */
+  const onPanelKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (!drawerOpen || e.key !== 'Tab') return
+      const panel = panelRef.current
+      if (!panel) return
+      const focusable = Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
+      if (focusable.length === 0) {
+        e.preventDefault()
+        return
+      }
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      const active = document.activeElement
+      if (e.shiftKey) {
+        if (active === first || active === panel) {
+          e.preventDefault()
+          last.focus()
+        }
+      } else if (active === last) {
+        e.preventDefault()
+        first.focus()
+      }
+    },
+    [drawerOpen]
+  )
 
   const view = params.get('view') ?? undefined
   const kinds = params.get('kinds') ?? undefined
@@ -133,12 +222,13 @@ export function CalendarLeftRail({ orgSlug, today, rollup, runway, subscribeUrl 
           (mirrors AdminSidebar's own mobile bar). Hidden from md up. */}
       <div className="flex items-center gap-3 border-b border-sidebar-border bg-sidebar px-4 py-3 text-sidebar-foreground md:hidden">
         <button
+          ref={triggerRef}
           type="button"
           onClick={() => setMobileOpen(true)}
           aria-label="Open calendar panel"
           aria-expanded={mobileOpen}
           aria-controls="calendar-left-rail"
-          className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-card"
+          className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-sidebar-hover focus-visible:bg-sidebar-hover"
         >
           <MenuIcon />
         </button>
@@ -151,21 +241,34 @@ export function CalendarLeftRail({ orgSlug, today, rollup, runway, subscribeUrl 
 
       <div
         id="calendar-left-rail"
+        ref={panelRef}
+        // Only a dialog while it IS one: at md+ this is the in-flow column.
+        role={drawerOpen ? 'dialog' : undefined}
+        aria-modal={drawerOpen ? true : undefined}
+        aria-label={drawerOpen ? 'Calendar panel' : undefined}
+        tabIndex={drawerOpen ? -1 : undefined}
+        onKeyDown={onPanelKeyDown}
+        // The one line that takes the ~40 off-screen controls out of the tab
+        // order and the a11y tree. Never set at md+, where the rail is visible.
+        inert={belowMd && !mobileOpen}
         className={cn(
-          'flex h-full w-[280px] shrink-0 flex-col overflow-y-auto bg-sidebar md:border-r md:border-sidebar-border',
+          'flex h-full w-[280px] shrink-0 flex-col overflow-y-auto bg-sidebar outline-none md:border-r md:border-sidebar-border',
           // Below md: off-canvas drawer, out of flow so the canvas gets full width.
           'max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-50 max-md:w-[280px]',
           'max-md:transition-transform max-md:duration-200 motion-reduce:transition-none',
           mobileOpen ? 'max-md:translate-x-0' : 'max-md:-translate-x-full'
         )}
       >
-      <div className="border-b border-sidebar-border px-4 py-3">
+      <div className="space-y-3 border-b border-sidebar-border px-4 py-3">
         <TabLinks
           tabs={filterTabs}
           active={kinds === 'pipeline' ? 'pipeline' : 'all'}
           ariaLabel="Calendar filter"
           className="w-full"
         />
+        {/* Persistent, not behind a disclosure: the shape/colour grammar the
+            grids use is only an accessible channel if it is decodable. */}
+        <KindLegend />
       </div>
 
       {/* Mini-month */}
@@ -177,7 +280,7 @@ export function CalendarLeftRail({ orgSlug, today, rollup, runway, subscribeUrl 
               type="button"
               aria-label="Previous month"
               onClick={() => stepMonth(-1)}
-              className="flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-card motion-reduce:transition-none"
+              className="flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-sidebar-hover focus-visible:bg-sidebar-hover motion-reduce:transition-none"
             >
               ←
             </button>
@@ -185,7 +288,7 @@ export function CalendarLeftRail({ orgSlug, today, rollup, runway, subscribeUrl 
               type="button"
               aria-label="Next month"
               onClick={() => stepMonth(1)}
-              className="flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-card motion-reduce:transition-none"
+              className="flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-sidebar-hover focus-visible:bg-sidebar-hover motion-reduce:transition-none"
             >
               →
             </button>
@@ -215,9 +318,9 @@ export function CalendarLeftRail({ orgSlug, today, rollup, runway, subscribeUrl 
                 href={dayHref(day)}
                 aria-current={isSelected ? 'date' : undefined}
                 className={cn(
-                  'flex h-6 items-center justify-center rounded-md text-[11px] tabular-nums transition-colors hover:bg-card focus-visible:bg-card motion-reduce:transition-none',
+                  'flex h-6 items-center justify-center rounded-md text-[11px] tabular-nums transition-colors hover:bg-sidebar-hover focus-visible:bg-sidebar-hover motion-reduce:transition-none',
                   isToday && 'bg-foreground font-bold text-background',
-                  isSelected && !isToday && 'bg-card font-semibold text-foreground ring-1 ring-inset ring-ring',
+                  isSelected && !isToday && 'bg-sidebar-accent font-semibold text-sidebar-accent-foreground ring-1 ring-inset ring-ring',
                   !isToday && !isSelected && 'text-sidebar-foreground'
                 )}
               >

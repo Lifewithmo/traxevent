@@ -31,6 +31,14 @@ const base = {
   kinds: 'pipeline',
 }
 
+/** The element the single-character shortcuts are bound to (WCAG 2.1.4's focus
+ *  exception). Firing on `window` deliberately does NOT reach it. */
+function cockpit(): HTMLElement {
+  const el = document.querySelector('[data-slot="calendar-cockpit"]')
+  if (!el) throw new Error('cockpit element not found')
+  return el as HTMLElement
+}
+
 describe('CalendarCanvas', () => {
   beforeEach(() => push.mockClear())
 
@@ -58,9 +66,9 @@ describe('CalendarCanvas', () => {
 
   it('moves the anchor forward/back with the arrow keys, preserving view + kinds', () => {
     render(<CalendarCanvas {...base} view="week" />)
-    fireEvent.keyDown(window, { key: 'ArrowRight' })
+    fireEvent.keyDown(cockpit(), { key: 'ArrowRight' })
     expect(push).toHaveBeenCalledWith('/acme/calendar?view=week&week=2026-08-26&kinds=pipeline')
-    fireEvent.keyDown(window, { key: 'ArrowLeft' })
+    fireEvent.keyDown(cockpit(), { key: 'ArrowLeft' })
     expect(push).toHaveBeenCalledWith('/acme/calendar?view=week&week=2026-08-12&kinds=pipeline')
   })
 
@@ -68,27 +76,27 @@ describe('CalendarCanvas', () => {
     // Repro of the desync bug: stepping the week param here left DayView pinned to
     // the old selectedDay while the window bound to the new day → blank grid.
     render(<CalendarCanvas {...base} view="day" selectedDay="2026-08-20" />)
-    fireEvent.keyDown(window, { key: 'ArrowRight' })
+    fireEvent.keyDown(cockpit(), { key: 'ArrowRight' })
     expect(push).toHaveBeenCalledWith('/acme/calendar/2026-08-21?view=day&kinds=pipeline')
-    fireEvent.keyDown(window, { key: 'ArrowLeft' })
+    fireEvent.keyDown(cockpit(), { key: 'ArrowLeft' })
     expect(push).toHaveBeenCalledWith('/acme/calendar/2026-08-19?view=day&kinds=pipeline')
   })
 
   it('in Day view with a day open, Today jumps to today’s day route', () => {
     render(<CalendarCanvas {...base} view="day" selectedDay="2026-08-20" />)
-    fireEvent.keyDown(window, { key: 't' })
+    fireEvent.keyDown(cockpit(), { key: 't' })
     expect(push).toHaveBeenCalledWith('/acme/calendar/2026-08-18?view=day&kinds=pipeline')
   })
 
   it('week-view arrows still step the week (day-stepping only when a day is open)', () => {
     render(<CalendarCanvas {...base} view="week" />)
-    fireEvent.keyDown(window, { key: 'ArrowRight' })
+    fireEvent.keyDown(cockpit(), { key: 'ArrowRight' })
     expect(push).toHaveBeenCalledWith('/acme/calendar?view=week&week=2026-08-26&kinds=pipeline')
   })
 
   it('switches views with single-key shortcuts', () => {
     render(<CalendarCanvas {...base} view="week" />)
-    fireEvent.keyDown(window, { key: 'm' })
+    fireEvent.keyDown(cockpit(), { key: 'm' })
     expect(push).toHaveBeenCalledWith('/acme/calendar?view=month&week=2026-08-19&kinds=pipeline')
   })
 
@@ -144,5 +152,66 @@ describe('CalendarCanvas', () => {
     const { container } = render(<CalendarCanvas {...base} view="week" />)
     const pane = container.querySelector('[data-slot="canvas-pane"]')
     expect(pane?.className).toMatch(/motion-reduce:/)
+  })
+
+  // ── WCAG 2.1.4 Character Key Shortcuts (Level A) ──────────────────────────
+  // These were bound on `window`, unscoped, with no off switch and no remap.
+  // `d` and `t` are NVDA/JAWS single-letter quick-nav keys, so a screen-reader
+  // user trying to move by landmark or table was fired through a route change
+  // instead. The conformant escape is the focus exception: active only while
+  // the component itself has focus.
+  it('does NOT fire the single-key shortcuts from outside the cockpit', () => {
+    render(
+      <div>
+        <button type="button">outside</button>
+        <CalendarCanvas {...base} view="week" />
+      </div>
+    )
+    const outside = screen.getByRole('button', { name: 'outside' })
+    outside.focus()
+    for (const key of ['m', 'w', 'd', 'a', 't', 'ArrowLeft', 'ArrowRight']) {
+      fireEvent.keyDown(outside, { key })
+      fireEvent.keyDown(window, { key })
+      fireEvent.keyDown(document.body, { key })
+    }
+    expect(push).not.toHaveBeenCalled()
+    // …and the very same keys still work once focus is inside the cockpit.
+    fireEvent.keyDown(cockpit(), { key: 'd' })
+    expect(push).toHaveBeenCalledWith('/acme/calendar?view=day&week=2026-08-19&kinds=pipeline')
+  })
+
+  it('ignores keyboard auto-repeat so a held arrow cannot machine-gun router.push', () => {
+    render(<CalendarCanvas {...base} view="week" />)
+    // The first keydown of a hold, then the auto-repeat ticks (~30/s against a
+    // force-dynamic route, one Firestore round-trip each).
+    fireEvent.keyDown(cockpit(), { key: 'ArrowRight' })
+    for (let i = 0; i < 20; i++) fireEvent.keyDown(cockpit(), { key: 'ArrowRight', repeat: true })
+    expect(push).toHaveBeenCalledTimes(1)
+  })
+
+  it('publishes the bindings in a ? shortcuts sheet, reachable by key and by pointer', async () => {
+    render(<CalendarCanvas {...base} view="week" />)
+    // The bindings used to exist only in a source comment.
+    fireEvent.keyDown(cockpit(), { key: '?' })
+    const sheet = await screen.findByRole('dialog', { name: /keyboard shortcuts/i })
+    for (const cap of ['M', 'W', 'D', 'A', 'T', '←', '→', '?']) {
+      expect(within(sheet).getAllByText(cap).length).toBeGreaterThan(0)
+    }
+    // Every cap is a real <kbd>, not styled prose.
+    expect(sheet.querySelectorAll('kbd').length).toBeGreaterThanOrEqual(8)
+  })
+
+  it('offers a visible ? affordance in the toolbar for pointer users', async () => {
+    render(<CalendarCanvas {...base} view="week" />)
+    const trigger = screen.getByRole('button', { name: /keyboard shortcuts/i })
+    expect(trigger.querySelector('kbd')?.textContent).toBe('?')
+    fireEvent.click(trigger)
+    expect(await screen.findByRole('dialog', { name: /keyboard shortcuts/i })).toBeInTheDocument()
+  })
+
+  it('annotates the stepper controls with aria-keyshortcuts', () => {
+    render(<CalendarCanvas {...base} view="week" />)
+    expect(screen.getByRole('link', { name: 'Previous' })).toHaveAttribute('aria-keyshortcuts', 'ArrowLeft')
+    expect(screen.getByRole('link', { name: 'Next' })).toHaveAttribute('aria-keyshortcuts', 'ArrowRight')
   })
 })

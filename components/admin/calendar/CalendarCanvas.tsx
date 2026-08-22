@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Button, buttonVariants } from '@/components/ui/button'
@@ -106,35 +106,66 @@ export function CalendarCanvas({ orgSlug, items, today, view, anchor, kinds, sel
     : link({ week: today })
 
   const [paletteOpen, setPaletteOpen] = useState(false)
+  const [shortcutsOpen, setShortcutsOpen] = useState(false)
 
-  // Keyboard: ⌘K toggles the palette; bare letters switch views; arrows step the
-  // anchor. Modifiers (other than the ⌘K combo) and typing targets are ignored so
-  // the shortcuts never fire mid-input.
+  // ⌘K stays on the window: it is a MODIFIER combo, which WCAG 2.1.4 does not
+  // cover, and a command menu that only opens once you have tabbed into the
+  // right region is not a command menu.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault()
         setPaletteOpen((o) => !o)
-        return
-      }
-      if (paletteOpen || e.metaKey || e.ctrlKey || e.altKey || isTypingTarget(e.target)) return
-      switch (e.key) {
-        case 'm': router.push(link({ view: 'month' })); break
-        case 'w': router.push(link({ view: 'week' })); break
-        case 'd': router.push(link({ view: 'day' })); break
-        case 'a': router.push(link({ view: 'agenda' })); break
-        case 't': router.push(todayHref); break
-        case 'ArrowRight': router.push(stepHref(1)); break
-        case 'ArrowLeft': router.push(stepHref(-1)); break
-        default: return
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [paletteOpen, view, anchor, today, kindsParam, selectedDay]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [])
+
+  /**
+   * The single-character shortcuts (m/w/d/a/t/? and the arrows) are bound HERE,
+   * on the cockpit element, not on `window`.
+   *
+   * WCAG 2.1.4 (Character Key Shortcuts, Level A) forbids a bare-letter
+   * shortcut unless it can be turned off, remapped, OR is "active only when
+   * that component has focus". These were on `window` with none of the three —
+   * and `d`/`t` are NVDA and JAWS single-letter quick-nav keys, so a screen
+   * reader user pressing `d` to jump by landmark, or `t` by table, was fired
+   * through a route change instead. That is not a rough edge; it makes the page
+   * unreadable. Binding to the container takes the focus exception: a keydown
+   * only bubbles here when focus is already inside the cockpit.
+   *
+   * `e.repeat` is dropped on the floor because these all call `router.push`
+   * against a `force-dynamic` route — holding an arrow down was ~30 server
+   * round-trips a second, one per auto-repeat tick.
+   */
+  function onCockpitKeyDown(e: React.KeyboardEvent) {
+    if (e.repeat) return
+    if (paletteOpen || shortcutsOpen) return
+    if (e.metaKey || e.ctrlKey || e.altKey || isTypingTarget(e.target)) return
+    switch (e.key) {
+      case 'm': router.push(link({ view: 'month' })); break
+      case 'w': router.push(link({ view: 'week' })); break
+      case 'd': router.push(link({ view: 'day' })); break
+      case 'a': router.push(link({ view: 'agenda' })); break
+      case 't': router.push(todayHref); break
+      case '?': setShortcutsOpen(true); break
+      case 'ArrowRight': router.push(stepHref(1)); break
+      case 'ArrowLeft': router.push(stepHref(-1)); break
+      default: return
+    }
+    e.preventDefault()
+  }
 
   return (
-    <div className="flex min-w-0 flex-1 flex-col">
+    // tabIndex -1 so clicking anywhere on the canvas hands the cockpit focus and
+    // the scoped shortcuts come alive; it is never a Tab stop of its own.
+    <div
+      data-slot="calendar-cockpit"
+      tabIndex={-1}
+      onKeyDown={onCockpitKeyDown}
+      className="flex min-w-0 flex-1 flex-col outline-none"
+    >
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3">
         <Button
@@ -143,6 +174,7 @@ export function CalendarCanvas({ orgSlug, items, today, view, anchor, kinds, sel
           size="sm"
           onClick={() => setPaletteOpen(true)}
           aria-label="Open command menu"
+          aria-keyshortcuts="Meta+K Control+K"
           className="gap-1.5"
         >
           <span aria-hidden>⌘K</span>
@@ -152,13 +184,28 @@ export function CalendarCanvas({ orgSlug, items, today, view, anchor, kinds, sel
         <div className="ml-auto flex flex-wrap items-center gap-2">
           {view !== 'agenda' ? (
             <div className="flex items-center gap-1">
-              <Link href={stepHref(-1)} aria-label="Previous" className={cn(buttonVariants({ variant: 'outline', size: 'sm' }))}>
+              <Link
+                href={stepHref(-1)}
+                aria-label="Previous"
+                aria-keyshortcuts="ArrowLeft"
+                className={cn(buttonVariants({ variant: 'outline', size: 'sm' }))}
+              >
                 ←
               </Link>
-              <Link href={todayHref} className={cn(buttonVariants({ variant: 'outline', size: 'sm' }))}>
+              <Link
+                href={todayHref}
+                aria-keyshortcuts="T"
+                className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'gap-1.5')}
+              >
                 Today
+                <Kbd className="max-sm:hidden">T</Kbd>
               </Link>
-              <Link href={stepHref(1)} aria-label="Next" className={cn(buttonVariants({ variant: 'outline', size: 'sm' }))}>
+              <Link
+                href={stepHref(1)}
+                aria-label="Next"
+                aria-keyshortcuts="ArrowRight"
+                className={cn(buttonVariants({ variant: 'outline', size: 'sm' }))}
+              >
                 →
               </Link>
             </div>
@@ -168,6 +215,19 @@ export function CalendarCanvas({ orgSlug, items, today, view, anchor, kinds, sel
             active={view}
             tabs={VIEWS.map((v) => ({ key: v, label: v[0].toUpperCase() + v.slice(1), href: link({ view: v }) }))}
           />
+          {/* The bindings used to exist only in a source comment. This is the
+              discoverable entry point, and it carries its own key as a hint. */}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setShortcutsOpen(true)}
+            aria-label="Keyboard shortcuts"
+            aria-keyshortcuts="Shift+?"
+            className="px-2"
+          >
+            <Kbd>?</Kbd>
+          </Button>
         </div>
       </div>
 
@@ -202,7 +262,64 @@ export function CalendarCanvas({ orgSlug, items, today, view, anchor, kinds, sel
           router.push(href)
         }}
       />
+
+      <ShortcutsSheet open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
     </div>
+  )
+}
+
+/** A visible key cap. Same styling everywhere a binding is surfaced. */
+function Kbd({ children, className }: { children: React.ReactNode; className?: string }) {
+  return (
+    <kbd
+      className={cn(
+        'inline-flex min-w-5 items-center justify-center rounded border border-border bg-muted px-1 font-mono text-[10px] font-semibold leading-4 text-foreground',
+        className
+      )}
+    >
+      {children}
+    </kbd>
+  )
+}
+
+const SHORTCUTS: Array<{ keys: string[]; label: string }> = [
+  { keys: ['M'], label: 'Month view' },
+  { keys: ['W'], label: 'Week view' },
+  { keys: ['D'], label: 'Day view' },
+  { keys: ['A'], label: 'Agenda view' },
+  { keys: ['T'], label: 'Jump to today' },
+  { keys: ['←', '→'], label: 'Step back / forward' },
+  { keys: ['⌘', 'K'], label: 'Command menu (anywhere)' },
+  { keys: ['?'], label: 'This sheet' },
+]
+
+/** The published contract for the scoped bindings — reachable by the `?` key
+ *  and by the toolbar button, so it is discoverable without a keyboard too. */
+function ShortcutsSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+  return (
+    <Dialog open={open} onOpenChange={(o) => (o ? undefined : onClose())}>
+      <DialogContent className="max-w-sm gap-0 p-0">
+        <DialogTitle className="border-b border-border px-4 py-3 text-sm font-semibold">
+          Keyboard shortcuts
+        </DialogTitle>
+        <dl className="divide-y divide-border/60 px-4 py-1">
+          {SHORTCUTS.map((s) => (
+            <div key={s.label} className="flex items-center justify-between gap-3 py-2">
+              <dt className="text-sm text-foreground">{s.label}</dt>
+              <dd className="flex shrink-0 items-center gap-1">
+                {s.keys.map((k) => (
+                  <Kbd key={k}>{k}</Kbd>
+                ))}
+              </dd>
+            </div>
+          ))}
+        </dl>
+        <p className="border-t border-border px-4 py-2.5 text-xs text-muted-foreground">
+          Single-key shortcuts fire only while the calendar itself has focus — click the grid or
+          Tab into it. That keeps them clear of screen-reader quick-nav keys.
+        </p>
+      </DialogContent>
+    </Dialog>
   )
 }
 

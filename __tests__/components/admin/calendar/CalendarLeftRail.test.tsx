@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, within } from '@testing-library/react'
 import type { WeekRollup } from '@/lib/calendar-week'
 import type { RunwayJob } from '@/lib/calendar-cashflow'
+import { CALENDAR_KINDS, CALENDAR_KIND_LABELS } from '@/lib/calendar'
 
 // The rail preserves ?view/?kinds by reading them client-side (a server layout
 // can't take searchParams). Selected day comes from the /calendar/[ymd] path.
@@ -40,9 +41,44 @@ const runway: RunwayJob[] = [
 
 const baseProps = { orgSlug: 'acme', today: '2026-08-18' }
 
+// Same list the rail traps Tab against.
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+
+// jsdom has no matchMedia, and the rail has to know its breakpoint in JS
+// (`inert` is an attribute, not something CSS can toggle). Default: desktop.
+let belowMd = false
+function stubMatchMedia() {
+  Object.defineProperty(window, 'matchMedia', {
+    configurable: true,
+    writable: true,
+    value: (query: string) =>
+      ({
+        media: query,
+        get matches() {
+          return belowMd
+        },
+        onchange: null,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        addListener: () => {},
+        removeListener: () => {},
+        dispatchEvent: () => false,
+      }) as unknown as MediaQueryList,
+  })
+}
+
+function panelOf(): HTMLElement {
+  const el = document.getElementById('calendar-left-rail')
+  if (!el) throw new Error('rail panel not found')
+  return el
+}
+
 describe('CalendarLeftRail', () => {
   beforeEach(() => {
     pathname = '/acme/calendar/2026-08-20'
+    belowMd = false
+    stubMatchMedia()
   })
 
   it('surfaces the Booked-$ KPI from rollup.bookedValue', () => {
@@ -125,6 +161,105 @@ describe('CalendarLeftRail', () => {
     expect(screen.getByRole('grid', { name: /mini calendar/i })).toBeInTheDocument()
     fireEvent.click(trigger)
     expect(trigger).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  // ── WCAG 2.4.3 Focus Order / 2.4.7 Focus Visible ──────────────────────────
+  // The drawer was "hidden" by `-translate-x-full` alone: still rendered, still
+  // focusable, ~40 controls collecting Tab stops off the left edge of a phone.
+  describe('mobile drawer focus management', () => {
+    beforeEach(() => {
+      belowMd = true
+    })
+
+    it('takes the closed drawer out of the tab order with inert', () => {
+      render(<CalendarLeftRail {...baseProps} rollup={rollup()} runway={runway} />)
+      const panel = panelOf()
+      expect(panel).toHaveAttribute('inert')
+      // Not a token gesture — there really are a lot of stops behind it.
+      expect(panel.querySelectorAll(FOCUSABLE).length).toBeGreaterThan(20)
+    })
+
+    it('drops inert the moment the drawer opens', () => {
+      render(<CalendarLeftRail {...baseProps} rollup={rollup()} runway={runway} />)
+      fireEvent.click(screen.getByRole('button', { name: /open calendar panel/i }))
+      expect(panelOf()).not.toHaveAttribute('inert')
+    })
+
+    it('moves focus INTO the drawer on open and gives it dialog semantics', () => {
+      render(<CalendarLeftRail {...baseProps} rollup={rollup()} runway={runway} />)
+      fireEvent.click(screen.getByRole('button', { name: /open calendar panel/i }))
+      const panel = panelOf()
+      expect(document.activeElement).toBe(panel)
+      expect(panel).toHaveAttribute('role', 'dialog')
+      expect(panel).toHaveAttribute('aria-modal', 'true')
+    })
+
+    it('traps Tab inside the open drawer, both directions', () => {
+      render(
+        <CalendarLeftRail
+          {...baseProps}
+          rollup={rollup()}
+          runway={runway}
+          subscribeUrl="https://app.example/ics/acme/tok123"
+        />
+      )
+      fireEvent.click(screen.getByRole('button', { name: /open calendar panel/i }))
+      const panel = panelOf()
+      const stops = Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE))
+      const [first, last] = [stops[0], stops[stops.length - 1]]
+
+      // Shift+Tab off the panel itself wraps to the end…
+      fireEvent.keyDown(panel, { key: 'Tab', shiftKey: true })
+      expect(document.activeElement).toBe(last)
+      // …and Tab off the last control wraps to the start.
+      fireEvent.keyDown(last, { key: 'Tab' })
+      expect(document.activeElement).toBe(first)
+    })
+
+    it('restores focus to the opener when the drawer closes', () => {
+      render(<CalendarLeftRail {...baseProps} rollup={rollup()} runway={runway} />)
+      const trigger = screen.getByRole('button', { name: /open calendar panel/i })
+      fireEvent.click(trigger)
+      expect(document.activeElement).not.toBe(trigger)
+      fireEvent.keyDown(window, { key: 'Escape' })
+      expect(document.activeElement).toBe(trigger)
+    })
+  })
+
+  it('never makes the md+ rail inert or a dialog — it is the in-flow column', () => {
+    render(<CalendarLeftRail {...baseProps} rollup={rollup()} runway={runway} />)
+    const panel = panelOf()
+    expect(panel).not.toHaveAttribute('inert')
+    expect(panel).not.toHaveAttribute('role')
+    expect(panel).not.toHaveAttribute('aria-modal')
+  })
+
+  // ── WCAG 1.4.11 ─── the rail's hover/focus was `bg-card` over `bg-sidebar`,
+  // and both are #ffffff in light mode: 1.000 contrast, a literal no-op.
+  it('gives the rail a hover/focus surface that is not the no-op bg-card', () => {
+    render(<CalendarLeftRail {...baseProps} rollup={rollup()} runway={runway} />)
+    const grid = screen.getByRole('grid', { name: /mini calendar/i })
+    const day = within(grid).getByRole('link', { name: /^15$/ })
+    expect(day.className).not.toMatch(/\bhover:bg-card\b/)
+    expect(day.className).toMatch(/hover:bg-sidebar-hover/)
+    expect(day.className).toMatch(/focus-visible:bg-sidebar-hover/)
+    const stepper = screen.getByRole('button', { name: /next month/i })
+    expect(stepper.className).not.toMatch(/\bhover:bg-card\b/)
+    expect(stepper.className).toMatch(/hover:bg-sidebar-hover/)
+  })
+
+  // ── WCAG 1.4.1 ─── the marks are only an accessible channel if decodable.
+  it('carries a persistent key for every calendar kind', () => {
+    render(<CalendarLeftRail {...baseProps} rollup={rollup()} runway={runway} />)
+    expect(screen.getByText('Key')).toBeInTheDocument()
+    for (const kind of CALENDAR_KINDS) {
+      expect(screen.getByText(CALENDAR_KIND_LABELS[kind])).toBeInTheDocument()
+    }
+    // …and each entry shows the SHAPE, not just a colour swatch.
+    const shapes = Array.from(document.querySelectorAll('[data-slot="kind-dot"]')).map((n) =>
+      n.getAttribute('data-shape')
+    )
+    expect(new Set(shapes).size).toBe(CALENDAR_KINDS.length)
   })
 
   it('lets the mini-month page months without leaving the day', () => {

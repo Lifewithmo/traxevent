@@ -84,6 +84,30 @@ describe('MonthGrid', () => {
     expect(screen.getByRole('link', { name: /book a job/i })).toHaveAttribute('href', '/acme/new-event?date=2026-08-01')
   })
 
+  // ── WCAG 1.4.1 Use of Colour ──────────────────────────────────────────────
+  it('names the KINDS in the cell label, not just how many items there are', () => {
+    // The cell's own aria-label swallows its subtree, so the dots' sr-only
+    // names never reach a reader. "3 items" alone hid the fact that one of
+    // them was an invoice coming due.
+    const { container } = render(<MonthGrid orgSlug="acme" items={items} month="2026-08" today="2026-08-01" />)
+    const label = cellEl(container, '2026-08-10').getAttribute('aria-label') ?? ''
+    expect(label).toMatch(/3 items/)
+    expect(label).toMatch(/1 Booked event/)
+    expect(label).toMatch(/1 Task/)
+    expect(label).toMatch(/1 Invoice due/)
+  })
+
+  it('draws each density mark with a shape, not colour alone', () => {
+    const { container } = render(<MonthGrid orgSlug="acme" items={items} month="2026-08" today="2026-08-01" />)
+    const marks = Array.from(
+      cellEl(container, '2026-08-10').querySelectorAll('[data-slot="kind-dot"]')
+    )
+    expect(marks).toHaveLength(3)
+    // event / task / invoice_due — three kinds, three silhouettes.
+    expect(new Set(marks.map((m) => m.getAttribute('data-shape'))).size).toBe(3)
+    for (const m of marks) expect(m.querySelector('svg')).toBeTruthy()
+  })
+
   it('is not empty when a multi-day event only spans into the month', () => {
     const spanning: CalendarItem[] = [
       { id: 'span', title: 'Festival', date: '2026-07-30', endDate: '2026-08-02', kind: 'event', href: '/acme/fest' },

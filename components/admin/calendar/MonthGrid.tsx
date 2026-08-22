@@ -1,10 +1,10 @@
 import Link from 'next/link'
 import { buttonVariants } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
-import { feedForDay, type CalendarItem } from '@/lib/calendar'
+import { CALENDAR_KIND_LABELS, CALENDAR_KINDS, feedForDay, type CalendarItem } from '@/lib/calendar'
 import { addDays } from '@/lib/opportunity-detail'
 import { cn } from '@/lib/utils'
-import { KIND_DOT } from '@/components/admin/calendar/kind-color'
+import { KindDot } from '@/components/admin/calendar/KindDot'
 
 /** Dots shown before a day collapses to "+N" (decision #2 — dots, not chips). */
 export const MAX_DOTS = 4
@@ -30,14 +30,25 @@ function daysInMonth(year: number, month1: number): number {
 
 const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
-/** Accessible cell name: "Wed, Aug 19, 3 items" / "…, 1 item" / "…, nothing scheduled".
- *  Month/day order is composed explicitly so it never flips to a locale's day-first form. */
-function cellAriaLabel(ymd: string, count: number): string {
+/** Accessible cell name: "Wed, Aug 19, 3 items: 2 Booked event, 1 Invoice due" /
+ *  "…, 1 item: 1 Task" / "…, nothing scheduled".
+ *
+ *  The kind breakdown is the cell's non-colour channel (WCAG 1.4.1). The dots
+ *  carry shape + an sr-only name of their own, but an `aria-label` on the
+ *  wrapping link SWALLOWS its subtree, so a screen-reader user would otherwise
+ *  hear only "3 items" and never learn that one of them is an overdue invoice.
+ *  Month/day order is composed explicitly so it never flips to a locale's
+ *  day-first form. */
+function cellAriaLabel(ymd: string, items: CalendarItem[]): string {
   const dt = new Date(`${ymd}T00:00:00.000Z`)
   const weekday = dt.toLocaleDateString(undefined, { weekday: 'short', timeZone: 'UTC' })
   const date = `${weekday}, ${MONTHS_SHORT[dt.getUTCMonth()]} ${dt.getUTCDate()}`
-  const items = count === 0 ? 'nothing scheduled' : `${count} ${count === 1 ? 'item' : 'items'}`
-  return `${date}, ${items}`
+  const count = items.length
+  if (count === 0) return `${date}, nothing scheduled`
+  const byKind = CALENDAR_KINDS.map((k) => ({ k, n: items.filter((i) => i.kind === k).length }))
+    .filter(({ n }) => n > 0)
+    .map(({ k, n }) => `${n} ${CALENDAR_KIND_LABELS[k]}`)
+  return `${date}, ${count} ${count === 1 ? 'item' : 'items'}: ${byKind.join(', ')}`
 }
 
 export function MonthGrid({ orgSlug, items, month, today, selected, kinds, view }: MonthGridProps) {
@@ -109,7 +120,7 @@ export function MonthGrid({ orgSlug, items, month, today, selected, kinds, view 
               href={dayHref(d)}
               data-slot="month-cell"
               data-day={d}
-              aria-label={cellAriaLabel(d, dayItems.length)}
+              aria-label={cellAriaLabel(d, dayItems)}
               aria-current={isSelected ? 'date' : undefined}
               className={cn(
                 'flex min-h-16 flex-col gap-1 border-b border-l border-border/60 p-1.5 text-left transition-colors hover:bg-muted focus-visible:bg-muted motion-reduce:transition-none',
@@ -129,13 +140,9 @@ export function MonthGrid({ orgSlug, items, month, today, selected, kinds, view 
               {dayItems.length > 0 ? (
                 <span className="mt-auto flex flex-wrap items-center gap-1">
                   {dots.map((i) => (
-                    <span
-                      key={`${i.kind}:${i.id}`}
-                      data-testid="density-dot"
-                      className="size-1.5 rounded-full"
-                      style={{ background: KIND_DOT[i.kind] }}
-                      aria-hidden
-                    />
+                    // hideLabel: the cell's own aria-label swallows the subtree,
+                    // so the kind names live there (cellAriaLabel) instead.
+                    <KindDot key={`${i.kind}:${i.id}`} kind={i.kind} hideLabel data-testid="density-dot" />
                   ))}
                   {overflow > 0 ? (
                     <span className="text-[10px] font-medium tabular-nums text-muted-foreground">+{overflow}</span>

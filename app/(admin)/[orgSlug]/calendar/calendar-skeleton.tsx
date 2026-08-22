@@ -3,16 +3,23 @@ import { Skeleton } from '@/components/ui/skeleton'
 /**
  * Loading placeholders for the calendar cockpit, shaped like the real thing.
  *
- * IMPORTANT — there is deliberately NO left-rail skeleton here. `loading.tsx`
- * does not wrap the `layout.tsx` in its own segment, so the layout (and with it
- * the REAL <CalendarLeftRail/>) has already rendered by the time any of this is
- * on screen. Drawing a rail placeholder would paint a second rail beside the
- * live one. These fill only the layout's children slot:
+ * IMPORTANT — <CanvasSkeleton/> and <SpineSkeleton/> are for `loading.tsx`,
+ * which does NOT wrap `layout.tsx` in its own segment; they fill only the
+ * layout's children slot:
  *   <div className="flex min-w-0 flex-1 overflow-hidden max-lg:flex-col">
+ * Neither of them draws a rail — the layout owns that, and a rail placeholder
+ * here would paint a second rail beside the live one.
+ *
+ * <RailSkeleton/> is the exception, and it is used ONLY by the layout's own
+ * <Suspense> boundary around the rail's Firestore reads. `loading.tsx` cannot
+ * cover those (a loading file wraps a layout's CHILDREN, never the layout
+ * itself), so before that boundary existed a cold entry to /calendar blocked on
+ * the feed + events + ICS-token reads with the whole cockpit blank.
  *
  * Widths/breakpoints below are copied from the components they stand in for —
- * CalendarCanvas (toolbar + pane), WeekGrid (the 3rem gutter + 7 columns) and
- * the day-spine wrapper in [ymd]/page.tsx (lg:w-[360px]).
+ * CalendarCanvas (toolbar + pane), WeekGrid (the 3rem gutter + 7 columns),
+ * CalendarLeftRail (the 280px column + its mobile bar) and the day-spine
+ * wrapper in [ymd]/page.tsx (lg:w-[360px]).
  */
 
 /** Same grid template as WeekGrid — an hours gutter plus seven day columns. */
@@ -111,6 +118,54 @@ export function SpineSkeleton() {
         ))}
       </div>
     </div>
+  )
+}
+
+/**
+ * Mirrors <CalendarLeftRail/>: the mobile bar below md, then the 280px column —
+ * filter tabs + legend, mini-month, this-week KPIs, runway, subscribe.
+ */
+export function RailSkeleton() {
+  return (
+    <>
+      <div className="flex items-center gap-3 border-b border-sidebar-border bg-sidebar px-4 py-3 md:hidden">
+        <Skeleton className="size-8 rounded-md" />
+        <Skeleton className="h-4 w-20" />
+      </div>
+      <div
+        className="flex h-full w-[280px] shrink-0 flex-col overflow-hidden bg-sidebar max-md:hidden md:border-r md:border-sidebar-border"
+        data-slot="rail-skeleton"
+      >
+        <div className="space-y-3 border-b border-sidebar-border px-4 py-3">
+          <Skeleton className="h-7 w-full rounded-lg" />
+          <div className="grid grid-cols-2 gap-x-2 gap-y-1">
+            {[0, 1, 2, 3, 4, 5, 6].map((k) => (
+              <Skeleton key={k} className="h-3 w-full" />
+            ))}
+          </div>
+        </div>
+        <div className="space-y-2 border-b border-sidebar-border px-4 py-3">
+          <Skeleton className="h-3.5 w-28" />
+          <div className="grid grid-cols-7 gap-0.5">
+            {Array.from({ length: 35 }, (_, i) => (
+              <Skeleton key={i} className="h-6 rounded-md" />
+            ))}
+          </div>
+        </div>
+        <div className="space-y-2 border-b border-sidebar-border px-5 py-3">
+          <Skeleton className="h-2.5 w-20" />
+          {[0, 1, 2].map((r) => (
+            <Skeleton key={r} className="h-4 w-full" />
+          ))}
+        </div>
+        <div className="space-y-2 px-5 py-3">
+          <Skeleton className="h-2.5 w-24" />
+          {[0, 1].map((r) => (
+            <Skeleton key={r} className="h-8 w-full rounded-md" />
+          ))}
+        </div>
+      </div>
+    </>
   )
 }
 
