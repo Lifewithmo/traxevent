@@ -324,6 +324,9 @@ const SHORTCUTS: Array<{ keys: string[]; label: string }> = [
   { keys: ['A'], label: 'Agenda view' },
   { keys: ['T'], label: 'Jump to today' },
   { keys: ['←', '→'], label: 'Step back / forward' },
+  // Reschedule keys are scoped to a focused job chip (WCAG 2.1.4 focus exception)
+  // and are also published per-chip via aria-keyshortcuts.
+  { keys: ['[', ']'], label: 'Move the focused job a day (braces: a week; , . retime; < > resize)' },
   { keys: ['⌘', 'K'], label: 'Search jobs, customers & dates (anywhere)' },
   { keys: ['?'], label: 'This sheet' },
 ]
