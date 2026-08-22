@@ -182,3 +182,13 @@ export const orgEvents = cache(async (orgId: string): Promise<Event[]> => {
   await assertOrgMember(orgId)
   return (await loadCalendarSources(orgId, null, null)).events
 })
+
+/** The org's invoices, off the SAME memoised unbounded source load the feed and
+ *  events come from — so this costs zero extra reads. The cash runway needs the
+ *  raw invoices, not just the feed: buildCalendarFeed emits an `invoice_due` item
+ *  only for a sent, dated, unpaid invoice, so a settled one leaves no trace and
+ *  "nothing owed" cannot be told apart from "never billed" without them. */
+export const orgInvoices = cache(async (orgId: string): Promise<NormalizedInvoice[]> => {
+  await assertOrgMember(orgId)
+  return (await loadCalendarSources(orgId, null, null)).invoices
+})

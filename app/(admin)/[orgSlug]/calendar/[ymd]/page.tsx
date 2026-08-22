@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic'
 
 import { notFound } from 'next/navigation'
 import { getDayDetail } from '@/actions/calendar'
-import { orgCalendarFeed, orgEvents, orgIdBySlug } from '@/lib/calendar-fetch'
+import { orgCalendarFeed, orgEvents, orgInvoices, orgIdBySlug } from '@/lib/calendar-fetch'
 import { filterFeed, PIPELINE_KINDS } from '@/lib/calendar'
 import { feedInWindow, normalizeView } from '@/lib/calendar-window'
 import { buildRunway } from '@/lib/calendar-cashflow'
@@ -40,14 +40,15 @@ export default async function CalendarDayPage({
   // orgCalendarFeed / orgEvents are React.cache()'d, so these reuse the layout's
   // fetch within the request. getDayDetail keeps its own source fan-out (it needs
   // the raw arrays) — a tracked perf fast-follow, see lib/calendar-fetch.ts.
-  const [feed, events, detail] = await Promise.all([
+  const [feed, events, invoices, detail] = await Promise.all([
     orgCalendarFeed(orgId, orgSlug),
     orgEvents(orgId),
+    orgInvoices(orgId),
     getDayDetail(orgId, orgSlug, ymd),
   ])
   const scoped = kinds === 'pipeline' ? filterFeed(feed, PIPELINE_KINDS) : feed
   const items = feedInWindow(scoped, view, anchor)
-  const runway = buildRunway(feed, events, new Date())
+  const runway = buildRunway(feed, events, new Date(), invoices)
 
   return (
     <>

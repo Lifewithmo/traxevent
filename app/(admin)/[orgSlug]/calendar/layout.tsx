@@ -1,7 +1,7 @@
 export const dynamic = 'force-dynamic'
 
 import { notFound } from 'next/navigation'
-import { orgCalendarFeed, orgEvents, orgIdBySlug } from '@/lib/calendar-fetch'
+import { orgCalendarFeed, orgEvents, orgInvoices, orgIdBySlug } from '@/lib/calendar-fetch'
 import { ensureIcsToken } from '@/actions/calendar-sync'
 import { feedInWindow } from '@/lib/calendar-window'
 import { weekRollup } from '@/lib/calendar-week'
@@ -31,9 +31,10 @@ export default async function CalendarLayout({
   const today = todayYmd()
   // orgCalendarFeed / orgEvents are React.cache()'d, so the page (and the day
   // route) reuse this same fetch within the request instead of re-fanning out.
-  const [feed, events, icsToken] = await Promise.all([
+  const [feed, events, invoices, icsToken] = await Promise.all([
     orgCalendarFeed(orgId, orgSlug),
     orgEvents(orgId),
+    orgInvoices(orgId),
     ensureIcsToken(orgId),
   ])
   const origin = process.env.NEXT_PUBLIC_APP_ORIGIN ?? ''
@@ -51,7 +52,7 @@ export default async function CalendarLayout({
   // counted — matching what the WeekGrid renders. The runway scans the whole feed
   // forward to each upcoming booked job (receivables timing).
   const rollup = weekRollup(feedInWindow(feed, 'week', today), today)
-  const runway = buildRunway(feed, events, new Date())
+  const runway = buildRunway(feed, events, new Date(), invoices)
 
   return (
     // main (org layout) is a stretched, scrollable box — h-full fills it; the rail
