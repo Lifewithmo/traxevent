@@ -28,7 +28,16 @@ export interface Org {
   ai_voice_note?: string              // optional "How we sound" style note fed to AI drafting
   default_proposal_terms?: string    // seeded into new proposals' `terms` (snapshot, not a live reference)
   prep_lead_days?: number             // days of prep an event needs before the date; drives the pipeline book-by deadline (default 14)
+  business_hours?: BusinessHours      // the org's working window; shades out-of-hours rows on the calendar time grid (default 08:00–18:00)
   created_at: string
+}
+
+/** An org's working window, 'HH:mm' local — the same shape CalendarItem uses for
+ *  `start`/`end`. Absent on an org means the default (see DEFAULT_BUSINESS_HOURS
+ *  in components/admin/calendar/TimeGridDay.tsx), so no migration is required. */
+export interface BusinessHours {
+  start: string
+  end: string
 }
 
 // Brand kit (proposal builder redesign spec §2). All fields are public-safe

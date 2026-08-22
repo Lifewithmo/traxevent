@@ -1,9 +1,14 @@
+'use client'
+
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { buttonVariants } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { formatMoney } from '@/lib/money'
+import { todayYmd } from '@/lib/opportunity-detail'
 import { cn } from '@/lib/utils'
 import { CALENDAR_KIND_LABELS, type CalendarItem } from '@/lib/calendar'
+import type { BusinessHours } from '@/lib/types'
 import { KIND_DOT } from '@/components/admin/calendar/kind-color'
 
 // Hybrid time-grid geometry. Exported so callers (and tests) share the exact
@@ -11,8 +16,32 @@ import { KIND_DOT } from '@/components/admin/calendar/kind-color'
 export const PX_PER_HOUR = 48
 export const DAY_START_HOUR = 6 // 6am — earlier than most prep starts
 export const DAY_END_HOUR = 22 // 10pm — covers evening events
-// Floor so even a 15-minute window clears the WCAG touch target (44px > 24px min).
-const MIN_ITEM_PX = 44
+
+/** HEIGHT floor: WCAG 2.5.8 (AA) target minimum. It is deliberately the BARE
+ *  minimum, not the comfortable 44px, because every pixel of height floor is a
+ *  pixel of lie — a 15-minute drop window painted 44px tall claims 55 minutes,
+ *  and three back-to-back windows then pile on top of each other. 24px halves
+ *  the inflation (and the resulting lane pressure) while still clearing AA. */
+export const MIN_ITEM_PX = 24
+/** WIDTH floor: WCAG 2.5.5 (AAA) comfortable target — the size an operator
+ *  needs from a van, with gloves on. Horizontal room is free of honesty cost:
+ *  a wider chip never misstates the time, so width gets the generous number. */
+export const MIN_TARGET_PX = 44
+/** Narrowest an offset lane's exposed strip may get. Lane k starts `k * inset`
+ *  from the left and runs to the right edge, so `inset` is exactly the grab
+ *  strip the lane above leaves uncovered (Google-Calendar-style layering). */
+export const MIN_LANE_INSET_PX = MIN_TARGET_PX
+/** Natural (un-floored) height a chip must have before it earns a second line.
+ *  Below this the chip prints its title only — vertical position already encodes
+ *  the time, and the time text is what forced the old 44px floor. */
+export const TWO_LINE_MIN_PX = 32
+/** Body width assumed before the element has been measured (server render and
+ *  the first client paint). Only the lane cap reads it; chip widths are derived
+ *  from `right: 0`, so they are container-correct at every width regardless. */
+export const DEFAULT_BODY_WIDTH_PX = 320
+
+/** Org fallback when `Org.business_hours` is unset — no migration needed. */
+export const DEFAULT_BUSINESS_HOURS: BusinessHours = { start: '08:00', end: '18:00' }
 
 /** 'HH:mm' → fractional hour ('16:30' → 16.5). */
 function hourOf(hhmm: string): number {
@@ -33,8 +62,40 @@ function timeLabel(hhmm: string): string {
   return fmt12(h, m || 0)
 }
 
+/** The full 'start–end' string for a timed item, always from the TRUE hours —
+ *  never the window-clamped ones. */
+function rangeLabel(item: CalendarItem): string {
+  return `${timeLabel(item.start!)}${item.end ? `–${timeLabel(item.end)}` : ''}`
+}
+
 function hourRange(from: number, to: number): number[] {
   return Array.from({ length: to - from + 1 }, (_, i) => from + i)
+}
+
+/**
+ * The window a single day must render so nothing is clamped: the default
+ * [dayStartHour, dayEndHour] widened to the day's real extremes. A 5am load-in
+ * or a 1am teardown grows the grid instead of being silently squashed into the
+ * default band. Used by the Day view; the Week view keeps the shared window
+ * (seven columns share one gutter) and flags clipped items on the chip instead.
+ */
+export function dayWindowFor(
+  items: CalendarItem[],
+  dayStartHour: number = DAY_START_HOUR,
+  dayEndHour: number = DAY_END_HOUR
+): { dayStartHour: number; dayEndHour: number } {
+  let lo = dayStartHour
+  let hi = dayEndHour
+  for (const i of items) {
+    if (!i.start) continue
+    const a = hourOf(i.start)
+    const b = i.end ? hourOf(i.end) : a + 1
+    lo = Math.min(lo, Math.floor(Math.min(a, b)))
+    hi = Math.max(hi, Math.ceil(Math.max(a, b)))
+  }
+  lo = Math.max(0, lo)
+  hi = Math.min(24, Math.max(hi, lo + 1))
+  return { dayStartHour: lo, dayEndHour: hi }
 }
 
 interface TimeGridDayProps {
@@ -51,6 +112,8 @@ interface TimeGridDayProps {
   withGutter?: boolean
   dayStartHour?: number
   dayEndHour?: number
+  /** Org working window; out-of-hours rows are shaded. Defaults to 8am–6pm. */
+  businessHours?: BusinessHours
 }
 
 /** The shared hours column — one per week/day, aligned to the same scale as
@@ -105,119 +168,359 @@ function BandChip({ item }: { item: CalendarItem }) {
   )
 }
 
-interface PlacedItem {
+export type ClipEdge = 'top' | 'bottom' | 'both'
+
+export interface PlacedItem {
   item: CalendarItem
   top: number
   height: number
-  leftPct: number
-  widthPct: number
+  /** Inset from the body's left edge, in px. The chip renders `left: leftPx`
+   *  with `right: 0`, so its rendered width IS (bodyWidth − leftPx) — which the
+   *  inset rule plus the lane cap guarantee is at least MIN_TARGET_PX. */
+  leftPx: number
+  lane: number
+  zIndex: number
   invalid: boolean
+  /** Set when the item's TRUE hours run outside the rendered window. */
+  clipped?: ClipEdge
+  /** Whether the chip has room for its time/detail line. */
+  twoLine: boolean
+}
+
+export interface OverflowChip {
+  key: string
+  top: number
+  count: number
+}
+
+export interface TimeGridLayout {
+  placed: PlacedItem[]
+  overflow: OverflowChip[]
+  /** The width the lane cap was computed against. Every placed chip satisfies
+   *  `bodyWidthPx − leftPx >= MIN_TARGET_PX` (or the body is itself narrower). */
+  bodyWidthPx: number
+  /** Lanes the body can host at MIN_TARGET_PX each. */
+  maxLanes: number
+}
+
+/** Lanes a body of `bodyWidthPx` can show while every chip keeps a
+ *  MIN_TARGET_PX-wide grab strip AND a MIN_TARGET_PX-wide box. */
+export function maxLanesFor(bodyWidthPx: number): number {
+  return Math.max(1, Math.floor(bodyWidthPx / MIN_TARGET_PX))
 }
 
 /**
- * Position + lane-layout for the timed items of one day. Endpoints are clamped
- * to [dayStart, dayEnd] so nothing bleeds past the grid; overlapping items are
- * split into side-by-side lanes so a later item never paints over an earlier one.
- * Reversed hours (end <= start) are normalised (min/max) and flagged.
+ * Per-cluster lane inset. An even split (`width / lanes`) keeps the stack
+ * balanced — a fixed inset would leave lane 0 with a 44px sliver of title while
+ * the top lane got everything — but it is floored at MIN_LANE_INSET_PX so the
+ * strip never shrinks below a target. When the floor has to bite, `maxLanesFor`
+ * has already capped the lane count, so both the strip and the box still clear
+ * MIN_TARGET_PX.
  */
-function layoutTimed(timed: CalendarItem[], dayStartHour: number, dayEndHour: number): PlacedItem[] {
+export function laneInsetFor(bodyWidthPx: number, laneCount: number): number {
+  return Math.max(MIN_LANE_INSET_PX, Math.floor(bodyWidthPx / Math.max(1, laneCount)))
+}
+
+/** Stable, transitive ordering key so equal geometry never sorts randomly. */
+function itemKey(item: CalendarItem): string {
+  return `${item.kind}:${item.id}`
+}
+
+/**
+ * Position + lane layout for the timed items of one day.
+ *
+ * Lanes are packed against RENDERED GEOMETRY — `[top, top + height]`, the box
+ * the operator actually sees — not the raw hours. Packing on raw hours was a
+ * real rendering defect: the min-height floor inflates a short window past its
+ * own time slot, so three consecutive 15-minute drop windows all won lane 0 and
+ * painted on top of each other.
+ *
+ * Lanes are laid out overlapping-offset (Google Calendar style): lane k starts
+ * `k * laneInsetFor(...)` from the left and runs to the right edge. That floors the
+ * rendered WIDTH instead of dividing it into slivers. When the body is too
+ * narrow to host another MIN_TARGET_PX target, the surplus lanes collapse into
+ * a `+N` overflow chip rather than shrinking below the floor.
+ *
+ * Items whose true hours fall outside the window keep their real times on the
+ * chip and are flagged `clipped` — never silently squashed.
+ */
+export function layoutTimed(
+  timed: CalendarItem[],
+  dayStartHour: number,
+  dayEndHour: number,
+  bodyWidthPx: number = DEFAULT_BODY_WIDTH_PX
+): TimeGridLayout {
   const gridHeight = (dayEndHour - dayStartHour) * PX_PER_HOUR
-  const norm = timed
+  const maxLanes = maxLanesFor(bodyWidthPx)
+
+  // 1. Rendered geometry FIRST — height floor included — so the packer below
+  //    sees the same boxes the browser will paint.
+  const boxes = timed
     .map((item) => {
       const a = hourOf(item.start!)
       const b = item.end ? hourOf(item.end) : a + 1
       const invalid = b <= a
       const lo = Math.min(a, b)
       const hi = Math.max(a, b)
-      const s = Math.min(Math.max(lo, dayStartHour), dayEndHour)
-      const e = Math.min(Math.max(hi, dayStartHour), dayEndHour)
-      return { item, s, e, invalid }
+      const vs = Math.min(Math.max(lo, dayStartHour), dayEndHour)
+      const ve = Math.min(Math.max(hi, dayStartHour), dayEndHour)
+      const naturalHeight = (ve - vs) * PX_PER_HOUR
+      const under = lo < dayStartHour
+      const over = hi > dayEndHour
+      const clipped: ClipEdge | undefined = under && over ? 'both' : under ? 'top' : over ? 'bottom' : undefined
+      // A clipped chip MUST be able to print its real hours, so it is floored to
+      // two lines; an in-window chip is floored only to the AA target.
+      const twoLine = !!clipped || naturalHeight >= TWO_LINE_MIN_PX
+      const height = Math.max(twoLine ? TWO_LINE_MIN_PX : MIN_ITEM_PX, naturalHeight)
+      const rawTop = (vs - dayStartHour) * PX_PER_HOUR
+      const top = Math.min(Math.max(0, rawTop), Math.max(0, gridHeight - height))
+      return { item, top, height, invalid, clipped, twoLine }
     })
-    .sort((x, y) => x.s - y.s || x.e - y.e)
+    // Lexicographic and therefore transitive: earliest box first, taller first
+    // on a tie (the long anchor takes lane 0), then a stable key.
+    .sort(
+      (x, y) =>
+        x.top - y.top ||
+        y.height - x.height ||
+        (itemKey(x.item) < itemKey(y.item) ? -1 : itemKey(x.item) > itemKey(y.item) ? 1 : 0)
+    )
 
-  // Cluster transitively-overlapping items, then greedily pack each cluster into
-  // the fewest lanes; the cluster's lane count sets every member's width.
-  type Row = (typeof norm)[number] & { lane: number; laneCount: number }
+  type Box = (typeof boxes)[number]
+  type Row = Box & { lane: number; laneCount: number; clusterTop: number }
+
+  // 2. Cluster transitively-overlapping BOXES, then greedily pack each cluster
+  //    into the fewest lanes. Boxes are half-open: a box starting exactly where
+  //    another ends re-uses that lane.
   const rows: Row[] = []
-  let cluster: Array<(typeof norm)[number] & { lane?: number }> = []
+  let cluster: Box[] = []
   let clusterEnd = -Infinity
+  let clusterTop = 0
   const flush = () => {
     const laneEnds: number[] = []
-    for (const it of cluster) {
-      let lane = laneEnds.findIndex((end) => it.s >= end)
+    const lanes: number[] = []
+    for (const b of cluster) {
+      const bottom = b.top + b.height
+      let lane = laneEnds.findIndex((end) => b.top >= end)
       if (lane === -1) {
         lane = laneEnds.length
-        laneEnds.push(it.e)
+        laneEnds.push(bottom)
       } else {
-        laneEnds[lane] = it.e
+        laneEnds[lane] = bottom
       }
-      it.lane = lane
+      lanes.push(lane)
     }
-    for (const it of cluster) rows.push({ ...it, lane: it.lane!, laneCount: laneEnds.length })
+    const laneCount = laneEnds.length
+    cluster.forEach((b, i) => rows.push({ ...b, lane: lanes[i], laneCount, clusterTop }))
     cluster = []
   }
-  for (const it of norm) {
-    if (cluster.length > 0 && it.s >= clusterEnd) {
+  for (const b of boxes) {
+    if (cluster.length > 0 && b.top >= clusterEnd) {
       flush()
       clusterEnd = -Infinity
     }
-    cluster.push(it)
-    clusterEnd = Math.max(clusterEnd, it.e)
+    if (cluster.length === 0) clusterTop = b.top
+    cluster.push(b)
+    clusterEnd = Math.max(clusterEnd, b.top + b.height)
   }
   if (cluster.length > 0) flush()
 
-  return rows.map(({ item, s, e, invalid, lane, laneCount }) => {
-    const height = Math.max(MIN_ITEM_PX, (e - s) * PX_PER_HOUR)
-    const rawTop = (s - dayStartHour) * PX_PER_HOUR
-    // Keep the box wholly inside the grid even after the min-height floor.
-    const top = Math.min(Math.max(0, rawTop), Math.max(0, gridHeight - height))
-    const widthPct = 100 / laneCount
-    return { item, top, height, leftPct: lane * widthPct, widthPct, invalid }
-  })
+  // 3. Offset the lanes, capping at what the body can actually host.
+  const placed: PlacedItem[] = []
+  // One `+N` per cluster, anchored at the topmost item it stands in for.
+  const hidden = new Map<number, { count: number; top: number }>()
+  for (const r of rows) {
+    if (r.lane >= maxLanes) {
+      const seen = hidden.get(r.clusterTop)
+      hidden.set(r.clusterTop, { count: (seen?.count ?? 0) + 1, top: Math.min(seen?.top ?? r.top, r.top) })
+      continue
+    }
+    placed.push({
+      item: r.item,
+      top: r.top,
+      height: r.height,
+      leftPx: r.lane * laneInsetFor(bodyWidthPx, Math.min(r.laneCount, maxLanes)),
+      lane: r.lane,
+      zIndex: r.lane + 1,
+      invalid: r.invalid,
+      clipped: r.clipped,
+      twoLine: r.twoLine,
+    })
+  }
+  const overflow: OverflowChip[] = [...hidden.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([clusterTop, { count, top }]) => ({ key: `overflow:${clusterTop}`, top, count }))
+
+  return { placed, overflow, bodyWidthPx, maxLanes }
 }
 
-/** A timed item positioned by start, sized by duration, offset into its lane. */
+/** A timed item positioned by start, sized by duration, inset into its lane. */
 function GridItem({ placed }: { placed: PlacedItem }) {
-  const { item, top, height, leftPct, widthPct, invalid } = placed
+  const { item, top, height, leftPx, lane, zIndex, invalid, clipped, twoLine } = placed
+  const range = rangeLabel(item)
+  const marker = clipped === 'both' ? '↕' : clipped === 'top' ? '↑' : clipped === 'bottom' ? '↓' : null
   return (
     <Link
       href={item.href}
       data-slot="grid-item"
+      data-lane={lane}
+      data-clipped={clipped}
       data-invalid-hours={invalid ? 'true' : undefined}
-      title={invalid ? 'Check the start / end times' : undefined}
-      style={{ top, height, left: `${leftPct}%`, width: `${widthPct}%`, borderLeftColor: KIND_DOT[item.kind] }}
+      title={invalid ? `Check the start / end times · ${range}` : range}
+      style={{ top, height, left: leftPx, right: 0, zIndex, borderLeftColor: KIND_DOT[item.kind] }}
       className={cn(
         'absolute overflow-hidden rounded-sm border border-border border-l-[3px] bg-card px-1.5 py-0.5 text-[11px] leading-tight shadow-xs transition-colors hover:bg-muted focus-visible:bg-muted motion-reduce:transition-none',
         invalid && 'border-dashed border-destructive'
       )}
     >
-      <span className="sr-only">{CALENDAR_KIND_LABELS[item.kind]}: </span>
-      <span className="block truncate font-medium">{item.title}</span>
-      <span className="block truncate text-[10px] text-muted-foreground tabular-nums">
-        {timeLabel(item.start!)}
-        {item.end ? `–${timeLabel(item.end)}` : ''}
-        {item.detail ? ` · ${item.detail}` : ''}
+      <span className="sr-only">
+        {CALENDAR_KIND_LABELS[item.kind]}, {range}
+        {clipped ? ', runs outside the hours shown' : ''}:{' '}
       </span>
+      <span className="flex items-center gap-1">
+        {marker ? (
+          <span aria-hidden className="shrink-0 text-[10px] leading-none text-muted-foreground">
+            {marker}
+          </span>
+        ) : null}
+        <span className="min-w-0 flex-1 truncate font-medium">{item.title}</span>
+      </span>
+      {twoLine ? (
+        <span data-slot="chip-time" className="block truncate text-[10px] text-muted-foreground tabular-nums">
+          {range}
+          {item.detail ? ` · ${item.detail}` : ''}
+        </span>
+      ) : null}
     </Link>
+  )
+}
+
+/** The `+N` chip standing in for lanes the body is too narrow to host. It is a
+ *  target in its own right — it opens the day at full width, where they fit. */
+function MoreChip({ chip, orgSlug, ymd }: { chip: OverflowChip; orgSlug: string; ymd: string }) {
+  return (
+    <Link
+      href={`/${orgSlug}/calendar/${ymd}`}
+      data-slot="grid-overflow"
+      style={{ top: chip.top }}
+      className="absolute right-0 z-40 inline-flex min-h-6 min-w-6 items-center justify-center rounded-sm border border-border bg-muted px-1 text-[10px] font-semibold tabular-nums text-foreground shadow-xs transition-colors hover:bg-accent focus-visible:bg-accent motion-reduce:transition-none"
+    >
+      <span aria-hidden>+{chip.count}</span>
+      <span className="sr-only">{chip.count} more overlapping items — open the day view</span>
+    </Link>
+  )
+}
+
+/** The red "now" rule. Client-only: it is absent from the server HTML and from
+ *  the first client render (state starts null), so hydration always matches.
+ *  It never animates — the line is static in every motion preference. */
+function NowLine({ top, nowRef }: { top: number; nowRef: React.RefObject<HTMLDivElement | null> }) {
+  return (
+    <div
+      ref={nowRef}
+      data-slot="now-line"
+      className="pointer-events-none absolute inset-x-0 z-30 h-0 border-t border-destructive"
+      style={{ top }}
+    >
+      <span className="sr-only">Current time</span>
+      <span aria-hidden className="absolute left-0 top-0 size-[7px] -translate-y-1/2 rounded-full bg-destructive" />
+    </div>
   )
 }
 
 function TimeGridBody({
   timed,
+  ymd,
+  orgSlug,
   dayStartHour,
   dayEndHour,
+  businessHours,
 }: {
   timed: CalendarItem[]
+  ymd: string
+  orgSlug: string
   dayStartHour: number
   dayEndHour: number
+  businessHours: BusinessHours
 }) {
-  const placed = layoutTimed(timed, dayStartHour, dayEndHour)
+  const bodyRef = useRef<HTMLDivElement | null>(null)
+  const nowRef = useRef<HTMLDivElement | null>(null)
+  const scrolled = useRef(false)
+  const [bodyWidth, setBodyWidth] = useState<number | null>(null)
+  // null on the server AND on the first client render — the now-line depends on
+  // the client clock, so it must not exist until after hydration.
+  const [nowHour, setNowHour] = useState<number | null>(null)
+
+  useEffect(() => {
+    const el = bodyRef.current
+    if (!el) return
+    const measure = () => {
+      const w = el.getBoundingClientRect().width
+      if (w > 0) setBodyWidth(w)
+    }
+    measure()
+    if (typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  useEffect(() => {
+    const tick = () => {
+      const d = new Date()
+      // todayYmd() reads local date parts, the same basis the page's `today` uses.
+      setNowHour(todayYmd(d) === ymd ? d.getHours() + d.getMinutes() / 60 : null)
+    }
+    tick()
+    const id = window.setInterval(tick, 60_000)
+    return () => window.clearInterval(id)
+  }, [ymd])
+
+  const gridHeight = (dayEndHour - dayStartHour) * PX_PER_HOUR
+  const { placed, overflow } = layoutTimed(timed, dayStartHour, dayEndHour, bodyWidth ?? DEFAULT_BODY_WIDTH_PX)
+
+  const nowVisible = nowHour != null && nowHour >= dayStartHour && nowHour <= dayEndHour
+  const nowTop = nowVisible ? (nowHour! - dayStartHour) * PX_PER_HOUR : 0
+
+  // Open on the current hour rather than always on 6am — once, on mount, and
+  // instantly (never 'smooth', so reduced-motion users get no animation).
+  useEffect(() => {
+    if (scrolled.current || !nowVisible) return
+    const el = nowRef.current
+    if (!el || typeof el.scrollIntoView !== 'function') return
+    scrolled.current = true
+    el.scrollIntoView({ block: 'center' })
+  }, [nowVisible])
+
+  const bizStart = Math.min(Math.max(hourOf(businessHours.start), dayStartHour), dayEndHour)
+  const bizEnd = Math.min(Math.max(hourOf(businessHours.end), bizStart), dayEndHour)
+  const beforeHeight = (bizStart - dayStartHour) * PX_PER_HOUR
+  const afterTop = (bizEnd - dayStartHour) * PX_PER_HOUR
+
   return (
     <div
+      ref={bodyRef}
       data-slot="time-grid-body"
       className="relative flex-1 overflow-hidden"
-      style={{ height: (dayEndHour - dayStartHour) * PX_PER_HOUR }}
+      style={{ height: gridHeight }}
     >
+      {beforeHeight > 0 ? (
+        <div
+          data-slot="off-hours"
+          data-edge="before"
+          aria-hidden
+          className="absolute inset-x-0 bg-muted/60"
+          style={{ top: 0, height: beforeHeight }}
+        />
+      ) : null}
+      {afterTop < gridHeight ? (
+        <div
+          data-slot="off-hours"
+          data-edge="after"
+          aria-hidden
+          className="absolute inset-x-0 bg-muted/60"
+          style={{ top: afterTop, height: gridHeight - afterTop }}
+        />
+      ) : null}
       {hourRange(dayStartHour, dayEndHour).map((h) => (
         <div
           key={h}
@@ -229,6 +532,10 @@ function TimeGridBody({
       {placed.map((p) => (
         <GridItem key={`${p.item.kind}:${p.item.id}`} placed={p} />
       ))}
+      {overflow.map((o) => (
+        <MoreChip key={o.key} chip={o} orgSlug={orgSlug} ymd={ymd} />
+      ))}
+      {nowVisible ? <NowLine top={nowTop} nowRef={nowRef} /> : null}
     </div>
   )
 }
@@ -262,6 +569,7 @@ export function TimeGridDay({
   withGutter = false,
   dayStartHour = DAY_START_HOUR,
   dayEndHour = DAY_END_HOUR,
+  businessHours = DEFAULT_BUSINESS_HOURS,
 }: TimeGridDayProps) {
   // The single rule: an item with a start time is placed on the grid; anything
   // without one (every date-only kind, plus hour-less events) lives in the band.
@@ -272,7 +580,16 @@ export function TimeGridDay({
     return <AllDayBand band={band} placeholder={false} />
   }
   if (section === 'body') {
-    return <TimeGridBody timed={timed} dayStartHour={dayStartHour} dayEndHour={dayEndHour} />
+    return (
+      <TimeGridBody
+        timed={timed}
+        ymd={ymd}
+        orgSlug={orgSlug}
+        dayStartHour={dayStartHour}
+        dayEndHour={dayEndHour}
+        businessHours={businessHours}
+      />
+    )
   }
 
   if (items.length === 0) {
@@ -307,7 +624,14 @@ export function TimeGridDay({
       </div>
       <div className="flex">
         {withGutter ? <HoursGutter dayStartHour={dayStartHour} dayEndHour={dayEndHour} /> : null}
-        <TimeGridBody timed={timed} dayStartHour={dayStartHour} dayEndHour={dayEndHour} />
+        <TimeGridBody
+          timed={timed}
+          ymd={ymd}
+          orgSlug={orgSlug}
+          dayStartHour={dayStartHour}
+          dayEndHour={dayEndHour}
+          businessHours={businessHours}
+        />
       </div>
     </div>
   )

@@ -40,3 +40,32 @@ describe('DayView', () => {
     expect(screen.getByRole('link', { name: /book a job/i })).toHaveAttribute('href', '/acme/new-event?date=2026-08-22')
   })
 })
+
+describe('DayView — the window follows the day, it does not clamp it', () => {
+  const early: CalendarItem[] = [
+    { id: 'li', title: 'Load in', date: ymd, kind: 'event', href: '/acme/li', start: '04:30', end: '06:00' },
+    { id: 'td', title: 'Teardown', date: ymd, kind: 'event', href: '/acme/td', start: '22:30', end: '23:30' },
+  ]
+
+  it('grows to the day’s real extremes instead of clipping a 4:30am load-in', () => {
+    const { container } = render(<DayView orgSlug="acme" items={early} ymd={ymd} today={ymd} />)
+    const loadIn = bodyOf(container).getByText('Load in').closest('a') as HTMLElement
+    const teardown = bodyOf(container).getByText('Teardown').closest('a') as HTMLElement
+    // nothing is flagged as running outside the shown hours…
+    expect(loadIn).not.toHaveAttribute('data-clipped')
+    expect(teardown).not.toHaveAttribute('data-clipped')
+    // …because the grid now starts at 4am, so 04:30 sits half an hour down
+    expect(loadIn.style.top).toBe(`${0.5 * PX_PER_HOUR}px`)
+    // 04:30 → 06:00 is an hour and a half, drawn at full duration
+    expect(loadIn.style.height).toBe(`${1.5 * PX_PER_HOUR}px`)
+    // and the gutter runs 4am → midnight (21 hourly labels)
+    const grid = container.querySelector('[data-slot="time-grid-body"]') as HTMLElement
+    expect(grid.style.height).toBe(`${(24 - 4) * PX_PER_HOUR}px`)
+  })
+
+  it('keeps the default 6am–10pm window when the day fits inside it', () => {
+    const { container } = render(<DayView orgSlug="acme" items={items} ymd={ymd} today={ymd} />)
+    const grid = container.querySelector('[data-slot="time-grid-body"]') as HTMLElement
+    expect(grid.style.height).toBe(`${(22 - DAY_START_HOUR) * PX_PER_HOUR}px`)
+  })
+})

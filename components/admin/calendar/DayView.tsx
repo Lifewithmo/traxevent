@@ -1,5 +1,12 @@
 import { feedForDay, type CalendarItem } from '@/lib/calendar'
-import { TimeGridDay, DAY_END_HOUR, DAY_START_HOUR } from '@/components/admin/calendar/TimeGridDay'
+import {
+  dayWindowFor,
+  TimeGridDay,
+  DAY_END_HOUR,
+  DAY_START_HOUR,
+  DEFAULT_BUSINESS_HOURS,
+} from '@/components/admin/calendar/TimeGridDay'
+import type { BusinessHours } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
 interface DayViewProps {
@@ -10,6 +17,8 @@ interface DayViewProps {
   today?: string
   dayStartHour?: number
   dayEndHour?: number
+  /** Org working window; out-of-hours rows are shaded. Defaults to 8am–6pm. */
+  businessHours?: BusinessHours
 }
 
 function fullDayLabel(ymd: string): string {
@@ -31,9 +40,16 @@ export function DayView({
   today,
   dayStartHour = DAY_START_HOUR,
   dayEndHour = DAY_END_HOUR,
+  businessHours = DEFAULT_BUSINESS_HOURS,
 }: DayViewProps) {
   const dayItems = feedForDay(items, ymd)
   const isToday = today === ymd
+  // The Day view owns its own hours gutter, so it can afford the day's REAL
+  // extremes: a 5am load-in or a 1am teardown grows the window instead of being
+  // clamped into 6am–10pm, which would misstate when the job actually runs.
+  // (The Week view can't — seven columns share one gutter — so a clipped item
+  //  there keeps its true hours on the chip and is flagged instead.)
+  const hours = dayWindowFor(dayItems, dayStartHour, dayEndHour)
 
   return (
     <section aria-label="Day view" className="min-w-0">
@@ -49,8 +65,9 @@ export function DayView({
         items={dayItems}
         section="all"
         withGutter
-        dayStartHour={dayStartHour}
-        dayEndHour={dayEndHour}
+        dayStartHour={hours.dayStartHour}
+        dayEndHour={hours.dayEndHour}
+        businessHours={businessHours}
       />
     </section>
   )
