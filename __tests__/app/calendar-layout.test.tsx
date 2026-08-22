@@ -20,9 +20,13 @@ import { isValidElement } from 'react'
 const orgIdBySlug = vi.hoisted(() => vi.fn())
 const orgCalendarFeed = vi.hoisted(() => vi.fn())
 const orgEvents = vi.hoisted(() => vi.fn())
+// The runway gained real invoice state, so the layout fetches invoices in the SAME
+// Promise.all. An unmocked spy is `undefined` and throws as the array literal is
+// evaluated left-to-right — before ensureIcsToken is ever reached.
+const orgInvoices = vi.hoisted(() => vi.fn())
 const ensureIcsToken = vi.hoisted(() => vi.fn())
 
-vi.mock('@/lib/calendar-fetch', () => ({ orgIdBySlug, orgCalendarFeed, orgEvents }))
+vi.mock('@/lib/calendar-fetch', () => ({ orgIdBySlug, orgCalendarFeed, orgEvents, orgInvoices }))
 vi.mock('@/actions/calendar-sync', () => ({ ensureIcsToken }))
 
 import CalendarLayout from '@/app/(admin)/[orgSlug]/calendar/layout'
@@ -36,6 +40,7 @@ describe('calendar layout cold entry', () => {
     orgIdBySlug.mockReturnValue(hang<string>())
     orgCalendarFeed.mockReturnValue(hang<unknown[]>())
     orgEvents.mockReturnValue(hang<unknown[]>())
+    orgInvoices.mockReturnValue(hang<unknown[]>())
     ensureIcsToken.mockReturnValue(hang<string>())
   })
 
