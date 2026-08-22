@@ -11,6 +11,7 @@ import type { Event } from '@/lib/types'
 // function, so the batch cap below is deliberately module-private. Its twin
 // lives in AgendaView (MAX_BULK_MOVE); keep the two in step.
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/
+const HHMM_RE = /^([01]\d|2[0-3]):[0-5]\d$/
 const BULK_LIMIT = 200
 
 /**
@@ -35,6 +36,19 @@ export interface AgendaMove {
   /** Target day, YYYY-MM-DD. Per-item (not one date for the batch) so UNDO is
    *  the same call with each row's original date. */
   date: string
+  /**
+   * OPTIONAL new working window, 'HH:mm' — only meaningful for kind 'event'.
+   *
+   * Added by W3-J (drag-to-retime and edge-drag-to-resize on the time grid).
+   * It writes `Event.hours`, which is where the calendar feed actually reads a
+   * job's time of day from (`buildCalendarFeed`: `e.hours ? { start, end }`) —
+   * `event_start`/`event_end` are date-anchored and every writer in the repo
+   * puts a bare YYYY-MM-DD in them. `shiftEventWindow` still carries any time
+   * suffix those fields happen to hold, so the two can never contradict.
+   *
+   * Absent = the window is untouched, which is what every DAY move wants.
+   */
+  hours?: { start: string; end: string }
 }
 
 export interface AgendaMoveFailure {
@@ -72,6 +86,12 @@ export async function bulkRescheduleAgenda(
     if (m?.kind !== 'event' && m?.kind !== 'lead') throw new Error('That kind of row cannot be rescheduled')
     if (!m.id) throw new Error('Missing record id')
     if (!DAY_RE.test(m.date ?? '')) throw new Error('Pick a valid date')
+    if (m.hours) {
+      // A hold has no Event document, so there is nowhere honest to put hours.
+      if (m.kind !== 'event') throw new Error('Only a booked job has working hours')
+      if (!HHMM_RE.test(m.hours.start) || !HHMM_RE.test(m.hours.end)) throw new Error('Pick a valid time')
+      if (m.hours.end <= m.hours.start) throw new Error('The end time must be after the start time')
+    }
   }
 
   const orgId = await orgIdBySlug(orgSlug)
@@ -85,7 +105,7 @@ export async function bulkRescheduleAgenda(
   for (const m of moves) {
     try {
       const leadId = m.kind === 'event'
-        ? await moveBookedJob(orgId, m.id, m.date)
+        ? await moveBookedJob(orgId, m.id, m.date, m.hours)
         : await moveHold(orgId, m.id, m.date)
       moved += 1
       if (leadId) touched.push({ leadId, date: m.date })
@@ -110,6 +130,26 @@ export async function bulkRescheduleAgenda(
   )
 
   return { moved, failures }
+}
+
+/**
+ * ONE row, moved from the calendar grid itself (W3-J: drag, edge-drag, and the
+ * `[` `]` `,` `.` `<` `>` keyboard equivalents).
+ *
+ * A deliberately THIN wrapper. The correctness trap this file exists for — a
+ * booked job's date living in BOTH `Event.event_start`/`event_end` AND
+ * `Lead.event_date`, with the double-booking radar keying off the latter — is
+ * solved exactly once, in `moveBookedJob`'s single transaction. A second copy
+ * of that logic for the single-item case is precisely how the radar gets
+ * silently corrupted six months from now, so there isn't one: this calls the
+ * same batch entry point with a one-item batch and inherits its validation, its
+ * auth check, its transaction and its activity log unchanged.
+ */
+export async function rescheduleCalendarItem(
+  orgSlug: string,
+  move: AgendaMove,
+): Promise<BulkRescheduleResult> {
+  return bulkRescheduleAgenda(orgSlug, [move])
 }
 
 /**
@@ -148,7 +188,12 @@ function leadsCol(orgId: string) {
  * Firestore requires every read before every write inside a transaction, hence
  * the two gets up front.
  */
-async function moveBookedJob(orgId: string, eventId: string, date: string): Promise<string | null> {
+async function moveBookedJob(
+  orgId: string,
+  eventId: string,
+  date: string,
+  hours?: { start: string; end: string },
+): Promise<string | null> {
   const eventRef = eventsCol(orgId).doc(eventId)
   return adminDb.runTransaction<string | null>(async (tx) => {
     const eventSnap = await tx.get(eventRef)
@@ -159,7 +204,10 @@ async function moveBookedJob(orgId: string, eventId: string, date: string): Prom
     const leadSnap = leadRef ? await tx.get(leadRef) : null
 
     const now = new Date().toISOString()
-    tx.update(eventRef, { ...shiftEventWindow(event, date), updated_at: now })
+    // The time-of-day write rides in the SAME update as the date write — a
+    // retimed job that lost its date cascade would corrupt the radar just as
+    // surely as a moved one.
+    tx.update(eventRef, { ...shiftEventWindow(event, date), ...(hours ? { hours } : {}), updated_at: now })
 
     // The cascade the radar depends on. Skipped only when there is genuinely no
     // opportunity document to write — never as an optimisation.

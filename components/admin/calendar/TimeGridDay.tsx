@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { buttonVariants } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils'
 import { CALENDAR_KIND_LABELS, type CalendarItem } from '@/lib/calendar'
 import type { BusinessHours } from '@/lib/types'
 import { KIND_DOT } from '@/components/admin/calendar/kind-color'
+import { useReschedule, type HandleProps } from '@/components/admin/calendar/reschedule-drag'
 
 // Hybrid time-grid geometry. Exported so callers (and tests) share the exact
 // px-per-hour scale — a timed item's `top` is derived from these, never guessed.
@@ -42,6 +43,25 @@ export const DEFAULT_BODY_WIDTH_PX = 320
 
 /** Org fallback when `Org.business_hours` is unset — no migration needed. */
 export const DEFAULT_BUSINESS_HOURS: BusinessHours = { start: '08:00', end: '18:00' }
+
+/**
+ * Height of an edge-resize strip. Deliberately below the 24px AA target: a
+ * resize grip has to be a fraction of the block it resizes, or a 30-minute job
+ * would be nothing but handles (WCAG 2.5.8 "Essential" — the presentation of
+ * the target is essential to the function). The AA-sized equivalents are the
+ * chip itself, which is floored to MIN_ITEM_PX, and the `<` / `>` keys.
+ */
+export const RESIZE_HANDLE_PX = 10
+/** A chip shorter than this is all grip and no body, so it gets no strips —
+ *  the keyboard resize still works on it. */
+export const RESIZE_MIN_CHIP_PX = 32
+
+/** Split the drag props' own className/style out so a chip can merge them with
+ *  the geometry it must keep owning. */
+function splitDragProps(props: Partial<HandleProps>) {
+  const { className, style, ...rest } = props
+  return { dragClass: className, dragStyle: style, dragRest: rest }
+}
 
 /** 'HH:mm' → fractional hour ('16:30' → 16.5). */
 function hourOf(hhmm: string): number {
@@ -148,10 +168,16 @@ export function HoursGutter({
  *  invoice keeps its balance. Colour comes from the kind token. */
 function BandChip({ item }: { item: CalendarItem }) {
   const tbd = item.kind === 'event'
+  const { dragClass, dragStyle, dragRest } = splitDragProps(useReschedule().handleProps(item))
   return (
     <Link
       href={item.href}
-      className="flex min-h-6 items-center gap-1.5 rounded-sm border border-border bg-card px-1.5 py-1.5 text-[11px] leading-tight transition-colors hover:bg-muted focus-visible:bg-muted motion-reduce:transition-none"
+      {...dragRest}
+      style={dragStyle}
+      className={cn(
+        'flex min-h-6 items-center gap-1.5 rounded-sm border border-border bg-card px-1.5 py-1.5 text-[11px] leading-tight transition-colors hover:bg-muted focus-visible:bg-muted motion-reduce:transition-none',
+        dragClass
+      )}
     >
       <span
         className="size-1.5 shrink-0 rounded-full"
@@ -358,6 +384,7 @@ function GridItem({ placed }: { placed: PlacedItem }) {
   const { item, top, height, leftPx, lane, zIndex, invalid, clipped, twoLine } = placed
   const range = rangeLabel(item)
   const marker = clipped === 'both' ? '↕' : clipped === 'top' ? '↑' : clipped === 'bottom' ? '↓' : null
+  const { dragClass, dragStyle, dragRest } = splitDragProps(useReschedule().handleProps(item))
   return (
     <Link
       href={item.href}
@@ -366,10 +393,12 @@ function GridItem({ placed }: { placed: PlacedItem }) {
       data-clipped={clipped}
       data-invalid-hours={invalid ? 'true' : undefined}
       title={invalid ? `Check the start / end times · ${range}` : range}
-      style={{ top, height, left: leftPx, right: 0, zIndex, borderLeftColor: KIND_DOT[item.kind] }}
+      {...dragRest}
+      style={{ top, height, left: leftPx, right: 0, zIndex, borderLeftColor: KIND_DOT[item.kind], ...dragStyle }}
       className={cn(
         'absolute overflow-hidden rounded-sm border border-border border-l-[3px] bg-card px-1.5 py-0.5 text-[11px] leading-tight shadow-xs transition-colors hover:bg-muted focus-visible:bg-muted motion-reduce:transition-none',
-        invalid && 'border-dashed border-destructive'
+        invalid && 'border-dashed border-destructive',
+        dragClass
       )}
     >
       <span className="sr-only">
@@ -391,6 +420,45 @@ function GridItem({ placed }: { placed: PlacedItem }) {
         </span>
       ) : null}
     </Link>
+  )
+}
+
+/**
+ * One edge-resize strip, laid over the chip's top or bottom edge.
+ *
+ * It is a SIBLING of the chip, not a child: the chip is an `<a>`, and an
+ * interactive descendant of a link is invalid HTML and a mess for assistive
+ * tech. Being absolutely positioned in the same body coordinate space, it lands
+ * exactly on the edge anyway. It is `aria-hidden` and unfocusable on purpose —
+ * the keyboard path to the same function is `<` / `>` on the chip itself, which
+ * keeps the tab order to one stop per job instead of three.
+ */
+function ResizeHandle({ placed, edge }: { placed: PlacedItem; edge: 'start' | 'end' }) {
+  const props = useReschedule().resizeProps(placed.item, edge) as Partial<HandleProps>
+  const { dragClass, dragStyle, dragRest } = splitDragProps(props)
+  if (!props['data-draggable'] || placed.height < RESIZE_MIN_CHIP_PX) return null
+  return (
+    <span
+      {...dragRest}
+      aria-hidden
+      data-slot="grid-resize"
+      data-edge={edge}
+      style={{
+        ...dragStyle,
+        position: 'absolute',
+        top: edge === 'start' ? placed.top : placed.top + placed.height - RESIZE_HANDLE_PX,
+        height: RESIZE_HANDLE_PX,
+        left: placed.leftPx,
+        right: 0,
+        zIndex: placed.zIndex + 20,
+      }}
+      className={cn(
+        'block bg-transparent hover:bg-ring/40 [&[data-dragging]]:bg-ring/50',
+        'motion-safe:transition-colors motion-reduce:transition-none',
+        dragClass,
+        'cursor-ns-resize active:cursor-ns-resize'
+      )}
+    />
   )
 }
 
@@ -442,6 +510,7 @@ function TimeGridBody({
   dayEndHour: number
   businessHours: BusinessHours
 }) {
+  const dropActive = useReschedule().activeDropDay === ymd
   const bodyRef = useRef<HTMLDivElement | null>(null)
   const nowRef = useRef<HTMLDivElement | null>(null)
   const scrolled = useRef(false)
@@ -500,7 +569,20 @@ function TimeGridBody({
     <div
       ref={bodyRef}
       data-slot="time-grid-body"
-      className="relative flex-1 overflow-hidden"
+      // ── the drop-zone contract (W3-J) ──────────────────────────────────────
+      // The body is BOTH a day target and a TIME target. The two geometry
+      // attributes are how the drag engine turns a y coordinate into an hour
+      // without importing this module (which would make the dependency a
+      // cycle): it reads them off the element it hit.
+      data-drop-day={ymd}
+      data-grid-start-hour={dayStartHour}
+      data-grid-px-per-hour={PX_PER_HOUR}
+      data-drop-active={dropActive || undefined}
+      className={cn(
+        'relative flex-1 overflow-hidden',
+        dropActive && 'bg-primary/5 ring-2 ring-inset ring-ring',
+        'motion-safe:transition-colors motion-reduce:transition-none'
+      )}
       style={{ height: gridHeight }}
     >
       {beforeHeight > 0 ? (
@@ -530,7 +612,11 @@ function TimeGridBody({
         />
       ))}
       {placed.map((p) => (
-        <GridItem key={`${p.item.kind}:${p.item.id}`} placed={p} />
+        <Fragment key={`${p.item.kind}:${p.item.id}`}>
+          <GridItem placed={p} />
+          <ResizeHandle placed={p} edge="start" />
+          <ResizeHandle placed={p} edge="end" />
+        </Fragment>
       ))}
       {overflow.map((o) => (
         <MoreChip key={o.key} chip={o} orgSlug={orgSlug} ymd={ymd} />

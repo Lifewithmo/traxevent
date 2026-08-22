@@ -1,3 +1,5 @@
+'use client'
+
 import Link from 'next/link'
 import { buttonVariants } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -5,6 +7,14 @@ import { CALENDAR_KIND_LABELS, CALENDAR_KINDS, feedForDay, type CalendarItem } f
 import { addDays } from '@/lib/opportunity-detail'
 import { cn } from '@/lib/utils'
 import { KindDot } from '@/components/admin/calendar/KindDot'
+import {
+  RescheduleBar,
+  RescheduleProvider,
+  canReschedule,
+  dayLabel,
+  useReschedule,
+  type HandleProps,
+} from '@/components/admin/calendar/reschedule-drag'
 
 /** Dots shown before a day collapses to "+N" (decision #2 — dots, not chips). */
 export const MAX_DOTS = 4
@@ -51,7 +61,54 @@ function cellAriaLabel(ymd: string, items: CalendarItem[]): string {
   return `${date}, ${count} ${count === 1 ? 'item' : 'items'}: ${byKind.join(', ')}`
 }
 
-export function MonthGrid({ orgSlug, items, month, today, selected, kinds, view }: MonthGridProps) {
+/**
+ * A density mark that is also a GRAB HANDLE.
+ *
+ * Why a real button and not the bare dot: a booked job has to be individually
+ * addressable before it can be individually moved, by pointer OR by keyboard.
+ * That is also why the day link below is a stretched overlay rather than a
+ * wrapper — an `<a>` may not contain interactive content (and anything with a
+ * tabindex counts), so a focusable handle inside the old cell-wide link would
+ * have been invalid HTML and unusable with a screen reader.
+ *
+ * The 24px box is WCAG 2.5.8 (AA) target minimum. The mark inside stays the 8px
+ * grid dot, so the cell reads exactly as it did.
+ */
+function JobHandle({ item }: { item: CalendarItem }) {
+  const props = useReschedule().handleProps(item) as Partial<HandleProps>
+  const { className: dragClass, style: dragStyle, ...rest } = props
+  return (
+    <button
+      type="button"
+      {...rest}
+      data-slot="month-job-handle"
+      style={dragStyle}
+      className={cn(
+        'pointer-events-auto inline-flex size-6 shrink-0 items-center justify-center rounded-sm',
+        'hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring',
+        'motion-safe:transition-colors motion-reduce:transition-none',
+        dragClass
+      )}
+    >
+      <KindDot kind={item.kind} hideLabel data-testid="density-dot" />
+      <span className="sr-only">
+        Move {item.title} — {dayLabel(item.date)}. Bracket keys move it a day; braces a week.
+      </span>
+    </button>
+  )
+}
+
+/** The month is a drag surface too — thirty-odd day cells, each a drop target. */
+export function MonthGrid(props: MonthGridProps) {
+  return (
+    <RescheduleProvider orgSlug={props.orgSlug} items={props.items}>
+      <MonthGridInner {...props} />
+    </RescheduleProvider>
+  )
+}
+
+function MonthGridInner({ orgSlug, items: itemsProp, month, today, selected, kinds, view }: MonthGridProps) {
+  const { items, activeDropDay } = useReschedule(itemsProp)
   const monthKey = month.slice(0, 7)
   const [year, month1] = monthKey.split('-').map(Number)
   const firstYmd = `${monthKey}-01`
@@ -114,45 +171,73 @@ export function MonthGrid({ orgSlug, items, month, today, selected, kinds, view 
           const isToday = d === today
           const isSelected = d === selected
           const dayNum = Number(d.slice(8, 10))
+          const isDropTarget = activeDropDay === d
           return (
-            <Link
+            // The CELL is the box and the drop target; the day LINK is a
+            // stretched overlay inside it. See JobHandle for why.
+            <div
               key={d}
-              href={dayHref(d)}
-              data-slot="month-cell"
+              data-slot="month-cell-box"
               data-day={d}
-              aria-label={cellAriaLabel(d, dayItems)}
-              aria-current={isSelected ? 'date' : undefined}
+              data-drop-day={d}
+              data-drop-active={isDropTarget || undefined}
               className={cn(
-                'flex min-h-16 flex-col gap-1 border-b border-l border-border/60 p-1.5 text-left transition-colors hover:bg-muted focus-visible:bg-muted motion-reduce:transition-none',
+                'relative flex min-h-16 flex-col gap-1 border-b border-l border-border/60 p-1.5 text-left',
+                'motion-safe:transition-colors motion-reduce:transition-none',
                 '[&:nth-child(7n+1)]:border-l-0',
                 !inMonth && 'bg-muted/30 text-muted-foreground',
-                isSelected && 'ring-1 ring-inset ring-ring'
+                isDropTarget && 'bg-primary/10 ring-2 ring-inset ring-ring'
               )}
             >
+              <Link
+                href={dayHref(d)}
+                data-slot="month-cell"
+                data-day={d}
+                aria-label={cellAriaLabel(d, dayItems)}
+                aria-current={isSelected ? 'date' : undefined}
+                className={cn(
+                  'absolute inset-0 transition-colors hover:bg-muted focus-visible:bg-muted motion-reduce:transition-none',
+                  isSelected && 'ring-1 ring-inset ring-ring'
+                )}
+              />
               <span
                 className={cn(
-                  'inline-flex size-6 items-center justify-center self-start rounded-full text-xs tabular-nums',
+                  'pointer-events-none relative inline-flex size-6 items-center justify-center self-start rounded-full text-xs tabular-nums',
                   isToday ? 'bg-foreground font-bold text-background' : 'font-medium'
                 )}
               >
                 {dayNum}
               </span>
               {dayItems.length > 0 ? (
-                <span className="mt-auto flex flex-wrap items-center gap-1">
-                  {dots.map((i) => (
-                    // hideLabel: the cell's own aria-label swallows the subtree,
-                    // so the kind names live there (cellAriaLabel) instead.
-                    <KindDot key={`${i.kind}:${i.id}`} kind={i.kind} hideLabel data-testid="density-dot" />
-                  ))}
+                // pointer-events-none so a tap anywhere but a handle still opens
+                // the day through the overlay link beneath.
+                <span className="pointer-events-none relative mt-auto flex flex-wrap items-center gap-1">
+                  {dots.map((i) =>
+                    canReschedule(i) ? (
+                      <JobHandle key={`${i.kind}:${i.id}`} item={i} />
+                    ) : (
+                      // hideLabel: the cell's own aria-label swallows the
+                      // subtree, so the kind names live there (cellAriaLabel).
+                      <KindDot
+                        key={`${i.kind}:${i.id}`}
+                        kind={i.kind}
+                        hideLabel
+                        data-testid="density-dot"
+                        className="size-6 justify-center"
+                      />
+                    )
+                  )}
                   {overflow > 0 ? (
                     <span className="text-[10px] font-medium tabular-nums text-muted-foreground">+{overflow}</span>
                   ) : null}
                 </span>
               ) : null}
-            </Link>
+            </div>
           )
         })}
       </div>
+
+      <RescheduleBar />
     </section>
   )
 }

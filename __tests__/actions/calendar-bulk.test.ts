@@ -54,7 +54,7 @@ vi.mock('@/lib/activity', () => ({ logActivity: vi.fn().mockResolvedValue(undefi
 import { assertOrgAdmin } from '@/lib/auth/assert'
 import { orgIdBySlug } from '@/lib/calendar-fetch'
 import { logActivity } from '@/lib/activity'
-import { bulkRescheduleAgenda } from '@/actions/calendar-bulk'
+import { bulkRescheduleAgenda, rescheduleCalendarItem } from '@/actions/calendar-bulk'
 
 const EVENT = 'orgs/org-1/events/e1'
 const LEAD = 'orgs/org-1/leads/l1'
@@ -216,5 +216,133 @@ describe('bulkRescheduleAgenda — activity', () => {
     store.docs.set(EVENT, { id: 'e1', event_start: '2026-08-19', event_end: '2026-08-19' })
     await bulkRescheduleAgenda('acme', [{ kind: 'event', id: 'e1', date: '2026-09-05' }])
     expect(logActivity).not.toHaveBeenCalled()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// W3-J — the single-item entry point the calendar GRID drags through.
+//
+// It exists so the grid does not have to fake a batch, and it is deliberately a
+// thin wrapper: the both-fields transaction is written ONCE, so these tests are
+// really asserting that the drag path cannot drift away from the bulk path.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('rescheduleCalendarItem — the drag path inherits the both-fields guarantee', () => {
+  it('writes Event.event_start/_end AND Lead.event_date, in ONE transaction', async () => {
+    const res = await rescheduleCalendarItem('acme', { kind: 'event', id: 'e1', date: '2026-09-05' })
+
+    expect(res).toEqual({ moved: 1, failures: [] })
+    expect(updatesFor(EVENT)[0].payload).toMatchObject({ event_start: '2026-09-05', event_end: '2026-09-05' })
+    // Delete the cascade in moveBookedJob and this line is what catches it: the
+    // radar filters on `lead.event_date === date`.
+    expect(updatesFor(LEAD)[0].payload).toMatchObject({ event_date: '2026-09-05' })
+    expect(store.txCount).toBe(1)
+    expect(updatesFor(EVENT)[0].tx).toBe(updatesFor(LEAD)[0].tx)
+    expect(store.orderViolations).toBe(0)
+  })
+
+  it('moves a tentative hold by writing Lead.event_date', async () => {
+    const res = await rescheduleCalendarItem('acme', { kind: 'lead', id: 'l1', date: '2026-10-01' })
+    expect(res).toEqual({ moved: 1, failures: [] })
+    expect(updatesFor(LEAD)[0].payload).toMatchObject({ event_date: '2026-10-01' })
+    expect(updatesFor(EVENT)).toHaveLength(0)
+  })
+
+  it('keeps every guard the batch has', async () => {
+    await expect(
+      rescheduleCalendarItem('acme', { kind: 'invoice_due' as never, id: 'i1', date: '2026-10-01' })
+    ).rejects.toThrow('cannot be rescheduled')
+    await expect(rescheduleCalendarItem('acme', { kind: 'lead', id: 'l1', date: 'soon' })).rejects.toThrow('valid date')
+    vi.mocked(orgIdBySlug).mockResolvedValue(null)
+    await expect(rescheduleCalendarItem('x', { kind: 'lead', id: 'l1', date: '2026-10-01' })).rejects.toThrow('Org not found')
+    expect(store.updates).toHaveLength(0)
+  })
+
+  it('reports a per-item refusal instead of throwing, so the grid can restore', async () => {
+    const res = await rescheduleCalendarItem('acme', { kind: 'event', id: 'ghost', date: '2026-09-05' })
+    expect(res).toEqual({ moved: 0, failures: [{ kind: 'event', id: 'ghost', message: 'Job not found' }] })
+  })
+
+  it('logs the reschedule against the opportunity', async () => {
+    await rescheduleCalendarItem('acme', { kind: 'event', id: 'e1', date: '2026-09-05' })
+    expect(logActivity).toHaveBeenCalledWith('org-1', expect.objectContaining({
+      parent_type: 'opportunity', parent_id: 'l1', summary: 'Rescheduled to 2026-09-05',
+    }))
+  })
+})
+
+describe('rescheduleCalendarItem — the time-of-day write (drag-to-retime, edge-drag-to-resize)', () => {
+  it('writes Event.hours — the field the calendar feed actually reads a time off', async () => {
+    await rescheduleCalendarItem('acme', {
+      kind: 'event', id: 'e1', date: '2026-08-19', hours: { start: '09:00', end: '12:00' },
+    })
+    // buildCalendarFeed: `...(e.hours ? { start: e.hours.start, end: e.hours.end } : {})`
+    expect(updatesFor(EVENT)[0].payload).toMatchObject({ hours: { start: '09:00', end: '12:00' } })
+  })
+
+  it('rides in the SAME transaction as the date cascade', async () => {
+    await rescheduleCalendarItem('acme', {
+      kind: 'event', id: 'e1', date: '2026-09-05', hours: { start: '09:00', end: '12:00' },
+    })
+    expect(store.txCount).toBe(1)
+    expect(updatesFor(EVENT)[0].payload).toMatchObject({
+      event_start: '2026-09-05', event_end: '2026-09-05', hours: { start: '09:00', end: '12:00' },
+    })
+    // A retimed job that lost its cascade would corrupt the radar just as surely.
+    expect(updatesFor(LEAD)[0].payload).toMatchObject({ event_date: '2026-09-05' })
+    expect(updatesFor(EVENT)[0].tx).toBe(updatesFor(LEAD)[0].tx)
+  })
+
+  it('keeps the SPAN rule while it rewrites the window', async () => {
+    store.docs.set(EVENT, { id: 'e1', lead_id: 'l1', event_start: '2026-08-19', event_end: '2026-08-21' })
+    await rescheduleCalendarItem('acme', {
+      kind: 'event', id: 'e1', date: '2026-09-05', hours: { start: '09:00', end: '12:00' },
+    })
+    // three-day festival stays three days
+    expect(updatesFor(EVENT)[0].payload).toMatchObject({ event_start: '2026-09-05', event_end: '2026-09-07' })
+  })
+
+  it('keeps a stored time suffix on event_start/_end in step with the window', async () => {
+    store.docs.set(EVENT, {
+      id: 'e1', lead_id: 'l1',
+      event_start: '2026-08-19T14:00:00.000Z',
+      event_end: '2026-08-19T20:30:00.000Z',
+    })
+    await rescheduleCalendarItem('acme', {
+      kind: 'event', id: 'e1', date: '2026-09-05', hours: { start: '09:00', end: '12:00' },
+    })
+    expect(updatesFor(EVENT)[0].payload).toMatchObject({
+      event_start: '2026-09-05T14:00:00.000Z',
+      event_end: '2026-09-05T20:30:00.000Z',
+    })
+  })
+
+  it('leaves the window ALONE on a plain day move', async () => {
+    store.docs.set(EVENT, { id: 'e1', lead_id: 'l1', event_start: '2026-08-19', event_end: '2026-08-19', hours: { start: '16:00', end: '20:00' } })
+    await rescheduleCalendarItem('acme', { kind: 'event', id: 'e1', date: '2026-09-05' })
+    // dragging a job to another DAY must never rewrite its time as a side effect
+    expect(updatesFor(EVENT)[0].payload).not.toHaveProperty('hours')
+  })
+
+  it('refuses hours on a hold — there is no Event document to put them on', async () => {
+    await expect(
+      rescheduleCalendarItem('acme', { kind: 'lead', id: 'l1', date: '2026-09-05', hours: { start: '09:00', end: '12:00' } })
+    ).rejects.toThrow('Only a booked job has working hours')
+    expect(store.updates).toHaveLength(0)
+  })
+
+  it('refuses a malformed or inverted window', async () => {
+    const bad = [
+      { start: '9:00', end: '12:00' },
+      { start: '09:00', end: '25:00' },
+      { start: '09:00', end: '' },
+      { start: '12:00', end: '09:00' },
+      { start: '12:00', end: '12:00' },
+    ]
+    for (const hours of bad) {
+      await expect(
+        rescheduleCalendarItem('acme', { kind: 'event', id: 'e1', date: '2026-09-05', hours })
+      ).rejects.toThrow()
+    }
+    expect(store.updates).toHaveLength(0)
   })
 })

@@ -19,6 +19,17 @@ import {
 } from '@/components/admin/calendar/TimeGridDay'
 import type { CalendarItem } from '@/lib/calendar'
 
+// W3-J: these grids now import the reschedule engine, which imports its server
+// action; without the mock the real module pulls in firebase-admin at load time.
+vi.mock('@/actions/calendar-bulk', () => ({
+  bulkRescheduleAgenda: vi.fn().mockResolvedValue({ moved: 0, failures: [] }),
+  rescheduleCalendarItem: vi.fn().mockResolvedValue({ moved: 1, failures: [] }),
+}))
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ refresh: vi.fn(), push: vi.fn(), replace: vi.fn() }),
+}))
+
+
 const day = '2026-08-22'
 // Every test runs on a pinned local clock so the now-line is deterministic:
 // 2026-08-22 14:30 local = the `day` above, mid-window.

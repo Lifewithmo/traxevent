@@ -1,7 +1,18 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { render, screen, within } from '@testing-library/react'
 import { MonthGrid, MAX_DOTS } from '@/components/admin/calendar/MonthGrid'
 import type { CalendarItem } from '@/lib/calendar'
+
+// W3-J: these grids now import the reschedule engine, which imports its server
+// action; without the mock the real module pulls in firebase-admin at load time.
+vi.mock('@/actions/calendar-bulk', () => ({
+  bulkRescheduleAgenda: vi.fn().mockResolvedValue({ moved: 0, failures: [] }),
+  rescheduleCalendarItem: vi.fn().mockResolvedValue({ moved: 1, failures: [] }),
+}))
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ refresh: vi.fn(), push: vi.fn(), replace: vi.fn() }),
+}))
+
 
 const mk = (id: string, date: string, kind: CalendarItem['kind'] = 'event'): CalendarItem => ({
   id,
@@ -20,9 +31,18 @@ const items: CalendarItem[] = [
   mk('solo', '2026-08-16', 'event'),
 ]
 
+/**
+ * The day LINK. W3-J made the cell a box with a stretched overlay link inside
+ * it, so that a booked job can carry its own focusable grab handle — an `<a>`
+ * may not contain interactive content. `cellEl` is still the link (href,
+ * aria-label, aria-current, the selection ring all live there); `boxEl` is the
+ * cell it fills, which is what actually contains the day number and the dots.
+ */
 const cellEl = (c: HTMLElement, d: string) =>
-  c.querySelector(`[data-slot="month-cell"][data-day="${d}"]`) as HTMLElement
-const cell = (c: HTMLElement, d: string) => within(cellEl(c, d))
+  c.querySelector(`a[data-slot="month-cell"][data-day="${d}"]`) as HTMLElement
+const boxEl = (c: HTMLElement, d: string) =>
+  c.querySelector(`[data-slot="month-cell-box"][data-day="${d}"]`) as HTMLElement
+const cell = (c: HTMLElement, d: string) => within(boxEl(c, d))
 
 describe('MonthGrid', () => {
   it('shows one density dot per item up to the cap', () => {
@@ -53,7 +73,7 @@ describe('MonthGrid', () => {
     const today = cellEl(container, '2026-08-15')
     // today is a visual state, not the current selection — matches WeekGrid's convention
     expect(today).not.toHaveAttribute('aria-current')
-    expect(today.querySelector('.bg-foreground')).not.toBeNull()
+    expect(boxEl(container, '2026-08-15').querySelector('.bg-foreground')).not.toBeNull()
   })
 
   it('marks the selected day with aria-current and the ring, even when it is not today', () => {
@@ -100,7 +120,7 @@ describe('MonthGrid', () => {
   it('draws each density mark with a shape, not colour alone', () => {
     const { container } = render(<MonthGrid orgSlug="acme" items={items} month="2026-08" today="2026-08-01" />)
     const marks = Array.from(
-      cellEl(container, '2026-08-10').querySelectorAll('[data-slot="kind-dot"]')
+      boxEl(container, '2026-08-10').querySelectorAll('[data-slot="kind-dot"]')
     )
     expect(marks).toHaveLength(3)
     // event / task / invoice_due — three kinds, three silhouettes.

@@ -1,3 +1,5 @@
+'use client'
+
 import Link from 'next/link'
 import { buttonVariants } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -9,6 +11,11 @@ import {
   DAY_END_HOUR,
   DAY_START_HOUR,
 } from '@/components/admin/calendar/TimeGridDay'
+import {
+  RescheduleBar,
+  RescheduleProvider,
+  useReschedule,
+} from '@/components/admin/calendar/reschedule-drag'
 
 interface WeekGridProps {
   orgSlug: string
@@ -38,9 +45,19 @@ function dayLabel(ymd: string): string {
 // the all-day band and the time bodies stay column-aligned.
 const GRID_TEMPLATE = 'grid grid-cols-[3rem_repeat(7,minmax(0,1fr))]'
 
-export function WeekGrid({
+/** The week is a drag surface, so it owns a reschedule scope: seven day columns
+ *  that are each a drop target, one optimistic feed, one Undo. */
+export function WeekGrid(props: WeekGridProps) {
+  return (
+    <RescheduleProvider orgSlug={props.orgSlug} items={props.items}>
+      <WeekGridInner {...props} />
+    </RescheduleProvider>
+  )
+}
+
+function WeekGridInner({
   orgSlug,
-  items,
+  items: itemsProp,
   weekStart,
   today,
   selected,
@@ -49,6 +66,9 @@ export function WeekGrid({
   dayStartHour = DAY_START_HOUR,
   dayEndHour = DAY_END_HOUR,
 }: WeekGridProps) {
+  // The feed with any in-flight optimistic move already applied — a job dropped
+  // on Saturday must appear on Saturday before the server has said yes.
+  const { items, activeDropDay } = useReschedule(itemsProp)
   const days = weekDays(weekStart)
   // Per-day off the FULL feed so feedForDay's span logic keeps a multi-day event
   // that STARTS before the week on its interior days — a start-date range filter
@@ -116,7 +136,19 @@ export function WeekGrid({
           all-day
         </div>
         {perDay.map(({ day, items: dayItems }) => (
-          <div key={day} data-slot="week-band-cell" data-day={day} className="border-l border-border/60">
+          <div
+            key={day}
+            data-slot="week-band-cell"
+            data-day={day}
+            // An all-day chip dropped here changes only the DAY — the band is
+            // not a time zone, so it carries no grid geometry.
+            data-drop-day={day}
+            data-drop-active={activeDropDay === day || undefined}
+            className={cn(
+              'border-l border-border/60 motion-safe:transition-colors motion-reduce:transition-none',
+              activeDropDay === day && 'bg-primary/5'
+            )}
+          >
             <TimeGridDay orgSlug={orgSlug} ymd={day} items={dayItems} section="band" />
           </div>
         ))}
@@ -126,7 +158,16 @@ export function WeekGrid({
       <div className={cn(GRID_TEMPLATE, 'overflow-x-auto')}>
         <HoursGutter dayStartHour={dayStartHour} dayEndHour={dayEndHour} />
         {perDay.map(({ day, items: dayItems }) => (
-          <div key={day} data-slot="week-body-cell" data-day={day} className="flex border-l border-border/60">
+          <div
+            key={day}
+            data-slot="week-body-cell"
+            data-day={day}
+            // Safety net for the 1px of cell that the body does not cover; the
+            // body's own zone (which carries the hour geometry) wins whenever
+            // the pointer is actually over the grid.
+            data-drop-day={day}
+            className="flex border-l border-border/60"
+          >
             <TimeGridDay
               orgSlug={orgSlug}
               ymd={day}
@@ -138,6 +179,8 @@ export function WeekGrid({
           </div>
         ))}
       </div>
+
+      <RescheduleBar />
     </section>
   )
 }
