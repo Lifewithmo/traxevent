@@ -343,7 +343,13 @@ function compareUnscheduled(a: UnscheduledItem, b: UnscheduledItem): number {
  *  A separate function, not a widened feed: the ICS route and the cockpit both
  *  depend on the feed carrying only dated items. */
 export function buildUnscheduled(orgSlug: string, s: CalendarFeedSources): UnscheduledItem[] {
-  const isOpen = (l: Lead) => (OPEN_STAGES as Lead['stage'][]).includes(l.stage)
+  // closed_won is INCLUDED here (unlike buildCalendarFeed's identical-looking
+  // guard above): a won opportunity with no date is the "I sold it and never put
+  // it on the calendar" case — invisible on every surface today, and the single
+  // most urgent row this list exists to show. It is not a hold; the drawer tiers
+  // it above open opportunities.
+  const isOpen = (l: Lead) =>
+    (OPEN_STAGES as Lead['stage'][]).includes(l.stage) || l.stage === 'closed_won'
   const leadById = new Map(s.leads.map((l) => [l.id, l]))
   const liveEvents = s.events.filter((e) => e.status !== 'archived')
   // A lead that owns a live event is represented BY that event — dated (so it

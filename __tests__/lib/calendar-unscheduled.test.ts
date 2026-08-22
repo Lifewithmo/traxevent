@@ -91,7 +91,7 @@ describe('buildUnscheduled', () => {
     expect(rows[0].bookByDate).toBeUndefined()
   })
 
-  it('excludes lost and closed opportunities, and archived events', () => {
+  it('excludes lost opportunities and archived events, but KEEPS undated wins', () => {
     const rows = buildUnscheduled('acme', {
       ...empty,
       events: [event({ id: 'gone', status: 'archived', event_start: '' })],
@@ -101,7 +101,12 @@ describe('buildUnscheduled', () => {
         lead({ id: 'live', stage: 'inquiry' }),
       ],
     })
-    expect(rows.map((r) => r.id)).toEqual(['live'])
+    // A won opportunity with no date is the "sold it and never scheduled it"
+    // case — the most urgent thing this list exists to surface, not a row to
+    // drop. Lost work and archived jobs really are gone.
+    expect(rows.map((r) => r.id).sort()).toEqual(['live', 'won'])
+    expect(rows.map((r) => r.id)).not.toContain('lost')
+    expect(rows.map((r) => r.id)).not.toContain('gone')
   })
 
   it('excludes an undated opportunity that already owns a dated job', () => {
