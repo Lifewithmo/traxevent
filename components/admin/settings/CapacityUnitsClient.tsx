@@ -12,29 +12,71 @@ import {
   updateCapacityUnit,
   deleteCapacityUnit,
 } from '@/actions/capacity'
-import type { CapacityBlockout, CapacityUnit, CapacityUnitKind } from '@/lib/types'
+import { updateServiceableDays, updateResourceLabels } from '@/actions/capacity-config'
+import { kindLabel } from '@/lib/capacity/labels'
+import type { CapacityBlockout, CapacityUnit, CapacityUnitKind, Org } from '@/lib/types'
 
 interface CapacityUnitsClientProps {
   orgId: string
   initialUnits: CapacityUnit[]
+  /** The org's saved working-days pattern; absent ⇒ all 7 weekdays, no closures. */
+  initialServiceableDays?: Org['serviceable_days']
+  /** The org's saved kind vocabulary; absent per-kind ⇒ neutral defaults. */
+  initialResourceLabels?: Org['resource_labels']
   /** True for orgs below the business tier — render the upsell, not the editor. */
   locked?: boolean
 }
 
 interface GroupMeta {
   kind: CapacityUnitKind
+  /** Category title, e.g. "Serving units" / "Carts". */
   title: string
-  noun: string
+  /** Singular noun, e.g. "serving unit" / "cart". */
+  one: string
+  /** Plural noun, e.g. "serving units" / "carts". */
+  many: string
   addLabel: string
   placeholder: string
 }
 
-const GROUPS: GroupMeta[] = [
-  { kind: 'mobile', title: 'Serving units', noun: 'serving unit', addLabel: 'Add serving unit', placeholder: 'e.g. Kart 1' },
-  { kind: 'venue', title: 'Rooms', noun: 'room', addLabel: 'Add room', placeholder: 'e.g. Room #1' },
+const GROUP_KINDS: CapacityUnitKind[] = ['mobile', 'venue']
+
+const KIND_PLACEHOLDER: Record<CapacityUnitKind, string> = {
+  mobile: 'e.g. Kart 1',
+  venue: 'e.g. Room #1',
+}
+
+const ALL_WEEKDAYS = [0, 1, 2, 3, 4, 5, 6]
+
+const WEEKDAYS: { index: number; letter: string; name: string }[] = [
+  { index: 0, letter: 'S', name: 'Sunday' },
+  { index: 1, letter: 'M', name: 'Monday' },
+  { index: 2, letter: 'T', name: 'Tuesday' },
+  { index: 3, letter: 'W', name: 'Wednesday' },
+  { index: 4, letter: 'T', name: 'Thursday' },
+  { index: 5, letter: 'F', name: 'Friday' },
+  { index: 6, letter: 'S', name: 'Saturday' },
 ]
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+/** Category title from the plural noun: "serving units" → "Serving units". */
+function titleCase(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1)
+}
+
+function metaFor(kind: CapacityUnitKind, labels: Org['resource_labels']): GroupMeta {
+  const one = kindLabel({ resource_labels: labels }, kind, 1)
+  const many = kindLabel({ resource_labels: labels }, kind, 2)
+  return {
+    kind,
+    one,
+    many,
+    title: titleCase(many),
+    addLabel: `Add ${one}`,
+    placeholder: KIND_PLACEHOLDER[kind],
+  }
+}
 
 /** Parse an ISO ymd string without the UTC-midnight timezone shift `new Date(str)` introduces. */
 function parseYmd(s: string): { y: number; m: number; d: number } | null {
@@ -59,12 +101,29 @@ export function formatBlockoutRange(start: string, end: string): string {
 const CHIP_CLASS =
   'inline-flex w-fit max-w-full items-center gap-1.5 whitespace-normal rounded-full bg-[var(--status-neutral-bg)] py-0.5 pl-2.5 pr-1 text-xs font-medium text-[var(--status-neutral-fg)]'
 
-export function CapacityUnitsClient({ orgId, initialUnits, locked = false }: CapacityUnitsClientProps) {
+export function CapacityUnitsClient({
+  orgId,
+  initialUnits,
+  initialServiceableDays,
+  initialResourceLabels,
+  locked = false,
+}: CapacityUnitsClientProps) {
   const [units, setUnits] = useState<CapacityUnit[]>(initialUnits)
+  const [weekdays, setWeekdays] = useState<number[]>(
+    initialServiceableDays?.weekdays ?? ALL_WEEKDAYS,
+  )
+  const [closures, setClosures] = useState<CapacityBlockout[]>(
+    initialServiceableDays?.closures ?? [],
+  )
+  const [labels, setLabels] = useState<NonNullable<Org['resource_labels']>>(
+    initialResourceLabels ?? {},
+  )
+  const [addingClosure, setAddingClosure] = useState(false)
   const [addingKind, setAddingKind] = useState<CapacityUnitKind | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [pendingDelete, setPendingDelete] = useState<CapacityUnit | null>(null)
+  const openHeadingId = useId()
 
   if (locked) return <LockedPanel />
 
@@ -149,13 +208,69 @@ export function CapacityUnitsClient({ orgId, initialUnits, locked = false }: Cap
     })
   }
 
+  // --- Serviceable days (weekly pattern + closures) ---------------------------
+  // Both keys are always written together: the action replaces the whole
+  // `serviceable_days` scalar, so omitting one would wipe it.
+  async function saveServiceable(nextWeekdays: number[], nextClosures: CapacityBlockout[]) {
+    const prevW = weekdays
+    const prevC = closures
+    setWeekdays(nextWeekdays)
+    setClosures(nextClosures)
+    await run(async () => {
+      try {
+        await updateServiceableDays(orgId, { weekdays: nextWeekdays, closures: nextClosures })
+      } catch (err) {
+        setWeekdays(prevW)
+        setClosures(prevC)
+        throw err
+      }
+    })
+  }
+
+  function toggleWeekday(index: number) {
+    const next = weekdays.includes(index)
+      ? weekdays.filter((d) => d !== index)
+      : [...weekdays, index].sort((a, b) => a - b)
+    void saveServiceable(next, closures)
+  }
+
+  function addClosure(b: CapacityBlockout) {
+    setAddingClosure(false)
+    void saveServiceable(weekdays, [...closures, b])
+  }
+
+  function removeClosure(index: number) {
+    void saveServiceable(weekdays, closures.filter((_, i) => i !== index))
+  }
+
+  // --- Resource labels (operator vocabulary) ----------------------------------
+  // The action replaces the whole `resource_labels` scalar, so we always send
+  // the full merged map (every kind that has an override).
+  async function saveLabel(kind: CapacityUnitKind, value: { one: string; many: string }) {
+    const prev = labels
+    const next: NonNullable<Org['resource_labels']> = { ...labels, [kind]: value }
+    setLabels(next)
+    await run(async () => {
+      try {
+        await updateResourceLabels(orgId, next)
+      } catch (err) {
+        setLabels(prev)
+        throw err
+      }
+    })
+  }
+
+  const everyDayClosed = weekdays.length === 0
+  const mobileMany = kindLabel({ resource_labels: labels }, 'mobile', 2)
+  const venueMany = kindLabel({ resource_labels: labels }, 'venue', 2)
+
   return (
     <div className="max-w-2xl space-y-6 p-6">
       <header className="space-y-1">
         <h1 className="text-2xl font-bold">Resources &amp; capacity</h1>
         <p className="text-sm text-muted-foreground">
-          Tell the pipeline how many carts and rooms you run, so it only warns you when a day is truly
-          overbooked — not just busy.
+          Tell the pipeline how many {mobileMany} and {venueMany} you run, and which days you work, so
+          it only warns you when a day is truly overbooked — not just busy.
         </p>
       </header>
 
@@ -172,7 +287,7 @@ export function CapacityUnitsClient({ orgId, initialUnits, locked = false }: Cap
               action={
                 addingKind === 'mobile' ? null : (
                   <Button onClick={() => { setAddingKind('mobile'); setError(null) }}>
-                    Add your first serving unit
+                    Add your first {metaFor('mobile', labels).one}
                   </Button>
                 )
               }
@@ -180,7 +295,7 @@ export function CapacityUnitsClient({ orgId, initialUnits, locked = false }: Cap
             {addingKind === 'mobile' && (
               <div className="mx-auto mt-1 max-w-sm pb-4">
                 <AddUnitForm
-                  meta={GROUPS[0]}
+                  meta={metaFor('mobile', labels)}
                   saving={saving}
                   onSave={(name) => handleAdd('mobile', name)}
                   onCancel={() => setAddingKind(null)}
@@ -201,7 +316,104 @@ export function CapacityUnitsClient({ orgId, initialUnits, locked = false }: Cap
             <span className="font-semibold tabular-nums">{onSiteCount}</span> of them on-site.
           </p>
 
-          {GROUPS.map((meta) => {
+          {/* When you're open — weekly working pattern + closures. */}
+          <section className="space-y-3" aria-labelledby={openHeadingId}>
+            <div className="space-y-1">
+              <h2
+                id={openHeadingId}
+                className="text-sm font-semibold uppercase tracking-[.04em] text-muted-foreground"
+              >
+                When you&apos;re open
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                The days you work. The outlook counts open capacity only on these days.
+              </p>
+            </div>
+
+            <div role="group" aria-label="Days of the week you're open" className="flex flex-wrap gap-1.5">
+              {WEEKDAYS.map((w) => {
+                const on = weekdays.includes(w.index)
+                return (
+                  <button
+                    key={w.index}
+                    type="button"
+                    aria-pressed={on}
+                    aria-label={w.name}
+                    disabled={saving}
+                    onClick={() => toggleWeekday(w.index)}
+                    className={
+                      'grid size-9 place-items-center rounded-full text-sm font-semibold outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50 motion-reduce:transition-none ' +
+                      (on
+                        ? 'bg-[var(--status-confirmed-bg)] text-[var(--status-confirmed-fg)]'
+                        : 'bg-[var(--status-neutral-bg)] text-[var(--status-neutral-fg)]')
+                    }
+                  >
+                    <span aria-hidden="true">{w.letter}</span>
+                  </button>
+                )
+              })}
+            </div>
+
+            {everyDayClosed && (
+              <p
+                role="status"
+                className="rounded-lg bg-[var(--status-pending-bg)] px-3 py-2 text-sm font-medium text-[var(--status-pending-fg)]"
+              >
+                You&apos;ve marked every day closed — the outlook will show no capacity.
+              </p>
+            )}
+
+            <div className="space-y-1.5">
+              <p className="text-xs font-medium text-muted-foreground">Closures</p>
+              {closures.length > 0 && (
+                <ul className="flex flex-wrap gap-1.5">
+                  {closures.map((c, i) => {
+                    const label = formatBlockoutRange(c.start, c.end)
+                    return (
+                      <li key={`${c.start}-${c.end}-${i}`} className={CHIP_CLASS}>
+                        <span>
+                          {label}
+                          {c.note ? <span className="text-muted-foreground"> · {c.note}</span> : null}
+                        </span>
+                        <button
+                          type="button"
+                          aria-label={`Remove closure ${label}`}
+                          disabled={saving}
+                          onClick={() => removeClosure(i)}
+                          className="grid size-4 place-items-center rounded-full text-current outline-none hover:bg-foreground/10 focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-50"
+                        >
+                          <span aria-hidden="true" className="text-[13px] leading-none">×</span>
+                        </button>
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+
+              {addingClosure ? (
+                <BlockoutForm
+                  saving={saving}
+                  submitLabel="Add closure"
+                  notePlaceholder="Holiday"
+                  onAdd={addClosure}
+                  onCancel={() => setAddingClosure(false)}
+                />
+              ) : (
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  className="text-muted-foreground"
+                  disabled={saving}
+                  onClick={() => setAddingClosure(true)}
+                >
+                  + Add closure
+                </Button>
+              )}
+            </div>
+          </section>
+
+          {GROUP_KINDS.map((kind) => {
+            const meta = metaFor(kind, labels)
             const groupUnits = units.filter((u) => u.kind === meta.kind)
             return (
               <section
@@ -210,13 +422,16 @@ export function CapacityUnitsClient({ orgId, initialUnits, locked = false }: Cap
                 aria-label={meta.title}
                 className="space-y-3"
               >
-                <div className="flex items-center justify-between">
-                  <h2 className="text-sm font-semibold uppercase tracking-[.04em] text-muted-foreground">
-                    {meta.title}
-                    {groupUnits.length > 0 && (
-                      <span className="ml-1.5 font-normal tabular-nums">({groupUnits.length})</span>
-                    )}
-                  </h2>
+                <div className="flex items-center justify-between gap-2">
+                  <CategoryLabelHeader
+                    kind={meta.kind}
+                    title={meta.title}
+                    one={meta.one}
+                    many={meta.many}
+                    count={groupUnits.length}
+                    saving={saving}
+                    onSave={saveLabel}
+                  />
                   {addingKind !== meta.kind && (
                     <Button
                       size="sm"
@@ -243,7 +458,7 @@ export function CapacityUnitsClient({ orgId, initialUnits, locked = false }: Cap
 
                 {groupUnits.length === 0 ? (
                   <p className="text-sm text-muted-foreground">
-                    No {meta.noun}s yet.
+                    No {meta.many} yet.
                   </p>
                 ) : (
                   <div className="space-y-3">
@@ -284,6 +499,109 @@ export function CapacityUnitsClient({ orgId, initialUnits, locked = false }: Cap
   )
 }
 
+/** Inline-editable category label (the "Serving units" / "Rooms" group header). */
+function CategoryLabelHeader({
+  kind,
+  title,
+  one,
+  many,
+  count,
+  saving,
+  onSave,
+}: {
+  kind: CapacityUnitKind
+  title: string
+  one: string
+  many: string
+  count: number
+  saving: boolean
+  onSave: (kind: CapacityUnitKind, value: { one: string; many: string }) => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [singular, setSingular] = useState(one)
+  const [plural, setPlural] = useState(many)
+  const uid = useId()
+
+  function begin() {
+    setSingular(one)
+    setPlural(many)
+    setEditing(true)
+  }
+
+  function commit() {
+    const s = singular.trim()
+    const p = plural.trim()
+    if (!s || !p) { setSingular(one); setPlural(many); setEditing(false); return }
+    if (s !== one || p !== many) onSave(kind, { one: s, many: p })
+    setEditing(false)
+  }
+
+  function cancel() {
+    setSingular(one)
+    setPlural(many)
+    setEditing(false)
+  }
+
+  if (editing) {
+    return (
+      <div
+        className="flex flex-wrap items-end gap-2"
+        // Commit when focus leaves the whole editor (blur to outside) — save on blur.
+        onBlur={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) commit()
+        }}
+      >
+        <div className="space-y-1">
+          <Label htmlFor={`${uid}-one`} className="text-xs">Singular</Label>
+          <Input
+            id={`${uid}-one`}
+            value={singular}
+            autoFocus
+            className="h-8 max-w-36"
+            onChange={(e) => setSingular(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') { e.preventDefault(); commit() }
+              if (e.key === 'Escape') { e.preventDefault(); cancel() }
+            }}
+          />
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor={`${uid}-many`} className="text-xs">Plural</Label>
+          <Input
+            id={`${uid}-many`}
+            value={plural}
+            className="h-8 max-w-36"
+            onChange={(e) => setPlural(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') { e.preventDefault(); commit() }
+              if (e.key === 'Escape') { e.preventDefault(); cancel() }
+            }}
+          />
+        </div>
+        <Button size="sm" onClick={commit} disabled={saving}>Save</Button>
+        <Button size="sm" variant="ghost" onClick={cancel}>Cancel</Button>
+      </div>
+    )
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={begin}
+      aria-label={`Rename ${title} category`}
+      className="group inline-flex items-center gap-1.5 rounded-md outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+    >
+      <h2 className="text-sm font-semibold uppercase tracking-[.04em] text-muted-foreground">
+        {title}
+        {count > 0 && (
+          <span className="ml-1.5 font-normal tabular-nums">({count})</span>
+        )}
+      </h2>
+      <PencilIcon />
+    </button>
+  )
+}
+
 function AddUnitForm({
   meta,
   saving,
@@ -306,7 +624,7 @@ function AddUnitForm({
 
   return (
     <div className="space-y-2">
-      <Label htmlFor={inputId}>New {meta.noun} name</Label>
+      <Label htmlFor={inputId}>New {meta.one} name</Label>
       <div className="flex flex-wrap items-center gap-2">
         <Input
           id={inputId}
@@ -371,11 +689,11 @@ function UnitRow({
       <CardContent className="space-y-3 py-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="min-w-0 flex-1 space-y-1">
-            <Label htmlFor={nameId} className="sr-only">{meta.noun} name</Label>
+            <Label htmlFor={nameId} className="sr-only">{meta.one} name</Label>
             <Input
               id={nameId}
               value={name}
-              aria-label={`${unit.name} — ${meta.noun} name`}
+              aria-label={`${unit.name} — ${meta.one} name`}
               className="h-8 max-w-56 font-medium"
               onChange={(e) => setName(e.target.value)}
               onBlur={commitName}
@@ -469,10 +787,14 @@ function UnitRow({
 
 function BlockoutForm({
   saving,
+  submitLabel = 'Add block-out',
+  notePlaceholder = 'maintenance',
   onAdd,
   onCancel,
 }: {
   saving: boolean
+  submitLabel?: string
+  notePlaceholder?: string
   onAdd: (b: CapacityBlockout) => void
   onCancel: () => void
 }) {
@@ -501,12 +823,12 @@ function BlockoutForm({
         </div>
         <div className="space-y-1">
           <Label htmlFor={`${uid}-note`} className="text-xs">Note (optional)</Label>
-          <Input id={`${uid}-note`} value={note} placeholder="maintenance" className="max-w-44" onChange={(e) => setNote(e.target.value)} />
+          <Input id={`${uid}-note`} value={note} placeholder={notePlaceholder} className="max-w-44" onChange={(e) => setNote(e.target.value)} />
         </div>
       </div>
       {err && <p className="text-xs text-destructive" aria-live="polite">{err}</p>}
       <div className="flex gap-2">
-        <Button size="sm" onClick={submit} disabled={saving || !start || !end}>Add block-out</Button>
+        <Button size="sm" onClick={submit} disabled={saving || !start || !end}>{submitLabel}</Button>
         <Button size="sm" variant="ghost" onClick={onCancel}>Cancel</Button>
       </div>
     </div>
@@ -545,6 +867,24 @@ function LockedPanel() {
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+function PencilIcon() {
+  return (
+    <svg
+      className="size-3.5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 motion-reduce:transition-none"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" />
+    </svg>
   )
 }
 
