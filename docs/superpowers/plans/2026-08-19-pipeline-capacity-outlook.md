@@ -128,10 +128,14 @@ Both `assertOrgAdmin(orgId)` then write the org scalar (mirror the existing org-
 **Interfaces — Consumes:** `updateServiceableDays`, `updateResourceLabels` (T3); `Org.serviceable_days`, `Org.resource_labels`.
 **Behavior:** on the existing Resources & capacity page — a **"When you're open"** block (7 weekday toggles, all-on default; a closures list of `{start,end,note?}` date-range chips add/remove — same idiom as the per-unit block-outs) saved via `updateServiceableDays`; and an **editable category label** per kind (the "Serving units"/"Rooms" group headers become editable → `updateResourceLabels`). Optimistic + rollback (mirror the Inc-1/2 controls).
 
-**Design direction:** run **design-ambition** first (baked block added before build).
+**Design direction (design-ambition pass, done 2026-08-19 — build to this):**
+- **Weekly pattern:** a row of 7 toggle pills (S M T W T F S), on = serviceable, **all-on by default**. When all are off, a clear inline warning: "You've marked every day closed — the outlook will show no capacity." AA contrast + `aria-pressed` on each pill.
+- **Closures:** date-range chips reusing the Inc-1 block-out idiom exactly ("Dec 24–26 · Holiday ✕", add via a compact start–end + optional note, inclusive). Same component feel as `CapacityUnitsClient` block-outs.
+- **Kind labels:** the "Serving units" / "Rooms" group headers become **inline-editable** (click → edit → save on blur/Enter), each backed by singular+plural (default neutral; BrewTrax → Cart/Carts). Light touch — it's naming a category, not a form.
+- Optimistic save + rollback (mirror the Inc-1/2 controls); keyboard-operable; `prefers-reduced-motion`.
 
 **Steps:**
-- [ ] design-ambition pass; failing component test: weekday toggles call `updateServiceableDays` with the new set; adding a closure chip persists it; editing a kind label calls `updateResourceLabels`; the "every day closed" warning shows when all weekdays are off.
+- [ ] build to the design direction above; failing component test: weekday toggles call `updateServiceableDays` with the new set; adding a closure chip persists it; editing a kind label calls `updateResourceLabels`; the "every day closed" warning shows when all weekdays are off.
 - [ ] Run → FAIL; implement; tests → PASS; `npm run build`.
 - [ ] Commit: `feat(capacity): serviceable-days + resource-label settings editors`.
 
@@ -144,10 +148,14 @@ Both `assertOrgAdmin(orgId)` then write the org scalar (mirror the existing org-
 **Interfaces — Consumes:** `forecastByMonth` (T2), `kindLabel` (T1), `hasMultiResourceCapacity`, `listCapacityUnitsCore`.
 **Behavior:** the sub-nav gains a **Capacity** tab, shown ONLY for `hasMultiResourceCapacity(org)` with ≥1 unit; its route loads leads + units + org, runs `forecastByMonth`, and renders one row per month: **"‹Month› — ‹openCarts› of ‹ceilingCarts› ‹kindLabel(mobile)› open · ‹openRooms› of ‹ceilingRooms› ‹kindLabel(venue)› open · ~$‹headroom› headroom · over ‹N› working days"** (drop the `$` when `headroomValue===0`). Booked-vs-ceiling visible.
 
-**Design direction:** run **design-ambition + dataviz** first (baked block added before build). The forecast row is a stat/meter, not prose — encode booked/open in form (a small meter) as well as number.
+**Design direction (design-ambition + dataviz pass, done 2026-08-19 — build to this):**
+- The data's job is **part-of-whole magnitude** → the form is a **booked/ceiling meter**, NOT prose. Each month is a row: the month label, then a thin rounded horizontal **meter per kind** (booked = filled to `booked/ceiling`, open = the remaining track), the **open count** beside it, the **`~$` headroom as the hero number** (money-green token), and "over N working days" as quiet muted context.
+- Encode state in form (Few): a near-full month reads as a nearly-filled bar at a glance; open capacity is the sellable story, so the headroom `$` is the emphasized figure.
+- Meter marks (dataviz): thin bar, 4px rounded ends, baseline/track anchored, a 2px surface gap; recessive track. Booked-vs-ceiling is ALWAYS shown (honest ratio, never a bare "open").
+- **No new palette** — this is booked-vs-open (part-of-whole), not multi-series: use existing neutral track + a calm fill token, money-green for `$`. Kind nouns via `kindLabel`; drop the `$` when `headroomValue===0`. Responsive (rows stack cleanly on mobile); AA.
 
 **Steps:**
-- [ ] design-ambition/dataviz pass; failing tests: the tab is hidden for a non-business/unit-less org and present for business+units; a month row renders open/ceiling for both kinds + `$` (and omits `$` with no value); the noun comes from `kindLabel` (override reads "carts").
+- [ ] build to the design direction above; failing tests: the tab is hidden for a non-business/unit-less org and present for business+units; a month row renders open/ceiling for both kinds + `$` (and omits `$` with no value); the noun comes from `kindLabel` (override reads "carts").
 - [ ] Run → FAIL; implement sub-nav + route + client; tests → PASS; `npm run build`.
 - [ ] Commit: `feat(capacity): Capacity Outlook tab + peak-date headroom forecast`.
 
@@ -160,10 +168,14 @@ Both `assertOrgAdmin(orgId)` then write the org scalar (mirror the existing org-
 **Interfaces — Consumes:** `buildSchedule` (T2), `kindLabel` (T1).
 **Behavior:** below the forecast, the **read-only** schedule — one lane per unit (grouped mobile then venue, labelled by unit NAME under a `kindLabel` group header) + a trailing **Unassigned** lane; dates across; a booked cell shows the lead title (links to the opportunity); non-serviceable and unit-blocked cells are muted/hatched. Column strategy (day grid + horizontal scroll vs week grouping vs serviceable-only) is the **dataviz** decision — must be legible desktop/tablet/mobile and horizontal-scroll-contained (never scroll the page body).
 
-**Design direction:** run **design-ambition + dataviz** first (baked block added before build). This is the visualization-heavy surface — lane/timeline done right (Few/Tufte: the booked blocks are the ink), responsive, `overflow-x` contained.
+**Design direction (design-ambition + dataviz pass, done 2026-08-19 — build to this):**
+- Form = **read-only unit × date lane grid** (identity × time). Rows = units grouped mobile-then-venue under `kindLabel` group headers, plus a trailing **Unassigned lane** in a warning tone (bookings still needing a unit, each linking to its opportunity to assign).
+- Cell states are a **STATUS grid**, not a magnitude heatmap — four states, each visually distinct without relying on color alone: **booked** (filled block showing the lead title, links to the opportunity), **open** (empty recessive track), **non-serviceable** (muted), **blocked** (**hatched texture** — the kit's 45° fill — so it reads under CVD/print, per the dataviz non-negotiables). The booked blocks are the ink; everything else recedes (Tufte).
+- **Overflow contained:** the grid scrolls **horizontally inside its own container** (`overflow-x:auto`), NEVER the page body. Near-term day grid (~4 weeks) is the default; the implementer may week-bucket beyond that, but it must stay legible desktop/tablet. **Mobile fallback:** degrade to a per-unit upcoming-bookings list (e.g. "Kart 1 — Sep 5 Crestline · Sep 27 …") rather than a crushed grid.
+- Per-cell **hover tooltip** (unit · date · lead / open / blocked). No new categorical palette — reuse status/neutral tokens + the texture. AA on every state.
 
 **Steps:**
-- [ ] design-ambition/dataviz pass; failing tests: a unit lane shows its booked cell (lead title) on the assigned date; the Unassigned lane lists an unassigned in-window dated lead; muted cells for non-serviceable/blocked; group headers use `kindLabel`.
+- [ ] build to the design direction above; failing tests: a unit lane shows its booked cell (lead title) on the assigned date; the Unassigned lane lists an unassigned in-window dated lead; muted cells for non-serviceable/blocked; group headers use `kindLabel`.
 - [ ] Run → FAIL; implement; tests + full suite → PASS; `npm run build`.
 - [ ] Commit: `feat(capacity): read-only per-unit schedule view`.
 
