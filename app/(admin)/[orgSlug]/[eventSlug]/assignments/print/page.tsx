@@ -96,7 +96,7 @@ export default async function AssignmentsPrintPage({
         .print-root .empty { color: #aaa; font-style: italic; font-size: 11px; }
         @media print {
           aside { display: none !important; }
-          main { padding: 0 !important; background: none !important; overflow: visible !important; }
+          main, [data-event-main] { padding: 0 !important; background: none !important; overflow: visible !important; }
           .print-root { display: block; }
           @page { margin: 1.5cm; }
         }

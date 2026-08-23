@@ -10,7 +10,8 @@ export const dynamic = 'force-dynamic'
 // tokens, so the document reads identically on screen in dark mode and out of
 // the printer. Page-level @media print isolation (ops/print precedent): the
 // event layout's chrome is print:hidden already; the style block below hides
-// the sidebar and unclamps <main> — no pass-through layout needed.
+// the sidebar and unclamps the scroll containers (the org <main> and the event
+// layout's [data-event-main] div) — no pass-through layout needed.
 
 import { headers } from 'next/headers'
 import { requireEventPage } from '@/lib/auth/guards'
@@ -74,7 +75,7 @@ export default async function RunSheetPrintPage({
       <style>{`
         @media print {
           aside { display: none !important; }
-          main { padding: 0 !important; background: none !important; overflow: visible !important; }
+          main, [data-event-main] { padding: 0 !important; background: none !important; overflow: visible !important; }
           @page { margin: 1.5cm; }
         }
       `}</style>

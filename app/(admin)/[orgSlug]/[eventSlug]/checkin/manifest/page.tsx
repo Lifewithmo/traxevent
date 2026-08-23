@@ -58,7 +58,7 @@ export default async function CheckinManifestPage({
         .print-root .sub { color: #666; }
         @media print {
           aside { display: none !important; }
-          main { padding: 0 !important; background: none !important; overflow: visible !important; }
+          main, [data-event-main] { padding: 0 !important; background: none !important; overflow: visible !important; }
           .print-root { padding: 0; }
           @page { margin: 1.5cm; }
         }
