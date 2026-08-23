@@ -2,6 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest'
 import { render, screen, within, cleanup } from '@testing-library/react'
 import { CapacityOutlookClient } from '@/components/admin/pipeline/CapacityOutlookClient'
 import type { CapacityMonth } from '@/lib/capacity/forecast'
+import type { ScheduleLane } from '@/lib/capacity/schedule'
 import type { Org } from '@/lib/types'
 
 const month = (over: Partial<CapacityMonth>): CapacityMonth => ({
@@ -69,5 +70,99 @@ describe('CapacityOutlookClient — forecast', () => {
       />,
     )
     expect(screen.getAllByRole('listitem')).toHaveLength(2)
+  })
+})
+
+// A cell with sensible open defaults, overridable per test.
+const cell = (over: Partial<ScheduleLane['cells'][number]>): ScheduleLane['cells'][number] => ({
+  date: '2026-09-05',
+  serviceable: true,
+  unitAvailable: true,
+  ...over,
+})
+
+const scheduleFixture: ScheduleLane[] = [
+  {
+    unitId: 'u1',
+    unitName: 'Kart 1',
+    kind: 'mobile',
+    cells: [
+      cell({ date: '2026-09-05', leadId: 'lead-1', leadTitle: 'Crestline Wedding' }),
+      cell({ date: '2026-09-06', serviceable: false }), // closed (weekend)
+      cell({ date: '2026-09-07', unitAvailable: false }), // blocked (unit out)
+      cell({ date: '2026-09-08' }), // open
+    ],
+  },
+  {
+    unitId: 'u2',
+    unitName: 'Salon',
+    kind: 'venue',
+    cells: [
+      cell({ date: '2026-09-05' }),
+      cell({ date: '2026-09-06', serviceable: false }),
+      cell({ date: '2026-09-07' }),
+      cell({ date: '2026-09-08' }),
+    ],
+  },
+  {
+    unitId: 'unassigned',
+    unitName: 'Unassigned',
+    kind: 'unassigned',
+    cells: [
+      cell({ date: '2026-09-05' }),
+      cell({ date: '2026-09-06', serviceable: false }),
+      cell({ date: '2026-09-07', leadId: 'lead-9', leadTitle: 'Orphan Gala' }),
+      cell({ date: '2026-09-08' }),
+    ],
+  },
+]
+
+describe('CapacityOutlookClient — schedule', () => {
+  const renderSchedule = (labels?: Org['resource_labels']) =>
+    render(
+      <CapacityOutlookClient orgSlug="demo" forecast={[month({})]} schedule={scheduleFixture} resourceLabels={labels} />,
+    )
+
+  const scheduleRegion = () => screen.getByRole('region', { name: /booked where/i })
+
+  it('shows a unit lane booked cell with the lead title, linking to the opportunity', () => {
+    renderSchedule()
+    const region = scheduleRegion()
+    const links = within(region).getAllByRole('link', { name: /Crestline Wedding/ })
+    expect(links.length).toBeGreaterThan(0)
+    expect(links[0]).toHaveAttribute('href', '/demo/leads/lead-1')
+  })
+
+  it('surfaces an unassigned in-window dated lead in the Unassigned lane', () => {
+    renderSchedule()
+    const region = scheduleRegion()
+    expect(within(region).getAllByText(/Unassigned/).length).toBeGreaterThan(0)
+    expect(within(region).getAllByText(/Orphan Gala/).length).toBeGreaterThan(0)
+  })
+
+  it('flags non-serviceable (closed) and unit-blocked cells distinctly', () => {
+    renderSchedule()
+    const region = scheduleRegion()
+    // A closed day and a blocked day are each communicated in the cell tooltip,
+    // not by colour alone.
+    expect(within(region).getAllByTitle(/Closed/).length).toBeGreaterThan(0)
+    expect(within(region).getAllByTitle(/Unavailable/).length).toBeGreaterThan(0)
+  })
+
+  it('groups lanes under kindLabel headers — an org override reads "Carts"', () => {
+    renderSchedule({ mobile: { one: 'cart', many: 'carts' } })
+    const region = scheduleRegion()
+    expect(within(region).getAllByText(/Carts/).length).toBeGreaterThan(0)
+  })
+
+  it('uses the neutral group header with no override', () => {
+    renderSchedule()
+    const region = scheduleRegion()
+    expect(within(region).getAllByText(/Serving units/).length).toBeGreaterThan(0)
+  })
+
+  it('renders no schedule section when no schedule is passed', () => {
+    render(<CapacityOutlookClient orgSlug="demo" forecast={[month({})]} />)
+    expect(screen.queryByRole('region', { name: /booked where/i })).toBeNull()
   })
 })

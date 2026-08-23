@@ -8,6 +8,7 @@ import { OPEN_STAGES } from '@/lib/leads'
 import { todayYmd } from '@/lib/opportunity-detail'
 import { hasMultiResourceCapacity, listCapacityUnitsCore } from '@/lib/capacity/units'
 import { forecastByMonth } from '@/lib/capacity/forecast'
+import { buildSchedule } from '@/lib/capacity/schedule'
 import { PipelineSubNav } from '@/components/admin/pipeline/PipelineSubNav'
 import { CapacityOutlookClient } from '@/components/admin/pipeline/CapacityOutlookClient'
 
@@ -40,6 +41,9 @@ export default async function CapacityOutlookPage({ params }: { params: Promise<
 
   const today = todayYmd()
   const forecast = forecastByMonth(leads, units, { serviceable_days: serviceableDays }, today)
+  // Near-term day grid: 4 weeks of dates, legible desktop→mobile and
+  // horizontal-scroll-contained on its own container (never the page body).
+  const schedule = buildSchedule(leads, units, { serviceable_days: serviceableDays }, today, 28)
 
   return (
     <div>
@@ -47,7 +51,12 @@ export default async function CapacityOutlookPage({ params }: { params: Promise<
       {/* The Pipeline section's one frame — same `max-w-6xl px-6` as the KPI band
           and both opportunity surfaces, so this content shares their left edge. */}
       <div className="mx-auto max-w-6xl px-6 py-6">
-        <CapacityOutlookClient orgSlug={orgSlug} forecast={forecast} resourceLabels={resourceLabels} />
+        <CapacityOutlookClient
+          orgSlug={orgSlug}
+          forecast={forecast}
+          schedule={schedule}
+          resourceLabels={resourceLabels}
+        />
       </div>
     </div>
   )
