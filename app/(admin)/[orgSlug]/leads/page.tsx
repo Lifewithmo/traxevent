@@ -102,7 +102,16 @@ export default async function LeadsPage({
   const shared = { orgId, orgSlug, groups, monthly, showDeliveryMode }
   return (
     <div>
-      <PipelineSubNav orgSlug={orgSlug} active="opportunities" openCount={open.length} dueTodayCount={owedTaskCount} />
+      {/* `units` is populated only for a business org (the gate above); a
+          business org with ≥1 unit is exactly who the Capacity Outlook tab is
+          for, so the same array gates the tab — no extra read. */}
+      <PipelineSubNav
+        orgSlug={orgSlug}
+        active="opportunities"
+        openCount={open.length}
+        dueTodayCount={owedTaskCount}
+        showCapacity={units.length > 0}
+      />
       {/* Same `max-w-6xl` frame the two surfaces below use, so the KPI band and
           the rows share one left edge instead of the band running 400px wider. */}
       <div className="mx-auto max-w-6xl px-6 pt-6">
