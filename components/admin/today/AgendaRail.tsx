@@ -120,7 +120,13 @@ export function AgendaRail({ orgSlug, agenda }: { orgSlug: string; agenda: Agend
   const showTodaySection = !pinnedIsToday || todayRest.length > 0
 
   return (
-    <aside className="w-full border-b border-border bg-muted/40 p-4 md:w-72 md:shrink-0 md:border-b-0 md:border-l">
+    // order-first: DOM sits after the queue (h1-first document, desktop tab
+    // order matches the layout) but the rail paints on top below md; md+ resets
+    // to natural order so the rail takes the right column. See TodayClient.
+    <aside
+      aria-label="Agenda"
+      className="order-first w-full border-b border-border bg-muted/40 p-4 md:order-none md:w-72 md:shrink-0 md:border-b-0 md:border-l"
+    >
       {next && <NextJobBlock entry={next} orgSlug={orgSlug} />}
 
       {showTodaySection && (

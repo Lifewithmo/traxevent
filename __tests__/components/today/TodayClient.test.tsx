@@ -38,15 +38,17 @@ describe('TodayClient', () => {
     expect(screen.getByRole('link', { name: /Gala/ })).toHaveAttribute('href', '/acme/gala/dashboard')
   })
 
-  it('puts the rail before the queue in DOM order — rail on top below md, queue first at md+ via order classes', () => {
+  it('puts the queue (h1) before the rail in DOM — the rail floats on top below md via order-first', () => {
     const { container } = render(<TodayClient orgId="o1" orgSlug="acme" data={data} agenda={agenda} />)
     const aside = container.querySelector('aside')
     const h1 = screen.getByRole('heading', { level: 1 })
     expect(aside).not.toBeNull()
-    // The rail (aside) precedes the queue column in the DOM = first on phones.
-    expect(aside!.compareDocumentPosition(h1) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    // The queue column reclaims the left slot on md+ screens.
-    expect(h1.closest('.md\\:order-first')).not.toBeNull()
+    // The h1 precedes the rail (and thus its h2s) in the DOM: a valid heading
+    // outline, and desktop tab/reading order that matches the visual layout.
+    expect(h1.compareDocumentPosition(aside!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    // Below md the rail still DISPLAYS first — a visual-only reorder.
+    expect(aside!.className).toContain('order-first')
+    expect(aside!.className).toContain('md:order-none')
   })
 
   it('renders the KPI band', () => {

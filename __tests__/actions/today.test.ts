@@ -97,6 +97,32 @@ describe('getTodayAgenda', () => {
     expect(agenda.upcoming.find((e) => e.eventId === 'market')?.ops).toBeUndefined()
   })
 
+  it('skips ops enrichment for events where the member lacks the ops page — no chip, not a false state', async () => {
+    const { assertOrgMember } = await import('@/lib/auth/assert')
+    vi.mocked(assertOrgMember).mockResolvedValueOnce({
+      role: 'staff',
+      event_access: { granted: { pages: ['ops'] } },
+      department_access: { d1: { pages: ['ops'] } },
+    } as never)
+    listEventsCore.mockResolvedValue([
+      event({ id: 'granted' }),                                    // per-event ops grant
+      event({ id: 'dept', slug: 'dept', department_id: 'd1' }),    // department-level ops grant
+      event({ id: 'denied', slug: 'denied' }),                     // no grant at all
+    ])
+    getOpsPlanCore.mockResolvedValue(null)
+    const agenda = await getTodayAgenda('o1')
+    // Plan reads happen ONLY for events whose ops page this member may open.
+    expect(getOpsPlanCore).toHaveBeenCalledTimes(2)
+    expect(getOpsPlanCore).toHaveBeenCalledWith('o1', 'granted')
+    expect(getOpsPlanCore).toHaveBeenCalledWith('o1', 'dept')
+    expect(agenda.today.find((e) => e.eventId === 'granted')?.ops).toEqual({ hasPlan: false })
+    expect(agenda.today.find((e) => e.eventId === 'dept')?.ops).toEqual({ hasPlan: false })
+    // The ungated event carries no ops claim at all — never a false "no ops plan yet".
+    const denied = agenda.today.find((e) => e.eventId === 'denied')
+    expect(denied?.ops).toBeUndefined()
+    expect(denied && 'ops' in denied).toBe(false)
+  })
+
   it('missing plan marks hasPlan:false; a failed read attaches nothing', async () => {
     listEventsCore.mockResolvedValue([
       event({ id: 'no-plan' }),

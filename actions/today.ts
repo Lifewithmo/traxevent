@@ -1,5 +1,6 @@
 'use server'
 
+import { canAccessEventPage } from '@/lib/auth/access'
 import { assertOrgMember } from '@/lib/auth/assert'
 import { listLeadsCore } from '@/lib/crm/leads'
 import { listTasksCore } from '@/lib/crm/tasks'
@@ -36,13 +37,22 @@ export async function getTodayData(orgId: string): Promise<TodayData> {
  * next job is actually ready.
  */
 export async function getTodayAgenda(orgId: string): Promise<Agenda> {
-  await assertOrgMember(orgId)
+  const member = await assertOrgMember(orgId)
   const events = await listEventsCore(orgId)
   const today = todayYmd()
   const agenda = buildAgenda(events, today)
 
   const onAgenda = new Set([...agenda.today, ...agenda.upcoming].map((e) => e.eventId))
-  const jobs = events.filter((e) => onAgenda.has(e.id) && kindOf(e) === 'client_job')
+  // Per-event ops gate (pure math over the member doc — same rule the event
+  // layout and the org-home horizon rail apply): readiness/packed facts are
+  // derived from the ops plan, so a member without the 'ops' page on an event
+  // gets NO enrichment for it — no chip, no claim, never a false state.
+  const jobs = events.filter(
+    (e) =>
+      onAgenda.has(e.id) &&
+      kindOf(e) === 'client_job' &&
+      canAccessEventPage(member, e.id, 'ops', e.department_id ?? null)
+  )
   const reads = await Promise.all(
     jobs.map(async (e) => {
       try {

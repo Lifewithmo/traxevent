@@ -185,10 +185,37 @@ function dayDiff(from: string, to: string): number {
   return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000)
 }
 
+/** Sentinel that sorts after every valid 'HH:mm' — jobs with no working hours
+ *  fall to the back of their day rather than winning the pin arbitrarily. */
+const NO_START_TIME = '24:00'
+
+/**
+ * Which job is physically next: earliest start DATE first (a multi-day job
+ * already running outranks one starting today), then start TIME (hours.start,
+ * 'HH:mm'), then name, then id.
+ *
+ * Transitivity: each key is a plain string localeCompare — a total order —
+ * and keys are consulted lexicographically (a later key only breaks exact
+ * ties on every earlier key), so the composite is a total order too. Never
+ * mix per-pair conditionals into this chain (repo lesson: the Book-By Radar
+ * comparator went intransitive exactly that way).
+ */
+function byNextCommitment(a: Event, b: Event): number {
+  return (
+    a.event_start.slice(0, 10).localeCompare(b.event_start.slice(0, 10)) ||
+    (a.hours?.start || NO_START_TIME).localeCompare(b.hours?.start || NO_START_TIME) ||
+    a.name.localeCompare(b.name) ||
+    a.id.localeCompare(b.id)
+  )
+}
+
 /** Booked work for today and the following seven days — not pipeline dates. */
 export function buildAgenda(events: Event[], today: string, days = 7): Agenda {
   const end = addDays(today, days)
-  const live = events.filter((e) => e.status !== 'archived')
+  // Sort ONCE here so every consumer agrees: today[0] is the pinned "Next
+  // job", and each day's rows list in physical-start order. listEventsCore
+  // hands us created_at-desc, which is meaningless for "what's next".
+  const live = events.filter((e) => e.status !== 'archived').sort(byNextCommitment)
 
   const entry = (e: Event, date: string): AgendaEntry => ({
     eventId: e.id,

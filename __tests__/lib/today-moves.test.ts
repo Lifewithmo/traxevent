@@ -126,6 +126,67 @@ describe('buildAgenda', () => {
     expect(agenda.upcoming).toHaveLength(0)
   })
 
+  // listEventsCore hands buildAgenda created_at-desc order; the agenda must
+  // re-rank by physical start so the pinned "Next job" (today[0]) is the job
+  // you actually drive to next, not the one booked most recently.
+  it('orders a multi-job day by start time, not creation order', () => {
+    const agenda = buildAgenda(
+      [
+        // Newest booking first, exactly as listEventsCore returns it.
+        ev({ id: 'evening', slug: 'evening', name: 'Evening Gala', hours: { start: '18:00', end: '23:00' }, created_at: '2026-08-04T00:00:00.000Z' }),
+        ev({ id: 'morning', slug: 'morning', name: 'Morning Market', hours: { start: '08:00', end: '12:00' }, created_at: '2026-07-01T00:00:00.000Z' }),
+      ],
+      today
+    )
+    expect(agenda.today.map((e) => e.eventId)).toEqual(['morning', 'evening'])
+  })
+
+  it('a job with no working hours sorts after every timed job on its day', () => {
+    const agenda = buildAgenda(
+      [
+        ev({ id: 'untimed', slug: 'untimed', name: 'Aardvark Party' }), // no hours — sentinel 24:00
+        ev({ id: 'timed', slug: 'timed', name: 'Zebra Wedding', hours: { start: '09:00', end: '15:00' } }),
+      ],
+      today
+    )
+    expect(agenda.today.map((e) => e.eventId)).toEqual(['timed', 'untimed'])
+  })
+
+  it('breaks a same-time tie by name, deterministically', () => {
+    const agenda = buildAgenda(
+      [
+        ev({ id: 'z', slug: 'z', name: 'Zeta' }),
+        ev({ id: 'a', slug: 'a', name: 'Alpha' }),
+      ],
+      today
+    )
+    expect(agenda.today.map((e) => e.eventId)).toEqual(['a', 'z'])
+  })
+
+  it('an already-running multi-day job outranks one starting later today', () => {
+    const agenda = buildAgenda(
+      [
+        ev({ id: 'starts-today', slug: 'st', name: 'Starts Today', hours: { start: '06:00', end: '10:00' } }),
+        ev({ id: 'running', slug: 'run', name: 'Running Festival', event_start: '2026-08-04', event_end: '2026-08-06' }),
+      ],
+      today
+    )
+    // Earlier event_start DATE wins before start time — the running job is the
+    // current physical commitment.
+    expect(agenda.today.map((e) => e.eventId)).toEqual(['running', 'starts-today'])
+  })
+
+  it('orders same-day upcoming rows by start time too', () => {
+    const agenda = buildAgenda(
+      [
+        ev({ id: 'late', slug: 'late', name: 'Late', event_start: '2026-08-08', event_end: '2026-08-08', hours: { start: '17:00', end: '22:00' } }),
+        ev({ id: 'early', slug: 'early', name: 'Early', event_start: '2026-08-08', event_end: '2026-08-08', hours: { start: '07:00', end: '11:00' } }),
+      ],
+      today
+    )
+    expect(agenda.upcoming.map((e) => e.eventId)).toEqual(['early', 'late'])
+  })
+
   it('stamps each entry with whole days until its date', () => {
     const agenda = buildAgenda(
       [

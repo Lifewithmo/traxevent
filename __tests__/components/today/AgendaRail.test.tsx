@@ -20,6 +20,25 @@ describe('AgendaRail', () => {
     expect(screen.queryByText('On the cart today')).not.toBeInTheDocument()
   })
 
+  it('on a multi-job day pins today[0] (buildAgenda sorts by start) and demotes the rest to Also today', () => {
+    const twoToday: Agenda = {
+      ...agenda,
+      today: [
+        { eventId: 'am', slug: 'am', name: 'Morning Market', date: '2026-08-05', daysUntil: 0, multiDay: false },
+        { eventId: 'pm', slug: 'pm', name: 'Evening Gala', date: '2026-08-05', daysUntil: 0, multiDay: false },
+      ],
+    }
+    render(<AgendaRail orgSlug="acme" agenda={twoToday} />)
+    // The pinned block is the FIRST entry — buildAgenda's physical-start order.
+    const pinned = screen.getByText('Next job').closest('a')
+    expect(pinned).toHaveAttribute('href', '/acme/am/dashboard')
+    expect(pinned).toHaveTextContent('Morning Market')
+    expect(screen.getByText('Also today')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Evening Gala' })).toHaveAttribute('href', '/acme/pm/dashboard')
+    // A labeled complementary landmark, so AT users can jump straight to it.
+    expect(screen.getByRole('complementary', { name: 'Agenda' })).toBeInTheDocument()
+  })
+
   it('renders only the window days that have items, plus the calendar link', () => {
     render(<AgendaRail orgSlug="acme" agenda={agenda} />)
     // Only 2026-08-07 (Fall Gala) has an item; the other 6 window days should render no row at all.

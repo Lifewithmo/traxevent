@@ -27,11 +27,16 @@ export function TodayClient({ orgId, orgSlug, data, agenda }: TodayClientProps) 
 
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col md:flex-row">
-      {/* Below md the agenda rail leads — the walk found the next job buried 2-3
-          scrolls under the moves queue on phones. At md and up the queue column
-          takes the left slot back via md:order-first and the rail stays right. */}
-      <AgendaRail orgSlug={orgSlug} agenda={agenda} />
-      <div className="min-w-0 flex-1 md:order-first">
+      {/* DOM order is queue-first: the page h1 leads the document (heading
+          outline h1 → the rail's h2s stays valid) and desktop tab/reading
+          order matches the visual layout instead of forcing ~10 rail links
+          before the first queue action. Below md the rail still DISPLAYS
+          first — the walk found the next job buried 2-3 scrolls deep — via
+          order-first on the <aside> (a visual-only reorder). Tradeoff, chosen
+          deliberately: on phones AT/tab order starts at the queue while the
+          rail paints on top; we take that over inverting desktop, since the
+          rail is a labeled complementary landmark AT users can jump to. */}
+      <div className="min-w-0 flex-1">
         <div className="flex items-baseline justify-between gap-3 border-b border-border px-5 py-3">
           <div className="flex items-baseline gap-3">
             <h1 className="text-base font-semibold">{heading}</h1>
@@ -51,6 +56,7 @@ export function TodayClient({ orgId, orgSlug, data, agenda }: TodayClientProps) 
         <TodayKpiBand tiles={data.tiles} eventsToday={eventsToday} />
         <TodayQueue orgId={orgId} orgSlug={orgSlug} data={data} />
       </div>
+      <AgendaRail orgSlug={orgSlug} agenda={agenda} />
     </div>
   )
 }
