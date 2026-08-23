@@ -23,16 +23,18 @@ export default async function DashboardPage({
   // The layout suppresses the KPI band on this leaf (EventBandGate, B1): the
   // brief REPLACES it, so the page aggregates its own facts — a layout cannot
   // pass props to a page in the App Router. Same soft-failing reads, same
-  // roster-less allowedPages strip as the layout, plus the B4 money gate.
+  // roster-less allowedPages strip as the layout, plus the B4 money gate; the
+  // underlying reads dedupe with the layout's band call via React cache().
   const allowed = allowedEventPages(member, eventId, [...EVENT_PAGES], event.department_id ?? null)
   const rosterEnabled = resolveEnabledModules(org.industry_pack_id).includes('attendee-roster')
+  const pages = rosterEnabled ? allowed : allowed.filter((p) => p !== 'families' && p !== 'reports')
   const includeMoney = member.role === 'owner' || member.role === 'admin'
   const today = new Date().toISOString().slice(0, 10)
   const kpis = await getEventSpineKpis({
     orgId,
     eventId,
     event,
-    allowedPages: rosterEnabled ? allowed : allowed.filter((p) => p !== 'families' && p !== 'reports'),
+    allowedPages: pages,
     includeMoney,
     today,
   })
@@ -45,6 +47,7 @@ export default async function DashboardPage({
       kpis={kpis}
       today={today}
       isAdmin={includeMoney}
+      allowedPages={pages}
     />
   )
 }

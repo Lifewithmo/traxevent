@@ -41,6 +41,7 @@ import {
   computeEventBlockers,
   computeEventVerdict,
   computeEventNba,
+  blockerTarget,
   eventPhaseOf,
   formatClockTime,
   resolveJobTime,
@@ -48,10 +49,15 @@ import {
   formatJobDay,
   type EventArSummary,
 } from '@/lib/event-spine'
+import {
+  formatClockTime as uiFormatClockTime,
+  resolveJobTime as uiResolveJobTime,
+  backPlanChips as uiBackPlanChips,
+} from '@/lib/event-ui'
 import type { EventPage } from '@/lib/types'
 
 const TODAY = '2026-08-19'
-const EVENT = { event_start: '2099-09-12' }
+const EVENT = { event_start: '2099-09-12', event_end: '2099-09-12' }
 const ALL_PAGES: EventPage[] = ['dashboard', 'families', 'ops', 'reports']
 
 const FAMILY_DOCS = [
@@ -284,6 +290,52 @@ describe('getEventSpineKpis', () => {
     expect(itineraryGet).not.toHaveBeenCalled()
     expect(kpis.firstItineraryTime).toBeNull()
   })
+
+  // ── Wrapped phase: prep blockers do not survive the event ──────────────────
+
+  it('drops stale prep blockers for a wrapped event — only money survives', async () => {
+    // Overdue deadline + half-packed load list + pending registration: normal
+    // leftovers of a finished job. Deposit still unpaid.
+    planGet.mockResolvedValue({
+      exists: true,
+      data: () => ({ ...PLAN, deadlines: [{ id: 'd1', label: 'Order ice', due: '2026-08-01', done: false }] }),
+    })
+    invoicesGet.mockResolvedValue({ docs: INVOICE_DOCS })
+    const kpis = await getEventSpineKpis(callInput({
+      event: { event_start: '2026-08-01', event_end: '2026-08-02', lead_id: 'lead-1' },
+    }))
+
+    expect(kpis.blockers.map((b) => b.kind)).toEqual(['money'])
+    expect(kpis.blockers[0].label).toBe('Deposit unpaid')
+  })
+
+  it('keeps the full prep blocker set while the event is still upcoming', async () => {
+    planGet.mockResolvedValue({
+      exists: true,
+      data: () => ({ ...PLAN, deadlines: [{ id: 'd1', label: 'Order ice', due: '2026-08-01', done: false }] }),
+    })
+    const kpis = await getEventSpineKpis(callInput())
+    expect(kpis.blockers.map((b) => b.kind)).toEqual(['deadline', 'loadlist', 'registrations'])
+  })
+
+  // ── wantBriefFacts: false (the layout's band-only call) ────────────────────
+
+  it('skips the closeout + itinerary reads and the blocker math for band-only callers', async () => {
+    const kpis = await getEventSpineKpis(callInput({
+      allowedPages: [...ALL_PAGES, 'itinerary'],
+      wantBriefFacts: false,
+    }))
+
+    expect(closeoutGet).not.toHaveBeenCalled()
+    expect(itineraryGet).not.toHaveBeenCalled()
+    expect(kpis.closeout).toBeNull()
+    expect(kpis.firstItineraryTime).toBeNull()
+    expect(kpis.blockers).toEqual([])
+    // The band's own sections still aggregate.
+    expect(kpis.registrations).toMatchObject({ total: 3 })
+    expect(kpis.financial).toMatchObject({ outstanding: 600 })
+    expect(kpis.readiness).toMatchObject({ pct: 40 })
+  })
 })
 
 // ── Pure judgment math ───────────────────────────────────────────────────────
@@ -346,6 +398,33 @@ describe('computeEventBlockers', () => {
     const ar: EventArSummary = { invoiced: 1000, outstanding: 0, overdueAmount: 0, openCount: 0, deposit: 'paid' }
     expect(computeEventBlockers({ plan: done, registrations: { byStatus: {} }, ar, today: TODAY })).toEqual([])
   })
+
+  it('keeps only the money blocker once the job is wrapped — prep is over', () => {
+    const ar: EventArSummary = { invoiced: 1000, outstanding: 450, overdueAmount: 450, openCount: 1, deposit: 'paid' }
+    const input = { plan, registrations: { byStatus: { pending: 2 } }, ar, today: TODAY }
+    expect(computeEventBlockers({ ...input, phase: 'wrapped' as const }).map((b) => b.kind)).toEqual(['money'])
+    // The same inputs live → the full prep set.
+    expect(computeEventBlockers({ ...input, phase: 'upcoming' as const }).map((b) => b.kind))
+      .toEqual(['deadline', 'money', 'loadlist'])
+  })
+})
+
+describe('blockerTarget', () => {
+  it('routes each blocker to a surface the member can open', () => {
+    expect(blockerTarget('deadline', ['dashboard', 'ops'])).toBe('ops')
+    expect(blockerTarget('loadlist', ['dashboard', 'ops'])).toBe('ops/loadout')
+    expect(blockerTarget('money', ['dashboard'])).toBe('lead-invoices')
+    expect(blockerTarget('registrations', ALL_PAGES)).toBe('families')
+  })
+
+  it('falls back to reports for a reports-only grant, and to unlinked (null) when neither page is held', () => {
+    // Reports renders the same registration figures, so it is the honest
+    // fallback — the families deep-link would bounce into the guard redirect.
+    expect(blockerTarget('registrations', ['dashboard', 'reports'])).toBe('reports')
+    expect(blockerTarget('registrations', ['dashboard'])).toBeNull()
+    expect(blockerTarget('deadline', ['dashboard'])).toBeNull()
+    expect(blockerTarget('loadlist', ['dashboard'])).toBeNull()
+  })
 })
 
 describe('computeEventVerdict', () => {
@@ -396,73 +475,74 @@ describe('computeEventVerdict', () => {
 describe('computeEventNba', () => {
   const opsWithPlan = { hasPlan: true, loadlist: { packed: 1, total: 3 } }
   const deadlineBlocker = { kind: 'deadline' as const, label: 'Order ice — 2d overdue', actionLabel: 'Order ice — 2d overdue', severity: 'alert' as const }
+  const regBlocker = { kind: 'registrations' as const, label: '2 registrations pending', actionLabel: 'Review 2 pending registrations', severity: 'info' as const }
 
   it('promotes the top blocker to THE single primary action (B9)', () => {
-    expect(computeEventNba({ phase: 'upcoming', ops: opsWithPlan, closeout: null, blockers: [deadlineBlocker] }))
-      .toEqual({ label: 'Order ice — 2d overdue', target: 'ops', fromTopBlocker: true })
+    expect(computeEventNba({ phase: 'upcoming', ops: opsWithPlan, closeout: null, blockers: [deadlineBlocker], allowedPages: ALL_PAGES }))
+      .toEqual({ label: 'Order ice — 2d overdue', target: 'ops', fromTopBlocker: true, promotedKind: 'deadline' })
   })
 
   it('routes no-plan to instantiation', () => {
-    expect(computeEventNba({ phase: 'upcoming', ops: { hasPlan: false, loadlist: { packed: 0, total: 0 } }, closeout: null, blockers: [] }))
+    expect(computeEventNba({ phase: 'upcoming', ops: { hasPlan: false, loadlist: { packed: 0, total: 0 } }, closeout: null, blockers: [], allowedPages: ALL_PAGES }))
       .toEqual({ label: 'Set up ops plan', target: 'ops', fromTopBlocker: false })
   })
 
   it('routes day-of to the run sheet even with open blockers', () => {
-    expect(computeEventNba({ phase: 'today', ops: opsWithPlan, closeout: null, blockers: [deadlineBlocker] }))
+    expect(computeEventNba({ phase: 'today', ops: opsWithPlan, closeout: null, blockers: [deadlineBlocker], allowedPages: ALL_PAGES }))
       .toEqual({ label: 'Open run sheet', target: 'ops/runsheet', fromTopBlocker: false })
   })
 
   it('routes wrapped to closeout until completed, then to the summary', () => {
-    expect(computeEventNba({ phase: 'wrapped', ops: opsWithPlan, closeout: { exists: false, completed: false }, blockers: [] }))
+    expect(computeEventNba({ phase: 'wrapped', ops: opsWithPlan, closeout: { exists: false, completed: false }, blockers: [], allowedPages: ALL_PAGES }))
       .toEqual({ label: 'Close out (margin pending)', target: 'ops/closeout', fromTopBlocker: false })
-    expect(computeEventNba({ phase: 'wrapped', ops: opsWithPlan, closeout: { exists: true, completed: true }, blockers: [] }))
+    expect(computeEventNba({ phase: 'wrapped', ops: opsWithPlan, closeout: { exists: true, completed: true }, blockers: [], allowedPages: ALL_PAGES }))
       .toEqual({ label: 'View closeout', target: 'ops/closeout', fromTopBlocker: false })
   })
 
   it('falls back to the run sheet when fully ready', () => {
-    expect(computeEventNba({ phase: 'upcoming', ops: opsWithPlan, closeout: null, blockers: [] }))
+    expect(computeEventNba({ phase: 'upcoming', ops: opsWithPlan, closeout: null, blockers: [], allowedPages: ALL_PAGES }))
       .toEqual({ label: 'Open run sheet', target: 'ops/runsheet', fromTopBlocker: false })
   })
 
   it('still promotes a visible blocker for ops-gated members, else stays silent', () => {
-    const regBlocker = { kind: 'registrations' as const, label: '2 registrations pending', actionLabel: 'Review 2 pending registrations', severity: 'info' as const }
-    expect(computeEventNba({ phase: 'upcoming', ops: null, closeout: null, blockers: [regBlocker] }))
-      .toEqual({ label: 'Review 2 pending registrations', target: 'families', fromTopBlocker: true })
-    expect(computeEventNba({ phase: 'upcoming', ops: null, closeout: null, blockers: [] })).toBeNull()
+    expect(computeEventNba({ phase: 'upcoming', ops: null, closeout: null, blockers: [regBlocker], allowedPages: ALL_PAGES }))
+      .toEqual({ label: 'Review 2 pending registrations', target: 'families', fromTopBlocker: true, promotedKind: 'registrations' })
+    expect(computeEventNba({ phase: 'upcoming', ops: null, closeout: null, blockers: [], allowedPages: ALL_PAGES })).toBeNull()
+  })
+
+  it('gives a reports-only member a REACHABLE registrations NBA, never the families guard redirect', () => {
+    expect(computeEventNba({ phase: 'upcoming', ops: null, closeout: null, blockers: [regBlocker], allowedPages: ['dashboard', 'reports'] }))
+      .toEqual({ label: 'Review 2 pending registrations', target: 'reports', fromTopBlocker: true, promotedKind: 'registrations' })
+  })
+
+  it('never promotes an unreachable blocker — skips to the next reachable one or the phase default', () => {
+    const loadBlocker = { kind: 'loadlist' as const, label: 'Load list 1 of 3 packed', actionLabel: 'Open load-out — 1 of 3 packed', severity: 'info' as const }
+    // The registrations blocker has no reachable surface for this member, so
+    // the next reachable blocker is promoted instead.
+    expect(computeEventNba({ phase: 'upcoming', ops: opsWithPlan, closeout: null, blockers: [regBlocker, loadBlocker], allowedPages: ['dashboard', 'ops'] }))
+      .toEqual({ label: 'Open load-out — 1 of 3 packed', target: 'ops/loadout', fromTopBlocker: true, promotedKind: 'loadlist' })
+    // No reachable blocker at all → the phase default, never a dead button.
+    expect(computeEventNba({ phase: 'upcoming', ops: opsWithPlan, closeout: null, blockers: [regBlocker], allowedPages: ['dashboard', 'ops'] }))
+      .toEqual({ label: 'Open run sheet', target: 'ops/runsheet', fromTopBlocker: false })
+    expect(computeEventNba({ phase: 'upcoming', ops: null, closeout: null, blockers: [regBlocker], allowedPages: ['dashboard'] })).toBeNull()
   })
 })
 
-describe('job-strip time helpers', () => {
-  it('formats 24h clock times', () => {
-    expect(formatClockTime('14:00')).toBe('2:00 PM')
-    expect(formatClockTime('00:30')).toBe('12:30 AM')
-    expect(formatClockTime('12:05')).toBe('12:05 PM')
-    expect(formatClockTime('9:15')).toBe('9:15 AM')
-    expect(formatClockTime('25:00')).toBeNull()
-    expect(formatClockTime('')).toBeNull()
-  })
-
-  it('resolves the honest time label by B7 precedence', () => {
-    expect(resolveJobTime({ serviceStart: '2099-09-12T15:00', hoursStart: '14:00', firstItineraryTime: '13:30' }))
-      .toEqual({ label: 'Service 3:00 PM', hhmm: '15:00', source: 'service' })
-    expect(resolveJobTime({ hoursStart: '14:00', firstItineraryTime: '13:30' }))
-      .toEqual({ label: 'Starts 2:00 PM', hhmm: '14:00', source: 'hours' })
-    expect(resolveJobTime({ firstItineraryTime: '13:30' }))
-      .toEqual({ label: 'First item 1:30 PM', hhmm: '13:30', source: 'itinerary' })
-    expect(resolveJobTime({})).toBeNull()
-  })
-
-  it('back-plans pack/leave chips from the fixed default buffers', () => {
-    expect(backPlanChips('14:00')).toEqual({ packBy: '12:45 PM', leaveBy: '1:30 PM' })
-    // Crossing midnight backwards renders nonsense — suppressed instead.
-    expect(backPlanChips('00:30')).toBeNull()
-  })
-
+describe('job-strip vocabulary', () => {
   it('formats the job day and derives the phase from countdown vocabulary', () => {
     expect(formatJobDay('2026-08-29')).toBe('Sat Aug 29')
     expect(formatJobDay('nope')).toBe('')
     expect(eventPhaseOf('Wrapped')).toBe('wrapped')
     expect(eventPhaseOf('Today')).toBe('today')
     expect(eventPhaseOf('12d')).toBe('upcoming')
+  })
+
+  it('re-exports the CANONICAL time helpers from lib/event-ui (consolidation contract)', () => {
+    // One implementation: the runsheet anchor imports these names from
+    // '@/lib/event-ui'; spine callers keep importing them from here. Behavior
+    // is covered in __tests__/lib/event-ui.test.ts.
+    expect(formatClockTime).toBe(uiFormatClockTime)
+    expect(resolveJobTime).toBe(uiResolveJobTime)
+    expect(backPlanChips).toBe(uiBackPlanChips)
   })
 })

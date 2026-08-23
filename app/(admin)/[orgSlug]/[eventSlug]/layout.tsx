@@ -27,6 +27,11 @@ export default async function EventLayout({
 
   const navItems = buildEventNav({ kind, terminology, allowedPages: allowed, enabledModules })
 
+  // Computed server-side and passed down so countdown math is deterministic
+  // and testable (same UTC day convention as lib/ops/readiness.ts). Passed to
+  // the aggregator too, so its cache key matches the dashboard page's call.
+  const today = new Date().toISOString().slice(0, 10)
+
   // Market days skip the band — their MARKET_DAY overview handles its own numbers.
   const rosterEnabled = enabledModules.includes('attendee-roster')
   const kpis =
@@ -45,12 +50,14 @@ export default async function EventLayout({
           // a role gate from the already-loaded member doc, deliberately
           // independent of the roster-less allowedPages strip above.
           includeMoney: member.role === 'owner' || member.role === 'admin',
+          today,
+          // Band-only call: the band renders none of the brief facts, so skip
+          // the closeout + itinerary reads and the blocker math. On the
+          // dashboard leaf the page's own full call shares the core reads via
+          // React cache(), so the fan-out runs once per request either way.
+          wantBriefFacts: false,
         })
       : null
-
-  // Computed server-side and passed down so countdown math is deterministic
-  // and testable (same UTC day convention as lib/ops/readiness.ts).
-  const today = new Date().toISOString().slice(0, 10)
 
   return (
     // Same shell rule as the org layout: below md the sidebar is a bar plus an

@@ -36,7 +36,7 @@ import {
   type EventVerdict,
 } from '@/lib/event-spine'
 import { cn, formatMoney } from '@/lib/utils'
-import type { Event } from '@/lib/types'
+import type { Event, EventPage } from '@/lib/types'
 
 interface EventBriefProps {
   orgSlug: string
@@ -47,6 +47,9 @@ interface EventBriefProps {
   today: string
   /** owner/admin — gates the money section (B4) and the settings affordances. */
   isAdmin: boolean
+  /** The member's pages (same roster-stripped list the aggregator got) —
+   *  blocker rows/NBA only deep-link to surfaces this member can open. */
+  allowedPages: EventPage[]
 }
 
 const VERDICT_TONE: Record<EventVerdict['tone'], string> = {
@@ -55,13 +58,23 @@ const VERDICT_TONE: Record<EventVerdict['tone'], string> = {
   alert: 'text-destructive',
 }
 
-export function EventBrief({ orgSlug, eventSlug, event, kpis, today, isAdmin }: EventBriefProps) {
+export function EventBrief({ orgSlug, eventSlug, event, kpis, today, isAdmin, allowedPages }: EventBriefProps) {
   const countdown = eventCountdown(event.event_start, event.event_end, today)
   const phase = eventPhaseOf(countdown.value)
   const verdict = computeEventVerdict({ phase, ops: kpis.ops, readiness: kpis.readiness, closeout: kpis.closeout, blockers: kpis.blockers })
-  const nba = computeEventNba({ phase, ops: kpis.ops, closeout: kpis.closeout, blockers: kpis.blockers })
-  // B9: the promoted blocker lives in the button — only the rest render as rows.
-  const blockerRows = nba?.fromTopBlocker ? kpis.blockers.slice(1) : kpis.blockers
+  const nba = computeEventNba({ phase, ops: kpis.ops, closeout: kpis.closeout, blockers: kpis.blockers, allowedPages })
+  // B9: the promoted blocker lives in the button — only the rest render as rows
+  // (promotion skips unreachable targets, so it is not always blockers[0]).
+  const blockerRows = kpis.blockers.filter((b) => b.kind !== nba?.promotedKind)
+  // B9 extends to the figure: when the money blocker (row or NBA) already
+  // carries the overdue amount and that amount IS the whole outstanding
+  // balance, the Money section must not repeat it as a second emphasized
+  // element — it renders the context line only.
+  const overdueFigureInBlocker =
+    kpis.blockers.some((b) => b.kind === 'money') &&
+    kpis.ar != null &&
+    kpis.ar.deposit !== 'unpaid' &&
+    kpis.ar.outstanding === kpis.ar.overdueAmount
 
   const time = resolveJobTime({
     serviceStart: kpis.ops?.serviceStart,
@@ -213,22 +226,38 @@ export function EventBrief({ orgSlug, eventSlug, event, kpis, today, isAdmin }: 
 
             {blockerRows.length > 0 && (
               <ul className="mt-3 divide-y divide-border border-y border-border">
-                {blockerRows.map((b) => (
-                  <li key={b.kind}>
-                    <Link href={hrefFor(blockerTarget(b.kind))} className="group flex min-h-11 items-center gap-2.5 py-2">
-                      <span
-                        aria-hidden
-                        className={cn(
-                          'size-1.5 shrink-0 rounded-full',
-                          b.severity === 'alert' ? 'bg-destructive' : 'bg-muted-foreground/50'
-                        )}
-                      />
-                      <span className="text-sm font-medium group-hover:underline">{b.label}</span>
-                      {b.detail && <span className="text-xs text-muted-foreground">{b.detail}</span>}
-                      <ChevronRight className="ml-auto size-4 shrink-0 text-muted-foreground" />
-                    </Link>
-                  </li>
-                ))}
+                {blockerRows.map((b) => {
+                  const target = blockerTarget(b.kind, allowedPages)
+                  const dot = (
+                    <span
+                      aria-hidden
+                      className={cn(
+                        'size-1.5 shrink-0 rounded-full',
+                        b.severity === 'alert' ? 'bg-destructive' : 'bg-muted-foreground/50'
+                      )}
+                    />
+                  )
+                  return (
+                    <li key={b.kind}>
+                      {target ? (
+                        <Link href={hrefFor(target)} className="group flex min-h-11 items-center gap-2.5 py-2">
+                          {dot}
+                          <span className="text-sm font-medium group-hover:underline">{b.label}</span>
+                          {b.detail && <span className="text-xs text-muted-foreground">{b.detail}</span>}
+                          <ChevronRight className="ml-auto size-4 shrink-0 text-muted-foreground" />
+                        </Link>
+                      ) : (
+                        // No surface this member can open — the fact still
+                        // renders, but never as a dead deep-link.
+                        <div className="flex min-h-11 items-center gap-2.5 py-2">
+                          {dot}
+                          <span className="text-sm font-medium">{b.label}</span>
+                          {b.detail && <span className="text-xs text-muted-foreground">{b.detail}</span>}
+                        </div>
+                      )}
+                    </li>
+                  )
+                })}
               </ul>
             )}
 
@@ -261,6 +290,8 @@ export function EventBrief({ orgSlug, eventSlug, event, kpis, today, isAdmin }: 
                 // 'Deposit unpaid' is a blocker row/NBA — only the settled state
                 // renders here, so no fact appears twice.
                 depositPaid={kpis.ar.deposit === 'paid'}
+                // Same rule for the overdue figure: the blocker owns it.
+                amountInBlocker={overdueFigureInBlocker}
                 emptyLabel="Nothing invoiced yet"
                 emptyAction={
                   event.lead_id ? { label: 'Open invoices', href: `/${orgSlug}/leads/${event.lead_id}` } : undefined
@@ -283,6 +314,7 @@ function MoneyLine({
   billed,
   nextDue,
   depositPaid = false,
+  amountInBlocker = false,
   emptyLabel,
   emptyAction,
 }: {
@@ -290,6 +322,9 @@ function MoneyLine({
   billed: number
   nextDue?: string
   depositPaid?: boolean
+  /** true = the outstanding figure already renders in a money blocker row/NBA
+   *  above — show only the context line, never the same figure twice (B9). */
+  amountInBlocker?: boolean
   emptyLabel: string
   emptyAction?: { label: string; href: string }
 }) {
@@ -311,13 +346,21 @@ function MoneyLine({
   return (
     <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-1">
       {outstanding > 0 ? (
-        <>
-          <span className="text-2xl font-semibold tabular-nums text-[var(--money-green)]">{formatMoney(outstanding)}</span>
+        amountInBlocker ? (
+          // The figure lives in the blocker/NBA above — context only here.
           <span className="text-sm text-muted-foreground">
-            due · of {formatMoney(billed)} billed
+            of {formatMoney(billed)} billed
             {nextDue ? ` · next due ${formatEventDate(nextDue)}` : ''}
           </span>
-        </>
+        ) : (
+          <>
+            <span className="text-2xl font-semibold tabular-nums text-[var(--money-green)]">{formatMoney(outstanding)}</span>
+            <span className="text-sm text-muted-foreground">
+              due · of {formatMoney(billed)} billed
+              {nextDue ? ` · next due ${formatEventDate(nextDue)}` : ''}
+            </span>
+          </>
+        )
       ) : (
         <>
           <StatusPill tone="confirmed">Paid in full</StatusPill>
