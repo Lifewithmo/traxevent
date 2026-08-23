@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic'
 
 import { notFound } from 'next/navigation'
 import { adminDb } from '@/lib/firebase-admin'
-import type { BillingPlan } from '@/lib/types'
+import type { BillingPlan, Org } from '@/lib/types'
 import { listLeads } from '@/actions/leads'
 import { listCustomers } from '@/actions/customers'
 import { listTasks } from '@/actions/tasks'
@@ -30,6 +30,11 @@ export default async function LeadsPage({
   const orgData = orgSnap.docs[0].data()
   const prepLeadDays = (orgData.prep_lead_days as number | undefined) ?? DEFAULT_PREP_LEAD_DAYS
   const org = { plan: orgData.plan as BillingPlan | undefined }
+  // The operator's kind vocabulary (increment 3 de-silo). Threaded into the
+  // pipeline surface so the over-capacity pill's noun reads in their words via
+  // `kindLabel`. Absent ⇒ the neutral platform defaults; base/solo orgs never
+  // render the pill, so it is simply unused for them.
+  const resourceLabels = orgData.resource_labels as Org['resource_labels']
 
   const [leads, customers] = await Promise.all([listLeads(orgId), listCustomers(orgId)])
   const open = leads.filter((l) => OPEN_STAGES.includes(l.stage))
@@ -105,7 +110,7 @@ export default async function LeadsPage({
       </div>
       {view === 'board'
         ? <PipelineBoardView {...shared} customers={customers} />
-        : <PipelineListClient {...shared} openCount={open.length} closed={closed} customers={customers} />}
+        : <PipelineListClient {...shared} openCount={open.length} closed={closed} customers={customers} resourceLabels={resourceLabels} />}
     </div>
   )
 }
