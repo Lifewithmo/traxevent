@@ -47,6 +47,15 @@ describe('CapacityOutlookClient — forecast', () => {
     expect(screen.getByText(/serving units/)).toBeInTheDocument()
   })
 
+  it('routes the meter aria-label through kindLabel so SR copy matches the visible override', () => {
+    const labels: Org['resource_labels'] = { mobile: { one: 'cart', many: 'carts' } }
+    render(<CapacityOutlookClient orgSlug="demo" forecast={[month({})]} resourceLabels={labels} />)
+    // The cart meter announces the org's noun, not a hardcoded "Serving units".
+    expect(screen.getByLabelText(/^carts: 23 of 27 booked, 4 open$/)).toBeInTheDocument()
+    // And the neutral venue kind still reads "rooms", never a literal "Rooms" hardcode divorced from kindLabel.
+    expect(screen.getByLabelText(/^rooms: 4 of 6 booked, 2 open$/)).toBeInTheDocument()
+  })
+
   it('reports the working-day count as context', () => {
     render(<CapacityOutlookClient orgSlug="demo" forecast={[month({ serviceableDays: 13 })]} />)
     expect(screen.getByText(/13 working days/)).toBeInTheDocument()

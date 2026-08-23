@@ -2,7 +2,7 @@
 
 import { kindLabel } from '@/lib/capacity/labels'
 import type { CapacityMonth, CapacitySlot } from '@/lib/capacity/forecast'
-import type { CapacityUnitKind, Org } from '@/lib/types'
+import type { Org } from '@/lib/types'
 
 interface CapacityOutlookClientProps {
   orgSlug: string
@@ -86,8 +86,8 @@ function MonthRow({ month, org }: { month: CapacityMonth; org: Pick<Org, 'resour
 
         {/* The two part-of-whole meters — booked filled against the ceiling. */}
         <div className="min-w-0 flex-1 space-y-2.5">
-          <KindMeter slot={month.cart} noun={kindLabel(org, 'mobile', month.cart.ceiling === 1 ? 1 : 2)} kind="mobile" />
-          <KindMeter slot={month.room} noun={kindLabel(org, 'venue', month.room.ceiling === 1 ? 1 : 2)} kind="venue" />
+          <KindMeter slot={month.cart} noun={kindLabel(org, 'mobile', month.cart.ceiling === 1 ? 1 : 2)} />
+          <KindMeter slot={month.room} noun={kindLabel(org, 'venue', month.room.ceiling === 1 ? 1 : 2)} />
         </div>
 
         {/* The sellable story: headroom as the hero figure (money-green). */}
@@ -107,7 +107,7 @@ function MonthRow({ month, org }: { month: CapacityMonth; org: Pick<Org, 'resour
   )
 }
 
-function KindMeter({ slot, noun, kind }: { slot: CapacitySlot; noun: string; kind: CapacityUnitKind }) {
+function KindMeter({ slot, noun }: { slot: CapacitySlot; noun: string }) {
   // Honest ratio: booked filled against the ceiling; open = the remaining track.
   const pct = slot.ceiling > 0 ? Math.round((slot.booked / slot.ceiling) * 100) : 0
   const full = slot.ceiling > 0 && slot.open === 0
@@ -128,7 +128,7 @@ function KindMeter({ slot, noun, kind }: { slot: CapacitySlot; noun: string; kin
       <div
         className="h-2 overflow-hidden rounded-full bg-muted"
         role="img"
-        aria-label={`${kind === 'mobile' ? 'Serving units' : 'Rooms'}: ${slot.booked} of ${slot.ceiling} booked, ${slot.open} open`}
+        aria-label={`${noun}: ${slot.booked} of ${slot.ceiling} booked, ${slot.open} open`}
         title={`${slot.booked} booked · ${slot.open} open · ${slot.ceiling} total`}
       >
         <div
