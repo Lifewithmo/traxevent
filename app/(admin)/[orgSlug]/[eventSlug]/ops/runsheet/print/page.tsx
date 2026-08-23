@@ -15,7 +15,7 @@ export const dynamic = 'force-dynamic'
 import { headers } from 'next/headers'
 import { requireEventPage } from '@/lib/auth/guards'
 import { getOpsPlan } from '@/actions/event-ops'
-import { listItinerary } from '@/actions/itinerary'
+import { listItineraryCore } from '@/lib/itinerary-data'
 import { formatTime, groupItineraryByDay } from '@/lib/itinerary'
 import { formatEventDateRange, parseDay } from '@/lib/event-ui'
 import { PrintButton } from '@/components/admin/ops/PrintButton'
@@ -36,7 +36,7 @@ export default async function RunSheetPrintPage({
   const { orgId, eventId, event } = await requireEventPage(orgSlug, eventSlug, 'ops')
   const [plan, itineraryItems, headerList] = await Promise.all([
     getOpsPlan(orgId, eventId),
-    listItinerary(orgId, eventId),
+    listItineraryCore(orgId, eventId),
     headers(),
   ])
 

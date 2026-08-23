@@ -13,26 +13,13 @@ function itineraryRef(orgId: string, eventId: string) {
   return eventRef(orgId, eventId).collection('itinerary')
 }
 
-// ⚠️ SECURITY — PRE-EXISTING EXPOSURE, deliberately NOT fixed in this diff.
-// listItinerary has NO auth assert, unlike every mutation below (which all
-// assertEventPage(..., 'itinerary')). It CANNOT simply be given that assert:
-// it is load-bearing for the PUBLIC registrant schedule page
-// (app/(registrant)/[orgSlug]/[eventSlug]/schedule/page.tsx:33), whose viewers
-// are not org members — and the admin runsheet pages guard with
-// requireEventPage(..., 'ops'), not 'itinerary', so the assert would also
-// break the run sheet for ops-only members.
-// EXPOSURE: because this is an exported 'use server' action, it is a POST
-// endpoint any caller can invoke with an arbitrary orgId/eventId and read that
-// event's full itinerary (titles, locations, descriptions) — the registrant
-// page's itinerary_published check happens in the PAGE, not here. Guardless
-// since the d2 rename (26d6d1a).
-// FIX (separate task, not this diff): move the read into a guard-free
-// listItineraryCore in lib/ for server pages that already guard, and put an
-// assertEventPage / itinerary_published check on the exported action.
-export async function listItinerary(orgId: string, eventId: string): Promise<ItineraryItem[]> {
-  const snap = await itineraryRef(orgId, eventId).get()
-  return snap.docs.map((d) => d.data() as ItineraryItem)
-}
+// Reads deliberately do NOT live in this module: an exported 'use server'
+// function is a public POST endpoint, and the itinerary read serves callers
+// with different gates (admin pages via requireEventPage, the public
+// registrant schedule via itinerary_published). The guard-free read is
+// lib/itinerary-data.ts listItineraryCore, called only from server pages
+// that have already gated. Mutations below all assertEventPage(...,
+// 'itinerary').
 
 export interface CreateItineraryItemInput {
   day: string
