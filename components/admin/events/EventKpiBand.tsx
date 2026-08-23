@@ -17,7 +17,7 @@ interface EventKpiBandProps {
 
 export function EventKpiBand({ event, kpis, today }: EventKpiBandProps) {
   const countdown = eventCountdown(event.event_start, event.event_end, today)
-  const { registrations, financial, readiness } = kpis
+  const { registrations, financial, readiness, ar } = kpis
 
   return (
     <KpiBand className="print:hidden">
@@ -57,8 +57,18 @@ export function EventKpiBand({ event, kpis, today }: EventKpiBandProps) {
           note={`of ${formatMoney(financial.totalDue)} billed`}
           tone="money"
         />
+      ) : ar && ar.invoiced > 0 ? (
+        // Roster-less lead-AR fallback (S1.3): real money via event.lead_id →
+        // invoices. `ar` is only ever populated for owner/admin (B4), so
+        // non-admins still land on the em-dash tile below.
+        <StatTile
+          label="Balance"
+          value={formatMoney(ar.outstanding)}
+          note={`of ${formatMoney(ar.invoiced)} billed`}
+          tone="money"
+        />
       ) : (
-        <StatTile label="Balance" value="—" tone="money" />
+        <StatTile label="Balance" value="—" tone="money" note={ar ? 'Nothing invoiced yet' : undefined} />
       )}
     </KpiBand>
   )

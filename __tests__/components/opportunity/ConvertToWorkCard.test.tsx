@@ -169,6 +169,42 @@ describe('ConvertToWorkCard', () => {
     }))
   })
 
+  // B7: the time fields seed EMPTY (the lead has no time-of-day field to
+  // claim from) and flow through only when the operator types them.
+  it('sends booking hours when start and end times are entered', async () => {
+    render(<ConvertToWorkCard {...props} open />)
+    fireEvent.change(screen.getByLabelText(/start time/i), { target: { value: '15:00' } })
+    fireEvent.change(screen.getByLabelText(/end time/i), { target: { value: '19:00' } })
+    fireEvent.click(screen.getByRole('button', { name: /^schedule job$/i }))
+    await waitFor(() => expect(convertOpportunityToWork).toHaveBeenCalledWith('o1', 'l1',
+      expect.objectContaining({ hours: { start: '15:00', end: '19:00' } })))
+  })
+
+  it('leaves the time fields empty on open and omits hours when untouched', async () => {
+    render(<ConvertToWorkCard {...props} open />)
+    expect(screen.getByLabelText(/start time/i)).toHaveValue('')
+    fireEvent.click(screen.getByRole('button', { name: /^schedule job$/i }))
+    await waitFor(() => expect(convertOpportunityToWork).toHaveBeenCalled())
+    expect('hours' in convertOpportunityToWork.mock.calls[0][2]).toBe(false)
+  })
+
+  it('rejects a one-sided time range with an inline error, without converting', async () => {
+    render(<ConvertToWorkCard {...props} open />)
+    fireEvent.change(screen.getByLabelText(/start time/i), { target: { value: '15:00' } })
+    fireEvent.click(screen.getByRole('button', { name: /^schedule job$/i }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(/both a start and end time/i)
+    expect(convertOpportunityToWork).not.toHaveBeenCalled()
+  })
+
+  it('rejects an end time at or before the start, without converting', async () => {
+    render(<ConvertToWorkCard {...props} open />)
+    fireEvent.change(screen.getByLabelText(/start time/i), { target: { value: '15:00' } })
+    fireEvent.change(screen.getByLabelText(/end time/i), { target: { value: '14:00' } })
+    fireEvent.click(screen.getByRole('button', { name: /^schedule job$/i }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(/end time must be after/i)
+    expect(convertOpportunityToWork).not.toHaveBeenCalled()
+  })
+
   it('surfaces a rejected conversion', async () => {
     convertOpportunityToWork.mockRejectedValue(new Error('This opportunity is already scheduled'))
     render(<ConvertToWorkCard {...props} />)

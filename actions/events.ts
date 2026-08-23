@@ -7,6 +7,7 @@ import { FieldValue } from 'firebase-admin/firestore'
 import type { Event, EventRegistrationType, EventLocation, EventHours } from '@/lib/types'
 import type { Terminology } from '@/lib/event-types'
 import { createEventCore, listEventsCore, listEventsByLeadCore, resolveUniqueEventSlug } from '@/lib/events'
+import { getOpsPlanCore, recomputeOpsListsCore } from '@/lib/ops/event-ops'
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/
 
@@ -82,13 +83,14 @@ export async function updateEvent(
     booth_fee?: number | null
   }
 ): Promise<void> {
-  await assertOrgAdmin(orgId)
+  const member = await assertOrgAdmin(orgId)
   const ref = adminDb
     .collection('orgs').doc(orgId)
     .collection('events').doc(eventId)
 
   const snap = await ref.get()
   if (!snap.exists) throw new Error('Event not found')
+  const prev = snap.data() as Event
 
   // Firestore rejects `undefined` (ignoreUndefinedProperties is off). Convention:
   //   undefined  → leave the field unchanged (callers pass it for blank optionals)
@@ -115,6 +117,23 @@ export async function updateEvent(
     ...cleaned,
     updated_at: new Date().toISOString(),
   })
+
+  // Tesler ratchet (spec 2026-08-19 B5): a headcount change re-derives the ops
+  // lists AND syncs the plan's guests + needs_review (guests-path precedent) so
+  // the plan never silently diverges from the event. Ordering: the event write
+  // lands first — if the re-derive fails (e.g. a plan package was deleted), the
+  // headcount is saved, this throws visibly, and the load-out divergence
+  // warning is the recovery path. Non-positive headcounts are skipped: lists
+  // can't be derived for 0 guests, so the divergence warning covers that too.
+  if (
+    updates.headcount !== undefined &&
+    updates.headcount !== prev.headcount &&
+    Number.isFinite(updates.headcount) &&
+    updates.headcount > 0
+  ) {
+    const plan = await getOpsPlanCore(orgId, eventId)
+    if (plan) await recomputeOpsListsCore(orgId, eventId, member.uid, { guests: updates.headcount })
+  }
 }
 
 export interface DuplicateEventInput {

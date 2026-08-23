@@ -1,6 +1,7 @@
 import { AdminSidebar } from '@/components/layout/AdminSidebar'
 import { EventSpineHeader } from '@/components/admin/events/EventSpineHeader'
 import { EventSubNav } from '@/components/admin/events/EventSubNav'
+import { EventBandGate } from '@/components/admin/events/EventBandGate'
 import { EventKpiBand } from '@/components/admin/events/EventKpiBand'
 import { requireEvent, allowedEventPages } from '@/lib/auth/guards'
 import { buildEventNav } from '@/lib/event-nav'
@@ -26,6 +27,11 @@ export default async function EventLayout({
 
   const navItems = buildEventNav({ kind, terminology, allowedPages: allowed, enabledModules })
 
+  // Computed server-side and passed down so countdown math is deterministic
+  // and testable (same UTC day convention as lib/ops/readiness.ts). Passed to
+  // the aggregator too, so its cache key matches the dashboard page's call.
+  const today = new Date().toISOString().slice(0, 10)
+
   // Market days skip the band — their MARKET_DAY overview handles its own numbers.
   const rosterEnabled = enabledModules.includes('attendee-roster')
   const kpis =
@@ -40,12 +46,18 @@ export default async function EventLayout({
           // 'reports' also unlocks the families read in the aggregator, so it
           // must be stripped alongside 'families' or the gate is defeated.
           allowedPages: rosterEnabled ? allowed : allowed.filter((p) => p !== 'families' && p !== 'reports'),
+          // B4: money (families-financial AND lead-AR) is owner/admin only —
+          // a role gate from the already-loaded member doc, deliberately
+          // independent of the roster-less allowedPages strip above.
+          includeMoney: member.role === 'owner' || member.role === 'admin',
+          today,
+          // Band-only call: the band renders none of the brief facts, so skip
+          // the closeout + itinerary reads and the blocker math. On the
+          // dashboard leaf the page's own full call shares the core reads via
+          // React cache(), so the fan-out runs once per request either way.
+          wantBriefFacts: false,
         })
       : null
-
-  // Computed server-side and passed down so countdown math is deterministic
-  // and testable (same UTC day convention as lib/ops/readiness.ts).
-  const today = new Date().toISOString().slice(0, 10)
 
   return (
     // Same shell rule as the org layout: below md the sidebar is a bar plus an
@@ -65,10 +77,14 @@ export default async function EventLayout({
       <main className="flex-1 bg-background overflow-auto">
         <EventSpineHeader event={event} />
         <EventSubNav orgSlug={orgSlug} eventSlug={eventSlug} items={navItems} />
+        {/* B1: the band is leaf-gated — suppressed on 'dashboard' (the brief
+            replaces it) and 'checkin' (fold budget) via the client wrapper. */}
         {kpis && (
-          <div className="px-5 pt-4 print:hidden">
-            <EventKpiBand event={event} kpis={kpis} today={today} />
-          </div>
+          <EventBandGate>
+            <div className="px-5 pt-4 print:hidden">
+              <EventKpiBand event={event} kpis={kpis} today={today} />
+            </div>
+          </EventBandGate>
         )}
         {children}
       </main>

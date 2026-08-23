@@ -26,7 +26,7 @@ vi.mock('@/lib/ops/checklist-templates', () => ({ getTemplatesForOrg: vi.fn() })
 import { getWorkPackagesByIdsCore } from '@/lib/ops/work-packages'
 import { listResourcesCore } from '@/lib/ops/resources'
 import { getTemplatesForOrg } from '@/lib/ops/checklist-templates'
-import { instantiateOpsPlanCore, updateOpsRequirementsCore } from '@/lib/ops/event-ops'
+import { instantiateOpsPlanCore, updateOpsRequirementsCore, recomputeOpsListsCore } from '@/lib/ops/event-ops'
 import type { OpsPlan } from '@/lib/types'
 
 const PKG = {
@@ -182,5 +182,92 @@ describe('updateOpsRequirementsCore', () => {
     planGetSpy.mockResolvedValue({ exists: true, data: () => existing })
     vi.mocked(getWorkPackagesByIdsCore).mockResolvedValue([])
     await expect(updateOpsRequirementsCore('o1', 'e1', { guests: 120 }, 'u2')).rejects.toThrow('Package no longer exists: wp1')
+  })
+})
+
+describe('recomputeOpsListsCore (spec 2026-08-19 B5)', () => {
+  const existing: OpsPlan = {
+    package_ids: ['wp1'],
+    requirements: { guests: 100 },
+    deadlines: [],
+    // packing checked:true so the carry-forward is asserted on BOTH lists.
+    packing_list: [{ resource_id: 'res-machine', name: 'Machine', qty: 1, checked: true }],
+    shopping_list: [{ resource_id: 'res-beans', name: 'Beans', qty: 4.69, unit: 'lb', checked: true }],
+    checklists: [], needs_review: false, change_log: [],
+    industry_pack_id: 'coffee-cart', created_at: 't',
+  }
+
+  beforeEach(() => {
+    planGetSpy.mockResolvedValue({ exists: true, data: () => existing })
+  })
+
+  it('re-derives both lists from CURRENT packages after a package edit, preserving checked by resource_id|unit', async () => {
+    // The package was edited: 0.75 → 1.5 oz per guest. No requirement changed,
+    // so updateOpsRequirementsCore would short-circuit — this core must not.
+    vi.mocked(getWorkPackagesByIdsCore).mockResolvedValue([{
+      ...PKG,
+      lines: [
+        { kind: 'consumable' as const, resource_id: 'res-beans', qty_per_guest: 1.5 },
+        { kind: 'equipment' as const, resource_id: 'res-machine', qty: 2 },
+      ],
+    }])
+    const result = await recomputeOpsListsCore('o1', 'e1', 'u3')
+    const payload = planUpdateSpy.mock.calls[0][0]
+    // 1.5 × 100 = 150 oz → 9.38 lb; checked:true carried over (same resource_id|unit key)
+    expect(payload.shopping_list).toEqual([{ resource_id: 'res-beans', name: 'Beans', qty: 9.38, unit: 'lb', checked: true }])
+    // packing list re-derived too (qty 1 → 2), checked preserved
+    expect(payload.packing_list).toEqual([{ resource_id: 'res-machine', name: 'Machine', qty: 2, checked: true }])
+    // a plain recompute is NOT the guests path: no review flag, no guests write
+    expect(payload.needs_review).toBeUndefined()
+    expect(payload['requirements.guests']).toBeUndefined()
+    // change_log appended via FieldValue.arrayUnion — an opaque sentinel, not a plain array
+    expect(Array.isArray(payload.change_log)).toBe(false)
+    expect(payload.change_log.elements[payload.change_log.elements.length - 1]).toMatchObject({ by: 'u3', field: 'recomputed' })
+    // returns the fresh plan so callers can swap client state without a re-read
+    expect(result.shopping_list).toEqual(payload.shopping_list)
+    expect(result.packing_list).toEqual(payload.packing_list)
+  })
+
+  it('writes even when nothing changed (no same-value short-circuit)', async () => {
+    await recomputeOpsListsCore('o1', 'e1', 'u3')
+    const payload = planUpdateSpy.mock.calls[0][0]
+    expect(payload.shopping_list).toEqual([{ resource_id: 'res-beans', name: 'Beans', qty: 4.69, unit: 'lb', checked: true }])
+    expect(payload.updated_at).toEqual(expect.any(String))
+  })
+
+  it('guests option (headcount hook path): syncs requirements.guests, sets needs_review, logs both entries', async () => {
+    await recomputeOpsListsCore('o1', 'e1', 'u3', { guests: 120 })
+    const payload = planUpdateSpy.mock.calls[0][0]
+    expect(payload.shopping_list[0].qty).toBe(5.63) // 0.75 × 120 = 90 oz → 5.63 lb
+    expect(payload.shopping_list[0].checked).toBe(true)
+    expect(payload['requirements.guests']).toBe(120)
+    expect(payload.needs_review).toBe(true)
+    const fields = payload.change_log.elements.map((e: { field: string }) => e.field)
+    expect(fields).toContain('recomputed')
+    expect(payload.change_log.elements.find((e: { field: string }) => e.field === 'guests'))
+      .toMatchObject({ by: 'u3', from: '100', to: '120' })
+  })
+
+  it('guests option equal to the plan is a plain recompute (no review flag)', async () => {
+    await recomputeOpsListsCore('o1', 'e1', 'u3', { guests: 100 })
+    const payload = planUpdateSpy.mock.calls[0][0]
+    expect(payload.needs_review).toBeUndefined()
+    expect(payload['requirements.guests']).toBeUndefined()
+  })
+
+  it('fails visibly when a package no longer resolves', async () => {
+    vi.mocked(getWorkPackagesByIdsCore).mockResolvedValue([])
+    await expect(recomputeOpsListsCore('o1', 'e1', 'u3')).rejects.toThrow('Package no longer exists: wp1')
+    expect(planUpdateSpy).not.toHaveBeenCalled()
+  })
+
+  it('throws when no plan exists', async () => {
+    planGetSpy.mockResolvedValue({ exists: false })
+    await expect(recomputeOpsListsCore('o1', 'e1', 'u3')).rejects.toThrow('No ops plan')
+  })
+
+  it('rejects a non-positive guests option', async () => {
+    await expect(recomputeOpsListsCore('o1', 'e1', 'u3', { guests: 0 })).rejects.toThrow('Guest count must be positive')
+    expect(planUpdateSpy).not.toHaveBeenCalled()
   })
 })

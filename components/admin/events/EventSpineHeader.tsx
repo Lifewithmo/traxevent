@@ -19,6 +19,10 @@ export function EventSpineHeader({ event }: { event: Event }) {
     .filter(Boolean)
     .join(' · ')
 
+  // Compact address with a Maps link — the header is where a phone thumb
+  // reaches for "where am I driving" without opening the run sheet.
+  const address = event.location?.address
+
   return (
     <header className="sticky top-0 z-10 border-b border-border bg-background/95 px-5 py-3 backdrop-blur print:hidden">
       <div className="flex min-w-0 items-center gap-3">
@@ -28,7 +32,24 @@ export function EventSpineHeader({ event }: { event: Event }) {
             <h1 className="truncate text-xl font-semibold">{event.name}</h1>
             <StatusPill tone={EVENT_STATUS_TONE[event.status]}>{EVENT_STATUS_LABEL[event.status]}</StatusPill>
           </div>
-          {subtitle && <p className="truncate text-sm text-muted-foreground">{subtitle}</p>}
+          {(subtitle || address) && (
+            <p className="truncate text-sm text-muted-foreground">
+              {subtitle}
+              {address && (
+                <>
+                  {subtitle && ' · '}
+                  <a
+                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="underline decoration-dotted underline-offset-2 hover:text-foreground"
+                  >
+                    {address}
+                  </a>
+                </>
+              )}
+            </p>
+          )}
         </div>
       </div>
     </header>

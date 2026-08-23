@@ -11,8 +11,11 @@ vi.mock('@/lib/crm/leads', async (orig) => ({
 vi.mock('@/lib/crm/tasks', () => ({ listTasksCore, tasksRef: vi.fn() }))
 const listEventsCore = vi.hoisted(() => vi.fn())
 vi.mock('@/lib/events', () => ({ listEventsCore, eventsRef: vi.fn(), createEventCore: vi.fn(), listEventsByLeadCore: vi.fn() }))
+const getOpsPlanCore = vi.hoisted(() => vi.fn())
+vi.mock('@/lib/ops/event-ops', () => ({ getOpsPlanCore }))
 
-import { getTodayData } from '@/actions/today'
+import { getTodayData, getTodayAgenda } from '@/actions/today'
+import { todayYmd, addDays } from '@/lib/opportunity-detail'
 
 describe('getTodayData', () => {
   beforeEach(() => vi.clearAllMocks())
@@ -56,5 +59,81 @@ describe('getTodayData', () => {
     const data = await getTodayData('o1')
     expect(listEventsCore).toHaveBeenCalledTimes(1)
     expect(data.wonUnscheduled.map((w) => w.leadId)).toEqual(['w2'])
+  })
+})
+
+describe('getTodayAgenda', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  const today = todayYmd()
+  const event = (over: Record<string, unknown>) => ({
+    name: 'Job', slug: 'job', status: 'active',
+    event_start: today, event_end: today, created_at: '2026-01-01T00:00:00.000Z',
+    ...over,
+  })
+
+  it('reads ops plans only for client jobs inside the today+7 window', async () => {
+    listEventsCore.mockResolvedValue([
+      event({ id: 'job-today' }),                                                          // client_job (kind absent)
+      event({ id: 'market', kind: 'market_day', event_start: addDays(today, 1), event_end: addDays(today, 1) }),
+      event({ id: 'far', event_start: addDays(today, 20), event_end: addDays(today, 20) }), // outside the window
+      event({ id: 'gone', status: 'archived' }),                                            // not on the agenda
+    ])
+    getOpsPlanCore.mockResolvedValue({
+      package_ids: [], requirements: { guests: 30 },
+      deadlines: [], checklists: [], needs_review: false, change_log: [],
+      shopping_list: [{ resource_id: 'r1', name: 'Cups', qty: 2, checked: false }],
+      packing_list: [], created_at: '2026-01-01T00:00:00.000Z',
+    })
+    const agenda = await getTodayAgenda('o1')
+    expect(getOpsPlanCore).toHaveBeenCalledTimes(1)
+    expect(getOpsPlanCore).toHaveBeenCalledWith('o1', 'job-today')
+    expect(agenda.today.find((e) => e.eventId === 'job-today')?.ops).toMatchObject({
+      hasPlan: true,
+      packed: { done: 0, total: 1 },
+      readiness: { done: 0, total: 1, overdue: 0 },
+    })
+    // Market days carry no ops claim at all — no false "not ready".
+    expect(agenda.upcoming.find((e) => e.eventId === 'market')?.ops).toBeUndefined()
+  })
+
+  it('skips ops enrichment for events where the member lacks the ops page — no chip, not a false state', async () => {
+    const { assertOrgMember } = await import('@/lib/auth/assert')
+    vi.mocked(assertOrgMember).mockResolvedValueOnce({
+      role: 'staff',
+      event_access: { granted: { pages: ['ops'] } },
+      department_access: { d1: { pages: ['ops'] } },
+    } as never)
+    listEventsCore.mockResolvedValue([
+      event({ id: 'granted' }),                                    // per-event ops grant
+      event({ id: 'dept', slug: 'dept', department_id: 'd1' }),    // department-level ops grant
+      event({ id: 'denied', slug: 'denied' }),                     // no grant at all
+    ])
+    getOpsPlanCore.mockResolvedValue(null)
+    const agenda = await getTodayAgenda('o1')
+    // Plan reads happen ONLY for events whose ops page this member may open.
+    expect(getOpsPlanCore).toHaveBeenCalledTimes(2)
+    expect(getOpsPlanCore).toHaveBeenCalledWith('o1', 'granted')
+    expect(getOpsPlanCore).toHaveBeenCalledWith('o1', 'dept')
+    expect(agenda.today.find((e) => e.eventId === 'granted')?.ops).toEqual({ hasPlan: false })
+    expect(agenda.today.find((e) => e.eventId === 'dept')?.ops).toEqual({ hasPlan: false })
+    // The ungated event carries no ops claim at all — never a false "no ops plan yet".
+    const denied = agenda.today.find((e) => e.eventId === 'denied')
+    expect(denied?.ops).toBeUndefined()
+    expect(denied && 'ops' in denied).toBe(false)
+  })
+
+  it('missing plan marks hasPlan:false; a failed read attaches nothing', async () => {
+    listEventsCore.mockResolvedValue([
+      event({ id: 'no-plan' }),
+      event({ id: 'flaky', slug: 'flaky', event_start: addDays(today, 2), event_end: addDays(today, 2) }),
+    ])
+    getOpsPlanCore.mockImplementation(async (_org: string, eventId: string) => {
+      if (eventId === 'flaky') throw new Error('firestore unavailable')
+      return null
+    })
+    const agenda = await getTodayAgenda('o1')
+    expect(agenda.today.find((e) => e.eventId === 'no-plan')?.ops).toEqual({ hasPlan: false })
+    expect(agenda.upcoming.find((e) => e.eventId === 'flaky')?.ops).toBeUndefined()
   })
 })

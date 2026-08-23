@@ -60,11 +60,17 @@ export function ListsCard({ orgId, eventId, plan, orgSlug, eventSlug, onPlanChan
 
   return (
     <section className="overflow-hidden rounded-xl border border-border bg-card shadow-xs">
-      <header className="flex items-center justify-between border-b border-border px-3 py-2">
+      <header className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
         <h4 className="text-[13px] font-semibold">Shopping &amp; packing</h4>
-        <Button variant="link" size="xs" nativeButton={false} render={<Link href={`/${orgSlug}/${eventSlug}/ops/print`} />}>
-          Print lists
-        </Button>
+        <div className="flex items-center gap-1">
+          {/* Entry to the phone-first day-of surface (spec 2026-08-19 S2). */}
+          <Button variant="outline" size="xs" nativeButton={false} render={<Link href={`/${orgSlug}/${eventSlug}/ops/loadout`} />}>
+            Open load-out mode
+          </Button>
+          <Button variant="link" size="xs" nativeButton={false} render={<Link href={`/${orgSlug}/${eventSlug}/ops/print`} />}>
+            Print lists
+          </Button>
+        </div>
       </header>
       <div className="p-3">
         {error && <p className="mb-2 text-sm text-destructive">{error}</p>}
