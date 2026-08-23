@@ -1,8 +1,10 @@
 import { describe, it, expect } from 'vitest'
 import {
+  horizonScope,
   selectHorizonWindow,
   selectReadinessHorizon,
   HORIZON_CAP,
+  type HorizonPlanEntry,
   type HorizonRow,
 } from '@/lib/ops/readiness-horizon'
 import type { Event, OpsPlan } from '@/lib/types'
@@ -46,7 +48,7 @@ function plan(overrides: Partial<OpsPlan> = {}): OpsPlan {
   }
 }
 
-const plans = (entries: [string, OpsPlan | null][]) => new Map<string, OpsPlan | null>(entries)
+const plans = (entries: [string, HorizonPlanEntry][]) => new Map<string, HorizonPlanEntry>(entries)
 
 describe('selectHorizonWindow', () => {
   it('keeps events from today through today+14 inclusive, drops past and beyond', () => {
@@ -123,6 +125,31 @@ describe('selectReadinessHorizon — no-plan rows', () => {
     const near = event({ id: 'b', event_start: '2026-08-12' })
     const rows = selectReadinessHorizon([far, near], plans([]), TODAY)
     expect(rows.map((r) => r.event_id)).toEqual(['b', 'a'])
+  })
+})
+
+describe('selectReadinessHorizon — failed reads (unknown ≠ no plan)', () => {
+  it("excludes a failed ('unknown') read entirely — never forges a 'No ops plan yet' row", () => {
+    const failed = event({ id: 'a', event_start: '2026-08-12' })
+    const missing = event({ id: 'b', event_start: '2026-08-15' })
+    const rows = selectReadinessHorizon([failed, missing], plans([['a', 'unknown'], ['b', null]]), TODAY)
+    // The confirmed-missing doc keeps its no-plan row; the failed read is gone.
+    expect(rows.map((r) => r.event_id)).toEqual(['b'])
+    expect(rows[0].kind).toBe('no_plan')
+  })
+
+  it('produces no row of any kind for an unknown entry, even at T-0', () => {
+    const e = event({ id: 'a', event_start: '2026-08-10' })
+    expect(selectReadinessHorizon([e], plans([['a', 'unknown']]), TODAY)).toEqual([])
+  })
+
+  it('still renders plan-backed rows alongside excluded failures', () => {
+    const failed = event({ id: 'a', event_start: '2026-08-11' })
+    const lagging = event({ id: 'b', event_start: '2026-08-15' })
+    const p = plan({ shopping_list: [{ resource_id: 'r1', name: 'Beans', qty: 1, checked: false }] })
+    const rows = selectReadinessHorizon([failed, lagging], plans([['a', 'unknown'], ['b', p]]), TODAY)
+    expect(rows.map((r) => r.event_id)).toEqual(['b'])
+    expect(rows[0].kind).toBe('not_ready')
   })
 })
 
@@ -275,5 +302,40 @@ describe('selectReadinessHorizon — labels and windowing', () => {
     const rows: HorizonRow[] = selectReadinessHorizon([e], plans([]), TODAY)
     expect(rows[0].signals.length).toBeGreaterThan(0)
     expect(rows[0].signals.length).toBeLessThanOrEqual(2)
+  })
+})
+
+describe('horizonScope — what the quiet state may honestly claim', () => {
+  it('is clean when the window fits the cap and gating removed nothing', () => {
+    const all = [event({ id: 'a' }), event({ id: 'b' })]
+    expect(horizonScope(all, all, TODAY)).toEqual({ truncated: false, scoped: false })
+  })
+
+  it('flags truncation exactly when in-window visible jobs exceed the cap', () => {
+    const many = Array.from({ length: HORIZON_CAP + 1 }, (_, i) =>
+      event({ id: `e${i}`, event_start: '2026-08-15' })
+    )
+    expect(horizonScope(many, many, TODAY).truncated).toBe(true)
+    const atCap = many.slice(0, HORIZON_CAP)
+    expect(horizonScope(atCap, atCap, TODAY).truncated).toBe(false)
+  })
+
+  it('never counts out-of-window jobs toward truncation', () => {
+    const beyond = Array.from({ length: HORIZON_CAP + 5 }, (_, i) =>
+      event({ id: `e${i}`, event_start: '2026-09-20' })
+    )
+    expect(horizonScope(beyond, beyond, TODAY).truncated).toBe(false)
+  })
+
+  it('flags scoping only when gating removed an IN-WINDOW client job', () => {
+    const inWindow = event({ id: 'a', event_start: '2026-08-15' })
+    const outWindow = event({ id: 'b', event_start: '2026-09-20' })
+    const market = event({ id: 'c', kind: 'market_day' })
+    const all = [inWindow, outWindow, market]
+    // Gated out of an in-window client job → the all-clear is member-scoped.
+    expect(horizonScope(all, [outWindow, market], TODAY).scoped).toBe(true)
+    // Gated out of only far-future jobs / market days → not scoped: the radar
+    // never covered those anyway, so the claim needs no hedge.
+    expect(horizonScope(all, [inWindow], TODAY).scoped).toBe(false)
   })
 })

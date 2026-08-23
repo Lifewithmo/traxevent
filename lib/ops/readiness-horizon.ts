@@ -60,14 +60,10 @@ function daysLabel(days: number): string {
   return `${days}d out`
 }
 
-/**
- * The events whose plan docs are worth fetching: client jobs only (market days
- * have no ops plan), not archived, starting within today..today+14 inclusive,
- * soonest first, capped at HORIZON_CAP. The page fans out getOpsPlanCore over
- * exactly this list — filter access BEFORE calling this so the cap never
- * spends slots on rows the member can't see.
- */
-export function selectHorizonWindow(events: Event[], todayYmd: string): Event[] {
+/** In-window candidates BEFORE the cap: client jobs only (market days have no
+ *  ops plan), not archived, starting within today..today+14 inclusive. This is
+ *  the honest denominator for any "nothing at risk" claim. */
+function horizonCandidates(events: Event[], todayYmd: string): Event[] {
   const end = addDays(todayYmd, HORIZON_DAYS)
   return events
     .filter((e) => e.status !== 'archived')
@@ -76,9 +72,50 @@ export function selectHorizonWindow(events: Event[], todayYmd: string): Event[] 
       const day = e.event_start.slice(0, 10)
       return day >= todayYmd && day <= end
     })
+}
+
+/**
+ * The events whose plan docs are worth fetching: in-window candidates, soonest
+ * first, capped at HORIZON_CAP. The page fans out getOpsPlanCore over exactly
+ * this list — filter access BEFORE calling this so the cap never spends slots
+ * on rows the member can't see.
+ */
+export function selectHorizonWindow(events: Event[], todayYmd: string): Event[] {
+  return horizonCandidates(events, todayYmd)
     .sort((a, b) => a.event_start.localeCompare(b.event_start) || a.name.localeCompare(b.name))
     .slice(0, HORIZON_CAP)
 }
+
+/**
+ * What the rail's quiet state may honestly claim. `allEvents` is the org's
+ * full event list; `visibleEvents` the member-gated subset the page actually
+ * radars.
+ * - truncated: the HORIZON_CAP cut in-window jobs out of the fan-out, so
+ *   "nothing at risk" was NOT established for the whole 14-day window — only
+ *   for the soonest HORIZON_CAP jobs.
+ * - scoped: member gating removed in-window client jobs from this view, so an
+ *   all-clear speaks only for the jobs this member can open.
+ */
+export interface HorizonScope {
+  truncated: boolean
+  scoped: boolean
+}
+
+export function horizonScope(allEvents: Event[], visibleEvents: Event[], todayYmd: string): HorizonScope {
+  const all = horizonCandidates(allEvents, todayYmd).length
+  const visible = horizonCandidates(visibleEvents, todayYmd).length
+  return { truncated: visible > HORIZON_CAP, scoped: visible < all }
+}
+
+/**
+ * One fan-out slot's outcome. The distinction matters:
+ * - OpsPlan   → the plan doc exists.
+ * - null      → the read SUCCEEDED and the doc is missing → 'No ops plan yet'.
+ * - 'unknown' → the read FAILED → the event is EXCLUDED from the radar.
+ *   Unknown ≠ "no plan": coercing an error to null would forge the rail's
+ *   loudest alert row out of a transient Firestore failure.
+ */
+export type HorizonPlanEntry = OpsPlan | null | 'unknown'
 
 /** Signals for a row that HAS a plan, priority order: overdue deadlines →
  *  load list (shopping + packing) → checklists → still-open deadlines.
@@ -130,11 +167,13 @@ function byRank(a: HorizonRow, b: HorizonRow): number {
  *   nothing trackable reads pct 100 (computeReadiness's documented rule) and
  *   is honestly absent.
  * `plansById` may hold null for fetched-but-missing docs; absent and null are
- * both "no plan".
+ * both "no plan". An 'unknown' entry marks a FAILED read: that event is
+ * excluded outright — never rendered as a false no-plan row (mirrors
+ * actions/today.ts's "a failed read attaches nothing" rule).
  */
 export function selectReadinessHorizon(
   events: Event[],
-  plansById: ReadonlyMap<string, OpsPlan | null>,
+  plansById: ReadonlyMap<string, HorizonPlanEntry>,
   todayYmd: string,
 ): HorizonRow[] {
   const todayDate = new Date(`${todayYmd}T00:00:00Z`)
@@ -151,7 +190,9 @@ export function selectReadinessHorizon(
       days_label: daysLabel(days_until),
     }
 
-    const plan = plansById.get(event.id) ?? null
+    const entry = plansById.get(event.id) ?? null
+    if (entry === 'unknown') continue // failed read: unknown ≠ "no plan" — no forged row
+    const plan = entry
     if (!plan) {
       rows.push({
         ...base,

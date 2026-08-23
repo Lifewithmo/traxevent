@@ -9,11 +9,37 @@
 // may open, so the link never bounces.
 import Link from 'next/link'
 import { StatusPill } from '@/components/ui/status-pill'
-import type { HorizonRow } from '@/lib/ops/readiness-horizon'
+import { HORIZON_CAP, type HorizonRow, type HorizonScope } from '@/lib/ops/readiness-horizon'
 
 const SECTION_HEADING = 'mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground'
 
-export function ReadinessHorizonRail({ orgSlug, rows }: { orgSlug: string; rows: HorizonRow[] }) {
+/** Honesty bounds for the rail's claims: cap truncation + member scoping (from
+ *  horizonScope) plus the count of plan reads that FAILED this pass — those
+ *  events were excluded from the radar (unknown ≠ "no plan"). */
+export interface HorizonRailScope extends HorizonScope {
+  unchecked: number
+}
+
+export function ReadinessHorizonRail({
+  orgSlug,
+  rows,
+  scope,
+}: {
+  orgSlug: string
+  rows: HorizonRow[]
+  scope: HorizonRailScope
+}) {
+  // One honest line: the quiet claim carries its real scope — it speaks only
+  // for the jobs this member can open, only for the 14-day window (named in
+  // the heading), and when the cap truncated the window it names the soonest
+  // HORIZON_CAP instead of claiming an unqualified all-clear.
+  const jobsNoun = scope.scoped ? 'jobs you can open' : 'jobs'
+  const quietLine = scope.truncated
+    ? `Nothing at risk in the ${HORIZON_CAP} soonest ${jobsNoun}`
+    : scope.scoped
+      ? `Nothing at risk in the ${jobsNoun}`
+      : 'Nothing at risk in the next 14 days'
+
   return (
     <section aria-label="Readiness horizon — next 14 days">
       <h2 className={SECTION_HEADING}>
@@ -24,7 +50,7 @@ export function ReadinessHorizonRail({ orgSlug, rows }: { orgSlug: string; rows:
         // Designed quiet state — muted, never hidden: the rail's absence would
         // read as "not built", its quiet presence reads as "all clear".
         <div className="rounded-xl border border-dashed border-border bg-muted/30 p-4">
-          <p className="text-sm font-medium text-muted-foreground">Nothing at risk in the next 14 days</p>
+          <p className="text-sm font-medium text-muted-foreground">{quietLine}</p>
           <p className="mt-1 text-xs text-muted-foreground">
             Jobs with overdue deadlines, an unfinished load list, or no ops plan surface here as they
             enter the window.
@@ -55,6 +81,15 @@ export function ReadinessHorizonRail({ orgSlug, rows }: { orgSlug: string; rows:
             </li>
           ))}
         </ul>
+      )}
+
+      {scope.unchecked > 0 && (
+        // Failed plan reads were EXCLUDED above (unknown ≠ "no plan"); say so
+        // in a muted line so neither the rows nor the quiet state overclaim.
+        <p className="mt-2 text-xs text-muted-foreground">
+          Couldn&rsquo;t check {scope.unchecked} job{scope.unchecked === 1 ? '' : 's'} just now
+          &mdash; reload to retry.
+        </p>
       )}
     </section>
   )

@@ -3,7 +3,12 @@ import { listDepartments } from '@/actions/departments'
 import { listSeries } from '@/actions/series'
 import { requireOrgMember, allowedEventPages } from '@/lib/auth/guards'
 import { getOpsPlanCore } from '@/lib/ops/event-ops'
-import { selectHorizonWindow, selectReadinessHorizon } from '@/lib/ops/readiness-horizon'
+import {
+  horizonScope,
+  selectHorizonWindow,
+  selectReadinessHorizon,
+  type HorizonPlanEntry,
+} from '@/lib/ops/readiness-horizon'
 import { kindOf } from '@/lib/occasions/kind'
 import { EVENT_STATUS_TONE, EVENT_STATUS_LABEL, formatEventDateRange } from '@/lib/event-ui'
 import { todayYmd } from '@/lib/opportunity-detail'
@@ -53,12 +58,33 @@ export default async function OrgHomePage({
   // cost ≤ Today's existing per-nav fan-out, zero new indexes. Caveat carried
   // from the spec: plan docs include an unbounded change_log; that bandwidth is
   // accepted today (a field mask on this fan-out is the named future trim).
-  const horizonPlans = await Promise.all(horizonEvents.map((e) => getOpsPlanCore(orgId, e.id)))
+  //
+  // Per-read guard (mirrors actions/today.ts): one flaky Firestore read must
+  // not 500 the whole events home, and a FAILED read becomes 'unknown' — the
+  // selector EXCLUDES that event from the radar. Never coerce the error to
+  // null: null means "doc confirmed missing" and would forge a false
+  // 'No ops plan yet' alert. A genuinely missing doc resolves to null without
+  // throwing and keeps its no-plan row.
+  const horizonPlans = await Promise.all(
+    horizonEvents.map(async (e): Promise<HorizonPlanEntry> => {
+      try {
+        return await getOpsPlanCore(orgId, e.id)
+      } catch {
+        return 'unknown'
+      }
+    })
+  )
   const horizon = selectReadinessHorizon(
     horizonEvents,
-    new Map(horizonEvents.map((e, i) => [e.id, horizonPlans[i]])),
+    new Map<string, HorizonPlanEntry>(horizonEvents.map((e, i) => [e.id, horizonPlans[i]])),
     today
   )
+  // Honesty bounds for the rail's quiet state: cap truncation + member scoping
+  // (selector math) plus how many plan reads failed this pass (excluded above).
+  const horizonRailScope = {
+    ...horizonScope(events, opsVisible, today),
+    unchecked: horizonPlans.filter((p) => p === 'unknown').length,
+  }
   const upcoming = events.filter((e) => e.status !== 'archived' && e.event_start >= today)
   const nextStart = upcoming.length > 0
     ? upcoming.reduce((min, e) => (e.event_start < min ? e.event_start : min), upcoming[0].event_start)
@@ -158,7 +184,7 @@ export default async function OrgHomePage({
               the DOM-first rail out of the 1fr column). */}
           <div className="grid items-start gap-x-6 gap-y-6 px-5 py-5 lg:grid-cols-[minmax(0,1fr)_320px]">
             <aside className="lg:col-start-2 lg:row-start-1">
-              <ReadinessHorizonRail orgSlug={orgSlug} rows={horizon} />
+              <ReadinessHorizonRail orgSlug={orgSlug} rows={horizon} scope={horizonRailScope} />
             </aside>
 
             <div className="min-w-0 space-y-8 lg:col-start-1 lg:row-start-1">
