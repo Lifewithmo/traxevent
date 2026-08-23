@@ -99,6 +99,21 @@ describe('buildSchedule', () => {
     expect(cellOn(lanes.at(-1)!, '2026-09-04').leadId).toBeUndefined()
   })
 
+  it('books a venue lane only for an ON-SITE lead; an offsite venue pin does not (mirrors the forecast)', () => {
+    const units = [unit({ id: 'r1', kind: 'venue', name: 'Room A' })]
+    const onsite = lead({ id: 'ON', title: 'On-site gig', stage: 'proposal', event_date: '2026-09-04', delivery_mode: 'onsite', assigned_units: { venue: 'r1' } })
+    const offsite = lead({ id: 'OFF', title: 'Offsite gig', stage: 'proposal', event_date: '2026-09-05', delivery_mode: 'offsite', assigned_units: { venue: 'r1' } })
+    const lanes = buildSchedule([onsite, offsite], units, {}, '2026-09-01', 7)
+    const room = lanes.find((l) => l.unitId === 'r1')!
+    const unassigned = lanes.at(-1)!
+    // On-site: the room is booked.
+    expect(cellOn(room, '2026-09-04').leadId).toBe('ON')
+    // Offsite: the room is NOT booked (a room isn't consumed offsite)…
+    expect(cellOn(room, '2026-09-05').leadId).toBeUndefined()
+    // …and the offsite lead falls to the unassigned lane rather than vanishing.
+    expect(cellOn(unassigned, '2026-09-05').leadId).toBe('OFF')
+  })
+
   it('treats an assignment to a stale/unknown id as unassigned', () => {
     const units = [unit({ id: 'm1', kind: 'mobile' })]
     const leads = [

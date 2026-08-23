@@ -41,6 +41,16 @@ describe('updateServiceableDays', () => {
     expect(orgDocUpdateSpy).toHaveBeenCalledWith({ serviceable_days: { weekdays: [] } })
   })
 
+  it('writes to the orgs/{orgId} document — pinning the write TARGET, not just the payload', async () => {
+    // Guards against a regression that updates the right shape at the wrong path
+    // (e.g. collection('org') or a different doc) — the payload spy alone can't catch it.
+    const { adminDb } = await import('@/lib/firebase-admin')
+    await updateServiceableDays('org-1', { weekdays: [6, 0] })
+    expect(adminDb.collection).toHaveBeenCalledWith('orgs')
+    expect(adminDb.collection).not.toHaveBeenCalledWith('org')
+    expect(adminDb.doc).toHaveBeenCalledWith('org-1')
+  })
+
   it('rejects and does NOT write when admin is denied', async () => {
     const { assertOrgAdmin } = await import('@/lib/auth/assert')
     vi.mocked(assertOrgAdmin).mockRejectedValueOnce(new Error('Forbidden'))

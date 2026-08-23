@@ -30,14 +30,22 @@ function titleOf(lead: Lead): string {
  * decide what falls to the unassigned lane. A stale/unknown id resolves to
  * nothing, so the lead reads as still needing a unit.
  */
-function hasLiveAssignment(lead: Lead, units: CapacityUnit[]): boolean {
+/**
+ * Does `lead` actually consume `unit`? A mobile unit is consumed by any bookable
+ * lead pinned to it; a VENUE only by an ON-SITE one — an offsite lead never uses
+ * a room, so a stale `assigned_units.venue` on an offsite lead consumes nothing.
+ * This mirrors the forecast's venue.booked and the clash engine (both on-site
+ * gated), so a booking can't read as a booked room here yet uncounted there.
+ */
+function consumes(lead: Lead, unit: CapacityUnit): boolean {
   const au = lead.assigned_units
   if (!au) return false
-  return units.some(
-    (u) =>
-      (u.kind === 'mobile' && au.mobile === u.id) ||
-      (u.kind === 'venue' && au.venue === u.id),
-  )
+  if (unit.kind === 'mobile') return au.mobile === unit.id
+  return au.venue === unit.id && lead.delivery_mode === 'onsite'
+}
+
+function hasLiveAssignment(lead: Lead, units: CapacityUnit[]): boolean {
+  return units.some((u) => consumes(lead, u))
 }
 
 /**
@@ -45,10 +53,11 @@ function hasLiveAssignment(lead: Lead, units: CapacityUnit[]): boolean {
  * venue, preserving input order) plus a trailing `unassigned` lane. The window
  * is `days` dates starting at `today` (default 84 ≈ 12 weeks).
  *
- * A unit lane's cell for date `d` is booked by a bookable lead whose
- * `assigned_units[unit.kind] === unit.id` and `event_date === d`. The unassigned
- * lane surfaces bookable in-window dated leads that resolve to no live unit — so
- * a booking still needing a unit is visible rather than silently missing.
+ * A unit lane's cell for date `d` is booked by a bookable lead that `consumes`
+ * that unit on `d` (mobile: pinned to it; venue: pinned AND on-site). The
+ * unassigned lane surfaces bookable in-window dated leads that resolve to no
+ * consumed unit — so a booking still needing a unit is visible rather than
+ * silently missing.
  *
  * `serviceable` and `unitAvailable` are reported per cell (non-serviceable and
  * blocked days are flagged, never dropped) so an off-day one-off still shows.
@@ -77,9 +86,7 @@ export function buildSchedule(
     unitName: unit.name,
     kind: unit.kind,
     cells: dates.map((date) => {
-      const booking = bookable.find(
-        (l) => l.event_date === date && l.assigned_units?.[unit.kind] === unit.id,
-      )
+      const booking = bookable.find((l) => l.event_date === date && consumes(l, unit))
       return {
         date,
         leadId: booking?.id,
