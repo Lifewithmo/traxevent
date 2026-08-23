@@ -283,7 +283,7 @@ export function CapacityUnitsClient({
           <CardContent className="py-2">
             <EmptyState
               title="No capacity units yet"
-              description="Add your first cart — the pipeline uses this to know when you're overbooked."
+              description={`Add your first ${metaFor('mobile', labels).one} — the pipeline uses this to know when you're overbooked.`}
               action={
                 addingKind === 'mobile' ? null : (
                   <Button onClick={() => { setAddingKind('mobile'); setError(null) }}>

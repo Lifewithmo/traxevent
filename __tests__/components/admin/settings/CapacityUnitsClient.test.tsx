@@ -129,9 +129,26 @@ describe('CapacityUnitsClient', () => {
 
   it('shows an onboarding empty state, not a blank void, when there are no units', () => {
     render(<CapacityUnitsClient {...base} initialUnits={[]} />)
-    expect(screen.getByText(/pipeline uses this to know when you're overbooked/i)).toBeInTheDocument()
+    // The noun is label-driven (neutral default), not a hardcoded literal.
+    expect(
+      screen.getByText(/Add your first serving unit — the pipeline uses this to know when you're overbooked\./i),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/cart/i)).not.toBeInTheDocument()
     // No summary line for an empty inventory.
     expect(screen.queryByText(/you can serve up to/i)).not.toBeInTheDocument()
+  })
+
+  it('routes the empty-state noun through the org resource label', () => {
+    render(
+      <CapacityUnitsClient
+        {...base}
+        initialUnits={[]}
+        initialResourceLabels={{ mobile: { one: 'trailer', many: 'trailers' } }}
+      />,
+    )
+    expect(
+      screen.getByText(/Add your first trailer — the pipeline uses this to know when you're overbooked\./i),
+    ).toBeInTheDocument()
   })
 
   it('creates a serving unit through createCapacityUnit', async () => {
