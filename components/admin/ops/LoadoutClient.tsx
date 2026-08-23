@@ -13,8 +13,12 @@
 // recompute) is a ≥44px target (kit `touch` size / min-h-11 rows). Breakpoints:
 // single column below md, the two groups side-by-side at md+ inside a max-w-3xl
 // working column. Check-offs are optimistic with VISIBLE failure + retry —
-// never a silent revert (hard gate). Urgency = unchecked × T-minus only; there
-// are deliberately no shortage flags (refuted — no on-hand data exists).
+// never a silent revert (hard gate). The gate is held three ways: per-row
+// writes are serialized per key (last tap wins on the server or fails
+// visibly), a recompute MERGES the fresh plan over rows with unsettled
+// writes instead of replacing them, and bulk writes are mutually exclusive
+// with both. Urgency = unchecked × T-minus only; there are deliberately no
+// shortage flags (refuted — no on-hand data exists).
 
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
@@ -79,9 +83,20 @@ export function LoadoutClient(props: LoadoutClientProps) {
   // Freshness stamp — set after mount so it reads in the OPERATOR's timezone
   // (SSR runs in the server's), and refreshed on every successful recompute.
   const [loadedAt, setLoadedAt] = useState<Date | null>(null)
-  // Per-row write sequence: a newer tap (or a bulk write) supersedes an
-  // in-flight response so rapid toggling can't flicker state backwards.
-  const seqRef = useRef(new Map<string, number>())
+  // Per-row write machinery. Writes are SERIALIZED per key: at most one
+  // request is ever on the wire, and a newer tap while one is in flight only
+  // records the newest intent — the settle handler then chains one more
+  // request carrying it. The server therefore receives states in tap order,
+  // so the LAST intended state always wins (or fails visibly): a rapid
+  // double-tap can no longer commit out of order and leave the server
+  // opposite the display with nothing shown.
+  const writesRef = useRef(new Map<string, { seq: number; intent: boolean; inflight: boolean }>())
+  // Keys whose DISPLAYED checked state has an unconfirmed or failed write —
+  // the synchronous mirror of pending ∪ failed. handleRecompute's merge reads
+  // it (the state sets would be closure-stale in an async continuation), and
+  // sendToggle treats removal from it as "superseded: someone else settled my
+  // flags" (bulk check-all, or a recompute that dropped the row).
+  const unsettledRef = useRef(new Set<string>())
 
   useEffect(() => { setLoadedAt(new Date()) }, [])
 
@@ -92,36 +107,71 @@ export function LoadoutClient(props: LoadoutClientProps) {
     setPlan((p) => (p ? { ...p, [list]: p[list].map((x) => (sameItem(x, item) ? { ...x, checked } : x)) } : p))
   }
 
-  async function writeToggle(list: ListKey, item: OpsListItem, checked: boolean) {
+  /** Record the newest intended state for a row and make sure exactly one
+   *  request is (or will be) carrying it. Every tap and every retry funnels
+   *  through here. */
+  function enqueueToggle(list: ListKey, item: OpsListItem, checked: boolean) {
     const key = keyOf(list, item)
-    const seq = (seqRef.current.get(key) ?? 0) + 1
-    seqRef.current.set(key, seq)
+    const prev = writesRef.current.get(key)
+    const seq = (prev?.seq ?? 0) + 1
+    writesRef.current.set(key, { seq, intent: checked, inflight: prev?.inflight ?? false })
+    unsettledRef.current.add(key)
     setPending((s) => new Set(s).add(key))
     setFailed((s) => { const n = new Set(s); n.delete(key); return n })
+    // A request is already on the wire: its settle handler will see the seq
+    // moved on and chain a request with the newest intent — never two at once.
+    if (writesRef.current.get(key)!.inflight) return
+    void sendToggle(list, item, checked, seq)
+  }
+
+  async function sendToggle(list: ListKey, item: OpsListItem, checked: boolean, seq: number) {
+    const key = keyOf(list, item)
+    const started = writesRef.current.get(key)
+    if (started) started.inflight = true
+    let ok = true
     try {
       await toggleListItem(orgId, eventId, list, item.resource_id, checked, item.unit)
-      if (seqRef.current.get(key) === seq) {
-        setPending((s) => { const n = new Set(s); n.delete(key); return n })
-      }
     } catch {
-      if (seqRef.current.get(key) === seq) {
-        setPending((s) => { const n = new Set(s); n.delete(key); return n })
-        setFailed((s) => new Set(s).add(key))
-      }
+      ok = false
+    }
+    const cur = writesRef.current.get(key)
+    if (cur) cur.inflight = false
+    // Superseded: a bulk check-all took the list over, or a recompute removed
+    // this row — whoever superseded already settled the flags for this key.
+    if (!cur || !unsettledRef.current.has(key)) return
+    if (cur.seq !== seq) {
+      // Newer tap(s) landed while this was on the wire. Send the latest
+      // intent as its own request; this write's own outcome is moot because
+      // the chained one lands after it on the server (last intent wins).
+      void sendToggle(list, item, cur.intent, cur.seq)
+      return
+    }
+    setPending((s) => { const n = new Set(s); n.delete(key); return n })
+    if (ok) {
+      unsettledRef.current.delete(key)
+    } else {
+      setFailed((s) => new Set(s).add(key)) // stays unsettled until a retry lands
     }
   }
 
   function handleRowTap(list: ListKey, item: OpsListItem) {
     const next = !item.checked
     setItemChecked(list, item, next) // optimistic — a failure marks the row, never silently reverts it
-    void writeToggle(list, item, next)
+    enqueueToggle(list, item, next)
   }
 
-  /** Bump every row's sequence in a list and clear its flags — a bulk write
-   *  supersedes any in-flight or failed per-row writes. */
+  /** A bulk write supersedes the list's per-row writes: settle their flags
+   *  here and drop them from `unsettled` so a (theoretical) still-in-flight
+   *  settle handler stands down. Check-all is disabled while the list has
+   *  pending rows, so in practice nothing is on the wire when this runs —
+   *  it mostly clears `failed` rows the bulk write is about to overwrite. */
   function supersedeList(list: ListKey, items: OpsListItem[]) {
     const keys = items.map((i) => keyOf(list, i))
-    for (const k of keys) seqRef.current.set(k, (seqRef.current.get(k) ?? 0) + 1)
+    for (const k of keys) {
+      unsettledRef.current.delete(k)
+      const w = writesRef.current.get(k)
+      if (w && !w.inflight) writesRef.current.delete(k)
+    }
     const drop = new Set(keys)
     setPending((s) => new Set([...s].filter((k) => !drop.has(k))))
     setFailed((s) => new Set([...s].filter((k) => !drop.has(k))))
@@ -142,16 +192,48 @@ export function LoadoutClient(props: LoadoutClientProps) {
     }
   }
 
+  // Recompute runs mutually exclusive with BULK writes (its buttons disable
+  // while groupBusy/groupError, and check-all + the group-error Retry disable
+  // while recomputing), but row check-offs stay ENABLED during it — at the van
+  // the operator keeps ticking while "Recompute for N guests" runs. The merge
+  // below is what keeps the no-silent-revert hard gate airtight for that
+  // overlap.
   async function handleRecompute(guests?: number) {
     setRecomputing(guests !== undefined ? 'guests' : 'plain')
     setRecomputeError(null)
     try {
       const fresh = await recomputeOpsLists(orgId, eventId, guests !== undefined ? { guests } : undefined)
-      seqRef.current = new Map()
-      setPending(new Set())
-      setFailed(new Set())
-      setGroupError(null)
-      setPlan(fresh)
+      // ── Hard gate: no silent revert. The fresh plan owns list membership
+      // and quantities, but any row whose check-off is still in flight or
+      // visibly failed keeps the checked state the operator can SEE: their
+      // tap is newer intent than the recompute's read snapshot, and the
+      // write re-lands it on the server (toggleListItem resolves items by
+      // resource_id|unit, which survives a recompute). Flags and write
+      // bookkeeping are NOT wiped, so those writes still settle their own
+      // pending/failed state.
+      const freshKeys = new Set<string>(
+        (['shopping_list', 'packing_list'] as const).flatMap((l) => fresh[l].map((i) => keyOf(l, i))),
+      )
+      // Rows the recompute removed can no longer render a badge or retry —
+      // prune their flags so the header counts never point at nothing (their
+      // settle handlers stand down via the unsettled check).
+      for (const k of [...unsettledRef.current]) if (!freshKeys.has(k)) unsettledRef.current.delete(k)
+      setPending((s) => new Set([...s].filter((k) => freshKeys.has(k))))
+      setFailed((s) => new Set([...s].filter((k) => freshKeys.has(k))))
+      setPlan((prev) => {
+        if (!prev) return fresh
+        const preserve = (l: ListKey, items: OpsListItem[]) =>
+          items.map((item) => {
+            if (!unsettledRef.current.has(keyOf(l, item))) return item
+            const shown = prev[l].find((x) => sameItem(x, item))
+            return shown ? { ...item, checked: shown.checked } : item
+          })
+        return {
+          ...fresh,
+          shopping_list: preserve('shopping_list', fresh.shopping_list),
+          packing_list: preserve('packing_list', fresh.packing_list),
+        }
+      })
       setLoadedAt(new Date())
     } catch (err: unknown) {
       setRecomputeError(err instanceof Error ? err.message : 'Failed to recompute')
@@ -207,6 +289,10 @@ export function LoadoutClient(props: LoadoutClientProps) {
     const done = items.filter((i) => i.checked).length
     const allChecked = items.length > 0 && done === items.length
     const busy = groupBusy === list
+    // Bulk writes wait until no row write is on the wire (the sticky header's
+    // "{n} saving…" line is the visible reason): the two requests would race
+    // on the server and whichever committed last would silently win.
+    const hasPending = items.some((i) => pending.has(keyOf(list, i)))
     return (
       <section aria-label={title}>
         <header className="flex items-end justify-between gap-2 border-b border-border pb-1">
@@ -217,7 +303,7 @@ export function LoadoutClient(props: LoadoutClientProps) {
             </p>
           </div>
           {items.length > 0 && (
-            <Button size="touch" variant="ghost" disabled={busy || recomputing !== null}
+            <Button size="touch" variant="ghost" disabled={busy || recomputing !== null || hasPending}
               onClick={() => handleCheckAll(list, !allChecked)}>
               {busy ? (<><Loader2 className="animate-spin" aria-hidden /> Saving…</>) : allChecked ? 'Uncheck all' : 'Check all'}
             </Button>
@@ -226,7 +312,9 @@ export function LoadoutClient(props: LoadoutClientProps) {
         {groupError?.list === list && (
           <div className="mt-2 flex items-center justify-between gap-2 rounded-lg border border-[var(--danger-border)] bg-[var(--danger-bg)] pl-3">
             <p className="text-sm font-medium text-[var(--danger-fg)]">{groupError.message} — the whole group may not have saved.</p>
+            {/* Same exclusions as check-all — this IS a check-all resend. */}
             <Button size="touch" variant="ghost" className="text-[var(--danger-fg)]"
+              disabled={groupBusy !== null || recomputing !== null || hasPending}
               onClick={() => handleCheckAll(groupError.list, groupError.checked)}>
               Retry
             </Button>
@@ -280,7 +368,7 @@ export function LoadoutClient(props: LoadoutClientProps) {
                       <p className="text-sm font-medium text-[var(--danger-fg)]">Didn&apos;t save</p>
                       {/* Retry re-sends the state shown on the row above — the display never reverts on its own. */}
                       <Button size="touch" variant="ghost" className="text-[var(--danger-fg)]"
-                        onClick={() => void writeToggle(list, item, item.checked)}>
+                        onClick={() => enqueueToggle(list, item, item.checked)}>
                         Retry
                       </Button>
                     </div>
@@ -296,8 +384,20 @@ export function LoadoutClient(props: LoadoutClientProps) {
 
   return (
     <div className="pb-10">
-      {/* Sticky compact header: the focal number + how urgent it is + whether the data is fresh.
-          z-20 so in load-out mode it rides over the z-10 event spine while scrolling. */}
+      {/* Load-out is a takeover leaf: this header pins ALONE. The event spine
+          header (layout.tsx → EventSpineHeader, sticky top-0 z-10) pins in the
+          same overflow-auto <main>; it is ~73px with a one-line name (py-3 +
+          size-12 avatar + border) and taller when the name + status pill wrap,
+          while this header is ~57px — so "riding over it" left a ~16px clipped
+          band of avatar/subtitle visible on scroll. Covering would mean
+          matching a content-dependent height, so instead the scoped style
+          below UNPINS the spine on this leaf: at rest the composition is
+          unchanged, on scroll the spine scrolls away and this header pins
+          cleanly. Leaf-scoped global CSS is the runsheet-print precedent;
+          `main > header` matches only the spine (this header is nested, not a
+          direct child of <main>), and the unlayered rule beats the layered
+          Tailwind `.sticky` utility. */}
+      <style>{`main > header.sticky { position: static; }`}</style>
       <header className="sticky top-0 z-20 border-b border-border bg-background/95 backdrop-blur print:hidden">
         <div className="mx-auto w-full max-w-3xl px-4 pb-2 pt-3">
           <div className="flex items-end justify-between gap-3">
@@ -314,16 +414,18 @@ export function LoadoutClient(props: LoadoutClientProps) {
               <p>{loadedAt ? `Loaded ${timeLabel(loadedAt)}` : ' '}</p>
             </div>
           </div>
-          {(pending.size > 0 || failed.size > 0) && (
-            <p className="mt-0.5 flex gap-3 text-xs">
-              {pending.size > 0 && <span className="text-muted-foreground">{pending.size} saving…</span>}
-              {failed.size > 0 && (
-                <span className="font-medium text-[var(--danger-fg)]">
-                  {failed.size} not saved — retry below
-                </span>
-              )}
-            </p>
-          )}
+          {/* Space reserved (min-h) rather than conditionally rendered: the
+              header must never grow/shrink mid check-off — every tap flashes
+              "1 saving…", and a jittering header shifts the row under the
+              operator's thumb. */}
+          <p className="mt-0.5 flex min-h-4 gap-3 text-xs">
+            {pending.size > 0 && <span className="text-muted-foreground">{pending.size} saving…</span>}
+            {failed.size > 0 && (
+              <span className="font-medium text-[var(--danger-fg)]">
+                {failed.size} not saved — retry below
+              </span>
+            )}
+          </p>
         </div>
         <div className="h-1 bg-muted">
           <div className="h-full bg-primary transition-all" style={{ width: `${pct}%` }} />
@@ -337,7 +439,12 @@ export function LoadoutClient(props: LoadoutClientProps) {
               Headcount changed — the event now expects {eventHeadcount} guests, but these
               quantities were derived for {plan.requirements.guests}.
             </p>
-            <Button size="touch" variant="outline" className="mt-2" disabled={recomputing !== null}
+            {/* Also excluded while a bulk write is unresolved: replacing the
+                plan mid-bulk (or while its red banner still demands a retry)
+                would silently revert the group's optimistic state — the
+                banner/spinner on the group is the visible reason. */}
+            <Button size="touch" variant="outline" className="mt-2"
+              disabled={recomputing !== null || groupBusy !== null || groupError !== null}
               onClick={() => handleRecompute(eventHeadcount)}>
               {recomputing === 'guests'
                 ? (<><Loader2 className="animate-spin" aria-hidden /> Recomputing…</>)
@@ -354,11 +461,18 @@ export function LoadoutClient(props: LoadoutClientProps) {
 
         <footer className="border-t border-border pt-2 print:hidden">
           <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+            {/* When the divergence warning shows, IT owns the guest-basis
+                figure (never the same value twice on one screen) — the
+                caption keeps only the package count. */}
             <p className="text-xs text-muted-foreground">
-              Derived from {packageCount} package{packageCount === 1 ? '' : 's'} × {plan.requirements.guests} guests
+              Derived from {packageCount} package{packageCount === 1 ? '' : 's'}
+              {!diverged && <> × {plan.requirements.guests} guests</>}
             </p>
             <div className="flex items-center">
-              <Button size="touch" variant="ghost" disabled={recomputing !== null} onClick={() => handleRecompute()}>
+              {/* Same bulk-write exclusion as the divergence-banner button. */}
+              <Button size="touch" variant="ghost"
+                disabled={recomputing !== null || groupBusy !== null || groupError !== null}
+                onClick={() => handleRecompute()}>
                 {recomputing === 'plain'
                   ? (<><Loader2 className="animate-spin" aria-hidden /> Recomputing…</>)
                   : 'Recompute'}
