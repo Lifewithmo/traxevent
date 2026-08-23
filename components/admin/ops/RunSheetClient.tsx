@@ -254,10 +254,18 @@ export function RunSheetClient(props: RunSheetClientProps) {
             ))
           ) : (
             <p className="text-sm text-muted-foreground">
-              No contacts on file{' · '}
-              <Link href={`${base}/settings`} className="font-medium text-[var(--link)] underline underline-offset-2">
-                + Add contact
-              </Link>
+              {/* Adding a contact edits event settings, and updateEvent asserts
+                  org admin — same isAdmin gate as Set time / Add venue, so a
+                  non-admin never types into a form whose save must fail. */}
+              No contacts on file
+              {props.isAdmin && (
+                <>
+                  {' · '}
+                  <Link href={`${base}/settings`} className="font-medium text-[var(--link)] underline underline-offset-2">
+                    + Add contact
+                  </Link>
+                </>
+              )}
             </p>
           )}
         </div>
@@ -355,10 +363,19 @@ export function RunSheetClient(props: RunSheetClientProps) {
           </div>
         ) : (
           <p className="mt-2 text-sm text-muted-foreground">
-            No schedule yet{' · '}
-            <Link href={`${base}/itinerary`} className="font-medium text-[var(--link)] underline underline-offset-2">
-              + Add schedule
-            </Link>
+            {/* /itinerary needs the 'itinerary' page grant, which an ops-granted
+                member may lack — requireEventPage would bounce them to the org
+                home. isAdmin always passes canAccessEventPage, so gate like Set
+                time / Add venue rather than dead-end a restricted member. */}
+            No schedule yet
+            {props.isAdmin && (
+              <>
+                {' · '}
+                <Link href={`${base}/itinerary`} className="font-medium text-[var(--link)] underline underline-offset-2">
+                  + Add schedule
+                </Link>
+              </>
+            )}
           </p>
         )}
       </section>
@@ -442,7 +459,9 @@ export function RunSheetClient(props: RunSheetClientProps) {
                             {failedDone !== undefined && (
                               <div className="flex items-center gap-2 pl-11 text-sm text-destructive" role="alert">
                                 <span>Couldn&rsquo;t save</span>
-                                <Button variant="outline" size="sm" onClick={() => toggleStep(c.id, i, failedDone)}>
+                                {/* Day-of hard gate: retrying a failed check-off is a one-handed
+                                    field action — 44px, matching LoadoutClient's retry rows. */}
+                                <Button variant="outline" size="touch" onClick={() => toggleStep(c.id, i, failedDone)}>
                                   Retry
                                 </Button>
                               </div>
