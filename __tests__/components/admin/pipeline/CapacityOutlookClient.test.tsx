@@ -57,6 +57,13 @@ describe('CapacityOutlookClient — forecast', () => {
     expect(screen.getByLabelText(/^rooms: 4 of 6 booked, 2 open$/)).toBeInTheDocument()
   })
 
+  it('hides the room meter for a mobile-only org — no "0 of 0 rooms" noise', () => {
+    // A mobile-beverage operator with carts but no rooms: every month has room.ceiling 0.
+    render(<CapacityOutlookClient orgSlug="demo" forecast={[month({ room: { ceiling: 0, booked: 0, open: 0 } })]} />)
+    expect(screen.getByLabelText(/^serving units: 23 of 27 booked/)).toBeInTheDocument()
+    expect(screen.queryByLabelText(/^rooms:/)).toBeNull()
+  })
+
   it('reports the working-day count as context', () => {
     render(<CapacityOutlookClient orgSlug="demo" forecast={[month({ serviceableDays: 13 })]} />)
     expect(screen.getByText(/13 working days/)).toBeInTheDocument()

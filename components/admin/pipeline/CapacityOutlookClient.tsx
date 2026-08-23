@@ -48,6 +48,10 @@ export function CapacityOutlookClient({ orgSlug, forecast, schedule, resourceLab
   // Everything closed / no units of any kind across the whole window — the
   // forecast is honest but empty. Point the operator at the one lever.
   const noCapacity = forecast.every((m) => m.cart.ceiling === 0 && m.room.ceiling === 0)
+  // Only show a kind's meter if the org actually runs that kind — a mobile-only
+  // operator (e.g. mobile beverage) shouldn't read "0 of 0 rooms" every month.
+  const hasMobile = forecast.some((m) => m.cart.ceiling > 0)
+  const hasVenue = forecast.some((m) => m.room.ceiling > 0)
 
   return (
     <div className="space-y-8">
@@ -73,7 +77,7 @@ export function CapacityOutlookClient({ orgSlug, forecast, schedule, resourceLab
 
         <ul className="space-y-2.5">
           {forecast.map((m) => (
-            <MonthRow key={m.ym} month={m} org={org} />
+            <MonthRow key={m.ym} month={m} org={org} hasMobile={hasMobile} hasVenue={hasVenue} />
           ))}
         </ul>
       </section>
@@ -85,7 +89,7 @@ export function CapacityOutlookClient({ orgSlug, forecast, schedule, resourceLab
   )
 }
 
-function MonthRow({ month, org }: { month: CapacityMonth; org: Pick<Org, 'resource_labels'> }) {
+function MonthRow({ month, org, hasMobile, hasVenue }: { month: CapacityMonth; org: Pick<Org, 'resource_labels'>; hasMobile: boolean; hasVenue: boolean }) {
   const hasHeadroom = month.headroomValue > 0
   return (
     <li className="rounded-xl border border-border bg-card p-4">
@@ -100,8 +104,8 @@ function MonthRow({ month, org }: { month: CapacityMonth; org: Pick<Org, 'resour
 
         {/* The two part-of-whole meters — booked filled against the ceiling. */}
         <div className="min-w-0 flex-1 space-y-2.5">
-          <KindMeter slot={month.cart} noun={kindLabel(org, 'mobile', month.cart.ceiling === 1 ? 1 : 2)} />
-          <KindMeter slot={month.room} noun={kindLabel(org, 'venue', month.room.ceiling === 1 ? 1 : 2)} />
+          {hasMobile && <KindMeter slot={month.cart} noun={kindLabel(org, 'mobile', month.cart.ceiling === 1 ? 1 : 2)} />}
+          {hasVenue && <KindMeter slot={month.room} noun={kindLabel(org, 'venue', month.room.ceiling === 1 ? 1 : 2)} />}
         </div>
 
         {/* The sellable story: headroom as the hero figure (money-green). */}
