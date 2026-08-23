@@ -2,12 +2,14 @@ export const dynamic = 'force-dynamic'
 
 import { notFound } from 'next/navigation'
 import { getDayDetail } from '@/actions/calendar'
-import { orgCalendarFeed, orgEvents, orgInvoices, orgIdBySlug } from '@/lib/calendar-fetch'
+import { orgBookabilityCtx, orgCalendarFeed, orgEvents, orgInvoices, orgIdBySlug } from '@/lib/calendar-fetch'
 import { filterFeed, PIPELINE_KINDS } from '@/lib/calendar'
 import { feedInWindow, normalizeView } from '@/lib/calendar-window'
 import { buildRunway } from '@/lib/calendar-cashflow'
+import { bookability as verdictFor } from '@/lib/calendar-bookability'
 import { todayYmd, isValidYmd, normalizeYmd } from '@/lib/opportunity-detail'
 import { CalendarCanvas } from '@/components/admin/calendar/CalendarCanvas'
+import { BookabilityProvider } from '@/components/admin/calendar/bookability-context'
 import { DaySpine } from '@/components/admin/calendar/DaySpine'
 
 /**
@@ -40,29 +42,46 @@ export default async function CalendarDayPage({
   // orgCalendarFeed / orgEvents are React.cache()'d, so these reuse the layout's
   // fetch within the request. getDayDetail keeps its own source fan-out (it needs
   // the raw arrays) — a tracked perf fast-follow, see lib/calendar-fetch.ts.
-  const [feed, events, invoices, detail] = await Promise.all([
+  const [feed, events, invoices, bookabilityCtx, detail] = await Promise.all([
     orgCalendarFeed(orgId, orgSlug),
     orgEvents(orgId),
     orgInvoices(orgId),
+    orgBookabilityCtx(orgId, orgSlug, today),
     getDayDetail(orgId, orgSlug, ymd),
   ])
   const scoped = kinds === 'pipeline' ? filterFeed(feed, PIPELINE_KINDS) : feed
   const items = feedInWindow(scoped, view, anchor)
   const runway = buildRunway(feed, events, new Date(), invoices)
+  // The full answer — verdict, binding constraint AND the nearest open dates —
+  // for the one day the spine is about. Computed here (server, pure, no I/O)
+  // rather than in the spine so DaySpine stays a presentation component.
+  //
+  // Past days get no verdict: every date behind today is technically closed on
+  // lead time, and stamping "can't be prepped in time" across an archived day
+  // answers a question nobody asked.
+  const bookability = bookabilityCtx && ymd >= today ? verdictFor(ymd, bookabilityCtx) : undefined
 
   return (
     <>
-      <CalendarCanvas
-        orgSlug={orgSlug}
-        items={items}
-        today={today}
-        view={view}
-        anchor={anchor}
-        kinds={kinds}
-        selectedDay={ymd}
-      />
+      <BookabilityProvider ctx={bookabilityCtx}>
+        <CalendarCanvas
+          orgSlug={orgSlug}
+          items={items}
+          today={today}
+          view={view}
+          anchor={anchor}
+          kinds={kinds}
+          selectedDay={ymd}
+        />
+      </BookabilityProvider>
       <div className="w-full shrink-0 border-t border-border lg:w-[360px] lg:border-l lg:border-t-0">
-        <DaySpine orgSlug={orgSlug} today={today} detail={detail} runway={runway} />
+        <DaySpine
+          orgSlug={orgSlug}
+          today={today}
+          detail={detail}
+          runway={runway}
+          bookability={bookability}
+        />
       </div>
     </>
   )

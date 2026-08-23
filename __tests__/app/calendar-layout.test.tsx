@@ -28,6 +28,10 @@ const orgInvoices = vi.hoisted(() => vi.fn())
 // Same rule as orgInvoices: it rides in the SAME Promise.all, so an unmocked spy
 // is `undefined` and throws while the array literal is being evaluated.
 const orgUnscheduled = vi.hoisted(() => vi.fn())
+// …and the Bookability Verdict's context rides in the SAME Promise.all, under
+// exactly the same rule: an unmocked spy is `undefined` and throws while the
+// array literal is being evaluated, before ensureIcsToken is ever reached.
+const orgBookabilityCtx = vi.hoisted(() => vi.fn())
 const ensureIcsToken = vi.hoisted(() => vi.fn())
 
 vi.mock('@/lib/calendar-fetch', () => ({
@@ -36,6 +40,7 @@ vi.mock('@/lib/calendar-fetch', () => ({
   orgEvents,
   orgInvoices,
   orgUnscheduled,
+  orgBookabilityCtx,
 }))
 vi.mock('@/actions/calendar-sync', () => ({ ensureIcsToken }))
 
@@ -52,6 +57,7 @@ describe('calendar layout cold entry', () => {
     orgEvents.mockReturnValue(hang<unknown[]>())
     orgInvoices.mockReturnValue(hang<unknown[]>())
     orgUnscheduled.mockReturnValue(hang<unknown[]>())
+    orgBookabilityCtx.mockReturnValue(hang<unknown>())
     ensureIcsToken.mockReturnValue(hang<string>())
   })
 
@@ -113,5 +119,25 @@ describe('calendar layout cold entry', () => {
     // while every one of them is still hanging.
     expect(orgCalendarFeed).toHaveBeenCalled()
     expect(orgInvoices).toHaveBeenCalled()
+  })
+
+  // Same rule for the Bookability Verdict's context: it is the rail's "next open
+  // Saturday" line and it must be in flight WITH the rest, not chained after it.
+  it('starts the bookability read in the same non-blocking batch', async () => {
+    orgIdBySlug.mockResolvedValue('org1')
+    render(
+      CalendarLayout({
+        children: <div data-testid="canvas-slot" />,
+        params: Promise.resolve({ orgSlug: 'acme' }),
+      })
+    )
+    await vi.waitFor(() => expect(orgBookabilityCtx).toHaveBeenCalled())
+    // It is handed `today` explicitly rather than reading the clock inside the
+    // memoised body, so the layout and the day route share one cache entry.
+    const [orgId, slug, today] = orgBookabilityCtx.mock.calls[0]
+    expect([orgId, slug]).toEqual(['org1', 'acme'])
+    expect(today).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    expect(orgCalendarFeed).toHaveBeenCalled()
+    expect(orgUnscheduled).toHaveBeenCalled()
   })
 })

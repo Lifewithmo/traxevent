@@ -15,6 +15,13 @@ import { UnscheduledSection } from '@/components/admin/calendar/UnscheduledSecti
 import type { UnscheduledRow } from '@/lib/calendar-unscheduled'
 import { SubscribePanel } from '@/components/admin/calendar/SubscribePanel'
 import { KindLegend } from '@/components/admin/calendar/KindDot'
+import { BookabilityKey } from '@/components/admin/calendar/BookabilityMark'
+import {
+  nextOpenDates,
+  shortDayLabel,
+  weekdayName,
+  type BookabilityCtx,
+} from '@/lib/calendar-bookability'
 import { Button } from '@/components/ui/button'
 
 interface CalendarLeftRailProps {
@@ -31,9 +38,88 @@ interface CalendarLeftRailProps {
    *  renders outside the cockpit shell; the empty list is a real state, not a
    *  missing one. */
   unscheduled?: UnscheduledRow[]
+  /** Everything needed to answer "are you free that day?" for any date, with no
+   *  further I/O. Omitted/null → the bookability block hides entirely. */
+  bookability?: BookabilityCtx | null
   /** The org's ICS feed URL (origin + /ics/[orgSlug]/[token]); enables the
    *  Subscribe-in-Google/Outlook disclosure. Omitted → the entry point hides. */
   subscribeUrl?: string
+}
+
+/**
+ * The weekday the "next open" line is anchored on.
+ *
+ * Saturday, hardcoded, because this cockpit's anchor operator is a mobile
+ * beverage cart: weddings, markets and brewery pop-ups are weekend-shaped, and
+ * "what Saturdays have you got left" is the single most-asked question of the
+ * business. SEAM: when orgs start differing (a corporate-catering vertical is
+ * Thursday-shaped), this becomes an org setting rather than a constant — the
+ * rest of the machinery already takes the weekday from the date it is handed.
+ */
+const ANCHOR_DOW = 6 // 0 Sun … 6 Sat
+
+/** The first ANCHOR_DOW on or after `ymd`. */
+function nextAnchorDay(ymd: string): string {
+  const dow = new Date(`${ymd}T00:00:00.000Z`).getUTCDay()
+  return addDays(ymd, (ANCHOR_DOW - dow + 7) % 7)
+}
+
+/**
+ * "Next open Saturday" — the one answer this rail can give that no other surface
+ * can, and the reason it earns space here.
+ *
+ * The month grid can only answer about days you are already looking at, and the
+ * day spine only about the day you opened. The operator on the phone has neither:
+ * they have a customer asking for "a Saturday in the autumn". This line answers
+ * that with zero navigation — the interaction budget for the highest-frequency
+ * flow in the module drops from "step through months, one full org read each,
+ * and end up unsure" to "read the rail".
+ *
+ * Deliberately NOT a second copy of the selected day's verdict: the spine
+ * already owns that day in full, and a rail that echoes the pane beside it is
+ * chrome. This block is param-independent, like everything else in the rail.
+ */
+function BookabilityBlock({ ctx, today }: { ctx: BookabilityCtx; today: string }) {
+  const anchor = nextAnchorDay(today)
+  // nextOpenDates scans forward in +7 steps from the date it is GIVEN, so
+  // stepping back one week makes `anchor` itself the first candidate.
+  const open = nextOpenDates(addDays(anchor, -7), ctx, 3)
+
+  return (
+    <div data-slot="rail-bookability" className="border-b border-sidebar-border px-4 py-3">
+      <p className="text-[11px] font-semibold uppercase tracking-[.06em] text-muted-foreground">
+        Next open {weekdayName(anchor)}
+      </p>
+      {open.length > 0 ? (
+        <ul className="mt-1.5 flex flex-wrap gap-1.5">
+          {open.map((d) => (
+            <li key={d}>
+              {/* One tap to that day's spine — the answer is offerable, not just
+                  readable. 24px tall (WCAG 2.5.8 target size). */}
+              <Link
+                href={calendarHref({ orgSlug: ctx.orgSlug, ymd: d })}
+                className="inline-flex min-h-6 items-center rounded-md border border-sidebar-border px-1.5 text-xs font-medium tabular-nums text-sidebar-foreground hover:bg-sidebar-hover focus-visible:bg-sidebar-hover"
+              >
+                {shortDayLabel(d)}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        // Never a blank state: a fully-booked six months is real news, and the
+        // next thing to do about it is add capacity.
+        <p className="mt-1 text-[11px] leading-tight text-muted-foreground">
+          None in the next six months.{' '}
+          <Link href={`/${ctx.orgSlug}/capacity`} className="underline underline-offset-2">
+            Add capacity
+          </Link>
+        </p>
+      )}
+      {/* Nielsen #6: the grids now carry a second mark grammar, so it gets the
+          same always-on key the kind dots already have rather than a tooltip. */}
+      <BookabilityKey className="mt-2.5" />
+    </div>
+  )
 }
 
 const YMD = /^\d{4}-\d{2}-\d{2}$/
@@ -109,6 +195,7 @@ export function CalendarLeftRail({
   rollup,
   runway,
   unscheduled = [],
+  bookability,
   subscribeUrl,
 }: CalendarLeftRailProps) {
   const params = useSearchParams()
@@ -345,6 +432,10 @@ export function CalendarLeftRail({
           })}
         </div>
       </div>
+
+      {/* Bookability sits directly under the mini-month because it is about
+          DATES, and the two together are the "which day" half of the rail. */}
+      {bookability ? <BookabilityBlock ctx={bookability} today={today} /> : null}
 
       {/*
         The work with NO date — a QUEUE, not a report, so it sits with the

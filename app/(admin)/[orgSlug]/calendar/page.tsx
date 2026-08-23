@@ -1,11 +1,12 @@
 export const dynamic = 'force-dynamic'
 
 import { notFound } from 'next/navigation'
-import { orgCalendarFeed, orgIdBySlug } from '@/lib/calendar-fetch'
+import { orgBookabilityCtx, orgCalendarFeed, orgIdBySlug } from '@/lib/calendar-fetch'
 import { filterFeed, PIPELINE_KINDS } from '@/lib/calendar'
 import { feedInWindow, normalizeView } from '@/lib/calendar-window'
 import { todayYmd, normalizeYmd } from '@/lib/opportunity-detail'
 import { CalendarCanvas } from '@/components/admin/calendar/CalendarCanvas'
+import { BookabilityProvider } from '@/components/admin/calendar/bookability-context'
 
 /**
  * The canvas page: reads `?view` / `?week` / `?kinds` (only pages can), then hands
@@ -35,19 +36,29 @@ export default async function CalendarPage({
   const anchor = normalizeYmd(sp.week, today)
   const kinds = sp.kinds === 'pipeline' ? 'pipeline' : undefined
 
-  const feed = await orgCalendarFeed(orgId, orgSlug)
+  // Both are React.cache()'d and share the layout's fan-out; the bookability ctx
+  // adds at most the one business-tier capacity_units query.
+  const [feed, bookability] = await Promise.all([
+    orgCalendarFeed(orgId, orgSlug),
+    orgBookabilityCtx(orgId, orgSlug, today),
+  ])
   const scoped = kinds === 'pipeline' ? filterFeed(feed, PIPELINE_KINDS) : feed
   // Hand the canvas only the shown view's span-aware window (in-memory bound).
   const items = feedInWindow(scoped, view, anchor)
 
   return (
-    <CalendarCanvas
-      orgSlug={orgSlug}
-      items={items}
-      today={today}
-      view={view}
-      anchor={anchor}
-      kinds={kinds}
-    />
+    // The verdict reaches MonthGrid/WeekGrid through context rather than a prop:
+    // CalendarCanvas sits between them and is off-limits on this branch. See
+    // components/admin/calendar/bookability-context.tsx.
+    <BookabilityProvider ctx={bookability}>
+      <CalendarCanvas
+        orgSlug={orgSlug}
+        items={items}
+        today={today}
+        view={view}
+        anchor={anchor}
+        kinds={kinds}
+      />
+    </BookabilityProvider>
   )
 }

@@ -1,7 +1,15 @@
 export const dynamic = 'force-dynamic'
 
 import { Suspense } from 'react'
-import { orgCalendarFeed, orgEvents, orgInvoices, orgUnscheduled, orgIdBySlug } from '@/lib/calendar-fetch'
+import {
+  orgBookabilityCtx,
+  orgCalendarFeed,
+  orgEvents,
+  orgInvoices,
+  orgUnscheduled,
+  orgIdBySlug,
+} from '@/lib/calendar-fetch'
+import type { BookabilityCtx } from '@/lib/calendar-bookability'
 import type { UnscheduledRow } from '@/lib/calendar-unscheduled'
 import { ensureIcsToken } from '@/actions/calendar-sync'
 import { feedInWindow } from '@/lib/calendar-window'
@@ -61,6 +69,9 @@ interface RailData {
   /** The work with no date at all — dropped by buildCalendarFeed, so it exists
    *  on no other calendar surface. */
   unscheduled: UnscheduledRow[]
+  /** Everything needed to answer "are you free that day?" for ANY date, with no
+   *  further I/O. Null when the slug resolves to no org. */
+  bookability: BookabilityCtx | null
   subscribeUrl: string
 }
 
@@ -77,7 +88,7 @@ async function loadRail(params: Promise<{ orgSlug: string }>): Promise<RailData 
   const today = todayYmd()
   // orgCalendarFeed / orgEvents are React.cache()'d, so the page (and the day
   // route) reuse this same fetch within the request instead of re-fanning out.
-  const [feed, events, invoices, unscheduled, icsToken] = await Promise.all([
+  const [feed, events, invoices, unscheduled, bookability, icsToken] = await Promise.all([
     orgCalendarFeed(orgId, orgSlug),
     orgEvents(orgId),
     orgInvoices(orgId),
@@ -86,6 +97,12 @@ async function loadRail(params: Promise<{ orgSlug: string }>): Promise<RailData 
     // it adds zero Firestore reads; it joins the Promise.all rather than running
     // after it so the memoised load is still entered once, concurrently.
     orgUnscheduled(orgId, orgSlug),
+    // The Bookability Verdict's context. Rides the SAME memoised source load and
+    // the SAME memoised slug lookup as the four above, so the only Firestore read
+    // it can add is the capacity_units query — and that one is business-tier
+    // only. Joins the Promise.all rather than running after it so the shared load
+    // is still entered once, concurrently.
+    orgBookabilityCtx(orgId, orgSlug, today),
     ensureIcsToken(orgId),
   ])
   const origin = process.env.NEXT_PUBLIC_APP_ORIGIN ?? ''
@@ -110,6 +127,7 @@ async function loadRail(params: Promise<{ orgSlug: string }>): Promise<RailData 
     // "never invoiced". Reads the same React.cache()'d sources — zero extra reads.
     runway: buildRunway(feed, events, new Date(), invoices),
     unscheduled,
+    bookability,
     subscribeUrl,
   }
 }
@@ -125,6 +143,7 @@ async function CalendarRail({ data }: { data: Promise<RailData | null> }) {
       rollup={d.rollup}
       runway={d.runway}
       unscheduled={d.unscheduled}
+      bookability={d.bookability}
       subscribeUrl={d.subscribeUrl}
     />
   )

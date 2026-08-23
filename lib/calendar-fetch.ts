@@ -9,16 +9,31 @@ import { complianceDocsRef, listComplianceDocsCore } from '@/lib/ops/compliance'
 import { listDropsCore } from '@/lib/storefront/drops'
 import { normalizeInvoice } from '@/lib/invoice-normalize'
 import { OPEN_STAGES } from '@/lib/leads'
+import { hasMultiResourceCapacity, listCapacityUnitsCore } from '@/lib/capacity/units'
 import { buildCalendarFeed, buildUnscheduled, type CalendarFeedSources, type CalendarItem } from '@/lib/calendar'
+import { buildBookabilityCtx, type BookabilityCtx } from '@/lib/calendar-bookability'
 import { markCommitted, type UnscheduledRow } from '@/lib/calendar-unscheduled'
-import type { ComplianceDoc, Event, Lead, NormalizedInvoice, Task } from '@/lib/types'
+import type { CapacityUnit, ComplianceDoc, Event, Lead, NormalizedInvoice, Org, Task } from '@/lib/types'
 
-/** Resolve an org slug to its id, memoised per request — the layout, the canvas
- *  page and the day route all need it, so this collapses 2-3 identical org reads
- *  into one. Returns null when the slug matches no org (caller → notFound()). */
-export const orgIdBySlug = cache(async (slug: string): Promise<string | null> => {
+/**
+ * Resolve an org slug to its id AND its document, memoised per request.
+ *
+ * The slug lookup has always READ the org document — `where('slug','==',…)`
+ * returns the whole doc — and then thrown the body away to return an id. The
+ * bookability verdict needs `plan` and `prep_lead_days` off that same document,
+ * so keeping what the query already paid for costs ZERO additional Firestore
+ * reads. Returns null when the slug matches no org (caller → notFound()).
+ */
+export const orgBySlug = cache(async (slug: string): Promise<{ id: string; org: Org } | null> => {
   const snap = await adminDb.collection('orgs').where('slug', '==', slug).limit(1).get()
-  return snap.empty ? null : snap.docs[0].id
+  return snap.empty ? null : { id: snap.docs[0].id, org: snap.docs[0].data() as Org }
+})
+
+/** The id half of `orgBySlug`, kept as its own export because the layout, both
+ *  calendar pages and actions/calendar-bulk.ts all call it. Shares the memoised
+ *  lookup above, so it is still one read per request. */
+export const orgIdBySlug = cache(async (slug: string): Promise<string | null> => {
+  return (await orgBySlug(slug))?.id ?? null
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -213,3 +228,63 @@ export const orgUnscheduled = cache(async (orgId: string, orgSlug: string): Prom
   const sources = await loadCalendarSources(orgId, null, null)
   return markCommitted(buildUnscheduled(orgSlug, sources), sources.leads)
 })
+
+/**
+ * The org's capacity units — the ONE Firestore read this increment adds, and
+ * only for the orgs that can have any.
+ *
+ * `hasMultiResourceCapacity` is the sanctioned single gate (lib/capacity/
+ * capacity.ts, re-exported by lib/capacity/units.ts); this is a call to it, not
+ * a second copy of `plan === 'business'`. Skipping the query for a base/solo org
+ * is purely read avoidance: `radarConflictOpts` is given `[]` and takes exactly
+ * the same backstop branch it would have taken with the real (empty) list, so
+ * the gate can only ever cost information, never invent it. A business org whose
+ * gate somehow failed would land on the honest "capacity not set up" verdict —
+ * a graceful degrade, not a false flag.
+ */
+export const orgCapacityUnits = cache(
+  // `plan` is passed as the PRIMITIVE, not the Org object: `cache()` keys on
+  // argument identity, and two structurally-equal org objects would be two keys
+  // and two reads (the same rule the window follows above).
+  async (orgId: string, plan: Org['plan']): Promise<CapacityUnit[]> => {
+    if (!hasMultiResourceCapacity({ plan })) return []
+    return listCapacityUnitsCore(orgId)
+  }
+)
+
+/**
+ * The Bookability Verdict's context: everything `bookability(date, ctx)` needs
+ * to answer "are you free September 13?" for ANY date, with no further I/O.
+ *
+ * Reads, in full:
+ *   • the Org doc      — 0 added; `orgBySlug` keeps the document the slug lookup
+ *                        was already paying for.
+ *   • leads            — 0 added; the memoised `loadCalendarSources` fan-out the
+ *                        feed, events, invoices and unscheduled list all share.
+ *   • capacity_units   — 1 added collection query, business tier only, memoised.
+ *
+ * So: ONE added Firestore read for a business-plan org, ZERO for everyone else.
+ *
+ * `today` is a parameter rather than a `todayYmd()` call inside, because React
+ * `cache()` keys on argument identity and a clock read inside the memoised body
+ * would make the verdict depend on WHEN in the request it was first asked. The
+ * layout and the day route pass the same string, so they share one entry.
+ */
+export const orgBookabilityCtx = cache(
+  async (orgId: string, orgSlug: string, today: string): Promise<BookabilityCtx | null> => {
+    await assertOrgMember(orgId)
+    const found = await orgBySlug(orgSlug)
+    if (!found) return null
+    const [sources, units] = await Promise.all([
+      loadCalendarSources(orgId, null, null),
+      orgCapacityUnits(orgId, found.org.plan),
+    ])
+    return buildBookabilityCtx({
+      orgSlug,
+      org: found.org,
+      leads: sources.leads,
+      units,
+      today,
+    })
+  }
+)
