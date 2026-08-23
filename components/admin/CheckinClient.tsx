@@ -7,7 +7,8 @@
 // loop. Sticky search on top, one inline summary line (no tile stack), family-
 // grouped rows with 44px targets, and no silent optimism: every custody write
 // shows pending → confirmed → failed-with-retry, and every confirmed write gets
-// an ~8s undo that restores the exact prior record server-side.
+// an ~8s undo the server verifies (still the latest action?) and reverses from
+// its own history — the client only ever sends an operation reference.
 
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
@@ -82,6 +83,20 @@ interface UndoState {
   label: string
   changes: CheckinUndoChange[]
   failed?: boolean
+  /** The server rejected the undo because the record changed on another station. Informational — no retry. */
+  stale?: boolean
+}
+
+/**
+ * Undo references: (recordId, latest server-stamped history-entry id) per
+ * record the action wrote. The server restores from its OWN history — no
+ * record data ever travels back from the client.
+ */
+function undoChangesOf(records: CustodyCheckinRecord[]): CheckinUndoChange[] {
+  return records.flatMap((r) => {
+    const last = r.history?.[r.history.length - 1]
+    return last?.id ? [{ recordId: r.id, entryId: last.id }] : []
+  })
 }
 
 function fmtTime(iso?: string): string {
@@ -116,6 +131,7 @@ export function CheckinClient({
   const [undoBusy, setUndoBusy] = useState(false)
   const [checkoutIntent, setCheckoutIntent] = useState<CheckoutIntent | null>(null)
   const [familyOutConfirm, setFamilyOutConfirm] = useState<{ group: FamilyGroup; targets: CheckoutTarget[] } | null>(null)
+  const [dateSwitchConfirm, setDateSwitchConfirm] = useState<string | null>(null)
   const [guardianName, setGuardianName] = useState('')
   const [guardianPick, setGuardianPick] = useState<string | null>(null)
   const [includeSiblings, setIncludeSiblings] = useState(false)
@@ -179,9 +195,21 @@ export function CheckinClient({
     return () => clearTimeout(t)
   }, [undo, undoBusy])
 
-  function changeDate(newDate: string) {
+  function navigateToDate(newDate: string) {
     // page.tsx keys this component by date, so navigation resets all local state.
     startNavigation(() => router.push(`/${orgSlug}/${eventSlug}/checkin?date=${newDate}`))
+  }
+
+  function changeDate(newDate: string) {
+    if (!newDate || newDate === date) return
+    // The date-keyed remount discards in-flight saves, failed-write retries, and
+    // any open undo window — never silently. Confirm before leaving that state.
+    const pendingCount = Object.values(rowPhase).filter((p) => p.kind === 'pending').length
+    if (pendingCount > 0 || failedCount > 0 || undo !== null) {
+      setDateSwitchConfirm(newDate)
+      return
+    }
+    navigateToDate(newDate)
   }
 
   function setPhases(ids: string[], phase: RowPhase | null) {
@@ -210,11 +238,6 @@ export function CheckinClient({
   async function runCheckIn(ms: CheckinRosterMember[]) {
     const ids = ms.map((m) => m.member_id)
     if (ms.length === 0 || isPendingAny(ids)) return
-    // Prior state captured BEFORE dispatch — this is what undo restores.
-    const priors: CheckinUndoChange[] = ms.map((m) => {
-      const rec = byMember.get(m.member_id)
-      return { recordId: rec?.id ?? `${date}_${m.member_id}`, prior: rec ?? null }
-    })
     setPhases(ids, { kind: 'pending' })
     try {
       const records =
@@ -237,13 +260,16 @@ export function CheckinClient({
             })
       applyRecords(records)
       setPhases(ids, null)
-      setUndo({
-        label:
-          ms.length === 1
-            ? `${ms[0].first_name} checked in`
-            : `${ms[0].family_name} — ${ms.length} checked in`,
-        changes: priors,
-      })
+      const changes = undoChangesOf(records)
+      if (changes.length > 0) {
+        setUndo({
+          label:
+            ms.length === 1
+              ? `${ms[0].first_name} checked in`
+              : `${ms[0].family_name} — ${ms.length} checked in`,
+          changes,
+        })
+      }
     } catch {
       setPhases(ids, { kind: 'failed', retry: () => runCheckIn(ms) })
     }
@@ -252,7 +278,6 @@ export function CheckinClient({
   async function runCheckOut(targets: CheckoutTarget[], guardian: string | undefined, unlisted: boolean) {
     const ids = targets.map((t) => t.member.member_id)
     if (targets.length === 0 || isPendingAny(ids)) return
-    const priors: CheckinUndoChange[] = targets.map((t) => ({ recordId: t.record.id, prior: t.record }))
     setPhases(ids, { kind: 'pending' })
     try {
       const records =
@@ -269,13 +294,16 @@ export function CheckinClient({
             })
       applyRecords(records)
       setPhases(ids, null)
-      setUndo({
-        label:
-          targets.length === 1
-            ? `${targets[0].member.first_name} checked out`
-            : `${targets[0].member.family_name} — ${targets.length} checked out`,
-        changes: priors,
-      })
+      const changes = undoChangesOf(records)
+      if (changes.length > 0) {
+        setUndo({
+          label:
+            targets.length === 1
+              ? `${targets[0].member.first_name} checked out`
+              : `${targets[0].member.family_name} — ${targets.length} checked out`,
+          changes,
+        })
+      }
     } catch {
       setPhases(ids, { kind: 'failed', retry: () => runCheckOut(targets, guardian, unlisted) })
     }
@@ -315,19 +343,24 @@ export function CheckinClient({
   }
 
   async function handleUndo() {
-    if (!undo || undoBusy) return
+    if (!undo || undoBusy || undo.stale) return
     setUndoBusy(true)
     try {
-      await undoCheckinChanges(orgId, eventId, undo.changes)
+      const result = await undoCheckinChanges(orgId, eventId, undo.changes)
+      // Both arms return the server's authoritative records: the restored state
+      // when the undo applied, the CURRENT state when another station wrote in
+      // between (nothing was undone) — either way, reconcile the rows to it.
       setCheckins((prev) => {
         const byId = new Map(prev.map((c) => [c.id, c]))
-        for (const ch of undo.changes) {
-          if (ch.prior === null) byId.delete(ch.recordId)
-          else byId.set(ch.recordId, ch.prior)
-        }
+        undo.changes.forEach((ch, i) => {
+          const rec = result.records[i]
+          if (rec) byId.set(ch.recordId, rec)
+          else byId.delete(ch.recordId)
+        })
         return [...byId.values()]
       })
-      setUndo(null)
+      if (result.ok) setUndo(null)
+      else setUndo({ label: 'Record changed on another device — undo cancelled', changes: [], stale: true })
     } catch {
       setUndo((u) => (u ? { ...u, failed: true } : u))
     } finally {
@@ -654,6 +687,21 @@ export function CheckinClient({
         </DialogContent>
       </Dialog>
 
+      {/* Date switch discards row phases and the undo window (the page keys this
+          component by date) — when any of that is live, it needs an explicit OK. */}
+      <ConfirmDialog
+        open={dateSwitchConfirm !== null}
+        onOpenChange={(open) => {
+          if (!open) setDateSwitchConfirm(null)
+        }}
+        title="Switch date?"
+        description="Saves are still in flight, failed, or undoable. Switching dates resets this screen and discards that state."
+        confirmLabel="Switch date"
+        onConfirm={() => {
+          if (dateSwitchConfirm) navigateToDate(dateSwitchConfirm)
+        }}
+      />
+
       {/* Non-guardian orgs still get ONE explicit confirmation on bulk checkout. */}
       <ConfirmDialog
         open={familyOutConfirm !== null}
@@ -672,8 +720,9 @@ export function CheckinClient({
         }}
       />
 
-      {/* Undo snackbar — custody-safe: delete-or-restore on the server, never a
-          forged checkout. */}
+      {/* Undo snackbar — custody-safe: the server verifies the action is still
+          the latest entry and restores from its own history, never a client
+          snapshot; a stale undo is cancelled, not forced. */}
       {undo && (
         <div className="fixed inset-x-0 bottom-4 z-50 flex justify-center px-4">
           <div
@@ -684,16 +733,18 @@ export function CheckinClient({
             <p className="min-w-0 truncate text-sm">
               {undo.failed ? 'Undo didn’t reach the server' : undo.label}
             </p>
-            <Button
-              size="touch"
-              variant="ghost"
-              className="rounded-full px-4 font-semibold text-background hover:bg-background/15 hover:text-background"
-              disabled={undoBusy}
-              onClick={handleUndo}
-            >
-              {undoBusy ? 'Undoing…' : undo.failed ? 'Retry' : 'Undo'}
-            </Button>
-            {undo.failed && (
+            {!undo.stale && (
+              <Button
+                size="touch"
+                variant="ghost"
+                className="rounded-full px-4 font-semibold text-background hover:bg-background/15 hover:text-background"
+                disabled={undoBusy}
+                onClick={handleUndo}
+              >
+                {undoBusy ? 'Undoing…' : undo.failed ? 'Retry' : 'Undo'}
+              </Button>
+            )}
+            {(undo.failed || undo.stale) && (
               <Button
                 size="touch"
                 variant="ghost"

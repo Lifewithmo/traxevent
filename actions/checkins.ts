@@ -1,5 +1,6 @@
 'use server'
 
+import { randomUUID } from 'crypto'
 import { adminDb } from '@/lib/firebase-admin'
 import type { CheckinRecord, EventFormAssignment, EventMember, Family, FamilyMember } from '@/lib/types'
 import { assertEventPage } from '@/lib/auth/assert'
@@ -17,6 +18,13 @@ function checkinsRef(orgId: string, eventId: string) {
 // ---------------------------------------------------------------------------
 
 export interface CheckinHistoryEntry {
+  /**
+   * Stable id stamped SERVER-SIDE at write time. Undo references an action by
+   * this id — the client never sends record data back. Entries reconstructed
+   * from legacy flat fields have no id (they predate the contract and can
+   * never be the target of an undo).
+   */
+  id?: string
   action: 'check_in' | 'check_out' | 'undo'
   at: string
   guardian?: string
@@ -174,8 +182,13 @@ export async function getCheckinsForDate(
 // These write a child-safety record. The contract:
 //   - a re-check-in NEVER wholesale-overwrites the prior state: the original
 //     arrival survives in `first_checked_in_at` and the full trail in `history`;
-//   - undo restores exactly what was there before (or deletes a fresh create) —
-//     it never forges a checkout;
+//   - every mutation is a Firestore TRANSACTION (read prior + write inside one
+//     contention-checked unit), so a stale device racing another station can
+//     never wholesale-clobber a concurrent custody write;
+//   - undo is SERVER-AUTHORITATIVE: the client sends only (recordId, entryId);
+//     the server verifies the referenced action is still the LATEST history
+//     entry and derives the restore state from the doc's OWN history — it never
+//     accepts client-authored record data and never forges a checkout;
 //   - a free-typed guardian is logged as an exception, not silently accepted;
 //   - family bulk actions are one atomic commit, never N serial awaits.
 // ---------------------------------------------------------------------------
@@ -193,6 +206,7 @@ function buildCheckInRecord(
   input: CheckInMemberInput,
   now: string
 ): CustodyCheckinRecord {
+  const entry: CheckinHistoryEntry = { id: randomUUID(), action: 'check_in', at: now }
   const base: CustodyCheckinRecord = {
     id: `${input.date}_${input.memberId}`,
     date: input.date,
@@ -202,7 +216,7 @@ function buildCheckInRecord(
     status: 'in',
     checked_in_at: now,
     first_checked_in_at: now,
-    history: [{ action: 'check_in', at: now }],
+    history: [entry],
     ...(input.checkedInBy ? { checked_in_by: input.checkedInBy } : {}),
   }
   if (!prior) return base
@@ -213,7 +227,7 @@ function buildCheckInRecord(
   return {
     ...base,
     first_checked_in_at: prior.first_checked_in_at ?? prior.checked_in_at,
-    history: [...deriveHistory(prior), { action: 'check_in', at: now }],
+    history: [...deriveHistory(prior), entry],
   }
 }
 
@@ -224,11 +238,17 @@ export async function checkInMember(
 ): Promise<CustodyCheckinRecord> {
   await assertEventPage(orgId, eventId, 'checkin')
   const ref = checkinsRef(orgId, eventId).doc(`${input.date}_${input.memberId}`)
-  const snap = await ref.get()
-  const prior = snap.exists ? (snap.data() as CustodyCheckinRecord) : null
-  const record = buildCheckInRecord(prior, input, new Date().toISOString())
-  await ref.set(record)
-  return record
+  const now = new Date().toISOString()
+  // Transactional read-modify-write: a concurrent checkout on another station
+  // forces a retry against the fresh doc instead of being clobbered by a
+  // record computed from a stale snapshot.
+  return adminDb.runTransaction(async (tx) => {
+    const snap = await tx.get(ref)
+    const prior = snap.exists ? (snap.data() as CustodyCheckinRecord) : null
+    const record = buildCheckInRecord(prior, input, now)
+    tx.set(ref, record)
+    return record
+  })
 }
 
 export interface CheckOutOptions {
@@ -245,12 +265,15 @@ export async function checkOutMember(
 ): Promise<CustodyCheckinRecord> {
   await assertEventPage(orgId, eventId, 'checkin')
   const ref = checkinsRef(orgId, eventId).doc(recordId)
-  const snap = await ref.get()
-  if (!snap.exists) throw new Error('Check-in record not found')
-  const prior = snap.data() as CustodyCheckinRecord
-  const update = buildCheckOutUpdate(prior, new Date().toISOString(), guardianPickupName, options)
-  await ref.update(update)
-  return { ...prior, ...update }
+  const now = new Date().toISOString()
+  return adminDb.runTransaction(async (tx) => {
+    const snap = await tx.get(ref)
+    if (!snap.exists) throw new Error('Check-in record not found')
+    const prior = snap.data() as CustodyCheckinRecord
+    const update = buildCheckOutUpdate(prior, now, guardianPickupName, options)
+    tx.update(ref, update)
+    return { ...prior, ...update }
+  })
 }
 
 function buildCheckOutUpdate(
@@ -261,6 +284,7 @@ function buildCheckOutUpdate(
 ): Partial<CustodyCheckinRecord> {
   const unlisted = options?.unlistedGuardian === true
   const entry: CheckinHistoryEntry = {
+    id: randomUUID(),
     action: 'check_out',
     at: now,
     ...(guardianPickupName ? { guardian: guardianPickupName } : {}),
@@ -284,7 +308,7 @@ export interface FamilyCheckInInput {
   checkedInBy?: string
 }
 
-/** Check in every listed sibling in ONE atomic commit. */
+/** Check in every listed sibling in ONE atomic, contention-checked commit. */
 export async function checkInFamily(
   orgId: string,
   eventId: string,
@@ -293,26 +317,25 @@ export async function checkInFamily(
   await assertEventPage(orgId, eventId, 'checkin')
   const now = new Date().toISOString()
   const refs = input.members.map((m) => checkinsRef(orgId, eventId).doc(`${input.date}_${m.memberId}`))
-  const snaps = await Promise.all(refs.map((r) => r.get()))
-  const batch = adminDb.batch()
-  const records = input.members.map((m, i) => {
-    const prior = snaps[i].exists ? (snaps[i].data() as CustodyCheckinRecord) : null
-    const record = buildCheckInRecord(
-      prior,
-      {
-        date: input.date,
-        memberId: m.memberId,
-        familyId: input.familyId,
-        memberName: m.memberName,
-        checkedInBy: input.checkedInBy,
-      },
-      now
-    )
-    batch.set(refs[i], record)
-    return record
+  return adminDb.runTransaction(async (tx) => {
+    const snaps = await Promise.all(refs.map((r) => tx.get(r)))
+    return input.members.map((m, i) => {
+      const prior = snaps[i].exists ? (snaps[i].data() as CustodyCheckinRecord) : null
+      const record = buildCheckInRecord(
+        prior,
+        {
+          date: input.date,
+          memberId: m.memberId,
+          familyId: input.familyId,
+          memberName: m.memberName,
+          checkedInBy: input.checkedInBy,
+        },
+        now
+      )
+      tx.set(refs[i], record)
+      return record
+    })
   })
-  await batch.commit()
-  return records
 }
 
 export interface FamilyCheckOutInput {
@@ -322,7 +345,7 @@ export interface FamilyCheckOutInput {
   unlistedGuardian?: boolean
 }
 
-/** Check out every listed sibling under one guardian, in ONE atomic commit. */
+/** Check out every listed sibling under one guardian, in ONE atomic, contention-checked commit. */
 export async function checkOutFamily(
   orgId: string,
   eventId: string,
@@ -331,59 +354,179 @@ export async function checkOutFamily(
   await assertEventPage(orgId, eventId, 'checkin')
   const now = new Date().toISOString()
   const refs = input.recordIds.map((id) => checkinsRef(orgId, eventId).doc(id))
-  const snaps = await Promise.all(refs.map((r) => r.get()))
-  const missing = snaps.findIndex((s) => !s.exists)
-  if (missing >= 0) throw new Error('Check-in record not found')
+  return adminDb.runTransaction(async (tx) => {
+    const snaps = await Promise.all(refs.map((r) => tx.get(r)))
+    const missing = snaps.findIndex((s) => !s.exists)
+    if (missing >= 0) throw new Error('Check-in record not found')
 
-  const batch = adminDb.batch()
-  const records = snaps.map((snap, i) => {
-    const prior = snap.data() as CustodyCheckinRecord
-    const update = buildCheckOutUpdate(prior, now, input.guardianPickupName, {
-      unlistedGuardian: input.unlistedGuardian,
+    return snaps.map((snap, i) => {
+      const prior = snap.data() as CustodyCheckinRecord
+      const update = buildCheckOutUpdate(prior, now, input.guardianPickupName, {
+        unlistedGuardian: input.unlistedGuardian,
+      })
+      tx.update(refs[i], update)
+      return { ...prior, ...update } as CustodyCheckinRecord
     })
-    batch.update(refs[i], update)
-    return { ...prior, ...update } as CustodyCheckinRecord
   })
-  await batch.commit()
-  return records
 }
 
 export interface CheckinUndoChange {
   recordId: string
   /**
-   * The record as it stood BEFORE the action being undone (captured client-side
-   * at dispatch time). `null` = the action created the record fresh.
+   * The server-stamped id of the history entry whose action is being undone
+   * (taken from the record the mutation returned). This is an OPERATION
+   * REFERENCE, not record data — the server derives everything else itself.
    */
-  prior: CustodyCheckinRecord | null
+  entryId: string
+}
+
+export type UndoCheckinResult =
+  /** The undo applied. `records[i]` is the post-undo record for `changes[i]` (null = deleted). */
+  | { ok: true; records: (CustodyCheckinRecord | null)[] }
+  /**
+   * A referenced action is no longer the latest entry on its record — another
+   * station wrote in between. NOTHING was written; `records[i]` is the current
+   * server state for `changes[i]` (null = the doc no longer exists) so the
+   * client can reconcile its rows to the truth instead of retrying blindly.
+   */
+  | { ok: false; reason: 'stale'; records: (CustodyCheckinRecord | null)[] }
+
+/**
+ * `history` entries that are still in effect: check_in/check_out push, and an
+ * `undo` entry pops the action it reversed. The result is the sequence of live
+ * actions a replay must apply.
+ */
+function effectiveEntries(history: CheckinHistoryEntry[]): CheckinHistoryEntry[] {
+  const stack: CheckinHistoryEntry[] = []
+  for (const e of history) {
+    if (e.action === 'undo') stack.pop()
+    else stack.push(e)
+  }
+  return stack
+}
+
+interface ReplayedCustodyState {
+  status: 'in' | 'out'
+  checked_in_at: string
+  first_checked_in_at: string
+  checked_out_at?: string
+  guardian_pickup_name?: string
+  guardian_flag?: 'unlisted_guardian'
 }
 
 /**
- * Within-session undo for check-in/out actions (single or bulk), one atomic
- * commit. A record the undone action created fresh is deleted; a record it
- * overwrote is restored to the captured prior snapshot with a reversal entry
- * appended to its history. This is a reversal, never a forged checkout: no
- * `checked_out_at` is invented.
+ * The live custody fields implied by a sequence of effective history entries —
+ * the ONLY source an undo restores from. `null` = no surviving action (the
+ * record should not exist).
+ */
+function replayCustodyState(entries: CheckinHistoryEntry[]): ReplayedCustodyState | null {
+  let status: 'in' | 'out' | null = null
+  let checkedInAt = ''
+  let firstCheckedInAt: string | undefined
+  let checkedOutAt: string | undefined
+  let guardian: string | undefined
+  let flag: 'unlisted_guardian' | undefined
+
+  for (const e of entries) {
+    if (e.action === 'check_in') {
+      // A (re-)check-in opens a fresh cycle: no live checkout fields.
+      status = 'in'
+      checkedInAt = e.at
+      if (firstCheckedInAt === undefined) firstCheckedInAt = e.at
+      checkedOutAt = undefined
+      guardian = undefined
+      flag = undefined
+    } else if (e.action === 'check_out' && status !== null) {
+      status = 'out'
+      checkedOutAt = e.at
+      guardian = e.guardian
+      flag = e.flag
+    }
+  }
+
+  if (status === null) return null
+  return {
+    status,
+    checked_in_at: checkedInAt,
+    first_checked_in_at: firstCheckedInAt ?? checkedInAt,
+    ...(checkedOutAt ? { checked_out_at: checkedOutAt } : {}),
+    ...(guardian ? { guardian_pickup_name: guardian } : {}),
+    ...(flag ? { guardian_flag: flag } : {}),
+  }
+}
+
+/**
+ * Within-session undo for check-in/out actions (single or bulk) — SERVER-
+ * AUTHORITATIVE and TRANSACTIONAL. The client identifies the action by
+ * (recordId, entryId) only. Inside one Firestore transaction the server:
+ *
+ *   1. reads the current doc;
+ *   2. verifies the referenced action is STILL the latest history entry — if a
+ *      newer entry exists (a concurrent pickup on another station), the whole
+ *      undo is rejected as stale with ZERO writes and the current records are
+ *      returned for the client to reconcile;
+ *   3. derives the restore state from the doc's OWN history (never from
+ *      anything the client sent): the action's opening entry gone → delete the
+ *      record; otherwise rebuild the prior custody state by replay and append
+ *      the reversal as a new history entry.
+ *
+ * This is a reversal, never a forged checkout: no timestamp, guardian, or
+ * history entry can be authored by the client, and a concurrent real custody
+ * write can never be destroyed.
  */
 export async function undoCheckinChanges(
   orgId: string,
   eventId: string,
   changes: CheckinUndoChange[]
-): Promise<void> {
+): Promise<UndoCheckinResult> {
   await assertEventPage(orgId, eventId, 'checkin')
   const now = new Date().toISOString()
-  const batch = adminDb.batch()
-  for (const change of changes) {
-    const ref = checkinsRef(orgId, eventId).doc(change.recordId)
-    if (change.prior === null) {
-      batch.delete(ref)
-    } else {
-      batch.set(ref, {
-        ...change.prior,
-        history: [...deriveHistory(change.prior), { action: 'undo', at: now }],
-      })
-    }
-  }
-  await batch.commit()
+  const refs = changes.map((c) => checkinsRef(orgId, eventId).doc(c.recordId))
+  return adminDb.runTransaction(async (tx) => {
+    const snaps = await Promise.all(refs.map((r) => tx.get(r)))
+    const currents = snaps.map((s) => (s.exists ? (s.data() as CustodyCheckinRecord) : null))
+
+    // Every referenced action must still be the latest entry on its record.
+    // `action === 'undo'` can never be a valid target (undo refs only come from
+    // check-in/out results), so it is rejected rather than replayed.
+    const stale = changes.some((c, i) => {
+      const last = currents[i]?.history?.[currents[i]!.history!.length - 1]
+      return !last || last.id !== c.entryId || last.action === 'undo'
+    })
+    if (stale) return { ok: false as const, reason: 'stale' as const, records: currents }
+
+    const records = changes.map((c, i) => {
+      const current = currents[i] as CustodyCheckinRecord
+      const history = current.history as CheckinHistoryEntry[]
+      const restoredState = replayCustodyState(effectiveEntries(history.slice(0, -1)))
+      if (restoredState === null) {
+        // The undone action created this record fresh — remove it entirely.
+        tx.delete(refs[i])
+        return null
+      }
+      const restored: CustodyCheckinRecord = {
+        id: current.id,
+        date: current.date,
+        member_id: current.member_id,
+        family_id: current.family_id,
+        member_name: current.member_name,
+        ...(current.checked_in_by ? { checked_in_by: current.checked_in_by } : {}),
+        status: restoredState.status,
+        checked_in_at: restoredState.checked_in_at,
+        // The original arrival is preserved forever, even through an undo.
+        first_checked_in_at: current.first_checked_in_at ?? restoredState.first_checked_in_at,
+        ...(restoredState.checked_out_at ? { checked_out_at: restoredState.checked_out_at } : {}),
+        ...(restoredState.guardian_pickup_name
+          ? { guardian_pickup_name: restoredState.guardian_pickup_name }
+          : {}),
+        ...(restoredState.guardian_flag ? { guardian_flag: restoredState.guardian_flag } : {}),
+        history: [...history, { id: randomUUID(), action: 'undo' as const, at: now }],
+      }
+      tx.set(refs[i], restored)
+      return restored
+    })
+    return { ok: true as const, records }
+  })
 }
 
 export interface CheckinSummary {
