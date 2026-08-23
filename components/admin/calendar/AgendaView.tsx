@@ -8,8 +8,8 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { formatMoney } from '@/lib/money'
 import { addDays, todayYmd } from '@/lib/opportunity-detail'
 import { cn } from '@/lib/utils'
-import { CALENDAR_KIND_LABELS, type CalendarItem, type CalendarKind } from '@/lib/calendar'
-import { KIND_DOT } from '@/components/admin/calendar/kind-color'
+import { type CalendarItem, type CalendarKind } from '@/lib/calendar'
+import { KindDot } from '@/components/admin/calendar/KindDot'
 import { bulkRescheduleAgenda, type AgendaMove } from '@/actions/calendar-bulk'
 
 /**
@@ -67,25 +67,6 @@ function spanDays(from: string, to: string): number {
   return Math.round((utcDate(to).getTime() - utcDate(from).getTime()) / 86_400_000)
 }
 
-/**
- * Colour is never the sole carrier of kind (WCAG 1.4.1) — the dot ships with a
- * visually-hidden kind name, so a screen reader hears "Booked event" where a
- * sighted reader sees the hue.
- *
- * SWAP NOTE: W2-E owns the shared `KindDot` (colour + shape + sr-only label).
- * When it lands this local component is deleted and replaced by one line —
- * `import { KindDot } from '@/components/admin/calendar/KindDot'` — because the
- * call site below is already `<KindDot kind={item.kind} />` and this component
- * carries no layout of its own.
- */
-function KindDot({ kind }: { kind: CalendarKind }) {
-  return (
-    <>
-      <span className="block size-1.5 rounded-full" style={{ background: KIND_DOT[kind] }} aria-hidden />
-      <span className="sr-only">{CALENDAR_KIND_LABELS[kind]}</span>
-    </>
-  )
-}
 
 interface AgendaViewProps {
   orgSlug: string

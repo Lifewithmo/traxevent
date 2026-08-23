@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils'
 import { CALENDAR_KIND_LABELS, type CalendarItem } from '@/lib/calendar'
 import type { BusinessHours } from '@/lib/types'
 import { KIND_DOT } from '@/components/admin/calendar/kind-color'
+import { KindDot } from '@/components/admin/calendar/KindDot'
 import { useReschedule, type HandleProps } from '@/components/admin/calendar/reschedule-drag'
 
 // Hybrid time-grid geometry. Exported so callers (and tests) share the exact
@@ -179,12 +180,9 @@ function BandChip({ item }: { item: CalendarItem }) {
         dragClass
       )}
     >
-      <span
-        className="size-1.5 shrink-0 rounded-full"
-        style={{ background: KIND_DOT[item.kind] }}
-        aria-hidden
-      />
-      <span className="sr-only">{CALENDAR_KIND_LABELS[item.kind]}: </span>
+      {/* KindDot carries colour + SHAPE + the sr-only kind name. A bare coloured
+          dot here was a WCAG 1.4.1 hole: hue was the only channel. */}
+      <KindDot kind={item.kind} />
       <span className={cn('min-w-0 flex-1 truncate', item.blocker && 'text-destructive')}>{item.title}</span>
       {tbd ? <span className="shrink-0 text-[10px] text-muted-foreground">Time TBD</span> : null}
       {item.kind === 'invoice_due' && item.amount != null ? (
@@ -411,6 +409,10 @@ function GridItem({ placed }: { placed: PlacedItem }) {
             {marker}
           </span>
         ) : null}
+        {/* The 3px border-l tint was the ONLY kind channel on the primary timed
+            chip — hue alone (WCAG 1.4.1). The glyph adds the shape channel;
+            hideLabel because the sr-only line above already names the kind. */}
+        <KindDot kind={item.kind} hideLabel />
         <span className="min-w-0 flex-1 truncate font-medium">{item.title}</span>
       </span>
       {twoLine ? (

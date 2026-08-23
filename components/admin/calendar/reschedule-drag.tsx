@@ -341,6 +341,13 @@ export function RescheduleProvider({ orgSlug, items, children }: ProviderProps) 
   const [preview, setPreview] = useState<DragPreview | null>(null)
   /** The chip to put focus back on once a move has re-parented it. */
   const refocusRef = useRef<string | null>(null)
+  // Where to put focus when the moved chip is NOT re-rendered at all. Day view
+  // shows exactly one day, so `[`/`]` moves the item clean out of the DOM; the
+  // key-based re-focus below then finds nothing and focus silently falls to
+  // <body> (WCAG 2.4.3). We remember the chip's parent so focus lands somewhere
+  // real, and say out loud that the item left the view.
+  const refocusFallbackRef = useRef<HTMLElement | null>(null)
+  const leftViewRef = useRef<string | null>(null)
 
   // Server truth wins the moment a fresh feed arrives (the same reconcile stance
   // the agenda's bulk bar takes): a client fiction must never outlive the round
@@ -361,7 +368,26 @@ export function RescheduleProvider({ orgSlug, items, children }: ProviderProps) 
     const key = refocusRef.current
     if (!key) return
     refocusRef.current = null
-    document.querySelector<HTMLElement>(`[data-item-key="${cssEscape(key)}"]`)?.focus?.()
+    const chip = document.querySelector<HTMLElement>(`[data-item-key="${cssEscape(key)}"]`)
+    if (chip) {
+      refocusFallbackRef.current = null
+      leftViewRef.current = null
+      chip.focus()
+      return
+    }
+    // The chip is genuinely gone — Day view renders one day, Week view seven, so
+    // a day/week shift can move the item out of the rendered range entirely.
+    // Focus must not be allowed to fall to <body>: park it on the container the
+    // chip lived in and tell the operator where the job went.
+    const fallback = refocusFallbackRef.current
+    refocusFallbackRef.current = null
+    const message = leftViewRef.current
+    leftViewRef.current = null
+    if (fallback?.isConnected) {
+      if (!fallback.hasAttribute('tabindex')) fallback.setAttribute('tabindex', '-1')
+      fallback.focus()
+    }
+    if (message) setAnnouncement((prev) => (prev === message ? `${message} ` : message))
   }, [feed])
 
   const announce = useCallback((message: string) => {
@@ -388,6 +414,9 @@ export function RescheduleProvider({ orgSlug, items, children }: ProviderProps) 
       setUndo(null)
       setOverrides(optimistic)
       refocusRef.current = key
+      refocusFallbackRef.current =
+        document.activeElement instanceof HTMLElement ? document.activeElement.parentElement : null
+      leftViewRef.current = `${title} moved to ${label}, and is no longer shown in this view`
       announce(`${title} moved to ${label}`)
 
       const fail = (why: string) => {

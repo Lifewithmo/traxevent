@@ -569,6 +569,30 @@ function renderDay() {
 }
 
 describe('DayView — drag the time, edge-drag the duration', () => {
+  // WCAG 2.4.3. Day view renders ONE day, so `[`/`]` moves the job clean out of
+  // the DOM. The key-based re-focus finds nothing and focus used to fall to
+  // <body> — silently, on every press, in the exact feature this branch ships.
+  // Each agent's lane was green: MonthGrid tested focus retention (the target
+  // day is still rendered) and DayView tested only same-day retimes.
+  it('never drops focus to the body when a day shift moves the job out of view', async () => {
+    const { container } = renderDay()
+    const handle = handleFor(container, 'event:e1')
+    handle.focus()
+    expect(document.activeElement).toBe(handle)
+
+    fireEvent.keyDown(handle, { key: ']' })
+
+    await waitFor(() => {
+      expect(container.querySelector('[data-item-key="event:e1"]')).toBeNull()
+    })
+    expect(document.activeElement).not.toBe(document.body)
+    expect(document.activeElement).toBeInstanceOf(HTMLElement)
+    // and it must SAY the job left the view, not just move focus quietly
+    await waitFor(() => {
+      expect(container.textContent).toMatch(/no longer shown in this view/i)
+    })
+  })
+
   it('drags a job to another time and writes the WINDOW, keeping its duration', async () => {
     const { container } = renderDay()
     fireEvent.pointerDown(handleFor(container, 'event:e1'), { clientX: 0, clientY: 0, pointerType: 'mouse', button: 0 })
