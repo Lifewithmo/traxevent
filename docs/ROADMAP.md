@@ -199,6 +199,30 @@ EventTrax pivot (neutralization, multi-brand, ops core). Detailed designs live i
   capacity>1, deadline-aware health, per-event-type lead times, server-side hard
   block, board-view chip/badge.
 
+- **Events ambition — computed job brief + day-of execution layer** (PR #122,
+  merged 2026-08-23) — the design-ambition redo of Events past kit parity: the
+  client-job dashboard is now a computed brief (countdown · honest anchor time ·
+  venue/Maps · readiness **verdict** naming concrete reachable blockers ·
+  admin-gated invoice AR — the Balance tile finally works for roster-less orgs ·
+  one promoted next-best-action), plus the category mechanism no market product
+  owns (Curate computes but prints paper; Goodshuffle executes on phones but
+  never computes; FSM leaders assume a stocked van): a phone-first **load-out
+  mode** (`/ops/loadout`, packages × headcount quantities, 44px kit `touch`
+  targets, unconditional recompute core + headcount auto-re-derive) and a
+  call-sheet-anatomy **run sheet** (`/ops/runsheet` + print) with its capture
+  moments (venue fields, contacts un-gated for roster orgs, convert-time
+  seeding). Also: readiness-horizon rail on the events home ("no ops plan yet"
+  outranks all), line-pressure **check-in** (search, family bulk, flags at the
+  moment of action, transactional custody history with server-derived undo —
+  forgery/clobber structurally impossible), live closeout margin deltas, and
+  next-job-first Today. Process: anchor → walks + market research + 5 seam
+  refuters → 3-grader panel (9 binding resolutions) → 7 implementers → 8
+  reviewers + adversarial verify → 7 mutation-tested fixers → whole-branch SHIP.
+  3,164 tests green. Spec: `superpowers/specs/2026-08-19-events-ambition-design.md`.
+  Owed: Vercel walkthrough (375/768/desktop); named increment-2 deferrals in the
+  spec; pre-existing `listItinerary` cross-org read + nested-`<main>` landmark
+  defect spun off as separate tasks.
+
 - **Track 2 module level-up rollout — COMPLETE** (PRs #90–#100, merged
   2026-08-16) — every operator-facing module now runs on the shared UI kit.
   Closing the rollout: **Proposals collections (#98)**, **Catalog / Packages
