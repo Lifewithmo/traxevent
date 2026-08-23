@@ -65,10 +65,15 @@ export function CloseoutClient(props: CloseoutClientProps) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [leadId, setLeadId] = useState(props.linkedLead?.id ?? '')
-  // True once a compute-relevant field (quantities, sales) diverges from what the
-  // saved summary reflects; the margin card shows the live recompute while dirty
-  // and returns to the saved summary — the source of truth — after each save.
-  const [dirty, setDirty] = useState(false)
+  // Edit sequence for the compute-relevant fields (quantities, sales): editSeq
+  // bumps on every edit, savedSeq records the sequence the last completed save's
+  // payload was built from. While edits are ahead of the last save (dirty) the
+  // margin card shows the live recompute; once level it returns to the saved
+  // summary — the source of truth. A counter rather than a boolean so a save
+  // resolving cannot hide edits typed while it was in flight.
+  const [editSeq, setEditSeq] = useState(0)
+  const [savedSeq, setSavedSeq] = useState(0)
+  const dirty = editSeq > savedSeq
   const router = useRouter()
 
   // Live recompute of the same pure function the server runs, on every
@@ -98,10 +103,14 @@ export function CloseoutClient(props: CloseoutClientProps) {
 
   const shownSummary = dirty && live?.summary ? live.summary : summary
   const shownError = shownSummary ? null : dirty && live?.error ? live.error : props.summaryError
-  // Planned revenue = the packages alone; the delta is what on-site sales added.
-  const plannedRevenue = packages ? packages.reduce((sum, p) => sum + p.price, 0) : null
+  // Delta chips are interpretation, and a zero-actuals saved summary has nothing
+  // to interpret: against a costed plan it would read as a beaten plan before
+  // anything was recorded. Chips render only once actuals exist (saved) or the
+  // operator is actively editing (dirty).
+  const showDeltas = hasActuals || dirty
 
   async function handleSaveActuals() {
+    const seqAtSave = editSeq // the payload below is built from this same render's state
     setSaving(true); setError(null)
     try {
       await saveActuals(orgId, eventId, {
@@ -114,7 +123,9 @@ export function CloseoutClient(props: CloseoutClientProps) {
       })
       setHasActuals(true)
       setSummary(await getCloseoutSummary(orgId, eventId))
-      setDirty(false)
+      // Mark only what this save captured as clean — edits typed during the
+      // in-flight save keep the live recompute showing.
+      setSavedSeq((prev) => Math.max(prev, seqAtSave))
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to save')
     } finally {
@@ -163,7 +174,7 @@ export function CloseoutClient(props: CloseoutClientProps) {
                 aria-label={`Actual ${i.name} used`}
                 type="number" step="0.01" className="w-28"
                 value={qtyUsed[i.resource_id] ?? ''}
-                onChange={(e) => { setQtyUsed((prev) => ({ ...prev, [i.resource_id]: e.target.value })); setDirty(true) }}
+                onChange={(e) => { setQtyUsed((prev) => ({ ...prev, [i.resource_id]: e.target.value })); setEditSeq((s) => s + 1) }}
               />
               <span className="text-xs text-muted-foreground">{i.unit ?? ''} (planned {i.qty})</span>
             </div>
@@ -175,7 +186,7 @@ export function CloseoutClient(props: CloseoutClientProps) {
             </div>
             <div>
               <Label htmlFor="co-sales">Tips &amp; on-site sales ($)</Label>
-              <Input id="co-sales" type="number" step="0.01" className="w-36" value={sales} onChange={(e) => { setSales(e.target.value); setDirty(true) }} />
+              <Input id="co-sales" type="number" step="0.01" className="w-36" value={sales} onChange={(e) => { setSales(e.target.value); setEditSeq((s) => s + 1) }} />
             </div>
           </div>
           <div>
@@ -205,15 +216,13 @@ export function CloseoutClient(props: CloseoutClientProps) {
           ) : shownSummary ? (
             <div className="space-y-3">
               <div className="grid grid-cols-3 gap-2.5 max-[700px]:grid-cols-1">
-                <div className="flex flex-col items-start gap-1.5">
-                  <StatTile
-                    label="Revenue" value={formatMoney(shownSummary.revenue)} tone="money"
-                    note="Packages + sales" className="w-full flex-1"
-                  />
-                  {plannedRevenue !== null && Math.abs(shownSummary.revenue - plannedRevenue) >= 0.005 && (
-                    <DeltaChip delta={shownSummary.revenue - plannedRevenue} />
-                  )}
-                </div>
+                {/* No vs-plan chip here: revenue − planned revenue is exactly the
+                    sales figure typed in the input above, and the tile note
+                    already says sales are included. */}
+                <StatTile
+                  label="Revenue" value={formatMoney(shownSummary.revenue)} tone="money"
+                  note="Packages + sales"
+                />
                 <div className="flex flex-col items-start gap-1.5">
                   <StatTile
                     label="Actual margin"
@@ -221,7 +230,7 @@ export function CloseoutClient(props: CloseoutClientProps) {
                     tone={shownSummary.actual_margin < 0 ? 'alert' : 'money'}
                     className="w-full flex-1"
                   />
-                  <DeltaChip delta={shownSummary.actual_margin - shownSummary.planned_margin} />
+                  {showDeltas && <DeltaChip delta={shownSummary.actual_margin - shownSummary.planned_margin} />}
                 </div>
                 <StatTile label="Planned margin" value={formatMoney(shownSummary.planned_margin)} />
               </div>
@@ -230,7 +239,7 @@ export function CloseoutClient(props: CloseoutClientProps) {
                 <span className="font-medium tabular-nums text-foreground">{formatMoney(shownSummary.planned_consumable_cost)}</span>
                 {' '}· actual{' '}
                 <span className="font-medium tabular-nums text-foreground">{formatMoney(shownSummary.actual_consumable_cost)}</span>
-                {Math.abs(shownSummary.actual_consumable_cost - shownSummary.planned_consumable_cost) >= 0.005 && (
+                {showDeltas && Math.abs(shownSummary.actual_consumable_cost - shownSummary.planned_consumable_cost) >= 0.005 && (
                   <>
                     {' '}·{' '}
                     <DeltaChip
