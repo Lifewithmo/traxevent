@@ -28,6 +28,18 @@ export interface Org {
   ai_voice_note?: string              // optional "How we sound" style note fed to AI drafting
   default_proposal_terms?: string    // seeded into new proposals' `terms` (snapshot, not a live reference)
   prep_lead_days?: number             // days of prep an event needs before the date; drives the pipeline book-by deadline (default 14)
+  // Which days the business actually works — powers the capacity outlook forecast.
+  // Absent ⇒ all 7 weekdays, no closures (every day serviceable). Migration-free.
+  serviceable_days?: {
+    weekdays?: number[]              // 0=Sun … 6=Sat the business serves; absent ⇒ all 7; [] ⇒ none
+    closures?: CapacityBlockout[]    // closed date ranges (holidays, off-season); reuses the Inc-1 shape
+  }
+  // Operator vocabulary for the two capacity kinds (de-siloing from BrewTrax's "cart"/"room").
+  // Absent per-kind ⇒ neutral defaults ('serving unit(s)' / 'room(s)'). See lib/capacity/labels.ts.
+  resource_labels?: {
+    mobile?: { one: string; many: string }
+    venue?: { one: string; many: string }
+  }
   created_at: string
 }
 
