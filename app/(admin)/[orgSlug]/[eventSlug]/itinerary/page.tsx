@@ -1,7 +1,7 @@
 export const dynamic = 'force-dynamic'
 
 import { requireEventPage } from '@/lib/auth/guards'
-import { listItinerary } from '@/actions/itinerary'
+import { listItineraryCore } from '@/lib/itinerary-data'
 import { ItineraryClient } from '@/components/admin/ItineraryClient'
 
 export default async function ItineraryPage({
@@ -11,7 +11,7 @@ export default async function ItineraryPage({
 }) {
   const { orgSlug, eventSlug } = await params
   const { orgId, eventId, event } = await requireEventPage(orgSlug, eventSlug, 'itinerary')
-  const items = await listItinerary(orgId, eventId)
+  const items = await listItineraryCore(orgId, eventId)
 
   return (
     <ItineraryClient

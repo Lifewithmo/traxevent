@@ -386,18 +386,19 @@ export function LoadoutClient(props: LoadoutClientProps) {
     <div className="pb-10">
       {/* Load-out is a takeover leaf: this header pins ALONE. The event spine
           header (layout.tsx → EventSpineHeader, sticky top-0 z-10) pins in the
-          same overflow-auto <main>; it is ~73px with a one-line name (py-3 +
-          size-12 avatar + border) and taller when the name + status pill wrap,
-          while this header is ~57px — so "riding over it" left a ~16px clipped
-          band of avatar/subtitle visible on scroll. Covering would mean
-          matching a content-dependent height, so instead the scoped style
-          below UNPINS the spine on this leaf: at rest the composition is
-          unchanged, on scroll the spine scrolls away and this header pins
-          cleanly. Leaf-scoped global CSS is the runsheet-print precedent;
-          `main > header` matches only the spine (this header is nested, not a
-          direct child of <main>), and the unlayered rule beats the layered
-          Tailwind `.sticky` utility. */}
-      <style>{`main > header.sticky { position: static; }`}</style>
+          same overflow-auto scroll container ([data-event-main]); it is ~73px
+          with a one-line name (py-3 + size-12 avatar + border) and taller when
+          the name + status pill wrap, while this header is ~57px — so "riding
+          over it" left a ~16px clipped band of avatar/subtitle visible on
+          scroll. Covering would mean matching a content-dependent height, so
+          instead the scoped style below UNPINS the spine on this leaf: at rest
+          the composition is unchanged, on scroll the spine scrolls away and
+          this header pins cleanly. Leaf-scoped global CSS is the
+          runsheet-print precedent; [data-event-spine-header] matches only the
+          spine (EventSpineHeader carries the attribute; this header does not),
+          and the unlayered rule beats the layered Tailwind `.sticky`
+          utility. */}
+      <style>{`[data-event-spine-header] { position: static; }`}</style>
       <header className="sticky top-0 z-20 border-b border-border bg-background/95 backdrop-blur print:hidden">
         <div className="mx-auto w-full max-w-3xl px-4 pb-2 pt-3">
           <div className="flex items-end justify-between gap-3">

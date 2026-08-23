@@ -61,7 +61,8 @@ export default async function EventLayout({
 
   return (
     // Same shell rule as the org layout: below md the sidebar is a bar plus an
-    // off-canvas drawer, so the shell stacks and `main` gets the full viewport.
+    // off-canvas drawer, so the shell stacks and the scroll container gets the
+    // full viewport.
     <div className="flex min-h-screen max-md:flex-col">
       <AdminSidebar
         orgSlug={orgSlug}
@@ -71,10 +72,16 @@ export default async function EventLayout({
         allowedEventPages={allowed}
         enabledModules={enabledModules}
       />
-      {/* bg-background, not a raw literal — same fix as the org layout: the hardcoded ground was
+      {/* A div, not <main>: this layout nests inside the org layout, whose <main>
+          is the page's single main landmark — a second one is invalid HTML. The
+          classes must stay exactly as they were: this div is the overflow-auto
+          scroll container that position:sticky (spine header, sub-nav) and the
+          print-page resets depend on; data-event-main is the selector hook those
+          dependents target now that the tag name is gone.
+          bg-background, not a raw literal — same fix as the org layout: the hardcoded ground was
           what made dark mode unreadable on every event page. --background is warm-50 in light, so
           the ground/card relationship is unchanged. */}
-      <main className="flex-1 bg-background overflow-auto">
+      <div data-event-main="" className="flex-1 bg-background overflow-auto">
         <EventSpineHeader event={event} />
         <EventSubNav orgSlug={orgSlug} eventSlug={eventSlug} items={navItems} />
         {/* B1: the band is leaf-gated — suppressed on 'dashboard' (the brief
@@ -87,7 +94,7 @@ export default async function EventLayout({
           </EventBandGate>
         )}
         {children}
-      </main>
+      </div>
     </div>
   )
 }

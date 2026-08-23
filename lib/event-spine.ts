@@ -185,7 +185,7 @@ const readCloseoutPresence = cache(async (orgId: string, eventId: string): Promi
 
 const readFirstItineraryTime = cache(async (orgId: string, eventId: string): Promise<string | null> => {
   try {
-    // Mirrors actions/itinerary.ts listItinerary (bare .get(); ordering in memory).
+    // Mirrors lib/itinerary-data.ts listItineraryCore (bare .get(); ordering in memory).
     const snap = await adminDb
       .collection('orgs').doc(orgId).collection('events').doc(eventId)
       .collection('itinerary').get()

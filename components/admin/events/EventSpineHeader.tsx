@@ -3,7 +3,12 @@
 //
 // print:hidden sits on the <header> itself, never on a wrapper div: print
 // routes compose through the event layout, and a wrapper would also break
-// position:sticky inside the layout's overflow-auto <main>.
+// position:sticky inside the layout's overflow-auto scroll container
+// ([data-event-main] — a div, since the org layout owns the main landmark).
+//
+// data-event-spine-header is the stable selector hook for leaves that need to
+// unpin this header (LoadoutClient's leaf-scoped style) — keyed to the
+// attribute, not tag position, so layout restructuring can't silently break it.
 import { Avatar } from '@/components/ui/avatar'
 import { StatusPill } from '@/components/ui/status-pill'
 import { EVENT_STATUS_TONE, EVENT_STATUS_LABEL, formatEventDateRange } from '@/lib/event-ui'
@@ -24,7 +29,10 @@ export function EventSpineHeader({ event }: { event: Event }) {
   const address = event.location?.address
 
   return (
-    <header className="sticky top-0 z-10 border-b border-border bg-background/95 px-5 py-3 backdrop-blur print:hidden">
+    <header
+      data-event-spine-header=""
+      className="sticky top-0 z-10 border-b border-border bg-background/95 px-5 py-3 backdrop-blur print:hidden"
+    >
       <div className="flex min-w-0 items-center gap-3">
         <Avatar name={event.name} size="lg" />
         <div className="min-w-0">

@@ -6,7 +6,6 @@ const itemDocSpy = vi.hoisted(() => ({
   delete: vi.fn().mockResolvedValue(undefined),
 }))
 const eventUpdateSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
-const getItemsSpy = vi.hoisted(() => vi.fn())
 
 vi.mock('@/lib/firebase-admin', () => ({
   adminDb: {
@@ -23,7 +22,6 @@ vi.mock('@/lib/firebase-admin', () => ({
                       if (sub2 === 'itinerary') {
                         return {
                           doc: vi.fn().mockReturnValue(itemDocSpy),
-                          get: getItemsSpy,
                         }
                       }
                       return {}
@@ -47,24 +45,18 @@ vi.mock('@/lib/auth/assert', () => ({
   assertEventPage: vi.fn().mockResolvedValue({ role: 'admin', event_access: {} }),
 }))
 
+import { assertEventPage } from '@/lib/auth/assert'
+import * as itineraryActions from '@/actions/itinerary'
 import {
-  listItinerary,
   createItineraryItem,
   updateItineraryItem,
   deleteItineraryItem,
   setItineraryPublished,
 } from '@/actions/itinerary'
 
-describe('listItinerary', () => {
-  beforeEach(() => vi.clearAllMocks())
-
-  it('returns all itinerary items', async () => {
-    getItemsSpy.mockResolvedValue({
-      docs: [{ data: () => ({ id: 'i1', day: '2026-07-10', start_time: '09:00', title: 'A', sort_order: 0, created_at: 'x' }) }],
-    })
-    const items = await listItinerary('org-1', 'camp-1')
-    expect(items).toHaveLength(1)
-    expect(items[0].title).toBe('A')
+describe('endpoint surface', () => {
+  it('exports NO read action — listItinerary was an unauthenticated POST endpoint (cross-org read); the read lives in lib/itinerary-data.ts listItineraryCore', () => {
+    expect((itineraryActions as Record<string, unknown>).listItinerary).toBeUndefined()
   })
 })
 
@@ -93,6 +85,7 @@ describe('createItineraryItem', () => {
     )
     expect(it.title).toBe('Opening')
     expect(it.id).toBeTruthy()
+    expect(assertEventPage).toHaveBeenCalledWith('org-1', 'camp-1', 'itinerary')
   })
 
   it('omits optional fields that are not provided', async () => {
@@ -117,6 +110,7 @@ describe('updateItineraryItem', () => {
     expect(itemDocSpy.update).toHaveBeenCalledWith(
       expect.objectContaining({ title: 'Renamed', updated_at: expect.any(String) })
     )
+    expect(assertEventPage).toHaveBeenCalledWith('org-1', 'camp-1', 'itinerary')
   })
 })
 
@@ -126,6 +120,7 @@ describe('deleteItineraryItem', () => {
   it('deletes the item document', async () => {
     await deleteItineraryItem('org-1', 'camp-1', 'i1')
     expect(itemDocSpy.delete).toHaveBeenCalled()
+    expect(assertEventPage).toHaveBeenCalledWith('org-1', 'camp-1', 'itinerary')
   })
 })
 
@@ -135,5 +130,6 @@ describe('setItineraryPublished', () => {
   it('updates the camp itinerary_published flag', async () => {
     await setItineraryPublished('org-1', 'camp-1', true)
     expect(eventUpdateSpy).toHaveBeenCalledWith({ itinerary_published: true })
+    expect(assertEventPage).toHaveBeenCalledWith('org-1', 'camp-1', 'itinerary')
   })
 })

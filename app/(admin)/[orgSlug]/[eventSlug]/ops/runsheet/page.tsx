@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic'
 
 import { requireEventPage } from '@/lib/auth/guards'
 import { getOpsPlan } from '@/actions/event-ops'
-import { listItinerary } from '@/actions/itinerary'
+import { listItineraryCore } from '@/lib/itinerary-data'
 import { groupItineraryByDay } from '@/lib/itinerary'
 import { formatEventDateRange, parseDay } from '@/lib/event-ui'
 import { resolveAnchorTime, RUN_SHEET_CHECKLIST_PHASES } from './anchor'
@@ -24,7 +24,7 @@ export default async function RunSheetPage({
   const { orgId, eventId, event, member } = await requireEventPage(orgSlug, eventSlug, 'ops')
   const [plan, itineraryItems] = await Promise.all([
     getOpsPlan(orgId, eventId),
-    listItinerary(orgId, eventId),
+    listItineraryCore(orgId, eventId),
   ])
 
   const itinerary = groupItineraryByDay(itineraryItems)
