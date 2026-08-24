@@ -216,6 +216,25 @@ EventTrax pivot (neutralization, multi-brand, ops core). Detailed designs live i
   capacity>1, deadline-aware health, per-event-type lead times, server-side hard
   block, board-view chip/badge.
 
+- **Events ambition inc 2 — market-day money, the shopping run, the trust loop**
+  (PR #128, merged 2026-08-23; print dark-mode hotfix #126 shipped ahead) — the
+  refuter-priced cut of inc 1's deferrals: booth_fee finally joins closeout
+  margins + **closeout-lite** for plan-less market days (1 screen · 2 inputs ·
+  1 tap; the MarketDayOverview apology is dead; season strip answers "is the
+  City Market worth it" with an honest newest-30 rollup); the **shopping run**
+  (`/shopping-run`) merges N jobs' lists into one store trip with write-back
+  check-off (one multi-doc transaction) + a provably-equal home chip; the
+  **trust loop** — confirm-ready attestation with a complete staleness
+  contract, guardian who-collected email (post-tx, family-batched,
+  unlisted-guardian copy), send-me-this-sheet, forms blockers in the verdict,
+  org pack/drive buffers, QR printed-to-live bridge (vendored MIT encoder,
+  decode-verified). Register/drops money stays POS-spec-owned; T-12h scheduling
+  blocked on the no-timezone-field fact. Process: 5 scopers → 2-grader panel →
+  5 implementers → 6 reviewers + adversarial verify (8 Important, 0 Critical)
+  → 3 mutation-tested fixers → whole-branch SHIP. 3,438 tests green. Spec:
+  `superpowers/specs/2026-08-23-events-ambition-inc2-design.md`. Owed: the
+  combined inc-1+2 Vercel walkthrough; named deferrals in the spec.
+
 - **Events ambition — computed job brief + day-of execution layer** (PR #122,
   merged 2026-08-23) — the design-ambition redo of Events past kit parity: the
   client-job dashboard is now a computed brief (countdown · honest anchor time ·
