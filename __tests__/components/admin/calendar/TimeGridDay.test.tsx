@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { act } from 'react'
 import { render, screen, within } from '@testing-library/react'
 import { renderToString } from 'react-dom/server'
@@ -343,6 +345,30 @@ describe('TimeGridDay — target size (WCAG 2.5.8)', () => {
     render(<TimeGridDay orgSlug="acme" ymd={day} items={long} />)
     const el = screen.getByText('Wedding').closest('a') as HTMLElement
     expect(visibleTimeLine(el)).toMatch(/4p–9p/)
+  })
+
+  /**
+   * The sub-24px resize strip is a documented WCAG exception, and WHICH
+   * exception is a compliance claim, not a comment. It rode on "Essential" —
+   * "no larger target would preserve the function" — which is false here: the
+   * same resize is reachable at full size from the keyboard (`<` / `>`), which
+   * is the "Equivalent" exception. A wrong citation is an audit finding even
+   * when the underlying design is fine, and it is invisible to every render
+   * test, so it is asserted at the source level — the same move
+   * `kind-channel-coverage.test.tsx` makes for the shape channel.
+   */
+  it('cites the WCAG 2.5.8 exception the sub-24px resize strip actually qualifies for', () => {
+    const src = readFileSync(
+      join(process.cwd(), 'components/admin/calendar/TimeGridDay.tsx'),
+      'utf8'
+    )
+    const doc = src.slice(0, src.indexOf('export const RESIZE_HANDLE_PX'))
+    const block = doc.slice(doc.lastIndexOf('/**'))
+    expect(block).toContain('2.5.8 "Equivalent"')
+    // The miscitation form, capital-E: `essential-presentation` in prose is fine.
+    expect(block).not.toMatch(/\bEssential\b/)
+    // The equivalent control has to be NAMED, or the exception is unverifiable.
+    expect(block).toMatch(/`<` \/ `>`/)
   })
 })
 

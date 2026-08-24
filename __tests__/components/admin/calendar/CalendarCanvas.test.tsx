@@ -201,6 +201,43 @@ describe('CalendarCanvas', () => {
     expect(sheet.querySelectorAll('kbd').length).toBeGreaterThanOrEqual(8)
   })
 
+  it('gives every reschedule key its own chip and says which way each one goes', async () => {
+    // These four used to be crammed into one line of prose as bare characters
+    // ("braces: a week; , . retime; < > resize") — the only row in the sheet
+    // that was not a real key chip, and it never said whether `,` was earlier
+    // or later. The sheet is the published contract for the keyboard-only path
+    // to every drag on this surface, so it has to be per-key and unambiguous.
+    render(<CalendarCanvas {...base} view="week" />)
+    fireEvent.keyDown(cockpit(), { key: '?' })
+    const sheet = await screen.findByRole('dialog', { name: /keyboard shortcuts/i })
+
+    const caps = Array.from(sheet.querySelectorAll('kbd')).map((k) => k.textContent)
+    for (const key of ['[', ']', '{', '}', ',', '.', '<', '>']) {
+      expect(caps, key).toContain(key)
+    }
+
+    // Each pair is its own row, and each row names the direction in the same
+    // order as its caps.
+    const rowFor = (re: RegExp) => {
+      const dt = within(sheet).getByText(re)
+      return dt.parentElement as HTMLElement
+    }
+    for (const [re, pair] of [
+      [/a day earlier \/ later/i, ['[', ']']],
+      [/a week earlier \/ later/i, ['{', '}']],
+      [/15 min earlier \/ later/i, [',', '.']],
+      [/15 min shorter \/ longer/i, ['<', '>']],
+    ] as const) {
+      const row = rowFor(re)
+      expect(Array.from(row.querySelectorAll('kbd')).map((k) => k.textContent)).toEqual([...pair])
+    }
+
+    // …and no row smuggles bare keys back into its prose.
+    for (const dt of sheet.querySelectorAll('dt')) {
+      expect(dt.textContent, dt.textContent ?? '').not.toMatch(/[,.<>[\]{}]\s*[,.<>[\]{}]/)
+    }
+  })
+
   it('offers a visible ? affordance in the toolbar for pointer users', async () => {
     render(<CalendarCanvas {...base} view="week" />)
     const trigger = screen.getByRole('button', { name: /keyboard shortcuts/i })

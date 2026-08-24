@@ -48,9 +48,16 @@ export const DEFAULT_BUSINESS_HOURS: BusinessHours = { start: '08:00', end: '18:
 /**
  * Height of an edge-resize strip. Deliberately below the 24px AA target: a
  * resize grip has to be a fraction of the block it resizes, or a 30-minute job
- * would be nothing but handles (WCAG 2.5.8 "Essential" — the presentation of
- * the target is essential to the function). The AA-sized equivalents are the
- * chip itself, which is floored to MIN_ITEM_PX, and the `<` / `>` keys.
+ * would be nothing but handles.
+ *
+ * The exception this rides on is WCAG 2.5.8 "Equivalent" — "a different control
+ * that meets the criterion provides an equivalent function". It is NOT the
+ * essential-presentation exception this comment used to cite: that one has to
+ * claim no larger target could exist without defeating the feature, and the
+ * claim is false here. The same resize is reachable at full size from the
+ * keyboard with `<` / `>` (see reschedule-drag.tsx), and the chip itself is
+ * floored to MIN_ITEM_PX. An equivalent control exists, so the strip is free to
+ * be as small as the geometry needs.
  */
 export const RESIZE_HANDLE_PX = 10
 /** A chip shorter than this is all grip and no body, so it gets no strips —

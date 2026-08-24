@@ -325,8 +325,15 @@ const SHORTCUTS: Array<{ keys: string[]; label: string }> = [
   { keys: ['T'], label: 'Jump to today' },
   { keys: ['←', '→'], label: 'Step back / forward' },
   // Reschedule keys are scoped to a focused job chip (WCAG 2.1.4 focus exception)
-  // and are also published per-chip via aria-keyshortcuts.
-  { keys: ['[', ']'], label: 'Move the focused job a day (braces: a week; , . retime; < > resize)' },
+  // and are also published per-chip via aria-keyshortcuts. One row per PAIR, with
+  // the caps in the same order as the words: four separate bindings crammed into
+  // one line of prose as bare characters were unreadable, and never said which of
+  // `,` and `.` was earlier — the sheet is the published contract for the
+  // keyboard-only path to every drag on this surface, so it has to be exact.
+  { keys: ['[', ']'], label: 'Move the focused job a day earlier / later' },
+  { keys: ['{', '}'], label: 'Move the focused job a week earlier / later' },
+  { keys: [',', '.'], label: 'Start the focused job 15 min earlier / later' },
+  { keys: ['<', '>'], label: 'Make the focused job 15 min shorter / longer' },
   { keys: ['⌘', 'K'], label: 'Search jobs, customers & dates (anywhere)' },
   { keys: ['?'], label: 'This sheet' },
 ]
