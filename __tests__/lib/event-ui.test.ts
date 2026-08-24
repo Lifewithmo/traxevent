@@ -4,6 +4,7 @@ import {
   FAMILY_LABEL,
   FAMILY_TONE,
   backPlanChips,
+  bufferAssumptionLabel,
   eventCountdown,
   formatClockTime,
   formatEventDate,
@@ -117,5 +118,28 @@ describe('job time helpers', () => {
     expect(backPlanChips('14:00')).toEqual({ packBy: '12:45 PM', leaveBy: '1:30 PM' })
     // Crossing midnight backwards renders nonsense — suppressed instead.
     expect(backPlanChips('00:30')).toBeNull()
+  })
+})
+
+describe('buffers (inc 2)', () => {
+  it('falls back to the constants when unset or non-positive', () => {
+    expect(bufferAssumptionLabel()).toBe('assumes 45m pack · 30m drive')
+    expect(bufferAssumptionLabel({ pack_minutes: 0, drive_minutes: -5 })).toBe('assumes 45m pack · 30m drive')
+  })
+
+  it('uses org buffers in chips and label', () => {
+    expect(bufferAssumptionLabel({ pack_minutes: 50, drive_minutes: 20 })).toBe('assumes 50m pack · 20m drive')
+    expect(backPlanChips('14:00', { pack_minutes: 50, drive_minutes: 20 })).toEqual({
+      packBy: '12:50 PM',
+      leaveBy: '1:40 PM',
+    })
+  })
+
+  it('keeps the default behavior with no buffers arg', () => {
+    expect(backPlanChips('14:00')).toEqual({ packBy: '12:45 PM', leaveBy: '1:30 PM' })
+  })
+
+  it('still suppresses cross-midnight back-plans with custom buffers', () => {
+    expect(backPlanChips('00:40', { pack_minutes: 30, drive_minutes: 20 })).toBeNull()
   })
 })
