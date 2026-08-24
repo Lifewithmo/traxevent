@@ -71,6 +71,9 @@ export default async function DashboardPage({
     allowedPages: pages,
     includeMoney,
     today,
+    // Org back-plan buffers (inc-2 S4.3) — pure passthrough from the already-
+    // loaded org doc to the brief's Pack-by/Leave-by chips + label.
+    ...(org.ops_buffers ? { buffers: org.ops_buffers } : {}),
   })
 
   return (

@@ -21,6 +21,8 @@ import {
   sendIntakeNotification,
   sendInvoiceEmail,
   sendOrderConfirmation,
+  sendGuardianPickupNotice,
+  sendRunSheetEmail,
   buildDropAnnouncementEmail,
   escapeHtml,
 } from '@/lib/email'
@@ -280,6 +282,117 @@ describe('buildDropAnnouncementEmail', () => {
   })
 })
 
+// ── Guardian who-collected notice (inc-2 P3) ────────────────────────────────
+describe('sendGuardianPickupNotice', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  const base = {
+    to: 'pat@x.co',
+    familyFirstName: 'Pat',
+    childNames: ['Ann Smith'],
+    guardianName: 'Jane Smith (mother)',
+    checkedOutAt: '2026-08-23T21:14:00.000Z',
+    eventName: 'Summer Camp',
+    orgName: 'First Hills',
+  }
+
+  it('carries who + when only — child, guardian, stamp, and the reply-to correction path', async () => {
+    await sendGuardianPickupNotice({ ...base, replyTo: 'director@x.co' })
+    const call = emailsSendSpy.mock.calls[0][0]
+    expect(call.to).toBe('pat@x.co')
+    expect(call.replyTo).toBe('director@x.co')
+    expect(call.html).toContain('Ann Smith')
+    expect(call.html).toContain('Jane Smith (mother)')
+    expect(call.html).toContain('2026-08-23 21:14 UTC')
+    // The correction path is stated in the copy — no unsend email exists.
+    expect(call.html).toMatch(/reply to this email/i)
+    // Content contract: never medical, never money.
+    expect(call.html).not.toMatch(/allerg|medical|balance|due/i)
+  })
+
+  it('escapes an attacker-shaped free-typed guardian name', async () => {
+    await sendGuardianPickupNotice({ ...base, guardianName: '<img src=x onerror=alert(1)>' })
+    const call = emailsSendSpy.mock.calls[0][0]
+    expect(call.html).not.toContain('<img src=x')
+    expect(call.html).toContain('&lt;img src=x onerror=alert(1)&gt;')
+  })
+
+  it('uses distinct copy for an unlisted guardian — the send still goes out', async () => {
+    await sendGuardianPickupNotice({ ...base, guardianName: 'Randy', unlistedGuardian: true })
+    const call = emailsSendSpy.mock.calls[0][0]
+    expect(call.subject).toMatch(/unlisted contact/i)
+    expect(call.html).toMatch(/who was not on your listed contacts/i)
+  })
+
+  it('lists every sibling in one batch notice', async () => {
+    await sendGuardianPickupNotice({ ...base, childNames: ['Ann Smith', 'Bo Smith'] })
+    const call = emailsSendSpy.mock.calls[0][0]
+    expect(call.html).toContain('Ann Smith and Bo Smith')
+    expect(call.html).toMatch(/were just collected/i)
+  })
+
+  it('degrades to a plain checkout notice when no guardian name was captured', async () => {
+    const { guardianName: _g, ...noName } = base
+    void _g
+    await sendGuardianPickupNotice(noName)
+    expect(emailsSendSpy.mock.calls[0][0].html).toMatch(/was just checked out/i)
+  })
+})
+
+// ── Self-send run sheet (inc-2 S3.3) ────────────────────────────────────────
+describe('sendRunSheetEmail', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  const base = {
+    to: 'op@demo.co',
+    eventName: 'Smith Wedding',
+    dateLabel: 'Aug 29, 2026',
+    anchor: { label: 'Starts', display: '3:00 PM' },
+    backPlan: { packBy: '1:50 PM', leaveBy: '2:40 PM' },
+    buffers: { pack_minutes: 50, drive_minutes: 20 },
+    venue: { name: 'Basque Center', address: '601 W Grove St' },
+    contacts: [{ name: 'Sam', role: 'Coordinator', phone: '208-555-0000' }],
+    siteNeeds: ['power', 'water'],
+    itinerary: [{ day: 'Aug 29, 2026', items: [{ start_time: '1:30 PM', title: 'Arrive', location: 'Dock' }] }],
+    checklists: [{ name: 'Setup', done: 1, total: 3 }],
+    loadout: { checked: 4, total: 12 },
+    orgSlug: 'demo',
+    eventSlug: 'smith-wedding-2026',
+  }
+
+  it('inlines the whole sheet — anchor, back-plan with the buffer label, contacts, timeline, load status', async () => {
+    await sendRunSheetEmail(base)
+    const call = emailsSendSpy.mock.calls[0][0]
+    expect(call.to).toBe('op@demo.co')
+    expect(call.subject).toBe('Run sheet — Smith Wedding (Aug 29, 2026)')
+    const html = call.html as string
+    // The content stands alone (dead-zone insurance): every fact is inline.
+    expect(html).toContain('3:00 PM')
+    expect(html).toContain('Pack by <strong>1:50 PM</strong>')
+    expect(html).toContain('assumes 50m pack · 20m drive')
+    expect(html).toContain('Basque Center')
+    expect(html).toContain('Sam — Coordinator · 208-555-0000')
+    expect(html).toContain('power · water')
+    expect(html).toContain('Arrive')
+    expect(html).toContain('Setup: 1/3 done')
+    expect(html).toContain('4 of 12 packed')
+    // The live link is allowed but labeled as the stale-escape hatch, not the content.
+    expect(html).toContain('/demo/smith-wedding-2026/ops/runsheet')
+  })
+
+  it('falls back to the constants label when no org buffers exist', async () => {
+    await sendRunSheetEmail({ ...base, buffers: undefined, backPlan: { packBy: '1:45 PM', leaveBy: '2:30 PM' } })
+    expect(emailsSendSpy.mock.calls[0][0].html).toContain('assumes 45m pack · 30m drive')
+  })
+
+  it('escapes operator-entered content', async () => {
+    await sendRunSheetEmail({ ...base, venue: { name: '<script>x</script>' }, contacts: [] })
+    const html = emailsSendSpy.mock.calls[0][0].html as string
+    expect(html).not.toContain('<script>')
+    expect(html).toContain('&lt;script&gt;')
+  })
+})
+
 // Every sender in this module must detect a resolved-with-error send, not just the
 // invoice one. The Resend SDK resolves on 422/403/429/5xx and on a dropped connection,
 // so a sender that ignores `error` reports success for a mail that never left.
@@ -314,6 +427,15 @@ describe('delivery detection across every sender', () => {
     ['sendOrderConfirmation', () => sendOrderConfirmation({
       to: 'j@e.com', buyerName: 'Jane', orgDisplayName: 'Org', dropTitle: 'Drop',
       orderNumber: 1, pickupLabel: 'Sat', lines: [], total: 0, orderUrl: 'https://traxevent.com/orders/t',
+    })],
+    ['sendGuardianPickupNotice', () => sendGuardianPickupNotice({
+      to: 'j@e.com', familyFirstName: 'Pat', childNames: ['Ann'],
+      checkedOutAt: '2026-08-23T21:14:00.000Z', eventName: 'Camp', orgName: 'Org',
+    })],
+    ['sendRunSheetEmail', () => sendRunSheetEmail({
+      to: 'j@e.com', eventName: 'Job', dateLabel: 'Sat', anchor: null, backPlan: null,
+      venue: null, contacts: [], siteNeeds: [], itinerary: [], checklists: [],
+      loadout: null, orgSlug: 'o', eventSlug: 'e',
     })],
   ]
 

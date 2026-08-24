@@ -365,6 +365,174 @@ export async function sendOrderConfirmation(params: OrderConfirmationParams): Pr
   }))
 }
 
+export interface GuardianPickupNoticeParams {
+  to: string
+  /** Family (registering parent) first name for the greeting. */
+  familyFirstName: string
+  /** The checked-out children's names, one email per family (P3). */
+  childNames: string[]
+  /** Free-typed or quick-picked guardian name; undefined = no name captured. */
+  guardianName?: string
+  /** The guardian was NOT one of the family's listed contacts — distinct copy (P3). */
+  unlistedGuardian?: boolean
+  /** ISO timestamp of the checkout. */
+  checkedOutAt: string
+  eventName: string
+  orgName: string
+  fromDisplayName?: string
+  replyTo?: string
+  fromDomain?: string
+}
+
+/**
+ * Guardian who-collected email (inc-2 P3) — the highest-trust send in the
+ * product, so its content contract is strict:
+ *   - who + when ONLY: no medical flags, no balance, no links to gated pages;
+ *   - the free-typed guardian name is attacker-shaped input → escapeHtml;
+ *   - an unlisted guardian STILL sends, with copy that says so plainly —
+ *     that is exactly the pickup a parent most wants to hear about;
+ *   - no unsend/correction email exists: the copy names reply-to-this-email
+ *     as the correction path.
+ * Best-effort by contract: callers send POST-transaction and swallow failures
+ * (the custody record is already committed; a send failure must never fail or
+ * retry the checkout).
+ */
+export async function sendGuardianPickupNotice(params: GuardianPickupNoticeParams): Promise<void> {
+  const from = buildFromAddress({ displayName: params.fromDisplayName, domain: params.fromDomain })
+  const names = params.childNames.map((n) => escapeHtml(n))
+  const children =
+    names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
+  const verb = names.length === 1 ? 'was' : 'were'
+
+  // Server-rendered timestamp: UTC-labeled fine print (ops/print precedent) —
+  // no timezone field exists anywhere, so a bare local-looking time would lie.
+  // The headline carries the honest "just now": this email sends at checkout.
+  const d = new Date(params.checkedOutAt)
+  const stamp = Number.isNaN(d.getTime())
+    ? params.checkedOutAt
+    : `${d.toISOString().slice(0, 10)} ${d.toISOString().slice(11, 16)} UTC`
+
+  const collectedBy = params.guardianName
+    ? params.unlistedGuardian
+      ? `${children} ${verb} just collected by <strong>${escapeHtml(params.guardianName)}</strong>, who was not on your listed contacts.`
+      : `${children} ${verb} just collected by <strong>${escapeHtml(params.guardianName)}</strong>.`
+    : `${children} ${verb} just checked out.`
+
+  const subject = params.unlistedGuardian
+    ? `Pickup by an unlisted contact — ${params.eventName}`
+    : `Picked up — ${params.eventName}`
+
+  assertDelivered(await getResend().emails.send({
+    from,
+    to: params.to,
+    ...(params.replyTo ? { replyTo: params.replyTo } : {}),
+    subject,
+    html: `
+      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
+        <h1 style="color:#1a1a1a;font-size:20px;margin-bottom:8px">${params.unlistedGuardian ? 'Pickup by an unlisted contact' : 'Picked up'}</h1>
+        <p style="color:#1a1a1a;font-size:16px;margin-bottom:8px">
+          Hi ${escapeHtml(params.familyFirstName)}, ${collectedBy}
+        </p>
+        <p style="color:#64748B;font-size:13px;margin-bottom:16px">
+          ${escapeHtml(params.eventName)} at ${escapeHtml(params.orgName)} · ${escapeHtml(stamp)}
+        </p>
+        <p style="color:#64748B;font-size:13px">
+          If this doesn&rsquo;t look right, reply to this email and ${escapeHtml(params.orgName)} will follow up.
+        </p>
+      </div>
+    `,
+  }))
+}
+
+export interface RunSheetEmailParams {
+  to: string
+  eventName: string
+  dateLabel: string
+  anchor: { label: string; display: string } | null
+  backPlan: { packBy: string; leaveBy: string } | null
+  buffers?: { pack_minutes?: number; drive_minutes?: number }
+  venue: { name: string; address?: string } | null
+  contacts: Array<{ name: string; role: string; phone?: string; email?: string }>
+  siteNeeds: string[]
+  itinerary: Array<{ day: string; items: Array<{ start_time: string; title: string; location?: string }> }>
+  checklists: Array<{ name: string; done: number; total: number }>
+  loadout: { checked: number; total: number } | null
+  orgSlug: string
+  eventSlug: string
+  fromDisplayName?: string
+  fromDomain?: string
+}
+
+/**
+ * Self-send run sheet (inc-2 S3.3): the CONTENT IS INLINE — timeline, contacts,
+ * site needs, load status, anchor + back-plan — because the admin surface sits
+ * behind the auth wall; the live link is included but the email must stand
+ * alone in a dead zone. Sending IS the action: a rejected send throws
+ * (assertDelivered), the caller must not log or report "sent" past a throw.
+ */
+export async function sendRunSheetEmail(params: RunSheetEmailParams): Promise<void> {
+  const from = buildFromAddress({ displayName: params.fromDisplayName, domain: params.fromDomain })
+  const liveUrl = `${PUBLIC_BASE_URL}/${params.orgSlug}/${params.eventSlug}/ops/runsheet`
+
+  const bufferLabel = (() => {
+    const pack = params.buffers?.pack_minutes && params.buffers.pack_minutes > 0 ? params.buffers.pack_minutes : 45
+    const drive = params.buffers?.drive_minutes && params.buffers.drive_minutes > 0 ? params.buffers.drive_minutes : 30
+    return `assumes ${pack}m pack · ${drive}m drive`
+  })()
+
+  const section = (title: string, body: string) => `
+    <h2 style="color:#64748B;font-size:12px;text-transform:uppercase;letter-spacing:.05em;margin:20px 0 4px">${title}</h2>
+    ${body}`
+
+  const contactsHtml = params.contacts.length > 0
+    ? `<ul style="margin:0;padding-left:16px;color:#1a1a1a;font-size:14px">${params.contacts
+        .map((c) =>
+          `<li>${escapeHtml(c.name)}${c.role ? ` — ${escapeHtml(c.role)}` : ''}${c.phone ? ` · ${escapeHtml(c.phone)}` : ''}${c.email ? ` · ${escapeHtml(c.email)}` : ''}</li>`)
+        .join('')}</ul>`
+    : '<p style="color:#64748B;font-size:14px;margin:0">None on file.</p>'
+
+  const timelineHtml = params.itinerary.length > 0
+    ? params.itinerary
+        .map((day) => `
+          ${params.itinerary.length > 1 ? `<p style="color:#1a1a1a;font-size:14px;font-weight:600;margin:8px 0 2px">${escapeHtml(day.day)}</p>` : ''}
+          <ul style="margin:0;padding-left:16px;color:#1a1a1a;font-size:14px">${day.items
+            .map((i) => `<li><strong>${escapeHtml(i.start_time)}</strong> ${escapeHtml(i.title)}${i.location ? ` · ${escapeHtml(i.location)}` : ''}</li>`)
+            .join('')}</ul>`)
+        .join('')
+    : '<p style="color:#64748B;font-size:14px;margin:0">No schedule entered.</p>'
+
+  const checklistsHtml = params.checklists.length > 0
+    ? `<ul style="margin:0;padding-left:16px;color:#1a1a1a;font-size:14px">${params.checklists
+        .map((c) => `<li>${escapeHtml(c.name)}: ${c.done}/${c.total} done</li>`)
+        .join('')}</ul>`
+    : '<p style="color:#64748B;font-size:14px;margin:0">No day-of checklists.</p>'
+
+  assertDelivered(await getResend().emails.send({
+    from,
+    to: params.to,
+    subject: `Run sheet — ${params.eventName} (${params.dateLabel})`,
+    html: `
+      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
+        <h1 style="color:#1a1a1a;font-size:20px;margin-bottom:2px">${escapeHtml(params.eventName)}</h1>
+        <p style="color:#64748B;font-size:14px;margin:0 0 12px">${escapeHtml(params.dateLabel)}</p>
+        <p style="color:#1a1a1a;font-size:24px;font-weight:700;margin:0">
+          ${params.anchor ? `<span style="color:#64748B;font-size:13px;font-weight:500">${escapeHtml(params.anchor.label)}</span> ${escapeHtml(params.anchor.display)}` : 'Time TBD'}
+        </p>
+        ${params.backPlan ? `<p style="color:#1a1a1a;font-size:14px;margin:4px 0 0">Pack by <strong>${escapeHtml(params.backPlan.packBy)}</strong> · Leave by <strong>${escapeHtml(params.backPlan.leaveBy)}</strong> <span style="color:#64748B">(${escapeHtml(bufferLabel)})</span></p>` : ''}
+        ${params.venue ? `<p style="color:#1a1a1a;font-size:14px;margin:4px 0 0">${escapeHtml(params.venue.name)}${params.venue.address ? ` · ${escapeHtml(params.venue.address)}` : ''}</p>` : ''}
+        ${section('Contacts', contactsHtml)}
+        ${section('Site needs', params.siteNeeds.length > 0 ? `<p style="color:#1a1a1a;font-size:14px;margin:0">${params.siteNeeds.map(escapeHtml).join(' · ')}</p>` : '<p style="color:#64748B;font-size:14px;margin:0">None recorded.</p>')}
+        ${section('Timeline', timelineHtml)}
+        ${section('Checklists', checklistsHtml)}
+        ${section('Load-out', params.loadout && params.loadout.total > 0 ? `<p style="color:#1a1a1a;font-size:14px;margin:0">${params.loadout.checked} of ${params.loadout.total} packed</p>` : '<p style="color:#64748B;font-size:14px;margin:0">No load list.</p>')}
+        <p style="margin-top:24px;font-size:12px;color:#9ca3af">
+          Live sheet (this email goes stale): <a href="${liveUrl}" style="color:#9ca3af">${liveUrl}</a>
+        </p>
+      </div>
+    `,
+  }))
+}
+
 export interface DropAnnouncementParams {
   to: string
   orgDisplayName: string

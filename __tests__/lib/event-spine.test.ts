@@ -5,36 +5,48 @@ const familiesOrderBy = vi.hoisted(() => vi.fn(() => ({ get: familiesGet })))
 const planGet = vi.hoisted(() => vi.fn())
 const closeoutGet = vi.hoisted(() => vi.fn())
 const itineraryGet = vi.hoisted(() => vi.fn())
+const assignmentsGet = vi.hoisted(() => vi.fn())
+const signedFormsGet = vi.hoisted(() => vi.fn())
+const collectionGroupSpy = vi.hoisted(() => vi.fn())
+const signedFormsWhere = vi.hoisted(() => vi.fn())
 const invoicesGet = vi.hoisted(() => vi.fn())
 const invoicesOrderBy = vi.hoisted(() => vi.fn(() => ({ get: invoicesGet })))
 const invoicesWhere = vi.hoisted(() => vi.fn(() => ({ orderBy: invoicesOrderBy })))
 
 // orgs/{o}/events/{e}/ops/{plan|closeout} — the ops doc call branches on id.
 const opsDoc = vi.hoisted(() => vi.fn((id: string) => ({ get: id === 'closeout' ? closeoutGet : planGet })))
-// orgs/{o}/events/{e}/{families|itinerary|ops} — the leaf collection call branches on name.
+// orgs/{o}/events/{e}/{families|itinerary|form_assignments|ops} — branches on name.
 const leafCollection = vi.hoisted(() =>
   vi.fn((name: string) =>
     name === 'families'
       ? { orderBy: familiesOrderBy }
       : name === 'itinerary'
         ? { get: itineraryGet }
-        : { doc: opsDoc }
+        : name === 'form_assignments'
+          ? { get: assignmentsGet }
+          : { doc: opsDoc }
   )
 )
 
-vi.mock('@/lib/firebase-admin', () => ({
-  adminDb: {
-    collection: () => ({
-      doc: () => ({
-        // orgs/{o}/{events|invoices} — branches on the second-level collection.
-        collection: (name: string) =>
-          name === 'invoices'
-            ? { where: invoicesWhere }
-            : { doc: () => ({ collection: leafCollection }) },
+vi.mock('@/lib/firebase-admin', () => {
+  // signed_forms collectionGroup: .where(...).where(...).get() — chainable.
+  const signedQuery: Record<string, unknown> = { get: signedFormsGet }
+  signedQuery.where = signedFormsWhere.mockReturnValue(signedQuery)
+  return {
+    adminDb: {
+      collectionGroup: collectionGroupSpy.mockReturnValue(signedQuery),
+      collection: () => ({
+        doc: () => ({
+          // orgs/{o}/{events|invoices} — branches on the second-level collection.
+          collection: (name: string) =>
+            name === 'invoices'
+              ? { where: invoicesWhere }
+              : { doc: () => ({ collection: leafCollection }) },
+        }),
       }),
-    }),
-  },
-}))
+    },
+  }
+})
 
 import {
   getEventSpineKpis,
@@ -44,6 +56,7 @@ import {
   blockerTarget,
   eventPhaseOf,
   formatClockTime,
+  formatConfirmStamp,
   resolveJobTime,
   backPlanChips,
   formatJobDay,
@@ -65,6 +78,15 @@ const FAMILY_DOCS = [
   { registration_status: 'confirmed', payment_status: 'partial', amount_due: 400, amount_paid: 100, created_at: '2026-08-02T00:00:00.000Z' },
   { registration_status: 'pending', payment_status: 'unpaid', amount_due: 300, amount_paid: 0, created_at: '2026-08-03T00:00:00.000Z' },
 ].map((data, i) => ({ id: `fam-${i}`, data: () => data }))
+
+const WAIVER_ASSIGNMENT = {
+  id: 'a1', template_name: 'Liability waiver', audience: 'registrant', required: true,
+}
+/** A signed_forms doc: family id is the grandparent doc id (checkins mirror). */
+const signedDoc = (familyId: string, assignmentId: string) => ({
+  ref: { parent: { parent: { id: familyId } } },
+  data: () => ({ assignment_id: assignmentId }),
+})
 
 // flags: deadlines [true, false] + shopping [true] + packing [false] +
 // checklist steps [false] → done 2 / total 5 → 40%; no overdue (d2 is future).
@@ -109,6 +131,12 @@ beforeEach(() => {
   closeoutGet.mockResolvedValue({ exists: false })
   itineraryGet.mockResolvedValue({ docs: [] })
   invoicesGet.mockResolvedValue({ docs: [] })
+  assignmentsGet.mockResolvedValue({ docs: [] })
+  signedFormsGet.mockResolvedValue({ docs: [] })
+  // vi.clearAllMocks wipes mockReturnValue — restore the chainable query.
+  const signedQuery: Record<string, unknown> = { get: signedFormsGet }
+  signedQuery.where = signedFormsWhere.mockReturnValue(signedQuery)
+  collectionGroupSpy.mockReturnValue(signedQuery)
 })
 
 describe('getEventSpineKpis', () => {
@@ -335,6 +363,75 @@ describe('getEventSpineKpis', () => {
     expect(kpis.registrations).toMatchObject({ total: 3 })
     expect(kpis.financial).toMatchObject({ outstanding: 600 })
     expect(kpis.readiness).toMatchObject({ pct: 40 })
+    // Band renders no blockers → the forms pair is never read either.
+    expect(assignmentsGet).not.toHaveBeenCalled()
+    expect(collectionGroupSpy).not.toHaveBeenCalled()
+  })
+
+  // ── Forms blocker (inc-2 S4.2 — the sanctioned collectionGroup mirror) ─────
+
+  it('surfaces owed required forms as a concrete blocker, mirroring the shipped checkins read pair', async () => {
+    assignmentsGet.mockResolvedValue({ docs: [{ data: () => WAIVER_ASSIGNMENT }] })
+    signedFormsGet.mockResolvedValue({ docs: [signedDoc('fam-0', 'a1')] })
+    const kpis = await getEventSpineKpis(callInput())
+
+    // Read-shape mirror: signed_forms collectionGroup filtered by org + event
+    // (composite index already shipped in firestore.indexes.json).
+    expect(collectionGroupSpy).toHaveBeenCalledWith('signed_forms')
+    expect(signedFormsWhere).toHaveBeenCalledWith('org_id', '==', 'o1')
+    expect(signedFormsWhere).toHaveBeenCalledWith('event_id', '==', 'e1')
+
+    const forms = kpis.blockers.find((b) => b.kind === 'forms')
+    expect(forms).toMatchObject({
+      label: '2 families owe Liability waiver',
+      actionLabel: 'Collect Liability waiver from 2 families',
+      severity: 'info',
+    })
+  })
+
+  it('emits no forms blocker when every family signed, and never reads forms without a roster grant', async () => {
+    assignmentsGet.mockResolvedValue({ docs: [{ data: () => WAIVER_ASSIGNMENT }] })
+    signedFormsGet.mockResolvedValue({
+      docs: [signedDoc('fam-0', 'a1'), signedDoc('fam-1', 'a1'), signedDoc('fam-2', 'a1')],
+    })
+    const kpis = await getEventSpineKpis(callInput())
+    expect(kpis.blockers.some((b) => b.kind === 'forms')).toBe(false)
+
+    // Roster-less callers strip families/reports — the forms pair is gated identically.
+    vi.mocked(assignmentsGet).mockClear()
+    collectionGroupSpy.mockClear()
+    await getEventSpineKpis(callInput({ allowedPages: ['dashboard', 'ops'] }))
+    expect(assignmentsGet).not.toHaveBeenCalled()
+    expect(collectionGroupSpy).not.toHaveBeenCalled()
+  })
+
+  it('forges no forms blocker from a failed forms read', async () => {
+    assignmentsGet.mockRejectedValue(new Error('firestore unavailable'))
+    const kpis = await getEventSpineKpis(callInput())
+    expect(kpis.blockers.some((b) => b.kind === 'forms')).toBe(false)
+    // Other sections untouched.
+    expect(kpis.registrations).toMatchObject({ total: 3 })
+  })
+
+  // ── Buffers passthrough (inc-2 S4.3) ───────────────────────────────────────
+
+  it('passes org buffers through to kpis verbatim — no read, pure plumbing', async () => {
+    const buffers = { pack_minutes: 50, drive_minutes: 20 }
+    const kpis = await getEventSpineKpis(callInput({ buffers }))
+    expect(kpis.buffers).toBe(buffers)
+    const bare = await getEventSpineKpis(callInput())
+    expect('buffers' in bare).toBe(false)
+  })
+
+  // ── Confirm-ready threading (inc-2 P2) ─────────────────────────────────────
+
+  it('threads the plan attestation into ops.readyConfirmed', async () => {
+    planGet.mockResolvedValue({
+      exists: true,
+      data: () => ({ ...PLAN, ready_confirmed: { at: '2026-08-19T21:14:00.000Z', by: 'u9' } }),
+    })
+    const kpis = await getEventSpineKpis(callInput())
+    expect(kpis.ops).toMatchObject({ readyConfirmed: { at: '2026-08-19T21:14:00.000Z', by: 'u9' } })
   })
 })
 
@@ -407,6 +504,40 @@ describe('computeEventBlockers', () => {
     expect(computeEventBlockers({ ...input, phase: 'upcoming' as const }).map((b) => b.kind))
       .toEqual(['deadline', 'money', 'loadlist'])
   })
+
+  // ── Forms blocker math (inc-2 S4.2) ────────────────────────────────────────
+
+  const owedRow = (missingIds: string[], template = 'Liability waiver', id = 'a1') => ({
+    assignment_id: id, template_name: template, audience: 'registrant' as const,
+    total: 3, submitted_count: 3 - missingIds.length,
+    missing: missingIds.map((fid) => ({ family_id: fid, name: fid, email: `${fid}@x.co` })),
+  })
+
+  it('names the owed form when a single required form is short — singular and plural copy', () => {
+    const one = computeEventBlockers({ plan: null, registrations: null, ar: NO_AR, formsOwed: [owedRow(['f1'])], today: TODAY })
+    expect(one[0]).toMatchObject({ kind: 'forms', label: '1 family owes Liability waiver', severity: 'info' })
+    const two = computeEventBlockers({ plan: null, registrations: null, ar: NO_AR, formsOwed: [owedRow(['f1', 'f2'])], today: TODAY })
+    expect(two[0].label).toBe('2 families owe Liability waiver')
+  })
+
+  it('counts DISTINCT owing families across several short forms', () => {
+    const rows = [owedRow(['f1', 'f2']), owedRow(['f2', 'f3'], 'Photo release', 'a2')]
+    const blockers = computeEventBlockers({ plan: null, registrations: null, ar: NO_AR, formsOwed: rows, today: TODAY })
+    expect(blockers[0]).toMatchObject({
+      kind: 'forms',
+      label: '3 families owe 2 required forms',
+      actionLabel: 'Collect 2 required forms from 3 families',
+    })
+  })
+
+  it('drops the forms blocker for wrapped jobs and for fully-signed rows', () => {
+    expect(computeEventBlockers({
+      plan: null, registrations: null, ar: NO_AR, formsOwed: [owedRow(['f1'])], today: TODAY, phase: 'wrapped',
+    })).toEqual([])
+    expect(computeEventBlockers({
+      plan: null, registrations: null, ar: NO_AR, formsOwed: [owedRow([])], today: TODAY,
+    })).toEqual([])
+  })
 })
 
 describe('blockerTarget', () => {
@@ -424,6 +555,11 @@ describe('blockerTarget', () => {
     expect(blockerTarget('registrations', ['dashboard'])).toBeNull()
     expect(blockerTarget('deadline', ['dashboard'])).toBeNull()
     expect(blockerTarget('loadlist', ['dashboard'])).toBeNull()
+  })
+
+  it('links the forms blocker only under the forms grant — unlinked (never the NBA) otherwise', () => {
+    expect(blockerTarget('forms', ['dashboard', 'forms'])).toBe('forms')
+    expect(blockerTarget('forms', ['dashboard', 'families', 'reports'])).toBeNull()
   })
 })
 
@@ -469,6 +605,54 @@ describe('computeEventVerdict', () => {
       .toEqual({ label: 'Wrapped — close out', tone: 'pending' })
     expect(computeEventVerdict({ phase: 'wrapped', ops: readyOps, readiness: null, closeout: { exists: true, completed: true }, blockers: [] }))
       .toEqual({ label: 'Wrapped — closed out', tone: 'ok' })
+  })
+
+  // ── Confirm-ready precedence (inc-2 P2) ────────────────────────────────────
+
+  const AT = '2026-08-19T21:14:00.000Z'
+  const stamp = formatConfirmStamp(AT)
+  const confirmedOps = { ...readyOps, readyConfirmed: { at: AT, by: 'u9' } }
+
+  it('makes the standing attestation THE verdict when no blockers arrived since', () => {
+    // Even with unfinished prep (pct < 100): the operator's judgment outranks
+    // the progress bar — that is what the ritual is for.
+    expect(computeEventVerdict({
+      phase: 'upcoming', ops: confirmedOps,
+      readiness: { days_until: 1, done: 4, total: 5, pct: 80, overdue: 0 },
+      closeout: null, blockers: [],
+    })).toEqual({ label: `Confirmed ready — ${stamp}`, tone: 'ok' })
+  })
+
+  it('DEMOTES the confirm to a secondary fact line when blockers arrived since — never suppresses either', () => {
+    expect(computeEventVerdict({
+      phase: 'upcoming', ops: confirmedOps,
+      readiness: { days_until: 1, done: 4, total: 5, pct: 80, overdue: 1 },
+      closeout: null, blockers: [alertBlocker, infoBlocker],
+    })).toEqual({
+      label: 'Not ready', tone: 'alert',
+      confirmedNote: `Confirmed ${stamp} — 2 new blockers since`,
+    })
+    // Info-only blockers demote too (singular copy).
+    expect(computeEventVerdict({
+      phase: 'upcoming', ops: confirmedOps,
+      readiness: { days_until: 1, done: 5, total: 5, pct: 100, overdue: 0 },
+      closeout: null, blockers: [infoBlocker],
+    })).toEqual({
+      label: 'On track', tone: 'pending',
+      confirmedNote: `Confirmed ${stamp} — 1 new blocker since`,
+    })
+  })
+
+  it('ignores the attestation once the job is wrapped — the confirm is a prep fact', () => {
+    expect(computeEventVerdict({
+      phase: 'wrapped', ops: confirmedOps, readiness: null,
+      closeout: { exists: true, completed: true }, blockers: [],
+    })).toEqual({ label: 'Wrapped — closed out', tone: 'ok' })
+  })
+
+  it('formats the confirm stamp defensively', () => {
+    expect(formatConfirmStamp('garbage')).toBe('')
+    expect(formatConfirmStamp(AT)).toBe(new Date(AT).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }))
   })
 })
 

@@ -35,6 +35,7 @@ export default function EventSettingsPage() {
   const [eventEnd, setEventEnd] = useState('')
   const [registrationOpen, setRegistrationOpen] = useState('')
   const [registrationClose, setRegistrationClose] = useState('')
+  const [notifyOnPickup, setNotifyOnPickup] = useState(false)
   const [capacity, setCapacity] = useState<string>('')
   const [paymentAmount, setPaymentAmount] = useState<string>('')
   const [fromDisplayName, setFromDisplayName] = useState<string>('')
@@ -75,6 +76,9 @@ export default function EventSettingsPage() {
       setEventEnd(c.event_end)
       setRegistrationOpen(c.registration_open ?? '')
       setRegistrationClose(c.registration_close ?? '')
+      // Effective default (inc-2 P3): explicit toggle wins; absent → ON only
+      // for guardian-mode (child-registration) events.
+      setNotifyOnPickup(c.notify_family_on_pickup ?? c.registration_type === 'child')
       setCapacity(c.capacity != null ? String(c.capacity) : '')
       setPaymentAmount(c.payment_amount != null ? String(c.payment_amount) : '')
       setFromDisplayName(c.from_display_name ?? '')
@@ -148,6 +152,9 @@ export default function EventSettingsPage() {
         event_end: eventEnd,
         registration_open: registrationOpen || undefined,
         registration_close: registrationClose || undefined,
+        // Saved as an explicit boolean once the Registration card rendered —
+        // explicit overrides the registration-type default from then on.
+        ...(rosterEnabled && !isMarketDay ? { notify_family_on_pickup: notifyOnPickup } : {}),
         capacity: capacity ? Number(capacity) : undefined,
         payment_amount: paymentAmount ? Number(paymentAmount) : undefined,
         from_display_name: fromDisplayName || undefined,
@@ -461,6 +468,22 @@ export default function EventSettingsPage() {
                   />
                   <p className="text-xs text-muted-foreground">
                     In dollars. Leave blank or 0 for free events. TraxEvent collects 1% of paid registrations automatically.
+                  </p>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="flex min-h-11 items-center gap-2 text-sm font-medium">
+                    <input
+                      type="checkbox"
+                      className="size-4 accent-[var(--primary)]"
+                      checked={notifyOnPickup}
+                      onChange={(e) => { setNotifyOnPickup(e.target.checked); setSaved(false) }}
+                    />
+                    Email the family when their child is picked up
+                  </label>
+                  <p className="text-xs text-muted-foreground">
+                    At checkout, the registering family gets a short note saying who collected their
+                    child and when — nothing else. On by default for child-registration events.
                   </p>
                 </div>
               </CardContent>

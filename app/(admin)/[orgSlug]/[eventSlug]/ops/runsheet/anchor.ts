@@ -16,12 +16,14 @@ import {
   DRIVE_MINUTES,
   PACK_MINUTES,
   backPlanChips,
+  bufferAssumptionLabel,
   formatClockTime,
   resolveJobTime,
   type JobStripTime,
+  type OpsBuffers,
 } from '@/lib/event-ui'
 
-export { DRIVE_MINUTES, PACK_MINUTES }
+export { DRIVE_MINUTES, PACK_MINUTES, bufferAssumptionLabel, type OpsBuffers }
 
 export interface AnchorTime {
   /** Honest source label, rendered next to the time. */
@@ -71,16 +73,20 @@ export function resolveAnchorTime(input: {
   return { label: ANCHOR_LABEL[resolved.source], hhmm: resolved.hhmm, display }
 }
 
-export const BUFFER_ASSUMPTION_LABEL = `assumes ${PACK_MINUTES}m pack · ${DRIVE_MINUTES}m drive`
-
 export interface BackPlan {
   packBy: string   // 12-hour display
   leaveBy: string  // 12-hour display
 }
 
-/** Runsheet naming for the shared back-plan math — see backPlanChips above. */
-export function backPlanFromAnchor(hhmm: string): BackPlan | null {
-  return backPlanChips(hhmm)
+/**
+ * Runsheet naming for the shared back-plan math — see backPlanChips above.
+ * `buffers` = the org's ops_buffers (inc-2 S4.3); absent fields fall back to
+ * the PACK/DRIVE constants inside resolveBuffers, so constant behavior is the
+ * default everywhere. Caption the chips with bufferAssumptionLabel(buffers)
+ * (re-exported above) so the label can never disagree with the math.
+ */
+export function backPlanFromAnchor(hhmm: string, buffers?: OpsBuffers): BackPlan | null {
+  return backPlanChips(hhmm, buffers)
 }
 
 export function mapsSearchUrl(query: string): string {

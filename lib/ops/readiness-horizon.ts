@@ -31,7 +31,10 @@ export const NEAR_T_DAYS = 7
 
 export interface HorizonSignal {
   text: string               // interpretation included — '3 overdue', never a bare count
-  tone: 'alert' | 'pending'
+  /** 'ok' (inc-2): the operator's standing "Confirmed ready" attestation —
+   *  rendered green, ranked BELOW alert signals so it can never displace an
+   *  overdue or no-plan signal inside the 2-signal cap. */
+  tone: 'alert' | 'pending' | 'ok'
 }
 
 export interface HorizonRow {
@@ -118,30 +121,41 @@ export function horizonScope(allEvents: Event[], visibleEvents: Event[], todayYm
 export type HorizonPlanEntry = OpsPlan | null | 'unknown'
 
 /** Signals for a row that HAS a plan, priority order: overdue deadlines →
- *  load list (shopping + packing) → checklists → still-open deadlines.
+ *  'Confirmed ready' (inc-2, when the attestation stands — BELOW alerts, so it
+ *  never displaces an overdue signal inside the cap) → load list (shopping +
+ *  packing) → checklists → still-open deadlines.
  *  Capped at 2 — the row is a pointer, the Ops tab is the workbench. */
 function planSignals(plan: OpsPlan, overdue: number, todayYmd: string): HorizonSignal[] {
-  const signals: HorizonSignal[] = []
-  if (overdue > 0) signals.push({ text: `${overdue} overdue`, tone: 'alert' })
+  const alerts: HorizonSignal[] = []
+  if (overdue > 0) alerts.push({ text: `${overdue} overdue`, tone: 'alert' })
 
+  const pendings: HorizonSignal[] = []
   const load = [...plan.shopping_list, ...plan.packing_list]
   if (load.length === 0) {
-    signals.push({ text: 'Load list unbuilt', tone: 'pending' })
+    pendings.push({ text: 'Load list unbuilt', tone: 'pending' })
   } else {
     const checked = load.filter((i) => i.checked).length
-    if (checked < load.length) signals.push({ text: `Load list ${checked}/${load.length}`, tone: 'pending' })
+    if (checked < load.length) pendings.push({ text: `Load list ${checked}/${load.length}`, tone: 'pending' })
   }
 
   const steps = plan.checklists.flatMap((c) => c.steps)
   const stepsDone = steps.filter((s) => s.done).length
   if (steps.length > 0 && stepsDone < steps.length) {
-    signals.push({ text: `Checklists ${stepsDone}/${steps.length}`, tone: 'pending' })
+    pendings.push({ text: `Checklists ${stepsDone}/${steps.length}`, tone: 'pending' })
   }
 
   const open = plan.deadlines.filter((d) => !d.done && d.due >= todayYmd).length
-  if (open > 0) signals.push({ text: `${open} deadline${open === 1 ? '' : 's'} open`, tone: 'pending' })
+  if (open > 0) pendings.push({ text: `${open} deadline${open === 1 ? '' : 's'} open`, tone: 'pending' })
 
-  return signals.slice(0, 2)
+  // The attestation slots between alerts and pendings: on a row that renders at
+  // all (i.e. NOT ready by computed state), 'Confirmed ready' is the operator's
+  // recorded judgment — worth a slot ahead of routine progress counts, never
+  // ahead of an alert.
+  const confirmed: HorizonSignal[] = plan.ready_confirmed
+    ? [{ text: 'Confirmed ready', tone: 'ok' }]
+    : []
+
+  return [...alerts, ...confirmed, ...pendings].slice(0, 2)
 }
 
 /**

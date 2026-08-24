@@ -7,7 +7,7 @@ import { FieldValue } from 'firebase-admin/firestore'
 import type { Event, EventRegistrationType, EventLocation, EventHours } from '@/lib/types'
 import type { Terminology } from '@/lib/event-types'
 import { createEventCore, listEventsCore, listEventsByLeadCore, resolveUniqueEventSlug } from '@/lib/events'
-import { getOpsPlanCore, recomputeOpsListsCore } from '@/lib/ops/event-ops'
+import { getOpsPlanCore, recomputeOpsListsCore, clearReadyConfirmedCore } from '@/lib/ops/event-ops'
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/
 
@@ -74,6 +74,7 @@ export async function updateEvent(
     | 'location'
     | 'hours'
     | 'booth_fee'
+    | 'notify_family_on_pickup'
   >>, 'location' | 'hours' | 'booth_fee'> & {
     event_type_terminology?: Terminology | null
     // location/hours/booth_fee: null explicitly clears (FieldValue.delete()), see convention below.
@@ -125,14 +126,32 @@ export async function updateEvent(
   // headcount is saved, this throws visibly, and the load-out divergence
   // warning is the recovery path. Non-positive headcounts are skipped: lists
   // can't be derived for 0 guests, so the divergence warning covers that too.
-  if (
+  const wantsRederive =
     updates.headcount !== undefined &&
     updates.headcount !== prev.headcount &&
     Number.isFinite(updates.headcount) &&
     updates.headcount > 0
-  ) {
+
+  // Confirm-ready clearing path (c) (inc-2 P2): a moved date or shifted hours
+  // invalidates the operator's "ready" attestation — the settings form always
+  // sends these fields, so compare against the previous doc and only a REAL
+  // change clears. The re-derive above already clears (path b), so the direct
+  // clear only runs when no recompute will.
+  const dateOrHoursChanged =
+    (updates.event_start !== undefined && updates.event_start !== prev.event_start) ||
+    (updates.event_end !== undefined && updates.event_end !== prev.event_end) ||
+    (updates.hours !== undefined && JSON.stringify(updates.hours ?? null) !== JSON.stringify(prev.hours ?? null))
+
+  if (wantsRederive || dateOrHoursChanged) {
     const plan = await getOpsPlanCore(orgId, eventId)
-    if (plan) await recomputeOpsListsCore(orgId, eventId, member.uid, { guests: updates.headcount })
+    if (plan) {
+      if (wantsRederive) {
+        // recomputeOpsListsCore clears ready_confirmed itself (clearing path b).
+        await recomputeOpsListsCore(orgId, eventId, member.uid, { guests: updates.headcount as number })
+      } else if (plan.ready_confirmed) {
+        await clearReadyConfirmedCore(orgId, eventId, member.uid)
+      }
+    }
   }
 }
 

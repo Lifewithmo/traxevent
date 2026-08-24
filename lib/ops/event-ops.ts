@@ -145,6 +145,11 @@ export async function updateOpsRequirementsCore(
 
     payload.change_log = FieldValue.arrayUnion(...entries)
     payload.updated_at = now
+    // Confirm-ready staleness contract (inc-2 P2, clearing path a): ANY logged
+    // requirements change — service_start and site_needs count, not just the
+    // guests branch — invalidates the operator's "ready" attestation. Same-value
+    // writes short-circuit above and do NOT clear.
+    payload.ready_confirmed = FieldValue.delete()
 
     if (reDerive) {
       const guests = updates.guests ?? plan.requirements.guests
@@ -224,11 +229,20 @@ export async function recomputeOpsListsCore(
       packing_list,
       change_log: FieldValue.arrayUnion(...entries),
       updated_at: now,
+      // Confirm-ready staleness contract (inc-2 P2, clearing path b): every
+      // recompute — the load-out's explicit affordance AND updateEvent's
+      // headcount hook, i.e. BOTH callers — invalidates the attestation: the
+      // lists it attested to just changed under it.
+      ready_confirmed: FieldValue.delete(),
       ...(guestsChanged ? { 'requirements.guests': guests, needs_review: true } : {}),
     }
     tx.update(ref, payload)
+    // Strip ready_confirmed from the returned plan too — callers swap client
+    // state from this object, and a cleared attestation must not linger there.
+    const { ready_confirmed: _cleared, ...planSansConfirm } = plan
+    void _cleared
     return {
-      ...plan,
+      ...planSansConfirm,
       shopping_list,
       packing_list,
       change_log: [...plan.change_log, ...entries],
@@ -351,6 +365,67 @@ export async function toggleDeadlineCore(
     if (idx === -1) throw new Error('Deadline not found')
     const deadlines = plan.deadlines.map((d, n) => (n === idx ? { ...d, done } : d))
     tx.update(ref, { deadlines, updated_at: new Date().toISOString() })
+  })
+}
+
+/**
+ * Operator attestation "this job is ready" (inc-2 P2) — the evening-before
+ * ritual. Sets `ready_confirmed: {at, by}` and logs the attestation.
+ *
+ * Staleness contract (P2, exhaustive — the clears live where the writes live):
+ *   (a) updateOpsRequirementsCore clears on ANY logged change entry;
+ *   (b) recomputeOpsListsCore clears on every recompute (both callers);
+ *   (c) updateEvent clears on event date/hours edits (actions/events.ts hook —
+ *       a moved start time invalidates the attestation).
+ * NOT cleared, deliberately and documented (P2):
+ *   - package edits: a package edit never writes the plan doc, so nothing here
+ *     can observe it — the attestation inherits needs_review's KNOWN staleness
+ *     hole (see recomputeOpsListsCore's header: "re-save guests can never
+ *     refresh the lists"). A recompute is the recovery path, and it clears.
+ *   - itinerary edits: v1 records the anchor used in the confirm button's
+ *     attestation microcopy ("anchored 3:00 PM"), so what was confirmed is on
+ *     the record even if the schedule shifts afterward.
+ */
+export async function confirmReadyCore(
+  orgId: string,
+  eventId: string,
+  actorUid: string,
+): Promise<{ at: string; by: string }> {
+  const ref = opsPlanRef(orgId, eventId)
+  const now = new Date().toISOString()
+  const confirmed = { at: now, by: actorUid }
+  await adminDb.runTransaction(async (tx) => {
+    const snap = await tx.get(ref)
+    if (!snap.exists) throw new Error('No ops plan for this event')
+    tx.update(ref, {
+      ready_confirmed: confirmed,
+      change_log: FieldValue.arrayUnion({ at: now, by: actorUid, field: 'ready_confirmed' }),
+      updated_at: now,
+    })
+  })
+  return confirmed
+}
+
+/**
+ * Clearing path (c) of the confirm-ready staleness contract: event date/hours
+ * edits happen on the Event doc, outside every plan-writing core above, so
+ * updateEvent (actions/events.ts) calls this after its own write — mirroring
+ * the inc-1 headcount hook. No-op when there is no plan or no attestation;
+ * a real clear is logged so the trail explains the vanished stamp.
+ */
+export async function clearReadyConfirmedCore(orgId: string, eventId: string, actorUid: string): Promise<void> {
+  const ref = opsPlanRef(orgId, eventId)
+  const now = new Date().toISOString()
+  await adminDb.runTransaction(async (tx) => {
+    const snap = await tx.get(ref)
+    if (!snap.exists) return
+    const plan = snap.data() as OpsPlan
+    if (!plan.ready_confirmed) return
+    tx.update(ref, {
+      ready_confirmed: FieldValue.delete(),
+      change_log: FieldValue.arrayUnion({ at: now, by: actorUid, field: 'ready_confirm_cleared' }),
+      updated_at: now,
+    })
   })
 }
 

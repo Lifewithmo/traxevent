@@ -26,6 +26,7 @@ import { eventCountdown, formatEventDate } from '@/lib/event-ui'
 import {
   backPlanChips,
   blockerTarget,
+  bufferAssumptionLabel,
   computeEventNba,
   computeEventVerdict,
   eventPhaseOf,
@@ -81,7 +82,9 @@ export function EventBrief({ orgSlug, eventSlug, event, kpis, today, isAdmin, al
     hoursStart: event.hours?.start,
     firstItineraryTime: kpis.firstItineraryTime,
   })
-  const chips = time && phase !== 'wrapped' ? backPlanChips(time.hhmm) : null
+  // Org buffers (inc-2 S4.3) thread through the kpis; the constants remain the
+  // fallback inside resolveBuffers when the org never set any.
+  const chips = time && phase !== 'wrapped' ? backPlanChips(time.hhmm, kpis.buffers) : null
   const contacts = (event.key_contacts ?? []).filter((c) => c.phone || c.email).slice(0, 3)
   const settingsHref = `/${orgSlug}/${eventSlug}/settings`
   const day = formatJobDay(event.event_start)
@@ -201,7 +204,7 @@ export function EventBrief({ orgSlug, eventSlug, event, kpis, today, isAdmin, al
               <span className="font-medium">Pack by {chips.packBy}</span>
               <Sep pad />
               <span className="font-medium">Leave by {chips.leaveBy}</span>
-              <span className="ml-2 text-xs text-muted-foreground">assumes 45m pack · 30m drive</span>
+              <span className="ml-2 text-xs text-muted-foreground">{bufferAssumptionLabel(kpis.buffers)}</span>
             </p>
           )}
         </section>
@@ -216,6 +219,11 @@ export function EventBrief({ orgSlug, eventSlug, event, kpis, today, isAdmin, al
               <p className={cn('mt-1 text-3xl font-semibold tracking-[-.02em]', VERDICT_TONE[verdict.tone])}>
                 {verdict.label}
               </p>
+            )}
+            {/* P2 precedence: blockers since the confirm DEMOTE the attestation
+                to this secondary fact line — never suppressed, never focal. */}
+            {verdict?.confirmedNote && (
+              <p className="mt-1 text-sm text-muted-foreground">{verdict.confirmedNote}</p>
             )}
             {/* Interpretation for the verdict — prep progress, not a bare %. */}
             {verdict && kpis.readiness && phase !== 'wrapped' && kpis.ops?.hasPlan && (

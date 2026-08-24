@@ -6,11 +6,13 @@ vi.mock('@/lib/auth/assert', () => ({
   assertEventPage: vi.fn().mockResolvedValue({ uid: 'admin-1', role: 'admin', event_access: {} }),
 }))
 
-// updateEvent's headcount hook reads/re-derives the ops plan through these
-// cores; mocked so the existing firestore chain mock stays event-doc-only.
+// updateEvent's headcount + date/hours hooks read/re-derive/clear the ops plan
+// through these cores; mocked so the existing firestore chain mock stays
+// event-doc-only.
 vi.mock('@/lib/ops/event-ops', () => ({
   getOpsPlanCore: vi.fn().mockResolvedValue(null),
   recomputeOpsListsCore: vi.fn().mockResolvedValue({}),
+  clearReadyConfirmedCore: vi.fn().mockResolvedValue(undefined),
 }))
 
 const { eventUpdateSpy, eventDocGetSpy, slugQueryGetSpy } = vi.hoisted(() => ({
@@ -39,7 +41,7 @@ vi.mock('firebase-admin/firestore', () => ({
 }))
 
 import { buildEventSlug } from '@/lib/slug'
-import { getOpsPlanCore, recomputeOpsListsCore } from '@/lib/ops/event-ops'
+import { getOpsPlanCore, recomputeOpsListsCore, clearReadyConfirmedCore } from '@/lib/ops/event-ops'
 import { createEvent, updateEvent } from '@/actions/events'
 
 describe('buildEventSlug', () => {
@@ -231,5 +233,80 @@ describe('updateEvent — headcount re-derive hook (spec 2026-08-19 B5)', () => 
     await updateEvent('org-1', 'camp-1', { headcount: 0 })
     expect(getOpsPlanCore).not.toHaveBeenCalled()
     expect(recomputeOpsListsCore).not.toHaveBeenCalled()
+  })
+})
+
+// Confirm-ready clearing path (c) — inc-2 P2: a moved date or shifted hours
+// invalidates the attestation. Mirrors the headcount hook's structure.
+describe('updateEvent — date/hours confirm-ready clearing hook (inc-2 P2)', () => {
+  const PREV = {
+    id: 'camp-1',
+    headcount: 100,
+    event_start: '2026-09-12',
+    event_end: '2026-09-12',
+    hours: { start: '14:00', end: '20:00' },
+  }
+  const CONFIRMED_PLAN = { package_ids: ['wp1'], ready_confirmed: { at: 't0', by: 'u9' } }
+
+  beforeEach(() => {
+    eventDocGetSpy.mockResolvedValue({ exists: true, data: () => PREV })
+    eventUpdateSpy.mockClear()
+    vi.mocked(getOpsPlanCore).mockClear()
+    vi.mocked(getOpsPlanCore).mockResolvedValue(CONFIRMED_PLAN as never)
+    vi.mocked(recomputeOpsListsCore).mockClear()
+    vi.mocked(clearReadyConfirmedCore).mockClear()
+  })
+
+  it('clears on an event_start change', async () => {
+    await updateEvent('org-1', 'camp-1', { event_start: '2026-09-13', event_end: '2026-09-12' })
+    expect(clearReadyConfirmedCore).toHaveBeenCalledWith('org-1', 'camp-1', 'admin-1')
+    expect(recomputeOpsListsCore).not.toHaveBeenCalled()
+  })
+
+  it('clears on an hours change (the settings form always sends hours — only a REAL change clears)', async () => {
+    await updateEvent('org-1', 'camp-1', { hours: { start: '15:00', end: '20:00' } })
+    expect(clearReadyConfirmedCore).toHaveBeenCalledWith('org-1', 'camp-1', 'admin-1')
+  })
+
+  it('clears when hours are explicitly removed (null → delete)', async () => {
+    await updateEvent('org-1', 'camp-1', { hours: null })
+    expect(clearReadyConfirmedCore).toHaveBeenCalled()
+  })
+
+  it('does NOT clear on a save that re-sends the same date + hours', async () => {
+    await updateEvent('org-1', 'camp-1', {
+      name: 'Renamed',
+      event_start: '2026-09-12',
+      event_end: '2026-09-12',
+      hours: { start: '14:00', end: '20:00' },
+    })
+    expect(getOpsPlanCore).not.toHaveBeenCalled()
+    expect(clearReadyConfirmedCore).not.toHaveBeenCalled()
+  })
+
+  it('does NOT clear when the plan carries no attestation', async () => {
+    vi.mocked(getOpsPlanCore).mockResolvedValue({ package_ids: ['wp1'] } as never)
+    await updateEvent('org-1', 'camp-1', { event_start: '2026-09-14' })
+    expect(clearReadyConfirmedCore).not.toHaveBeenCalled()
+  })
+
+  it('lets the headcount recompute own the clear when both headcount and date change (path b covers it)', async () => {
+    await updateEvent('org-1', 'camp-1', { headcount: 120, event_start: '2026-09-14' })
+    expect(recomputeOpsListsCore).toHaveBeenCalledWith('org-1', 'camp-1', 'admin-1', { guests: 120 })
+    expect(clearReadyConfirmedCore).not.toHaveBeenCalled()
+  })
+})
+
+describe('updateEvent — notify_family_on_pickup (inc-2 P3, additive allowlist field)', () => {
+  beforeEach(() => {
+    eventDocGetSpy.mockResolvedValue({ exists: true, data: () => ({ id: 'camp-1' }) })
+    eventUpdateSpy.mockClear()
+  })
+
+  it('persists the explicit toggle', async () => {
+    await updateEvent('org-1', 'camp-1', { notify_family_on_pickup: false })
+    expect(eventUpdateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ notify_family_on_pickup: false })
+    )
   })
 })

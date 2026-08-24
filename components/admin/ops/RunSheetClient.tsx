@@ -16,18 +16,19 @@
 
 import { useRef, useState, useSyncExternalStore } from 'react'
 import Link from 'next/link'
-import { Check, MapPin, Mail, MessageSquare, Phone, Printer } from 'lucide-react'
+import { Check, CheckCircle2, MapPin, Mail, MessageSquare, Phone, Printer, Send } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
-import { completeChecklistStep } from '@/actions/event-ops'
+import { completeChecklistStep, confirmReady, sendRunSheet } from '@/actions/event-ops'
 import { formatTime, type ItineraryDay } from '@/lib/itinerary'
 import type { EventKeyContact, EventLocation, OpsChecklist } from '@/lib/types'
 import {
   backPlanFromAnchor,
+  bufferAssumptionLabel,
   mapsSearchUrl,
-  BUFFER_ASSUMPTION_LABEL,
   TIMELINE_FOLD,
   type AnchorTime,
+  type OpsBuffers,
 } from '@/app/(admin)/[orgSlug]/[eventSlug]/ops/runsheet/anchor'
 
 export interface RunSheetClientProps {
@@ -48,6 +49,12 @@ export interface RunSheetClientProps {
   checklists: OpsChecklist[]
   /** Combined shopping + packing progress; null = no plan. */
   loadout: { checked: number; total: number } | null
+  /** Standing "ready" attestation from the plan doc (inc-2 P2); null = none. */
+  readyConfirmed: { at: string; by: string } | null
+  /** Display name behind readyConfirmed.by, resolved server-side; null = unresolved. */
+  confirmedByName: string | null
+  /** Org back-plan buffers; absent fields fall back to the constants. */
+  buffers?: OpsBuffers
 }
 
 const ANCHOR_SOURCE_HINT: Record<AnchorTime['label'], string> = {
@@ -70,6 +77,16 @@ function dayHeading(day: string): string {
     .toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
 }
 
+/** Viewer-local confirm stamp: '9:14 PM' same-day, 'Fri 9:14 PM' otherwise —
+ *  the evening-before ritual read the next morning still shows its true day. */
+function confirmStamp(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+  const sameDay = d.toDateString() === new Date().toDateString()
+  return sameDay ? time : `${d.toLocaleDateString('en-US', { weekday: 'short' })} ${time}`
+}
+
 export function RunSheetClient(props: RunSheetClientProps) {
   const { orgId, eventId, orgSlug, eventSlug } = props
   const base = `/${orgSlug}/${eventSlug}`
@@ -80,6 +97,42 @@ export function RunSheetClient(props: RunSheetClientProps) {
   const [pendingKeys, setPendingKeys] = useState<ReadonlySet<string>>(new Set())
   const [failedKeys, setFailedKeys] = useState<ReadonlyMap<string, boolean>>(new Map())
   const [showAllTimeline, setShowAllTimeline] = useState(false)
+
+  // Confirm-ready (inc-2 P2). NOT optimistic on purpose: flipping to
+  // "Confirmed" before the server accepted would forge an attestation — the
+  // button shows a visible pending state, then the stamp or a visible failure
+  // with Retry (never a silent revert).
+  const [confirmed, setConfirmed] = useState(props.readyConfirmed)
+  const [confirming, setConfirming] = useState(false)
+  const [confirmFailed, setConfirmFailed] = useState(false)
+  const confirmedJustNow = confirmed !== null && confirmed !== props.readyConfirmed
+
+  // Send-run-sheet (self-send v1): pending → sent-to-address / visible failure.
+  const [sendState, setSendState] = useState<
+    { status: 'idle' | 'sending' | 'failed' } | { status: 'sent'; to: string }
+  >({ status: 'idle' })
+
+  async function handleConfirm() {
+    setConfirming(true)
+    setConfirmFailed(false)
+    try {
+      setConfirmed(await confirmReady(props.orgId, props.eventId))
+    } catch {
+      setConfirmFailed(true)
+    } finally {
+      setConfirming(false)
+    }
+  }
+
+  async function handleSend() {
+    setSendState({ status: 'sending' })
+    try {
+      const { to } = await sendRunSheet(props.orgId, props.eventId)
+      setSendState({ status: 'sent', to })
+    } catch {
+      setSendState({ status: 'failed' })
+    }
+  }
 
   // Freshness stamp (Nielsen 1): stamped once, client-side, in the VIEWER'S
   // timezone — not the server's render time. useSyncExternalStore with a null
@@ -126,7 +179,22 @@ export function RunSheetClient(props: RunSheetClientProps) {
     }
   }
 
-  const backPlan = props.anchor ? backPlanFromAnchor(props.anchor.hhmm) : null
+  const backPlan = props.anchor ? backPlanFromAnchor(props.anchor.hhmm, props.buffers) : null
+  const bufferLabel = bufferAssumptionLabel(props.buffers)
+
+  // Attestation microcopy (P2): the confirm button names the facts on screen
+  // that the tap attests to — live checklist state, load count, the anchor and
+  // the buffer assumption — so what was confirmed is on the record.
+  const attestSteps = checklists.flatMap((c) => c.steps)
+  const attestStepsDone = attestSteps.filter((s) => s.done).length
+  const attestation = [
+    ...(props.loadout && props.loadout.total > 0 ? [`Load ${props.loadout.checked}/${props.loadout.total}`] : []),
+    ...(attestSteps.length > 0
+      ? [attestStepsDone === attestSteps.length ? 'checklists done' : `checklists ${attestStepsDone}/${attestSteps.length}`]
+      : []),
+    props.anchor ? `anchored ${props.anchor.display}` : 'no anchor time',
+    bufferLabel,
+  ].join(' · ')
 
   const totalEntries = props.itinerary.reduce((n, d) => n + d.items.length, 0)
   let visibleItinerary = props.itinerary
@@ -173,7 +241,7 @@ export function RunSheetClient(props: RunSheetClientProps) {
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <span className="rounded-full bg-muted px-3 py-1 text-sm font-medium">Pack by {backPlan.packBy}</span>
             <span className="rounded-full bg-muted px-3 py-1 text-sm font-medium">Leave by {backPlan.leaveBy}</span>
-            <span className="text-xs text-muted-foreground">{BUFFER_ASSUMPTION_LABEL}</span>
+            <span className="text-xs text-muted-foreground">{bufferLabel}</span>
           </div>
         )}
 
@@ -288,6 +356,51 @@ export function RunSheetClient(props: RunSheetClientProps) {
             <Printer data-icon="inline-start" /> Print
           </Button>
         </div>
+
+        {/* ── Confirm-ready (inc-2 P2) + self-send — by the freshness stamp ── */}
+        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2">
+          {props.hasPlan &&
+            (confirmed ? (
+              <p className="flex min-h-11 items-center gap-1.5 text-sm">
+                <CheckCircle2 aria-hidden className="size-4 shrink-0 text-[var(--status-confirmed-fg)]" />
+                <span className="font-medium text-[var(--status-confirmed-fg)]">Confirmed ready</span>
+                <span className="text-muted-foreground" suppressHydrationWarning>
+                  · {confirmStamp(confirmed.at)}
+                  {confirmedJustNow ? ' · by you' : props.confirmedByName ? ` · by ${props.confirmedByName}` : ''}
+                </span>
+              </p>
+            ) : (
+              <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <Button size="touch" onClick={handleConfirm} disabled={confirming}>
+                  {confirming ? 'Confirming…' : 'Confirm ready'}
+                </Button>
+                {/* Attestation record: the facts this tap signs off on. */}
+                <span className="max-w-xs text-xs text-muted-foreground">{attestation}</span>
+              </span>
+            ))}
+          <Button variant="outline" size="touch" onClick={handleSend} disabled={sendState.status === 'sending'}>
+            <Send data-icon="inline-start" /> {sendState.status === 'sending' ? 'Sending…' : 'Email me this sheet'}
+          </Button>
+          {sendState.status === 'sent' && (
+            <span className="text-xs text-muted-foreground">Sent to {sendState.to}</span>
+          )}
+        </div>
+        {confirmFailed && (
+          <p className="mt-1 flex items-center gap-2 text-sm text-destructive" role="alert">
+            Couldn&rsquo;t save the confirmation
+            <Button variant="outline" size="touch" onClick={handleConfirm}>
+              Retry
+            </Button>
+          </p>
+        )}
+        {sendState.status === 'failed' && (
+          <p className="mt-1 flex items-center gap-2 text-sm text-destructive" role="alert">
+            Couldn&rsquo;t send the sheet
+            <Button variant="outline" size="touch" onClick={handleSend}>
+              Retry
+            </Button>
+          </p>
+        )}
       </header>
 
       {props.hasPlan ? (

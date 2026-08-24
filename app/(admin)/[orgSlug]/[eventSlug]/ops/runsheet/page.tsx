@@ -1,5 +1,6 @@
 export const dynamic = 'force-dynamic'
 
+import { adminDb } from '@/lib/firebase-admin'
 import { requireEventPage } from '@/lib/auth/guards'
 import { getOpsPlan } from '@/actions/event-ops'
 import { listItineraryCore } from '@/lib/itinerary-data'
@@ -7,6 +8,7 @@ import { groupItineraryByDay } from '@/lib/itinerary'
 import { formatEventDateRange, parseDay } from '@/lib/event-ui'
 import { resolveAnchorTime, RUN_SHEET_CHECKLIST_PHASES } from './anchor'
 import { RunSheetClient } from '@/components/admin/ops/RunSheetClient'
+import type { Org, OrgMember } from '@/lib/types'
 
 /**
  * Server assembly for the day-of run sheet. Every read happens HERE and is
@@ -22,10 +24,31 @@ export default async function RunSheetPage({
 }) {
   const { orgSlug, eventSlug } = await params
   const { orgId, eventId, event, member } = await requireEventPage(orgSlug, eventSlug, 'ops')
-  const [plan, itineraryItems] = await Promise.all([
+  const orgRef = adminDb.collection('orgs').doc(orgId)
+  const [plan, itineraryItems, buffers] = await Promise.all([
     getOpsPlan(orgId, eventId),
     listItineraryCore(orgId, eventId),
+    // Org back-plan buffers (inc-2 S4.3) — soft-failing: the constants remain
+    // the fallback, a KPI-grade read never 500s the run sheet.
+    orgRef.get().then(
+      (snap) => (snap.data() as Org | undefined)?.ops_buffers,
+      () => undefined,
+    ),
   ])
+
+  // Resolve the confirming member's display name for the "Confirmed · by NAME"
+  // stamp; the viewer's own confirm renders "by you" client-side. Soft-failing.
+  let confirmedByName: string | null = null
+  if (plan?.ready_confirmed) {
+    confirmedByName =
+      plan.ready_confirmed.by === member.uid
+        ? member.display_name ?? null
+        : await orgRef
+            .collection('members')
+            .doc(plan.ready_confirmed.by)
+            .get()
+            .then((snap) => (snap.data() as OrgMember | undefined)?.display_name ?? null, () => null)
+  }
 
   const itinerary = groupItineraryByDay(itineraryItems)
   const anchor = resolveAnchorTime({
@@ -77,6 +100,9 @@ export default async function RunSheetPage({
           ? { checked: loadoutItems.filter((i) => i.checked).length, total: loadoutItems.length }
           : null
       }
+      readyConfirmed={plan?.ready_confirmed ?? null}
+      confirmedByName={confirmedByName}
+      {...(buffers !== undefined ? { buffers } : {})}
     />
   )
 }
