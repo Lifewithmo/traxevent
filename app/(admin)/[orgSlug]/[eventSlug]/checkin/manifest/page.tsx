@@ -47,7 +47,9 @@ export default async function CheckinManifestPage({
     <div className="print-root">
       <style>{`
         .print-root * { box-sizing: border-box; }
-        .print-root { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 11px; color: #000; margin: 0; padding: 16px; }
+        /* Paper never inverts: background forced alongside the ink so dark mode
+           can't render this custody record black-on-black on screen. */
+        .print-root { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 11px; color: #000; background: #fff; min-height: 100vh; margin: 0; padding: 16px; }
         .print-root h1 { font-size: 18px; margin: 0 0 2px; }
         .print-root .meta { color: #666; font-size: 11px; margin-bottom: 16px; }
         .print-root table { width: 100%; border-collapse: collapse; }
