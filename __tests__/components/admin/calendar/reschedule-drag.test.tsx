@@ -80,6 +80,20 @@ function deferred<T>() {
 const handleFor = (c: HTMLElement, key: string) =>
   c.querySelector(`[data-item-key="${key}"]`) as HTMLElement
 
+/**
+ * `data-item-key` marks a PEEKABLE item — every kind carries it so the peek can
+ * open. Draggability is a separate contract: the drag engine supplies pointer
+ * handlers and `data-draggable`. These two once coincided, so absence of the
+ * key was used as a proxy for "cannot be dragged"; that proxy is now wrong and
+ * these helpers assert the real thing.
+ */
+const isDraggable = (el: HTMLElement | null) =>
+  el?.getAttribute('data-draggable') === 'true'
+const draggableHandleFor = (c: HTMLElement, key: string) => {
+  const el = handleFor(c, key)
+  return isDraggable(el) ? el : null
+}
+
 /** The announcement channel every grid mounts, drag or no drag. */
 const liveRegion = (c: HTMLElement) => c.querySelector('[data-slot="reschedule-live"]') as HTMLElement
 
@@ -548,7 +562,9 @@ describe('WeekGrid — drag a job to another day', () => {
     const { container } = render(
       <WeekGrid orgSlug="acme" items={weekItems} weekStart={weekStart} today="2026-08-18" />
     )
-    expect(handleFor(container, 'invoice_due:i1')).toBeNull()
+    // it is rendered and peekable, but carries no drag affordance
+    expect(handleFor(container, 'invoice_due:i1')).not.toBeNull()
+    expect(draggableHandleFor(container, 'invoice_due:i1')).toBeNull()
     expect(within(weekBand(container, '2026-08-20')).getByText('Deposit invoice')).toBeInTheDocument()
   })
 })
@@ -648,7 +664,7 @@ describe('DayView — drag the time, edge-drag the duration', () => {
 
   it('gives a drop pickup window NO grab handle and NO resize strips', () => {
     const { container } = renderDay()
-    expect(handleFor(container, 'drop:d1')).toBeNull()
+    expect(draggableHandleFor(container, 'drop:d1')).toBeNull()
     // exactly one resizable chip on the grid — the booked job
     const strips = container.querySelectorAll('[data-slot="grid-resize"]')
     expect(strips).toHaveLength(2)

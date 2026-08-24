@@ -180,6 +180,10 @@ function BandChip({ item }: { item: CalendarItem }) {
   return (
     <Link
       href={item.href}
+      // Before {...dragRest}: reschedulable kinds get the same value from the
+      // drag engine, but invoice/task/drop/compliance/follow-up carry no drag
+      // props and would otherwise be unpeekable.
+      data-item-key={`${item.kind}:${item.id}`}
       {...dragRest}
       style={dragStyle}
       className={cn(
@@ -394,6 +398,7 @@ function GridItem({ placed }: { placed: PlacedItem }) {
     <Link
       href={item.href}
       data-slot="grid-item"
+      data-item-key={`${item.kind}:${item.id}`}
       data-lane={lane}
       data-clipped={clipped}
       data-invalid-hours={invalid ? 'true' : undefined}

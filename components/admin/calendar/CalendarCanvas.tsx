@@ -474,6 +474,7 @@ const SHORTCUTS: Array<{ keys: string[]; label: string }> = [
   { keys: ['{', '}'], label: 'Move the focused job a week earlier / later' },
   { keys: [',', '.'], label: 'Start the focused job 15 min earlier / later' },
   { keys: ['<', '>'], label: 'Make the focused job 15 min shorter / longer' },
+  { keys: ['↵'], label: 'Peek at the focused item without leaving the grid (Space too)' },
   { keys: ['⌘', 'K'], label: 'Search jobs, customers & dates (anywhere)' },
   { keys: ['?'], label: 'This sheet' },
 ]

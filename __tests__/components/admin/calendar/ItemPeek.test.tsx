@@ -64,7 +64,19 @@ const INVOICE: CalendarItem = {
   amount: 500,
 }
 
-const items = [WEDDING, HOLD, INVOICE]
+/** Timed AND non-reschedulable — a drop window gets no drag props, so it is the
+ *  only thing whose peek depends on GridItem carrying `data-item-key` itself. */
+const PICKUP = {
+  id: 'd1',
+  title: 'Drop pickup: Weekend box',
+  date: '2099-08-19',
+  kind: 'drop' as const,
+  href: '/acme/drop-orders/d1',
+  start: '10:00',
+  end: '11:00',
+}
+
+const items = [WEDDING, HOLD, INVOICE, PICKUP]
 const base = { orgSlug: 'acme', items, today: '2099-08-18', anchor: '2099-08-19' }
 
 /** The chips the peek keys off — the drag engine's own contract. */
@@ -90,6 +102,31 @@ afterEach(() => {
 })
 
 describe('peek — opening', () => {
+  // The Day view's TIMED chip and its all-day BAND chip are separate renderers
+  // from the week/month cell, and `data-item-key` reaches them through a
+  // different path (they carry it directly, because non-reschedulable kinds get
+  // no drag props to supply it). Removing it from either used to fail nothing.
+  it('opens from a timed chip in Day view', () => {
+    render(<CalendarCanvas {...base} view="day" selectedDay="2099-08-19" />)
+    // A DROP, not the event: an event is reschedulable, so the drag engine's
+    // props already carry `data-item-key` and the chip's own attribute is
+    // redundant. A drop window is timed but not draggable — it is the only case
+    // GridItem's explicit key actually serves, and testing the event instead
+    // let a mutation removing that key survive.
+    const chip = chipFor('drop:d1')
+    expect(chip.closest('[data-slot="grid-item"]')).not.toBeNull()
+    expect(chip.getAttribute('data-draggable')).toBeNull()
+    fireEvent.click(chip)
+    expect(peek()).not.toBeNull()
+  })
+
+  it('opens from an all-day band chip in Day view', () => {
+    render(<CalendarCanvas {...base} view="day" selectedDay="2099-08-20" />)
+    const chip = chipFor('invoice_due:i1')
+    fireEvent.click(chip)
+    expect(peek()).not.toBeNull()
+  })
+
   it('a click on a grid chip opens the peek instead of navigating', () => {
     render(<CalendarCanvas {...base} view="week" />)
     const chip = chipFor('event:e1')

@@ -17,6 +17,7 @@ import type { UnscheduledRow } from '@/lib/calendar-unscheduled'
 import { SubscribePanel } from '@/components/admin/calendar/SubscribePanel'
 import { KindLegend } from '@/components/admin/calendar/KindDot'
 import { BookabilityKey } from '@/components/admin/calendar/BookabilityMark'
+import { useDismissLayer } from '@/components/admin/calendar/dismiss-stack'
 import {
   nextOpenDates,
   shortDayLabel,
@@ -347,14 +348,13 @@ export function CalendarLeftRail({
     if (mobileOpen) setMobileOpen(false)
   }
 
-  useEffect(() => {
-    if (!mobileOpen) return
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') setMobileOpen(false)
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [mobileOpen])
+  // Escape goes through the shared dismiss stack, not a raw window listener.
+  // Two raw listeners (this one and the agenda's selection-clear) both fired on
+  // the same key, so dismissing the drawer also wiped an agenda selection. The
+  // stack hands Escape to the topmost layer and nobody else. Registered on
+  // `drawerOpen`, not `mobileOpen`: at md+ the drawer is an in-flow column and
+  // owns no dismissible layer.
+  useDismissLayer(drawerOpen, () => setMobileOpen(false))
 
   /**
    * Focus management for the drawer (WCAG 2.4.3 Focus Order, 2.4.7 Focus
