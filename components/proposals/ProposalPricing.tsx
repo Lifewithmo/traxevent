@@ -19,7 +19,7 @@ import {
   lineItemSubtotal,
   depositAmount,
   packageDisplayBullets,
-  proposalExpiryInstant,
+  formatProposalExpiry,
 } from '@/lib/proposals'
 import type { ProposalLineItem, ProposalPackage, ProposalDeposit } from '@/lib/types'
 
@@ -226,6 +226,14 @@ export function ProposalTotals({
   expiresAt?: string
   depositPaid?: boolean
 }) {
+  // Deterministic on purpose — this component is SSR'd on the print route AND
+  // SSR'd-then-hydrated on the public page, so a zone-/ICU-following rendering
+  // (the old `new Date(instant).toLocaleDateString()`) baked the server's date
+  // into the payload and re-rendered the viewer's at hydration: React #418,
+  // every handler on the page dead — a customer who cannot sign. The formatter
+  // stays consistent with the signing/deposit guards; see formatProposalExpiry
+  // in lib/proposals.ts for the per-shape reasoning.
+  const expiryText = expiresAt ? formatProposalExpiry(expiresAt) : ''
   return (
     <div>
       <p className="text-sm text-gray-500">Total</p>
@@ -240,15 +248,8 @@ export function ProposalTotals({
         </p>
       )}
       {depositPaid && <p className="text-sm font-medium text-green-700">Deposit paid.</p>}
-      {expiresAt && (
-        <p className="text-xs text-gray-400">
-          {/* Rendered from the same instant the signing/deposit guards
-              use (proposalExpiryInstant), so a date-only expires_at
-              (end of that UTC day) never shows a date the guards
-              would already treat as expired, or vice versa. */}
-          This proposal expires{' '}
-          {new Date(proposalExpiryInstant(expiresAt)).toLocaleDateString()}
-        </p>
+      {expiryText && (
+        <p className="text-xs text-gray-400">This proposal expires {expiryText}</p>
       )}
     </div>
   )

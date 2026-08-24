@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
-import { ProposalPackageOption } from '@/components/proposals/ProposalPricing'
+import { renderToString } from 'react-dom/server'
+import { ProposalPackageOption, ProposalTotals } from '@/components/proposals/ProposalPricing'
 import type { ProposalPackage } from '@/lib/types'
 
 const legacyPkg: ProposalPackage = {
@@ -67,5 +68,35 @@ describe('ProposalPackageOption', () => {
     )
     fireEvent.click(screen.getByRole('button'))
     expect(onSelect).toHaveBeenCalledTimes(1)
+  })
+})
+
+// This component SSRs on the print route and SSRs-then-hydrates inside the
+// public page's sticky footer, so its expiry line must be byte-identical on
+// any runtime, in any zone (the /checkin hydration-crash class — a divergence
+// here left the Sign & accept button dead).
+describe('ProposalTotals — zone-safe expiry line', () => {
+  const total = { min: 1000, max: 1000 }
+
+  it('renders a date-only expires_at as its own calendar day (the guards still honor the full day)', () => {
+    const html = renderToString(<ProposalTotals total={total} expiresAt="2026-08-30" />)
+    // The old rendering pushed the string through end-of-day-UTC + a
+    // zone-following toLocaleDateString — "8/31/2026" for anyone east of UTC.
+    expect(html.replace(/<!-- -->/g, '')).toContain('This proposal expires Aug 30, 2026')
+  })
+
+  it('renders an ISO-instant expires_at pinned to UTC and labeled', () => {
+    const html = renderToString(
+      <ProposalTotals total={total} expiresAt="2026-08-30T23:30:00.000Z" />,
+    )
+    expect(html.replace(/<!-- -->/g, '')).toContain(
+      'This proposal expires Aug 30, 2026, 11:30 PM UTC',
+    )
+  })
+
+  it('omits the expiry line entirely for an unparseable expires_at', () => {
+    render(<ProposalTotals total={total} expiresAt="not-a-real-date" />)
+    expect(screen.queryByText(/This proposal expires/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Invalid Date/)).not.toBeInTheDocument()
   })
 })

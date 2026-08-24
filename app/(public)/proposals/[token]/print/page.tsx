@@ -11,7 +11,7 @@ import {
   ProposalTotals,
   packageOptionDisplay,
 } from '@/components/proposals/ProposalPricing'
-import { proposalDisplayRange } from '@/lib/proposals'
+import { proposalDisplayRange, formatSignedStamp } from '@/lib/proposals'
 import { ProposalTheme } from '@/components/proposals/ProposalTheme'
 import type { OrgBranding } from '@/lib/types'
 
@@ -51,6 +51,11 @@ export default async function ProposalPrintPage({
   // indistinguishable from a live offer awaiting a decision.
   const declined = proposal.status === 'rejected'
   const signed = proposal.signed
+  // The SAME pinned-UTC stamp the interactive page shows (formatSignedStamp):
+  // the paper copy and the screen must not state two different times for one
+  // signature, and a bare toLocaleString here followed the server's zone —
+  // meaningless to either party. Paper styling untouched.
+  const signedStamp = signed ? formatSignedStamp(signed.signed_at) : ''
 
   // A locked selection prices itself; anything unselected is a SPAN, not a
   // guess. proposalDisplayRange encodes exactly that rule and is already what
@@ -96,7 +101,8 @@ export default async function ProposalPrintPage({
         <div className="mb-6 rounded-md border border-green-200 bg-green-50 p-4 text-sm">
           <p className="font-medium text-green-800">Accepted</p>
           <p className="text-green-700">
-            Signed by {signed.signer_name} on {new Date(signed.signed_at).toLocaleString()}.
+            Signed by {signed.signer_name}
+            {signedStamp && <> on {signedStamp}</>}.
           </p>
           {proposal.payment_status === 'deposit_paid' && (
             <p className="text-green-700">Deposit paid.</p>
