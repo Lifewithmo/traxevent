@@ -145,6 +145,23 @@ EventTrax pivot (neutralization, multi-brand, ops core). Detailed designs live i
   drop↔market pickup linkage → registration retirement R2. Manual browser
   walkthrough of the occasion flows still owed.
 
+- **Pipeline Capacity Outlook — resource-capacity increment 3** (PR #124,
+  merged 2026-08-19, live) — the hero planning surface. A **serviceable-days
+  calendar** (`Org.serviceable_days`: weekly pattern + full-year holiday/closure
+  ranges) sets which days count; a **peak-date headroom forecast** (new Capacity
+  Outlook pipeline tab) shows, per month over serviceable days, a booked/ceiling
+  meter per kind + the `~$` headroom you can still sell ("~$85k of September");
+  and a read-only **per-unit schedule** (status grid — booked / open /
+  non-serviceable / blocked-hatched — with an Unassigned lane). Plus
+  **de-siloing**: `Org.resource_labels` + a `kindLabel` helper let the operator
+  name each kind (BrewTrax → "carts"), routed through every surface INCLUDING a
+  retrofit of the Inc-1/2 pills — no literal "cart"/"room" left in copy. Gated to
+  business + ≥1 unit; additive, migration-free. Walked live desktop/tablet/mobile
+  (forecast math + Fall-break closure dropping October; schedule Kart-1 booking +
+  Unassigned lane; overflow-contained). Deferred to **Inc 4** (final): auto/drag
+  assignment, server-side hard block, per-event-type resource profiles. Spec/plan:
+  `superpowers/{specs,plans}/2026-08-19-pipeline-capacity-outlook*`.
+
 - **Pipeline Unit Assignment — resource-capacity increment 2** (PR #119,
   merged 2026-08-18, live) — optional **per-unit assignment**: pin a booking to
   a specific cart/room (`Lead.assigned_units`, never forced), plus **unit-level
