@@ -539,11 +539,20 @@ export function CalendarLeftRail({
               </button>
             </div>
           </div>
-          <div role="grid" aria-label={`Mini calendar, ${monthTitle(cursor)}`} className="grid grid-cols-7 gap-0.5">
+          {/* Deliberately NOT role="grid". A grid promises rows and gridcells; this
+              is a CSS grid of bare links with aria-hidden weekday captions, so the
+              roles announced zero rows and zero cells and a screen reader in table
+              mode reported the days as orphaned links (WCAG 1.3.1). A labelled
+              group of links is honest and navigable. MonthGrid — the real grid —
+              uses a plain labelled <section> for the same reason. */}
+          <div
+            role="group"
+            aria-label={`Mini calendar, ${monthTitle(cursor)}`}
+            className="grid grid-cols-7 gap-0.5"
+          >
             {WEEKDAYS.map((w, i) => (
               <div
                 key={i}
-                role="columnheader"
                 aria-hidden
                 className="pb-1 text-center font-mono text-[9px] font-bold uppercase text-muted-foreground"
               >

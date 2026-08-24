@@ -532,15 +532,25 @@ export function AgendaView({ orgSlug, items, today: todayProp, selectedDay }: Ag
             </div>
           ) : null}
 
-          {status || error ? (
-            <div role="status" aria-live="polite" className="flex flex-wrap items-center gap-2 pt-1">
+          {/* Always mounted. A live region created in the same commit as its text
+              is not reliably announced — so the outcome of moving up to 200 jobs,
+              and every bulk-move failure, could be silent (WCAG 4.1.3). The
+              selection-count region above and reschedule-drag's live region both
+              already follow this rule; it was the one place it was missed. */}
+          <div className={cn('flex flex-wrap items-center gap-2', (status || error) && 'pt-1')}>
+            {/* ONLY the announced text lives in the region. The controls sit
+                outside it: a live region that also contains "Dismiss" announces
+                the word "Dismiss" the moment it mounts. */}
+            <div role="status" aria-live="polite" className="contents">
               {status ? <p className="text-xs text-muted-foreground">{status}</p> : null}
-              {status && undoMoves ? (
-                <Button type="button" variant="outline" size="sm" onClick={onUndo} disabled={busy}>
-                  Undo
-                </Button>
-              ) : null}
               {error ? <p className="text-xs font-medium text-destructive">{error}</p> : null}
+            </div>
+            {status && undoMoves ? (
+              <Button type="button" variant="outline" size="sm" onClick={onUndo} disabled={busy}>
+                Undo
+              </Button>
+            ) : null}
+            {status || error ? (
               <Button
                 type="button"
                 variant="ghost"
@@ -553,8 +563,8 @@ export function AgendaView({ orgSlug, items, today: todayProp, selectedDay }: Ag
               >
                 Dismiss
               </Button>
-            </div>
-          ) : null}
+            ) : null}
+          </div>
         </div>
       ) : null}
     </section>

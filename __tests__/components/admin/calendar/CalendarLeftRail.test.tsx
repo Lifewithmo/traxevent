@@ -114,14 +114,14 @@ describe('CalendarLeftRail', () => {
   it('mini-month day links preserve ?view and ?kinds and route to /calendar/[ymd]', () => {
     render(<CalendarLeftRail {...baseProps} rollup={rollup()} runway={runway} />)
     // The rail shows the selected day's month (Aug 2026).
-    const grid = screen.getByRole('grid', { name: /mini calendar/i })
+    const grid = screen.getByRole('group', { name: /mini calendar/i })
     const cell = within(grid).getByRole('link', { name: /15/ })
     expect(cell).toHaveAttribute('href', '/acme/calendar/2026-08-15?view=week&kinds=pipeline')
   })
 
   it('does NOT forward a stale ?week onto day-targeting links (mini-month + runway)', () => {
     render(<CalendarLeftRail {...baseProps} rollup={rollup()} runway={runway} />)
-    const grid = screen.getByRole('grid', { name: /mini calendar/i })
+    const grid = screen.getByRole('group', { name: /mini calendar/i })
     const cell = within(grid).getByRole('link', { name: /15/ }) as HTMLAnchorElement
     // the URL carries week=2026-08-03, but the clicked day is in a different week —
     // forwarding it would make page.tsx render Jul 30–Aug 5 with the 15th invisible.
@@ -133,7 +133,7 @@ describe('CalendarLeftRail', () => {
 
   it('marks the selected day in the mini-month', () => {
     render(<CalendarLeftRail {...baseProps} rollup={rollup()} runway={runway} />)
-    const grid = screen.getByRole('grid', { name: /mini calendar/i })
+    const grid = screen.getByRole('group', { name: /mini calendar/i })
     const cell = within(grid).getByRole('link', { name: /^20$/ })
     expect(cell).toHaveAttribute('aria-current', 'date')
   })
@@ -176,7 +176,7 @@ describe('CalendarLeftRail', () => {
     // the controls are rendered (the drawer makes them reachable, not a dead-end)
     expect(screen.getByRole('link', { name: /everything/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /subscribe/i })).toBeInTheDocument()
-    expect(screen.getByRole('grid', { name: /mini calendar/i })).toBeInTheDocument()
+    expect(screen.getByRole('group', { name: /mini calendar/i })).toBeInTheDocument()
     fireEvent.click(trigger)
     expect(trigger).toHaveAttribute('aria-expanded', 'true')
   })
@@ -256,7 +256,7 @@ describe('CalendarLeftRail', () => {
   // and both are #ffffff in light mode: 1.000 contrast, a literal no-op.
   it('gives the rail a hover/focus surface that is not the no-op bg-card', () => {
     render(<CalendarLeftRail {...baseProps} rollup={rollup()} runway={runway} />)
-    const grid = screen.getByRole('grid', { name: /mini calendar/i })
+    const grid = screen.getByRole('group', { name: /mini calendar/i })
     const day = within(grid).getByRole('link', { name: /^15$/ })
     expect(day.className).not.toMatch(/\bhover:bg-card\b/)
     expect(day.className).toMatch(/hover:bg-sidebar-hover/)
@@ -314,7 +314,7 @@ describe('CalendarLeftRail', () => {
      */
     it('sits below the mini-month and ABOVE the week KPIs', () => {
       render(<CalendarLeftRail {...baseProps} rollup={rollup()} runway={runway} unscheduled={unscheduled} />)
-      const grid = screen.getByRole('grid', { name: /mini calendar/i })
+      const grid = screen.getByRole('group', { name: /mini calendar/i })
       const section = screen.getByRole('region', { name: /unscheduled work/i })
       const weekKpis = screen.getByText('This week')
       const FOLLOWING = Node.DOCUMENT_POSITION_FOLLOWING
@@ -442,7 +442,7 @@ describe('CalendarLeftRail', () => {
       const dates = document.querySelector('[data-rail-section="dates"]') as HTMLElement
       expect(within(dates).getByRole('link', { name: /everything/i })).toBeInTheDocument()
       expect(within(dates).getByRole('link', { name: /pipeline only/i })).toBeInTheDocument()
-      expect(within(dates).getByRole('grid', { name: /mini calendar/i })).toBeInTheDocument()
+      expect(within(dates).getByRole('group', { name: /mini calendar/i })).toBeInTheDocument()
       expect(dates.querySelector('[data-slot="rail-bookability"]')).not.toBeNull()
       expect(within(dates).getByText(/next open/i)).toBeInTheDocument()
     })

@@ -309,3 +309,20 @@ describe('AgendaView — bulk reschedule', () => {
     expect(screen.getByRole('checkbox', { name: /select all 0 reschedulable/i })).toBeDisabled()
   })
 })
+
+describe('bulk result announcements', () => {
+  // WCAG 4.1.3. A live region created in the SAME commit as its text is not
+  // reliably announced — so the outcome of moving up to 200 jobs, and every
+  // bulk-move failure, could be silent. The region must exist, empty, before
+  // there is anything to say. Conditionally mounting it passed every other
+  // test in this file.
+  it('mounts the result live region empty, before there is any result to announce', () => {
+    render(<AgendaView orgSlug="acme" items={items} today={TODAY} />)
+    // The bar (and its region) appear with the selection; the STATUS text only
+    // arrives after a move resolves. The region must already be in the DOM by
+    // then — a region created in the same commit as its text is not announced.
+    fireEvent.click(screen.getByRole('checkbox', { name: /select wedding on aug 19, 2026/i }))
+    const empty = screen.getAllByRole('status').filter((r) => r.textContent?.trim() === '')
+    expect(empty.length).toBeGreaterThan(0)
+  })
+})
