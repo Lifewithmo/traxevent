@@ -50,6 +50,10 @@ export default async function CalendarDayPage({
     getDayDetail(orgId, orgSlug, ymd),
   ])
   const scoped = kinds === 'pipeline' ? filterFeed(feed, PIPELINE_KINDS) : feed
+  // The grid renders the window; ⌘K searches `scoped`, the same items unwindowed.
+  // It matters most on THIS route: in Day view the window is a single day, so a
+  // windowed search index made "No matches" a statement about one square of the
+  // calendar dressed up as a statement about the whole book.
   const items = feedInWindow(scoped, view, anchor)
   const runway = buildRunway(feed, events, new Date(), invoices)
   // The full answer — verdict, binding constraint AND the nearest open dates —
@@ -67,6 +71,7 @@ export default async function CalendarDayPage({
         <CalendarCanvas
           orgSlug={orgSlug}
           items={items}
+          feed={scoped}
           today={today}
           view={view}
           anchor={anchor}

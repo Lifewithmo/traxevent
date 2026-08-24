@@ -15,7 +15,7 @@ import { WeekGrid } from '@/components/admin/calendar/WeekGrid'
 import { MonthGrid } from '@/components/admin/calendar/MonthGrid'
 import { DayView } from '@/components/admin/calendar/DayView'
 import { AgendaView } from '@/components/admin/calendar/AgendaView'
-import { ItemPeek } from '@/components/admin/calendar/ItemPeek'
+import { ItemPeek, type FinalFocus } from '@/components/admin/calendar/ItemPeek'
 import { useTopDismissLayer } from '@/components/admin/calendar/dismiss-stack'
 
 export type CanvasView = 'month' | 'week' | 'day' | 'agenda'
@@ -26,6 +26,23 @@ interface CalendarCanvasProps {
   orgSlug: string
   /** The visible-window feed (agenda gets the full feed; the page decides). */
   items: CalendarItem[]
+  /**
+   * The WHOLE book for the current `?kinds` scope — what ⌘K searches.
+   *
+   * `items` is a window: 7 days in Week, ONE day in Day, a padded grid in Month.
+   * Handing that to the palette made every claim it renders a within-window
+   * fact wearing whole-book clothes ("No matches for «Kelly»" while Kelly is
+   * booked in October; "8 of 34" totalling only the visible days). The pages
+   * already hold the unwindowed feed — `orgCalendarFeed` is React.cache()'d and
+   * they call it to BUILD the window — so widening the index costs zero extra
+   * Firestore reads, and the agenda view already ships this exact array to the
+   * client, so it is not a new class of payload either.
+   *
+   * Still narrowed by `?kinds`, deliberately: a filter the operator set should
+   * apply to search too. The palette therefore NAMES that scope in every claim
+   * rather than passing a within-filter count off as a total.
+   */
+  feed: CalendarItem[]
   today: string
   view: CanvasView
   /** The ymd the canvas is centred on (week/month/day anchor). */
@@ -82,7 +99,21 @@ function rangeLabel(view: CanvasView, anchor: string): string {
 }
 
 
-export function CalendarCanvas({ orgSlug, items, today, view, anchor, kinds, selectedDay: selectedDayProp }: CalendarCanvasProps) {
+/**
+ * The element focus should return to when an overlay opened from here closes.
+ *
+ * Deliberately NOT refined to exclude `<body>`, tempting as that reads: when the
+ * palette is opened by pointer, `document.activeElement` can be `<body>`, and
+ * Base UI resolves that to the first tabbable element in the document — which on
+ * this page is the ⌘K trigger itself. Returning `null` instead makes Base UI
+ * fall through to nothing and focus really does end up on `<body>`, which is the
+ * outcome the return target exists to prevent (measured, not reasoned).
+ */
+function liveFocus(): HTMLElement | null {
+  return document.activeElement instanceof HTMLElement ? document.activeElement : null
+}
+
+export function CalendarCanvas({ orgSlug, items, feed, today, view, anchor, kinds, selectedDay: selectedDayProp }: CalendarCanvasProps) {
   const router = useRouter()
   const pathname = usePathname() ?? ''
   const params = useSearchParams()
@@ -133,34 +164,71 @@ export function CalendarCanvas({ orgSlug, items, today, view, anchor, kinds, sel
   useTopDismissLayer(shortcutsOpen)
 
   /**
-   * Where to put focus back when an overlay closes.
+   * Where to put focus back when an overlay closes — ONE REF PER OVERLAY.
    *
-   * Both overlays are opened from STATE (⌘K, `?`, a toolbar button) rather than
-   * a <Dialog.Trigger>, and the kit's default `finalFocus` is "the trigger" —
+   * All three are opened from STATE (⌘K, `?`, a chip) rather than a
+   * <Dialog.Trigger>, and the kit's default `finalFocus` is "the trigger" —
    * with no trigger, closing dropped the keyboard user on <body>, at the top of
-   * the document, having lost their place. Capturing the active element at the
-   * moment of opening and handing it to `finalFocus` is the fix (WCAG 2.4.3).
+   * the document, having lost their place. Capturing the element at the moment
+   * of opening and handing it to `finalFocus` is the fix (WCAG 2.4.3).
+   *
+   * They used to SHARE one ref, which held only while exactly one overlay could
+   * be open. ⌘K is the one binding that reaches past an open one (see below),
+   * and on the way in it overwrote the peek's chip with an element inside the
+   * peek: closing the palette then returned focus into the peek, and closing
+   * the peek aimed at a node that was already unmounting, so focus fell to
+   * <body>. Separate refs mean no overlay can corrupt another's target even if
+   * a future one slips past the guard.
+   *
+   * Be clear about what this is: the ⌘K guard below already makes nesting
+   * impossible, so splitting the ref changes no behaviour TODAY — it is the
+   * belt to that braces, and a mutation collapsing these three back into one
+   * is (correctly) not caught by any test. The behaviour fix is the inherit +
+   * suppress pair below.
    */
-  const returnFocus = useRef<HTMLElement | null>(null)
-  const rememberFocus = useCallback(() => {
-    returnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+  const paletteReturn = useRef<HTMLElement | null>(null)
+  const shortcutsReturn = useRef<HTMLElement | null>(null)
+  const peekReturn = useRef<HTMLElement | null>(null)
+
+  /**
+   * @param opts.returnTo — set ONLY when ⌘K is superseding another overlay: the
+   * element that overlay would have returned to. Live focus is wrong there,
+   * because live focus is inside the surface that is about to unmount.
+   */
+  const openPalette = useCallback((opts?: { returnTo: HTMLElement | null }) => {
+    paletteReturn.current = opts ? opts.returnTo : liveFocus()
+    setPaletteOpen(true)
   }, [])
 
-  // Bumped on every open so the palette REMOUNTS with an empty query. The
-  // alternative — an effect that clears the query when `open` goes false —
-  // blanks the list mid-exit-animation and costs a cascading render on close.
-  const [paletteSeq, setPaletteSeq] = useState(0)
-
-  const openPalette = useCallback(() => {
-    rememberFocus()
-    setPaletteSeq((s) => s + 1)
-    setPaletteOpen(true)
-  }, [rememberFocus])
-
   const openShortcuts = useCallback(() => {
-    rememberFocus()
+    shortcutsReturn.current = liveFocus()
     setShortcutsOpen(true)
-  }, [rememberFocus])
+  }, [])
+
+  /**
+   * The surface ⌘K is taking over from must NOT restore focus on its way out.
+   *
+   * Base UI restores from a `queueMicrotask` inside the closing popup's layout
+   * cleanup (FloatingFocusManager), so a superseded peek put focus back on its
+   * own chip a microtask AFTER the palette had autofocused its input — the
+   * palette opened with focus outside itself, which is worse than the bug being
+   * fixed. `finalFocus` also takes a FUNCTION, evaluated at close time, and
+   * `false` there means "leave focus where it is". The palette has already
+   * inherited the target and will use it when IT closes.
+   *
+   * Read during the closing popup's LAYOUT cleanup and cleared in the passive
+   * effect below, which React runs after every layout cleanup in the same
+   * commit — so the flag is true for exactly the one close it is about.
+   */
+  const superseding = useRef(false)
+  useEffect(() => {
+    superseding.current = false
+  })
+  const peekFinalFocus = useCallback(() => (superseding.current ? false : peekReturn.current), [])
+  const shortcutsFinalFocus = useCallback(
+    () => (superseding.current ? false : shortcutsReturn.current),
+    []
+  )
 
   // ── the peek (open an item in place, never lose the grid) ──────────────────
 
@@ -211,7 +279,9 @@ export function CalendarCanvas({ orgSlug, items, today, view, anchor, kinds, sel
   )
 
   const openPeek = useCallback((el: HTMLElement, item: CalendarItem) => {
-    returnFocus.current = el
+    // The CHIP, not live focus: a mouse click does not focus a link in every
+    // browser, and the peek promises `[` / `]` work the moment it closes.
+    peekReturn.current = el
     setPeek(item)
   }, [])
 
@@ -254,20 +324,59 @@ export function CalendarCanvas({ orgSlug, items, today, view, anchor, kinds, sel
     openPeek(hit.el, hit.item)
   }
 
-  // ⌘K stays on the window: it is a MODIFIER combo, which WCAG 2.1.4 does not
-  // cover, and a command menu that only opens once you have tabbed into the
-  // right region is not a command menu.
+  /**
+   * ⌘K stays on the window: it is a MODIFIER combo, which WCAG 2.1.4 does not
+   * cover, and a command menu that only opens once you have tabbed into the
+   * right region is not a command menu.
+   *
+   * Being on the window also makes it the ONE door past an open overlay — every
+   * other entrance is either state this component guards (`onCockpitKeyDown`
+   * stands down while anything is open) or a chip behind a modal backdrop. So
+   * this handler is where "one modal at a time" has to be enforced: it used to
+   * mount the palette straight over the peek or the `?` sheet, giving two
+   * `aria-modal` dialogs, two focus traps and two live Escape handlers — the
+   * exact double-dismissal `dismiss-stack.ts` exists to prevent, reached
+   * through the one door the stack does not cover.
+   *
+   * SUPERSEDE, not refuse. The `?` sheet publishes ⌘K as working "anywhere", and
+   * a dead accelerator is the worst of the three outcomes — the operator presses
+   * it twice and reaches for the mouse. The peek is a landing, not a destination
+   * (see ItemPeek), so searching out of it is precisely the next move. Refusing
+   * would also buy no safety: the focus-return bug it was masking is fixed on
+   * its own terms below — the palette INHERITS the superseded surface's return
+   * target, and that surface is told not to restore focus itself. All three
+   * overlays are mounted only while open, so the close and the open land in one
+   * commit and no two of them ever coexist in the DOM.
+   *
+   * NOT guarded on `dismissLayerCount()`. That counts every dismissible surface,
+   * modal or not, and an agenda bulk selection registers one (AgendaView's
+   * `useDismissLayer`) — standing ⌘K down for it would kill search in a
+   * completely ordinary state. The guard is this component's own overlay state,
+   * which is also the only set of overlays it can legitimately close.
+   */
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
-        e.preventDefault()
-        if (paletteOpen) setPaletteOpen(false)
-        else openPalette()
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== 'k') return
+      e.preventDefault()
+      if (paletteOpen) {
+        setPaletteOpen(false)
+        return
       }
+      // Take over the superseded overlay's return target verbatim: whatever has
+      // focus right now is INSIDE it, and is about to unmount (WCAG 2.4.3).
+      const superseded = peek ? peekReturn : shortcutsOpen ? shortcutsReturn : null
+      if (!superseded) {
+        openPalette()
+        return
+      }
+      superseding.current = true
+      setPeek(null)
+      setShortcutsOpen(false)
+      openPalette({ returnTo: superseded.current })
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [paletteOpen, openPalette])
+  }, [paletteOpen, shortcutsOpen, peek, openPalette])
 
   /**
    * The single-character shortcuts (m/w/d/a/t/? and the arrows) are bound HERE,
@@ -319,7 +428,9 @@ export function CalendarCanvas({ orgSlug, items, today, view, anchor, kinds, sel
           type="button"
           variant="outline"
           size="sm"
-          onClick={openPalette}
+          // Wrapped, not passed by reference: `openPalette` takes an options
+          // object, and React would hand it the click event as one.
+          onClick={() => openPalette()}
           aria-keyshortcuts="Meta+K Control+K"
           className="gap-1.5"
         >
@@ -405,25 +516,39 @@ export function CalendarCanvas({ orgSlug, items, today, view, anchor, kinds, sel
         )}
       </div>
 
-      <CommandPalette
-        key={paletteSeq}
-        open={paletteOpen}
-        onClose={() => setPaletteOpen(false)}
-        orgSlug={orgSlug}
-        items={items}
-        today={today}
-        view={view}
-        anchor={anchor}
-        kinds={kindsParam}
-        selectedDay={selectedDay}
-        finalFocus={returnFocus}
-        onRun={(href) => {
-          setPaletteOpen(false)
-          router.push(href)
-        }}
-      />
+      {/* ── ONE RULE FOR ALL THREE OVERLAYS: mounted only while open ──────────
+          The peek always worked this way (`item` null → it renders nothing).
+          The other two were left mounted and toggled by `open`, which means
+          Base UI holds the popup in the DOM for the whole exit transition
+          (~100ms of `data-closed:animate-out`) — so a surface opened during
+          that window sits over an `aria-modal` node that is still there. jsdom
+          implements no Web Animations API and unmounts instantly, so no test
+          could ever see it; the one that does had to stub `getAnimations`.
+          Unmounting is also what makes each surface open with clean state — it
+          replaces the `paletteSeq` remount key the palette used to carry. */}
+      {paletteOpen ? (
+        <CommandPalette
+          onClose={() => setPaletteOpen(false)}
+          orgSlug={orgSlug}
+          // The BOOK, not the window — see the `feed` prop's note. This is the
+          // one place the two differ, and why the palette's claims can be true.
+          feed={feed}
+          today={today}
+          view={view}
+          anchor={anchor}
+          kinds={kindsParam}
+          selectedDay={selectedDay}
+          finalFocus={paletteReturn}
+          onRun={(href) => {
+            setPaletteOpen(false)
+            router.push(href)
+          }}
+        />
+      ) : null}
 
-      <ShortcutsSheet open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} finalFocus={returnFocus} />
+      {shortcutsOpen ? (
+        <ShortcutsSheet onClose={() => setShortcutsOpen(false)} finalFocus={shortcutsFinalFocus} />
+      ) : null}
 
       {/* The grid behind this is NOT unmounted and NOT re-keyed: the peek is a
           portalled overlay, not a route change, so the month the operator was
@@ -435,7 +560,7 @@ export function CalendarCanvas({ orgSlug, items, today, view, anchor, kinds, sel
         view={view}
         kinds={kindsParam}
         onClose={() => setPeek(null)}
-        finalFocus={returnFocus}
+        finalFocus={peekFinalFocus}
       />
     </div>
   )
@@ -490,16 +615,16 @@ const PALETTE_SHORTCUTS: Array<{ keys: string[]; label: string }> = [
 /** The published contract for the scoped bindings — reachable by the `?` key
  *  and by the toolbar button, so it is discoverable without a keyboard too. */
 function ShortcutsSheet({
-  open,
   onClose,
   finalFocus,
 }: {
-  open: boolean
   onClose: () => void
-  finalFocus: React.RefObject<HTMLElement | null>
+  finalFocus: FinalFocus
 }) {
   return (
-    <Dialog open={open} onOpenChange={(o) => (o ? undefined : onClose())}>
+    // Mounted ONLY while open (the caller decides), so `open` is a constant here
+    // and closing is an unmount rather than a fade-out. See the call site.
+    <Dialog open onOpenChange={(o) => (o ? undefined : onClose())}>
       <DialogContent finalFocus={finalFocus} className="max-w-sm gap-0 p-0">
         <DialogTitle className="border-b border-border px-4 py-3 text-sm font-semibold">
           Keyboard shortcuts
@@ -648,12 +773,16 @@ function jumpDetail(ymd: string, today: string, index: FeedIndex): string {
  * ⌘K: search the whole feed, jump to a human-typed date, then the fixed
  * actions. Grouped, keyboard-first, and it always shows what it understood
  * before it moves anyone anywhere.
+ *
+ * "The whole feed" is now literal. It used to be the canvas's visible WINDOW —
+ * one day in Day view — while the empty state and the overflow line both spoke
+ * as if they had read the book. Every claim below is scoped to `feed`, and the
+ * one narrowing that survives (`?kinds`) is named wherever a count is stated.
  */
 function CommandPalette({
-  open,
   onClose,
   orgSlug,
-  items,
+  feed,
   today,
   view,
   anchor,
@@ -662,28 +791,28 @@ function CommandPalette({
   finalFocus,
   onRun,
 }: {
-  open: boolean
   onClose: () => void
   orgSlug: string
-  items: CalendarItem[]
+  /** The whole `?kinds`-scoped org feed — the search index, NOT the window. */
+  feed: CalendarItem[]
   today: string
   view: CanvasView
   anchor: string
   kinds?: string
   selectedDay?: string
-  finalFocus: React.RefObject<HTMLElement | null>
+  finalFocus: FinalFocus
   onRun: (href: string) => void
 }) {
   const [query, setQuery] = useState('')
   const [highlight, setHighlight] = useState(0)
   const listId = 'calendar-cmdk-list'
 
-  // NOTE: the palette starts empty on every open because the canvas remounts it
-  // (see `paletteSeq`) rather than because an effect clears it on close — the
-  // effect version wiped the list mid-exit-animation and cost a cascading
+  // NOTE: the palette starts empty on every open because the canvas MOUNTS it
+  // on open and unmounts it on close, not because an effect clears the query —
+  // the effect version wiped the list mid-exit-animation and cost a cascading
   // render on every close.
 
-  const index = useMemo(() => buildIndex(items), [items])
+  const index = useMemo(() => buildIndex(feed), [feed])
 
   const { results, feedTotal } = useMemo(() => {
     const q = query.trim()
@@ -761,23 +890,39 @@ function CommandPalette({
 
   const overflow = feedTotal > FEED_RESULT_CAP
   const trimmed = query.trim()
+
+  /**
+   * WHAT WAS ACTUALLY SEARCHED, in the words of the claims made about it.
+   *
+   * The index is the whole book now, so "no matches" and "8 of 34" are finally
+   * facts about the calendar rather than about the seven days on screen. The
+   * one narrowing left is the operator's own `?kinds` filter — handed to us
+   * pre-applied — so a count taken under it is a within-filter count and has to
+   * say so, with the way out named rather than left to be guessed.
+   */
+  const filtered = kinds === 'pipeline'
+  const scope = filtered ? ' in the pipeline filter' : ''
+  const emptyScope = filtered
+    ? ' in the pipeline filter (clear it to search every kind)'
+    : ' anywhere on the calendar'
   const status =
     results.length === 0
       ? trimmed
-        ? `No matches for “${trimmed}”. Try a customer name, or a date like “sep 13”, “9/13” or “next sat”.`
+        ? `No matches for “${trimmed}”${emptyScope}. Try a customer name, or a date like “sep 13”, “9/13” or “next sat”.`
         : ''
       : overflow
-        ? `Showing ${FEED_RESULT_CAP} of ${feedTotal} calendar matches — keep typing to narrow.`
+        ? `Showing ${FEED_RESULT_CAP} of ${feedTotal} calendar matches${scope} — keep typing to narrow.`
         : ''
 
   // Announced politely rather than only rendered: the visible list IS the
   // feedback for a sighted user, but a screen-reader user typing into a
-  // combobox hears nothing at all unless the result count is spoken.
-  const announcement = !open
-    ? ''
-    : results.length === 0
-      ? 'No matches'
-      : `${results.length} result${results.length === 1 ? '' : 's'}${overflow ? `, ${feedTotal} calendar matches in total` : ''}`
+  // combobox hears nothing at all unless the result count is spoken — and never
+  // reads the status paragraph, so the scope has to travel with the count here
+  // too or the honesty fix is sighted-only.
+  const announcement =
+    results.length === 0
+      ? `No matches${scope}`
+      : `${results.length} result${results.length === 1 ? '' : 's'}${overflow ? `, ${feedTotal} calendar matches${scope} in total` : ''}`
 
   function move(delta: number) {
     // Wrapping, not clamping: the list is a ring, so Up from the top is the
@@ -806,7 +951,9 @@ function CommandPalette({
   }
 
   return (
-    <Dialog open={open} onOpenChange={(o) => (o ? undefined : onClose())}>
+    // Mounted ONLY while open (the caller decides), so `open` is a constant here
+    // and closing is an unmount rather than a fade-out. See the call site.
+    <Dialog open onOpenChange={(o) => (o ? undefined : onClose())}>
       <DialogContent finalFocus={finalFocus} showCloseButton={false} className="top-24 max-w-md translate-y-0 gap-0 p-0">
         <DialogTitle className="sr-only">Command menu</DialogTitle>
         <input
@@ -824,7 +971,12 @@ function CommandPalette({
           }}
           onKeyDown={onKeyDown}
           placeholder="Search jobs and customers, or type a date — “sep 13”, “next sat”, “+2w”"
-          className="w-full rounded-t-xl border-b border-border bg-transparent px-3.5 py-3 text-sm outline-none placeholder:text-muted-foreground"
+          // `outline-none` suppresses the browser's own ring, so it MUST be paid
+          // back with a focus-visible treatment or this is a WCAG 2.4.7 failure —
+          // and this is the only focus stop in the dialog a keyboard user comes
+          // back to after arrowing the list. Same three utilities as the agenda's
+          // date field (AgendaView), so the cockpit has one focus look.
+          className="w-full rounded-t-xl border-b border-border bg-transparent px-3.5 py-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 placeholder:text-muted-foreground"
         />
         <div id={listId} role="listbox" aria-label="Results" className="max-h-72 overflow-y-auto p-1.5">
           {groups.map((g) => (

@@ -80,8 +80,17 @@ function drop(layer: Layer) {
   if (stack.length === 0) window.removeEventListener('keydown', onKeyDown)
 }
 
-/** How many dismissible surfaces are open. Exported for tests and for callers
- *  that must not stack a second overlay on top of an existing one. */
+/**
+ * How many dismissible surfaces are open. Exported for TESTS.
+ *
+ * NOT a "may I open a modal?" check, tempting as the name makes it look. This
+ * counts every layer, modal or not: an agenda bulk selection registers one
+ * (`useDismissLayer(selected.size > 0, …)`), and ⌘K must still open over that —
+ * there is a test for exactly that in ItemPeek.test.tsx. A surface deciding
+ * whether it would be stacking on another has to consult overlay STATE it owns,
+ * which is what CalendarCanvas's ⌘K handler does. The stack answers "who gets
+ * this Escape", and nothing else.
+ */
 export function dismissLayerCount(): number {
   return stack.length
 }

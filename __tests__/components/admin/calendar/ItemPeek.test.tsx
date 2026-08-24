@@ -77,7 +77,9 @@ const PICKUP = {
 }
 
 const items = [WEDDING, HOLD, INVOICE, PICKUP]
-const base = { orgSlug: 'acme', items, today: '2099-08-18', anchor: '2099-08-19' }
+// `feed` is the palette's search index (the whole book); here the window IS the
+// whole book, which is what these fixtures mean.
+const base = { orgSlug: 'acme', items, feed: items, today: '2099-08-18', anchor: '2099-08-19' }
 
 /** The chips the peek keys off — the drag engine's own contract. */
 const chipFor = (key: string) =>
@@ -409,6 +411,248 @@ describe('Escape dismisses exactly one surface', () => {
     handled.preventDefault()
     window.dispatchEvent(handled)
     expect(screen.getByText('1 selected')).toBeInTheDocument()
+  })
+})
+
+/**
+ * ── C5: ⌘K was the one door the dismiss stack does not cover ─────────────────
+ *
+ * Every other way into an overlay is state the cockpit guards (`onCockpitKeyDown`
+ * stands down while anything is open) or a chip behind a modal backdrop. ⌘K is a
+ * `window` listener, so it fired straight through an open peek and mounted a
+ * SECOND `aria-modal` dialog with its own focus trap over the first — two live
+ * Escape handlers, and a shared `returnFocus` ref that the palette overwrote
+ * with an element inside the dying peek (focus then fell to <body>, WCAG 2.4.3).
+ */
+describe('⌘K never stacks a second modal', () => {
+  const dialogs = () => document.querySelectorAll('[role="dialog"]')
+
+  it('supersedes an open peek instead of opening over it', async () => {
+    render(<CalendarCanvas {...base} view="week" />)
+    const chip = chipFor('event:e1')
+    chip.focus()
+    fireEvent.click(chip)
+    expect(peek()).not.toBeNull()
+    expect(dialogs()).toHaveLength(1)
+
+    fireEvent.keyDown(window, { key: 'k', metaKey: true })
+    await waitFor(() => expect(document.querySelector('[role="combobox"]')).not.toBeNull())
+    // ONE dialog on screen, and it is the palette — not the palette ON the peek.
+    expect(dialogs()).toHaveLength(1)
+    expect(peek()).toBeNull()
+    // …and exactly one dismiss layer, so one Escape is still one dismissal.
+    expect(dismissLayerCount()).toBe(1)
+  })
+
+  it('supersedes the ? sheet the same way', async () => {
+    render(<CalendarCanvas {...base} view="week" />)
+    const trigger = screen.getByRole('button', { name: /keyboard shortcuts/i })
+    trigger.focus()
+    fireEvent.click(trigger)
+    await screen.findByText('Keyboard shortcuts')
+    expect(dialogs()).toHaveLength(1)
+
+    fireEvent.keyDown(window, { key: 'k', metaKey: true })
+    await waitFor(() => expect(document.querySelector('[role="combobox"]')).not.toBeNull())
+    expect(dialogs()).toHaveLength(1)
+    expect(screen.queryByText('Keyboard shortcuts')).toBeNull()
+    expect(dismissLayerCount()).toBe(1)
+  })
+
+  it('returns focus to the CHIP when the superseding palette closes, never <body>', async () => {
+    render(<CalendarCanvas {...base} view="week" />)
+    const chip = chipFor('event:e1')
+    chip.focus()
+    fireEvent.click(chip)
+
+    // FOCUS HAS TO BE INSIDE THE PEEK before ⌘K, or this test proves nothing.
+    // A real browser puts it there on open; jsdom leaves it on the chip, and
+    // with focus still on the chip "capture whatever is focused" happens to
+    // produce the right answer — a mutation removing the inheritance survived
+    // until this line existed. This is also a real operator state: tab into the
+    // peek, then search.
+    const record = document.querySelector<HTMLElement>('[data-slot="peek-record"]')!
+    record.focus()
+    expect(document.activeElement).toBe(record)
+
+    fireEvent.keyDown(window, { key: 'k', metaKey: true })
+
+    const box = (await screen.findByRole('combobox')) as HTMLElement
+    await waitFor(() => expect(document.activeElement).toBe(box))
+    fireEvent.keyDown(box, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('combobox')).toBeNull())
+
+    // The peek's own return target survives being superseded: the operator lands
+    // back on the job they were looking at, ready for `[` / `]`.
+    await waitFor(() => expect(document.activeElement).toBe(chip))
+    expect(document.activeElement).not.toBe(document.body)
+    await waitFor(() => expect(dismissLayerCount()).toBe(0))
+  })
+
+  it('returns focus to the ? button when the superseding palette closes', async () => {
+    render(<CalendarCanvas {...base} view="week" />)
+    const trigger = screen.getByRole('button', { name: /keyboard shortcuts/i })
+    trigger.focus()
+    fireEvent.click(trigger)
+    const sheet = await screen.findByRole('dialog', { name: /keyboard shortcuts/i })
+
+    // Same reason as the peek above: park focus INSIDE the sheet, where the
+    // browser puts it, so "capture live focus" cannot pass by accident.
+    const close = within(sheet).getByRole('button', { name: /close/i })
+    close.focus()
+    expect(document.activeElement).toBe(close)
+
+    fireEvent.keyDown(window, { key: 'k', metaKey: true })
+    const box = (await screen.findByRole('combobox')) as HTMLElement
+    fireEvent.keyDown(box, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('combobox')).toBeNull())
+    await waitFor(() => expect(document.activeElement).toBe(trigger))
+  })
+
+  it('one Escape leaves nothing else open behind it', async () => {
+    // The pre-fix shape of this: BOTH dialogs' Escape handlers were live, so the
+    // single keypress closed the palette AND the peek. Post-fix there is only
+    // ever one thing to close — assert the state directly rather than the count
+    // of things that happened to close.
+    render(<CalendarCanvas {...base} view="week" />)
+    const chip = chipFor('event:e1')
+    chip.focus()
+    fireEvent.click(chip)
+    fireEvent.keyDown(window, { key: 'k', metaKey: true })
+    const box = (await screen.findByRole('combobox')) as HTMLElement
+    fireEvent.keyDown(box, { key: 'Escape' })
+    await waitFor(() => expect(dialogs()).toHaveLength(0))
+    expect(peek()).toBeNull()
+  })
+
+  /**
+   * jsdom implements no Web Animations API, so Base UI unmounts a closing popup
+   * IMMEDIATELY (useAnimationsFinished's `typeof getAnimations !== 'function'`
+   * fast path). That hides the browser's ~100ms `data-closed:animate-out`, and a
+   * surface left mounted through it is a second `aria-modal` node sitting under
+   * the palette for the whole transition — exactly the state C5 is about, and
+   * one no ordinary test in this suite can see. So model the browser: an
+   * animation that never finishes.
+   */
+  function withExitAnimations(body: () => Promise<void>) {
+    const proto = Element.prototype as unknown as { getAnimations?: () => unknown[] }
+    const had = Object.prototype.hasOwnProperty.call(proto, 'getAnimations')
+    proto.getAnimations = () => [{ finished: new Promise(() => {}) }]
+    return body().finally(() => {
+      if (!had) delete proto.getAnimations
+    })
+  }
+
+  it('does not stack on a ? sheet that is still fading out', async () => {
+    await withExitAnimations(async () => {
+      render(<CalendarCanvas {...base} view="week" />)
+      fireEvent.click(screen.getByRole('button', { name: /keyboard shortcuts/i }))
+      await screen.findByRole('dialog', { name: /keyboard shortcuts/i })
+      fireEvent.keyDown(window, { key: 'k', metaKey: true })
+      await screen.findByRole('combobox')
+      expect(dialogs()).toHaveLength(1)
+    })
+  })
+
+  it('does not stack on a peek that is still fading out', async () => {
+    await withExitAnimations(async () => {
+      render(<CalendarCanvas {...base} view="week" />)
+      fireEvent.click(chipFor('event:e1'))
+      expect(peek()).not.toBeNull()
+      fireEvent.keyDown(window, { key: 'k', metaKey: true })
+      await screen.findByRole('combobox')
+      expect(dialogs()).toHaveLength(1)
+    })
+  })
+
+  it('does not let the ? sheet open over a palette that is still fading out', async () => {
+    // The mirror image, and the reason all three overlays mount only while
+    // open rather than just the two ⌘K can replace: `onCockpitKeyDown` stands
+    // down while `paletteOpen`, so the moment ⌘K flips it false the `?` key is
+    // live again — over a palette the browser would still be animating away.
+    await withExitAnimations(async () => {
+      render(<CalendarCanvas {...base} view="week" />)
+      fireEvent.keyDown(window, { key: 'k', metaKey: true })
+      await screen.findByRole('combobox')
+      fireEvent.keyDown(window, { key: 'k', metaKey: true })
+      await waitFor(() => expect(screen.queryByRole('combobox')).toBeNull())
+
+      const cockpit = document.querySelector<HTMLElement>('[data-slot="calendar-cockpit"]')!
+      fireEvent.keyDown(cockpit, { key: '?' })
+      await screen.findByRole('dialog', { name: /keyboard shortcuts/i })
+      expect(dialogs()).toHaveLength(1)
+    })
+  })
+
+  it('an ordinary close still restores focus AFTER a supersede has happened', async () => {
+    // The "do not restore" flag is set for exactly one close and cleared in the
+    // commit that follows it. Left set, the very next ordinary Escape out of a
+    // peek would silently stop returning focus to its chip — a regression the
+    // supersede tests alone cannot see, because they never close a surface
+    // normally afterwards.
+    render(<CalendarCanvas {...base} view="week" />)
+
+    // 1. supersede a peek with ⌘K, then close the palette.
+    const chip = chipFor('event:e1')
+    chip.focus()
+    fireEvent.click(chip)
+    fireEvent.keyDown(window, { key: 'k', metaKey: true })
+    const box = (await screen.findByRole('combobox')) as HTMLElement
+    fireEvent.keyDown(box, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('combobox')).toBeNull())
+
+    // 2. open the peek again, the ordinary way, and close it the ordinary way.
+    const again = chipFor('event:e1')
+    again.focus()
+    fireEvent.click(again)
+    expect(peek()).not.toBeNull()
+    // Focus INSIDE the peek, where the browser puts it. jsdom leaves it on the
+    // chip, and a peek that has stopped restoring focus altogether then looks
+    // identical to one that restored correctly.
+    document.querySelector<HTMLElement>('[data-slot="peek-record"]')!.focus()
+    fireEvent.keyDown(peek()!, { key: 'Escape' })
+    await waitFor(() => expect(peek()).toBeNull())
+    await waitFor(() => expect(document.activeElement).toBe(again))
+  })
+
+  it('the ? sheet still returns focus to its trigger on an ordinary Escape', async () => {
+    render(<CalendarCanvas {...base} view="week" />)
+    const trigger = screen.getByRole('button', { name: /keyboard shortcuts/i })
+    trigger.focus()
+    fireEvent.click(trigger)
+    const sheet = await screen.findByRole('dialog', { name: /keyboard shortcuts/i })
+    within(sheet).getByRole('button', { name: /close/i }).focus()
+    fireEvent.keyDown(sheet, { key: 'Escape' })
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: /keyboard shortcuts/i })).toBeNull()
+    )
+    await waitFor(() => expect(document.activeElement).toBe(trigger))
+  })
+
+  it('still toggles itself closed on a second ⌘K', async () => {
+    render(<CalendarCanvas {...base} view="week" />)
+    fireEvent.keyDown(window, { key: 'k', metaKey: true })
+    await screen.findByRole('combobox')
+    fireEvent.keyDown(window, { key: 'k', metaKey: true })
+    await waitFor(() => expect(screen.queryByRole('combobox')).toBeNull())
+  })
+
+  it('still opens over a NON-modal dismiss layer — a bulk selection must not kill ⌘K', async () => {
+    // The guard is deliberately NOT `dismissLayerCount() > 0`. That counts every
+    // dismissible surface, modal or not, and an agenda bulk selection registers
+    // one (AgendaView's `useDismissLayer`). Standing ⌘K down for it would kill
+    // search in a completely ordinary state.
+    render(<CalendarCanvas {...base} view="agenda" />)
+    fireEvent.click(screen.getAllByRole('checkbox')[1])
+    expect(screen.getByText('1 selected')).toBeInTheDocument()
+    expect(dismissLayerCount()).toBe(1)
+
+    fireEvent.keyDown(window, { key: 'k', metaKey: true })
+    const box = await screen.findByRole('combobox')
+    expect(box).toBeInTheDocument()
+    // The selection is untouched — the palette layered ON it, it did not replace it.
+    expect(screen.getByText('1 selected')).toBeInTheDocument()
+    expect(dismissLayerCount()).toBe(2)
   })
 })
 

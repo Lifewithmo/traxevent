@@ -26,6 +26,10 @@ const items: CalendarItem[] = [
 const base = {
   orgSlug: 'acme',
   items,
+  // `feed` is the WHOLE book (the palette's search index); `items` is the window
+  // the grid renders. In most fixtures here they are the same array — the ones
+  // that pull them apart live in "searches the whole book" at the bottom.
+  feed: items,
   today: '2026-08-18',
   anchor: '2026-08-19',
   kinds: 'pipeline',
@@ -272,10 +276,15 @@ describe('CalendarCanvas — the command palette searches the feed', () => {
     { id: 't1', title: 'Order kegs', date: '2026-08-25', kind: 'task', href: '/acme/tasks/t1' },
   ]
 
-  const searchBase = { ...base, items: feed }
+  const searchBase = { ...base, items: feed, feed }
 
   async function openPalette(props: Partial<typeof searchBase> = {}) {
-    render(<CalendarCanvas {...searchBase} {...props} view="week" />)
+    // Overriding `items` alone means "this is the whole book AND the window" —
+    // otherwise the override would silently leave the palette searching the old
+    // fixture. The window/book split is exercised deliberately further down.
+    const merged = { ...searchBase, ...props }
+    if (props.items && !props.feed) merged.feed = props.items
+    render(<CalendarCanvas {...merged} view="week" />)
     fireEvent.keyDown(window, { key: 'k', metaKey: true })
     const dialog = await screen.findByRole('dialog')
     return { dialog, box: within(dialog).getByRole('combobox') as HTMLInputElement }
@@ -574,7 +583,11 @@ describe('CalendarCanvas — the command palette searches the feed', () => {
     fireEvent.change(box, { target: { value: 'Riverbend' } })
     expect(live!.textContent).toMatch(/^1 result$/)
     fireEvent.change(box, { target: { value: 'zzzzqqq' } })
-    expect(live!.textContent).toBe('No matches')
+    // The scope travels with the announcement, not only with the visible line:
+    // a screen-reader user never reads the status paragraph, so "No matches"
+    // on its own would be the same within-filter claim the visible text stopped
+    // making. This fixture is rendered with ?kinds=pipeline.
+    expect(live!.textContent).toBe('No matches in the pipeline filter')
   })
 
   it('gives every result row a 44px target', async () => {
@@ -600,5 +613,158 @@ describe('CalendarCanvas — the command palette searches the feed', () => {
       expect(within(sheet).getAllByText(cap).length, cap).toBeGreaterThan(0)
     }
     expect(within(sheet).getByText(/search jobs, customers & dates/i)).toBeInTheDocument()
+  })
+
+  // ── WCAG 2.4.7 Focus Visible (Level AA) ───────────────────────────────────
+
+  it('gives the palette input a visible focus indicator, not bare outline-none', async () => {
+    // `outline-none` with nothing in its place is the failure: the input is the
+    // only focus stop in the dialog for a keyboard user re-entering it after
+    // arrowing the list, and the browser's own ring had been suppressed.
+    // AgendaView's date field is the house treatment; this is the same one.
+    const { dialog } = await openPalette()
+    const box = within(dialog).getByRole('combobox')
+    expect(box.className).toMatch(/focus-visible:ring-3/)
+    expect(box.className).toMatch(/focus-visible:ring-ring\/50/)
+    expect(box.className).toMatch(/focus-visible:border-ring/)
+  })
+})
+
+/**
+ * ── C3: the palette searched a WINDOW and reported whole-book facts ──────────
+ *
+ * The canvas is handed `items` = the shown view's window (7 days in Week, ONE
+ * day in Day, narrowed again by `?kinds`), and that same array was the palette's
+ * entire search index. So "No matches for «Kelly»" was a within-window fact
+ * dressed as a whole-book one, and "Showing 8 of 34" totalled only the window.
+ *
+ * The fix widens the index: `feed` is the whole `?kinds`-scoped org feed, which
+ * the pages already hold (React.cache()'d — no extra Firestore read), and the
+ * remaining narrowing (the operator's own filter) is NAMED in every claim.
+ */
+describe('CalendarCanvas — the palette searches the whole book, not the window', () => {
+  beforeEach(() => push.mockClear())
+
+  /** In the window the Day view renders. */
+  const INSIDE: CalendarItem = {
+    id: 'e1',
+    title: 'Corporate mixer',
+    date: '2026-08-19',
+    kind: 'event',
+    href: '/acme/events/e1',
+  }
+  /** Booked in October — nowhere near any window this cockpit renders. */
+  const OCTOBER: CalendarItem = {
+    id: 'e9',
+    title: 'Kelly Barnes wedding',
+    date: '2026-10-03',
+    kind: 'event',
+    href: '/acme/events/e9',
+  }
+
+  /** Day view: the window is ONE day, the book is two items months apart. */
+  async function openDayPalette(over: { items?: CalendarItem[]; feed?: CalendarItem[] } = {}) {
+    render(
+      <CalendarCanvas
+        {...base}
+        items={over.items ?? [INSIDE]}
+        feed={over.feed ?? [INSIDE, OCTOBER]}
+        view="day"
+        selectedDay="2026-08-19"
+      />
+    )
+    fireEvent.keyDown(window, { key: 'k', metaKey: true })
+    const dialog = await screen.findByRole('dialog')
+    return { dialog, box: within(dialog).getByRole('combobox') }
+  }
+
+  it('finds an October job from Day view, where the window is a single day', async () => {
+    const { dialog, box } = await openDayPalette()
+    fireEvent.change(box, { target: { value: 'Kelly' } })
+    // The operator's actual complaint: Kelly IS booked, and the palette said no.
+    expect(within(dialog).getByText('Kelly Barnes wedding')).toBeInTheDocument()
+    expect(dialog.querySelector('[data-slot="cmdk-status"]')?.textContent ?? '').not.toMatch(
+      /no matches/i
+    )
+  })
+
+  it('opens that result at the item’s own record, not at the shown day', async () => {
+    const { dialog, box } = await openDayPalette()
+    fireEvent.change(box, { target: { value: 'Kelly' } })
+    fireEvent.click(within(dialog).getByText('Kelly Barnes wedding'))
+    expect(push).toHaveBeenCalledWith('/acme/events/e9')
+  })
+
+  it('totals the overflow line over the book, not over what is on screen', async () => {
+    // 30 matches in the book; the Day view's window holds two of them. The old
+    // line said "2" and called it the total.
+    const book: CalendarItem[] = Array.from({ length: 30 }, (_, i) => ({
+      id: `m${i}`,
+      title: `Kelly job ${i}`,
+      date: i < 2 ? '2026-08-19' : `2026-10-${String((i % 28) + 1).padStart(2, '0')}`,
+      kind: 'event' as const,
+      href: `/acme/events/m${i}`,
+    }))
+    const { dialog, box } = await openDayPalette({ items: book.slice(0, 2), feed: book })
+    fireEvent.change(box, { target: { value: 'Kelly' } })
+    expect(within(dialog).getAllByRole('option')).toHaveLength(8)
+    const status = dialog.querySelector('[data-slot="cmdk-status"]')?.textContent ?? ''
+    expect(status).toMatch(/showing 8 of 30 calendar matches/i)
+    // …and 30 is still a within-FILTER total, so the line has to say which
+    // filter. Asserting only the numbers let the scope be deleted silently.
+    expect(status).toMatch(/in the pipeline filter/i)
+  })
+
+  it('answers “am I free?” for a day the window does not cover', async () => {
+    // jumpDetail refuses to state a load outside [index.min, index.max] — which
+    // was the RIGHT rule applied to the WRONG index. Widened, it can answer.
+    const { dialog, box } = await openDayPalette()
+    fireEvent.change(box, { target: { value: '10/3' } })
+    expect(within(dialog).getByText(/1 item scheduled/i)).toBeInTheDocument()
+  })
+
+  it('still refuses to state a load for a day outside the BOOK', async () => {
+    const { dialog, box } = await openDayPalette()
+    fireEvent.change(box, { target: { value: '2029-03-04' } })
+    expect(within(dialog).getByText(/^Jump to Sunday, 4 March 2029$/)).toBeInTheDocument()
+    expect(within(dialog).queryByText(/scheduled/i)).toBeNull()
+  })
+
+  it('names the ?kinds filter in the empty state — the one narrowing left', async () => {
+    const { dialog, box } = await openDayPalette()
+    fireEvent.change(box, { target: { value: 'zzzzqqq' } })
+    const status = dialog.querySelector('[data-slot="cmdk-status"]')?.textContent ?? ''
+    expect(status).toMatch(/no matches for “zzzzqqq”/i)
+    // …and it is actionable: the operator is told what to do about it.
+    expect(status).toMatch(/pipeline filter/i)
+    expect(status).toMatch(/clear it/i)
+    // It must NOT claim to have searched everything while a filter is on.
+    expect(status).not.toMatch(/anywhere on the calendar/i)
+  })
+
+  it('claims the whole calendar only when nothing narrows it', async () => {
+    // `kinds` also arrives via ?kinds, so the mocked search params have to drop
+    // it too — the canvas falls back to them when the prop is absent.
+    search.delete('kinds')
+    try {
+      render(
+        <CalendarCanvas
+          {...base}
+          kinds={undefined}
+          items={[INSIDE]}
+          feed={[INSIDE, OCTOBER]}
+          view="day"
+          selectedDay="2026-08-19"
+        />
+      )
+      fireEvent.keyDown(window, { key: 'k', metaKey: true })
+      const dialog = await screen.findByRole('dialog')
+      fireEvent.change(within(dialog).getByRole('combobox'), { target: { value: 'zzzzqqq' } })
+      const status = dialog.querySelector('[data-slot="cmdk-status"]')?.textContent ?? ''
+      expect(status).toMatch(/anywhere on the calendar/i)
+      expect(status).not.toMatch(/pipeline/i)
+    } finally {
+      search.set('kinds', 'pipeline')
+    }
   })
 })

@@ -89,6 +89,19 @@ const EXIT =
   'flex min-h-11 items-center justify-between gap-3 rounded-lg border border-border px-3 py-2 text-sm ' +
   'transition-colors hover:bg-muted focus-visible:bg-muted motion-reduce:transition-none'
 
+/**
+ * Where an overlay puts focus back when it closes (WCAG 2.4.3) — the two shapes
+ * of Base UI's `finalFocus` the cockpit uses.
+ *
+ * A ref is the ordinary case. The FUNCTION form is evaluated at close time, and
+ * returning `false` means "restore nothing": that is how ⌘K takes over from an
+ * open overlay without the dying popup yanking focus back out of the palette a
+ * microtask later. `null` falls back to Base UI's own default.
+ */
+export type FinalFocus =
+  | React.RefObject<HTMLElement | null>
+  | (() => HTMLElement | null | false)
+
 export interface ItemPeekProps {
   /** null = closed. The peek is keyed on this item by the caller. */
   item: CalendarItem | null
@@ -99,7 +112,7 @@ export interface ItemPeekProps {
   kinds?: string
   onClose: () => void
   /** The chip that opened it — focus goes back there on close (WCAG 2.4.3). */
-  finalFocus: React.RefObject<HTMLElement | null>
+  finalFocus: FinalFocus
 }
 
 export function ItemPeek({ item, orgSlug, today, view, kinds, onClose, finalFocus }: ItemPeekProps) {
