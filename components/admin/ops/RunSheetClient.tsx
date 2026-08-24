@@ -80,11 +80,15 @@ function dayHeading(day: string): string {
 /** Viewer-local confirm stamp: '9:14 PM' same-day, 'Fri 9:14 PM' otherwise —
  *  the evening-before ritual read the next morning still shows its true day.
  *  One deliberate story for this stamp (see lib/event-spine.formatConfirmStamp):
- *  client-rendered stamps like this one are viewer-local (honest — they format
- *  in the viewer's browser); the brief's SERVER-rendered stamp is explicit
- *  UTC-labeled instead. The label there is what keeps the two surfaces honest
- *  when their clock faces differ. */
-function confirmStamp(iso: string): string {
+ *  stamps on this client leaf are viewer-local; the brief's SERVER-rendered
+ *  stamp is explicit UTC-labeled instead. Viewer-local is only true when the
+ *  formatting actually happens in the browser — this component SSRs too, so
+ *  the render site gates the stamp behind the `hydrated` flag below. Without
+ *  the gate the server's clock face gets baked into the HTML and stays there:
+ *  suppressHydrationWarning skips the patch, not just the warning, which is
+ *  exactly how an unlabeled server-UTC '9:25 PM' once survived reload next to
+ *  the viewer-local freshness stamp. Exported for tests. */
+export function confirmStamp(iso: string): string {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return ''
   const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
@@ -148,6 +152,20 @@ export function RunSheetClient(props: RunSheetClientProps) {
     emptySubscribe,
     () => (stampRef.current ??= new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })),
     () => null
+  )
+
+  // Hydration gate for the confirm stamp: true only once React runs in the
+  // browser. confirmStamp formats an ISO instant into the VIEWER's timezone,
+  // which only the browser knows — server-rendering it baked an unlabeled
+  // server-UTC clock face into the HTML, and the old suppressHydrationWarning
+  // FROZE it there (React skips patching suppressed text mismatches). Same
+  // null-server-snapshot pattern as loadedAt: server pass and hydration pass
+  // both render the placeholder, then the first client render swaps in the
+  // local time — no mismatch, so no suppression needed.
+  const hydrated = useSyncExternalStore(
+    emptySubscribe,
+    () => true,
+    () => false
   )
 
   function patchStep(checklistId: string, stepIndex: number, done: boolean) {
@@ -369,8 +387,8 @@ export function RunSheetClient(props: RunSheetClientProps) {
               <p className="flex min-h-11 items-center gap-1.5 text-sm">
                 <CheckCircle2 aria-hidden className="size-4 shrink-0 text-[var(--status-confirmed-fg)]" />
                 <span className="font-medium text-[var(--status-confirmed-fg)]">Confirmed ready</span>
-                <span className="text-muted-foreground" suppressHydrationWarning>
-                  · {confirmStamp(confirmed.at)}
+                <span className="text-muted-foreground">
+                  · {hydrated ? confirmStamp(confirmed.at) : '…'}
                   {confirmedJustNow ? ' · by you' : props.confirmedByName ? ` · by ${props.confirmedByName}` : ''}
                 </span>
               </p>

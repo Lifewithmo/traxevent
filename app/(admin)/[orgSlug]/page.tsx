@@ -126,10 +126,19 @@ export default async function OrgHomePage({
           href={`/${orgSlug}/${event.slug}/dashboard`}
           className="flex min-w-0 flex-1 items-center gap-3 after:absolute after:inset-0"
         >
-          <span className="min-w-0 flex-1 truncate text-sm font-medium">{event.name}</span>
+          {/* Phone-first flex priorities: the NAME is the row's identity, so
+              it owns the flexible slot but may never crush below a readable
+              stub — min-w-[8ch] (not min-w-0: at 375px the nowrap pill + meta
+              + year chip squeezed names to 'V…'/'Oa…'). Below sm the meta and
+              year chip yield entirely; a phone row reads name → pill → menu. */}
+          <span className="min-w-[8ch] flex-1 truncate text-sm font-medium">{event.name}</span>
           <StatusPill tone={EVENT_STATUS_TONE[event.status]}>{EVENT_STATUS_LABEL[event.status]}</StatusPill>
-          <span className="whitespace-nowrap text-xs text-muted-foreground">{meta}</span>
-          {showYear && <Badge variant="outline">{event.year}</Badge>}
+          <span className="text-xs whitespace-nowrap text-muted-foreground max-sm:hidden">{meta}</span>
+          {showYear && (
+            <Badge variant="outline" className="max-sm:hidden">
+              {event.year}
+            </Badge>
+          )}
         </Link>
         <DuplicateEventMenu orgId={orgId} orgSlug={orgSlug} sourceEventId={event.id} sourceName={event.name} />
       </div>

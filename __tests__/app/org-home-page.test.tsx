@@ -77,3 +77,45 @@ describe('Org events home — KPI band', () => {
     expect(tiles.some((t) => t.includes('Guests expected') && t.includes('120'))).toBe(true)
   })
 })
+
+describe('Org events home — ledger rows at phone widths', () => {
+  const token = (cls: string, t: string) => cls.split(/\s+/).includes(t)
+
+  it('name owns the flexible slot with an 8ch floor; meta and year chip yield below sm', async () => {
+    // Two years in one group → the year chip renders, reproducing the fullest
+    // row (name + pill + meta + chip + menu) that crushed names to 'V…'/'Oa…'
+    // at 375px when everything but the name refused to shrink.
+    listEvents.mockResolvedValue([
+      event({ id: 'a', name: 'Vineyard Wedding', headcount: 120, year: 2026 }),
+      event({ id: 'b', name: 'Oakhurst Gala', headcount: 80, year: 2027 }),
+    ])
+    const { container } = render(await OrgHomePage({ params }))
+
+    // The NAME is the row's identity: flexible (flex-1) and truncating, but
+    // floored at min-w-[8ch] — never min-w-0, which let the nowrap siblings
+    // squeeze it to a 1–2 character stub.
+    const name = Array.from(container.querySelectorAll('a > span')).find(
+      (s) => s.textContent === 'Vineyard Wedding'
+    )
+    expect(name).toBeTruthy()
+    expect(token(name!.className, 'flex-1')).toBe(true)
+    expect(token(name!.className, 'truncate')).toBe(true)
+    expect(token(name!.className, 'min-w-[8ch]')).toBe(true)
+    expect(token(name!.className, 'min-w-0')).toBe(false)
+
+    // Below sm the date/guests meta hides entirely — a phone row reads
+    // name → status pill → menu.
+    const meta = Array.from(container.querySelectorAll('span')).find((s) =>
+      (s.textContent ?? '').includes('120 guests')
+    )
+    expect(meta).toBeTruthy()
+    expect(token(meta!.className, 'max-sm:hidden')).toBe(true)
+
+    // The disambiguating year chip also yields below sm.
+    const yearChip = Array.from(container.querySelectorAll('span')).find(
+      (s) => s.textContent === '2026'
+    )
+    expect(yearChip).toBeTruthy()
+    expect(token(yearChip!.className, 'max-sm:hidden')).toBe(true)
+  })
+})
