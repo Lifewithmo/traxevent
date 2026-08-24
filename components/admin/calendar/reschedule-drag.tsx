@@ -368,11 +368,18 @@ export function RescheduleProvider({ orgSlug, items, children }: ProviderProps) 
     const key = refocusRef.current
     if (!key) return
     refocusRef.current = null
+    // Present in the DOM is NOT the same as focusable. MonthGrid reveals marks by
+    // container width (`hidden @min-[800px]/month:inline-flex`), so a job moved
+    // onto a busy day can re-render as a `display:none` node — querySelector finds
+    // it and `focus()` silently no-ops, dropping focus to <body> (WCAG 2.4.3).
+    // We check the OUTCOME rather than predicting it: no geometry API is reliable
+    // here (jsdom has no layout, and getComputedStyle needs the real stylesheet),
+    // but `document.activeElement` tells the truth in every environment.
     const chip = document.querySelector<HTMLElement>(`[data-item-key="${cssEscape(key)}"]`)
-    if (chip) {
+    chip?.focus()
+    if (chip && document.activeElement === chip) {
       refocusFallbackRef.current = null
       leftViewRef.current = null
-      chip.focus()
       return
     }
     // The chip is genuinely gone — Day view renders one day, Week view seven, so

@@ -585,6 +585,31 @@ function renderDay() {
 }
 
 describe('DayView — drag the time, edge-drag the duration', () => {
+  // The cross-agent seam: MonthGrid reveals marks by CONTAINER width, so a job
+  // moved onto a busy day can re-render as a display:none node. querySelector
+  // finds it, focus() no-ops, and the early return used to skip the fallback —
+  // focus fell to <body>. jsdom has no layout, so the hidden state is simulated
+  // the only way that is honest here: a node that refuses focus.
+  it('falls back when the moved chip exists but cannot take focus', async () => {
+    const { container } = renderMonth()
+    const handle = handleFor(container, 'event:a')
+    handle.focus()
+
+    const realFocus = HTMLElement.prototype.focus
+    const noop = vi.fn(function (this: HTMLElement) {
+      if (this.getAttribute('data-item-key') === 'event:a') return // display:none
+      realFocus.call(this)
+    })
+    HTMLElement.prototype.focus = noop as typeof realFocus
+    try {
+      fireEvent.keyDown(handle, { key: ']' })
+      await waitFor(() => expect(rescheduleCalendarItem).toHaveBeenCalled())
+      expect(document.activeElement).not.toBe(document.body)
+    } finally {
+      HTMLElement.prototype.focus = realFocus
+    }
+  })
+
   // WCAG 2.4.3. Day view renders ONE day, so `[`/`]` moves the job clean out of
   // the DOM. The key-based re-focus finds nothing and focus used to fall to
   // <body> — silently, on every press, in the exact feature this branch ships.
