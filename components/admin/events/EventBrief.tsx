@@ -273,7 +273,20 @@ export function EventBrief({ orgSlug, eventSlug, event, kpis, today, isAdmin, al
 
             {nba && (
               <div className="mt-4">
-                <Button size="touch" nativeButton={false} render={<Link href={hrefFor(nba.target)} />}>
+                {/* Call-site wrap override: the kit base is whitespace-nowrap +
+                    fixed h-11, but this label is long AND dynamic ('Confirm
+                    site details (power, water, access) — 9d overdue') — at
+                    375px the nowrap button ran ~140px past the viewport with
+                    the overdue tail clipped invisible (an overflow-hidden
+                    ancestor, so no scroll either). Wrap instead: 44px stays
+                    the MINIMUM touch height, the button grows to two lines,
+                    and the trailing chevron keeps its own flex slot. */}
+                <Button
+                  size="touch"
+                  nativeButton={false}
+                  className="h-auto min-h-11 py-2 text-left whitespace-normal"
+                  render={<Link href={hrefFor(nba.target)} />}
+                >
                   {nba.label}
                   <ChevronRight />
                 </Button>
