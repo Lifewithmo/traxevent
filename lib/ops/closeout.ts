@@ -100,9 +100,46 @@ function hasRecordedActuals(actuals: OpsActuals | undefined): boolean {
     || actuals.waste_notes !== undefined
 }
 
+/** The season strip is a rollup, not an archive — at most this many doc gets. */
+export const SERIES_ROLLUP_CAP = 30
+
+export interface SeriesRollupSelection {
+  /** Day ids the rollup actually reads (at most `cap`). */
+  readIds: string[]
+  /** Day ids past the cap — never read. Callers owe these an honest
+   *  "beyond the rollup" state, never the failed-read cell/copy. */
+  beyondCapIds: string[]
+}
+
+/**
+ * Which of a season's days the capped rollup reads. A season can grow past
+ * the cap across repeated extends (lib/occasions/series.ts), and the verdict
+ * matters most late in the season — so days that can already hold a closeout
+ * (event_start <= today) win the budget, NEWEST first; any remaining budget
+ * goes to upcoming days, soonest first. Pure: no Firestore, fully testable.
+ */
+export function selectSeriesRollupDays(
+  days: { id: string; event_start: string }[],
+  today: string,
+  cap = SERIES_ROLLUP_CAP,
+): SeriesRollupSelection {
+  const past = days
+    .filter((d) => d.event_start.slice(0, 10) <= today)
+    .sort((a, b) => b.event_start.localeCompare(a.event_start) || b.id.localeCompare(a.id))
+  const future = days
+    .filter((d) => d.event_start.slice(0, 10) > today)
+    .sort((a, b) => a.event_start.localeCompare(b.event_start) || a.id.localeCompare(b.id))
+  const readIds = [...past, ...future].slice(0, cap).map((d) => d.id)
+  const read = new Set(readIds)
+  return { readIds, beyondCapIds: days.filter((d) => !read.has(d.id)).map((d) => d.id) }
+}
+
 /**
  * Closeout docs for a series' days — direct doc gets via Promise.all, capped
- * at 30 (a weekly season; the season strip is a rollup, not an archive).
+ * at SERIES_ROLLUP_CAP as a read-cost backstop. Callers with more days than
+ * the cap must pick WHICH days to read via selectSeriesRollupDays (closeouts
+ * live on recent days, not the season's oldest) and give the unselected rest
+ * a distinct beyond-the-rollup state.
  * Failed ≠ missing: a successful read of a nonexistent doc maps to `null`
  * ("not closed out"), while a FAILED read is absent from the result entirely,
  * so callers render "unknown" — never a false $0 day.
@@ -112,7 +149,7 @@ export async function listSeriesCloseoutsCore(
   eventIds: string[],
 ): Promise<Record<string, OpsCloseout | null>> {
   const reads = await Promise.all(
-    eventIds.slice(0, 30).map(async (id) => {
+    eventIds.slice(0, SERIES_ROLLUP_CAP).map(async (id) => {
       try {
         return { id, closeout: await getCloseoutCore(orgId, id) }
       } catch {

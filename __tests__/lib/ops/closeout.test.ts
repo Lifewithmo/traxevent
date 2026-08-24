@@ -21,6 +21,7 @@ import { getWorkPackagesByIdsCore } from '@/lib/ops/work-packages'
 import { listResourcesCore } from '@/lib/ops/resources'
 import {
   saveActualsCore, closeoutSummaryCore, completeCloseoutCore, listSeriesCloseoutsCore,
+  selectSeriesRollupDays, SERIES_ROLLUP_CAP,
 } from '@/lib/ops/closeout'
 
 const PLAN = {
@@ -173,6 +174,46 @@ describe('listSeriesCloseoutsCore', () => {
     const out = await listSeriesCloseoutsCore('o1', ids)
     expect(closeoutGetSpy).toHaveBeenCalledTimes(30)
     expect(Object.keys(out)).toHaveLength(30)
+  })
+})
+
+describe('selectSeriesRollupDays', () => {
+  // A weekly day per index: day(0) = 2026-01-04, day(1) = 2026-01-11, …
+  const day = (i: number) => {
+    const d = new Date(Date.UTC(2026, 0, 4 + i * 7))
+    return { id: `d${i}`, event_start: d.toISOString().slice(0, 10) }
+  }
+
+  it('an extended season reads the NEWEST 30 days <= today — never the oldest 30', () => {
+    // 34-week season, all past (the "created 30 + one extend" case): the 4
+    // OLDEST days fall beyond the cap; yesterday's market is always read.
+    const days = Array.from({ length: 34 }, (_, i) => day(i))
+    const today = '2027-01-01' // after every day in the season
+    const { readIds, beyondCapIds } = selectSeriesRollupDays(days, today)
+    expect(readIds).toHaveLength(SERIES_ROLLUP_CAP)
+    expect(readIds[0]).toBe('d33')                        // newest first
+    expect(readIds).toContain('d33')
+    expect(readIds).toContain('d4')
+    expect(beyondCapIds.sort()).toEqual(['d0', 'd1', 'd2', 'd3'])
+  })
+
+  it('days that can hold a closeout (<= today) win the budget over future days', () => {
+    // Mid-season: 28 past + 6 future. All 28 past days are read; the two
+    // soonest future days take the remaining budget; the rest sit beyond.
+    const days = Array.from({ length: 34 }, (_, i) => day(i))
+    const today = day(27).event_start // day 27 is "today" — 28 days <= today
+    const { readIds, beyondCapIds } = selectSeriesRollupDays(days, today)
+    for (let i = 0; i <= 27; i++) expect(readIds).toContain(`d${i}`)
+    expect(readIds).toContain('d28')                      // soonest future
+    expect(readIds).toContain('d29')
+    expect(beyondCapIds.sort()).toEqual(['d30', 'd31', 'd32', 'd33'])
+  })
+
+  it('a season inside the cap reads every day — nothing beyond', () => {
+    const days = Array.from({ length: 12 }, (_, i) => day(i))
+    const { readIds, beyondCapIds } = selectSeriesRollupDays(days, day(5).event_start)
+    expect(readIds).toHaveLength(12)
+    expect(beyondCapIds).toEqual([])
   })
 })
 

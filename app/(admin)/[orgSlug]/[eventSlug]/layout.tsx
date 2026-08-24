@@ -24,8 +24,11 @@ export default async function EventLayout({
   const allowed = allowedEventPages(member, eventId, [...EVENT_PAGES], event.department_id ?? null)
   const enabledModules = resolveEnabledModules(org.industry_pack_id)
   const kind = kindOf(event)
+  // One role line, three consumers: the market-day Closeout nav row (spine tabs
+  // + sidebar), and the band's money gate below.
+  const isAdmin = member.role === 'owner' || member.role === 'admin'
 
-  const navItems = buildEventNav({ kind, terminology, allowedPages: allowed, enabledModules })
+  const navItems = buildEventNav({ kind, terminology, allowedPages: allowed, enabledModules, isAdmin })
 
   // Computed server-side and passed down so countdown math is deterministic
   // and testable (same UTC day convention as lib/ops/readiness.ts). Passed to
@@ -49,7 +52,7 @@ export default async function EventLayout({
           // B4: money (families-financial AND lead-AR) is owner/admin only —
           // a role gate from the already-loaded member doc, deliberately
           // independent of the roster-less allowedPages strip above.
-          includeMoney: member.role === 'owner' || member.role === 'admin',
+          includeMoney: isAdmin,
           today,
           // Band-only call: the band renders none of the brief facts, so skip
           // the closeout + itinerary reads and the blocker math. On the
@@ -71,6 +74,7 @@ export default async function EventLayout({
         terminology={terminology}
         allowedEventPages={allowed}
         enabledModules={enabledModules}
+        isAdmin={isAdmin}
       />
       {/* A div, not <main>: this layout nests inside the org layout, whose <main>
           is the page's single main landmark — a second one is invalid HTML. The

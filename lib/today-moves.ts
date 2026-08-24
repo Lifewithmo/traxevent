@@ -183,6 +183,11 @@ export interface Agenda {
   upcoming: AgendaEntry[]
   /** Every day in the window, so empty days can still be shown. */
   windowDays: string[]
+  /** Viewer is owner/admin. Gates the market-day "Close out" deep-links —
+   *  the closeout page bounces everyone else, and a link that can only
+   *  dead-end must never render. Optional so hand-built fixtures stay valid
+   *  (absent = not admin); getTodayAgenda always sets it. */
+  isAdmin?: boolean
 }
 
 /** Whole days between two YYYY-MM-DD dates (to - from). */

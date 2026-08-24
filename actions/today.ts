@@ -64,5 +64,8 @@ export async function getTodayAgenda(orgId: string): Promise<Agenda> {
   )
   const opsByEventId: Record<string, AgendaOps> = {}
   for (const r of reads) if (r) opsByEventId[r.eventId] = r.ops
-  return attachAgendaOps(agenda, opsByEventId)
+  // Same role line the closeout page's own guard draws: the rail renders the
+  // market-day "Close out" deep-links only for a viewer the page won't bounce.
+  const isAdmin = member.role === 'owner' || member.role === 'admin'
+  return { ...attachAgendaOps(agenda, opsByEventId), isAdmin }
 }
