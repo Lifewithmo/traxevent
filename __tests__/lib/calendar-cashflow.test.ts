@@ -3,7 +3,19 @@ import { buildRunway, type RunwayInvoice } from '@/lib/calendar-cashflow'
 import type { CalendarItem } from '@/lib/calendar'
 import type { Event } from '@/lib/types'
 
-const TODAY = new Date('2026-08-16T00:00:00.000Z')
+/** A clock with explicitly chosen LOCAL date parts and UTC instant. buildRunway
+ *  reads "today" off the local parts, so a real `new Date('…T00:00:00.000Z')`
+ *  is the 15th in Denver and the 16th in London — every date boundary in this
+ *  file would then depend on the machine that ran it. */
+const clock = (local: [number, number, number], iso: string) =>
+  ({
+    getFullYear: () => local[0],
+    getMonth: () => local[1] - 1,
+    getDate: () => local[2],
+    toISOString: () => iso,
+  }) as unknown as Date
+
+const TODAY = clock([2026, 8, 16], '2026-08-16T12:00:00.000Z')
 
 const evt = (over: Partial<Event>): Event => ({
   id: 'e', name: 'Job', slug: 'job', year: 2026, status: 'active', event_type_id: 'et',
@@ -64,9 +76,9 @@ describe('buildRunway', () => {
     const items = [due({ id: 'inv', leadId: 'L', amount: 1000, date: '2026-08-20' })]
     const runway = buildRunway(items, events, TODAY, [])
     expect(Object.keys(runway[0])).toEqual([
-      'eventId', 'title', 'date', 'inflowBefore', 'dueAfter', 'contributions', 'overdueBefore',
-      'billing', 'untimedOwed', 'leadId', 'boothFee', 'carriedIn', 'cashIn', 'cumulative',
-      'firstShortfall',
+      'eventId', 'title', 'date', 'pastDue', 'inflowBefore', 'dueAfter', 'contributions',
+      'billing', 'untimedOwed', 'leadId', 'boothFee', 'windowFrom', 'carriedIn', 'cashIn',
+      'cashInThisJob', 'cashInOther', 'agedAr', 'cumulative', 'firstShortfall',
     ])
     // The one COST field here is an outflow. Nothing on this shape may name
     // revenue, booked value, margin or profit — this is not a P&L.
@@ -104,10 +116,15 @@ describe('buildRunway', () => {
     expect(runway.find((r) => r.eventId === 'far')!.inflowBefore).toBe(0)
   })
 
-  it('still counts an overdue receivable as inflow before the job', () => {
+  it('does NOT count an already-delinquent receivable as inflow expected before the job', () => {
     const events = [evt({ id: 'j', lead_id: 'L', event_start: '2026-08-22' })]
     const items = [due({ id: 'overdue', leadId: 'L', amount: 700, date: '2026-08-05' })] // due before today
-    expect(buildRunway(items, events, TODAY, [])[0].inflowBefore).toBe(700)
+    const [job] = buildRunway(items, events, TODAY, [])
+    // The due date passed and the money did not arrive. That is aged debt, not a
+    // forecast — "expected to land" must not include it.
+    expect(job.inflowBefore).toBe(0)
+    expect(job.pastDue).toBe(700)
+    expect(job.contributions[0].timing).toBe('overdue')
   })
 
   it('uses the LOCAL calendar date for "today", not the UTC date (Americas evening boundary)', () => {
@@ -169,24 +186,26 @@ describe('buildRunway', () => {
       expect(href).not.toBe('/acme/leads/L')
     })
 
-    it('RECONCILES: the before contributions sum to inflowBefore and the after ones to dueAfter', () => {
+    it('RECONCILES: the three timing buckets sum to pastDue / inflowBefore / dueAfter', () => {
       const events = [evt({ id: 'j', lead_id: 'L', event_start: '2026-08-22' })]
       const items = [
-        due({ id: 'a', leadId: 'L', amount: 1200.5, date: '2026-08-01' }),
+        due({ id: 'a', leadId: 'L', amount: 1200.5, date: '2026-08-01' }), // already delinquent
         due({ id: 'b', leadId: 'L', amount: 340.25, date: '2026-08-22' }),
         due({ id: 'c', leadId: 'L', amount: 90.3, date: '2026-08-23' }),
         due({ id: 'd', leadId: 'L', amount: 10.7, date: '2026-09-01' }),
       ]
       const [job] = buildRunway(items, events, TODAY, [])
-      const sum = (t: 'before' | 'after') =>
+      const sum = (t: 'overdue' | 'before' | 'after') =>
         Math.round(job.contributions.filter((c) => c.timing === t).reduce((s, c) => s + c.amount, 0) * 100) / 100
+      expect(sum('overdue')).toBe(job.pastDue)
       expect(sum('before')).toBe(job.inflowBefore)
       expect(sum('after')).toBe(job.dueAfter)
-      expect(job.inflowBefore).toBe(1540.75)
+      expect(job.pastDue).toBe(1200.5)
+      expect(job.inflowBefore).toBe(340.25)
       expect(job.dueAfter).toBe(101)
     })
 
-    it('orders the build-up before-then-after, each by due date', () => {
+    it('orders the build-up past-due, then before, then after, each by due date', () => {
       const events = [evt({ id: 'j', lead_id: 'L', event_start: '2026-08-22' })]
       const items = [
         due({ id: 'late', leadId: 'L', amount: 1, date: '2026-09-01' }),
@@ -195,9 +214,10 @@ describe('buildRunway', () => {
       ]
       const [job] = buildRunway(items, events, TODAY, [])
       expect(job.contributions.map((c) => c.invoiceId)).toEqual(['first', 'second', 'late'])
+      expect(job.contributions.map((c) => c.timing)).toEqual(['overdue', 'before', 'after'])
     })
 
-    it('marks an overdue contribution and rolls it up into overdueBefore', () => {
+    it('marks an overdue contribution and rolls it up into pastDue, never into inflowBefore', () => {
       const events = [evt({ id: 'j', lead_id: 'L', event_start: '2026-08-22' })]
       const items = [
         due({ id: 'late', leadId: 'L', amount: 800, date: '2026-06-01' }), // ~76 days overdue
@@ -206,9 +226,128 @@ describe('buildRunway', () => {
       const [job] = buildRunway(items, events, TODAY, [])
       expect(job.contributions.find((c) => c.invoiceId === 'late')).toMatchObject({ overdue: true, aging: 'd61_90' })
       expect(job.contributions.find((c) => c.invoiceId === 'soon')!.overdue).toBe(false)
-      // the honest reading of "$1,000 expected": 80% of it is already late
-      expect(job.overdueBefore).toBe(800)
+      // the honest reading: $800 is aged debt, only $200 is actually expected
+      expect(job.pastDue).toBe(800)
+      expect(job.inflowBefore).toBe(200)
+    })
+
+    it('keeps `overdue` and `timing: "overdue"` in lockstep — one basis, two readings', () => {
+      const events = [evt({ id: 'j', lead_id: 'L', event_start: '2026-08-22' })]
+      const items = [
+        due({ id: 'a', leadId: 'L', amount: 1, date: '2026-06-01' }),
+        due({ id: 'b', leadId: 'L', amount: 1, date: '2026-08-15' }), // yesterday
+        due({ id: 'c', leadId: 'L', amount: 1, date: '2026-08-16' }), // today — NOT late yet
+        due({ id: 'd', leadId: 'L', amount: 1, date: '2026-08-22' }),
+        due({ id: 'e', leadId: 'L', amount: 1, date: '2026-09-30' }),
+      ]
+      const [job] = buildRunway(items, events, TODAY, [])
+      for (const c of job.contributions) {
+        expect(c.overdue).toBe(c.timing === 'overdue')
+      }
+      expect(job.contributions.filter((c) => c.overdue).map((c) => c.invoiceId)).toEqual(['a', 'b'])
+    })
+
+    it('treats a receivable due TODAY as still expected, not as aged debt (boundary)', () => {
+      const events = [evt({ id: 'j', lead_id: 'L', event_start: '2026-08-22' })]
+      const items = [due({ id: 'today', leadId: 'L', amount: 500, date: '2026-08-16' })]
+      const [job] = buildRunway(items, events, TODAY, [])
+      expect(job.pastDue).toBe(0)
+      expect(job.inflowBefore).toBe(500)
+      expect(job.cashIn).toBe(500)
+      expect(job.agedAr).toBe(0)
+    })
+  })
+
+  // ── Aged AR: debt is not a forecast ────────────────────────────────────────
+
+  describe('delinquent receivables are aged debt, never cash in hand', () => {
+    it('does not fund the next job out of a receivable that is ten months late', () => {
+      // The reviewer's reproduction. One open invoice, $12,000, due 2025-11-01,
+      // on a lead whose event is long past. The next booked job is Sep Fair,
+      // booth_fee 500, never invoiced. The shipped code answered
+      // { cashIn: 12000, cumulative: 11500 } and printed "Stays positive".
+      const events = [
+        evt({ id: 'old', name: 'Last autumn', lead_id: 'OLD', event_start: '2025-11-15' }),
+        evt({ id: 'fair', name: 'Sep Fair', lead_id: 'NEW', event_start: '2026-09-01', booth_fee: 500 }),
+      ]
+      const items = [due({ id: 'stale', leadId: 'OLD', amount: 12000, date: '2025-11-01' })]
+      const runway = buildRunway(items, events, TODAY, [])
+      expect(runway).toHaveLength(1)
+      const [job] = runway
+      expect(job.cashIn).toBe(0)
+      expect(job.cumulative).toBe(-500) // the truth: a $500 booth fee and no money
+      expect(job.firstShortfall).toBe(true)
+      // …and the $12,000 is not swallowed — it is reported as what it is.
+      expect(job.agedAr).toBe(12000)
+      expect(job.billing).toBe('uninvoiced')
+    })
+
+    it('reports aged AR on every row, because the hole does not close as jobs pass', () => {
+      const events = [
+        evt({ id: 'a', event_start: '2026-08-20' }),
+        evt({ id: 'b', event_start: '2026-09-10' }),
+      ]
+      const items = [due({ id: 'stale', leadId: 'Z', amount: 2500, date: '2026-05-01' })]
+      expect(buildRunway(items, events, TODAY, []).map((r) => r.agedAr)).toEqual([2500, 2500])
+    })
+
+    it('counts aged AR across every lead, anchored or not, and rounds it', () => {
+      const events = [evt({ id: 'a', lead_id: 'L', event_start: '2026-08-20' })]
+      const items = [
+        due({ id: 'anchored', leadId: 'L', amount: 100.11, date: '2026-08-01' }),
+        due({ id: 'orphan', leadId: 'GONE', amount: 200.22, date: '2026-07-01' }),
+        due({ id: 'future', leadId: 'L', amount: 999, date: '2026-08-19' }),
+      ]
+      const [job] = buildRunway(items, events, TODAY, [])
+      expect(job.agedAr).toBe(300.33)
+      expect(job.cashIn).toBe(999)
+      expect(job.cumulative).toBe(999)
+    })
+
+    it('leaves the runway at zero — not positive — when every receivable is delinquent', () => {
+      const events = [evt({ id: 'a', lead_id: 'L', event_start: '2026-08-20' })]
+      const items = [due({ id: 'stale', leadId: 'L', amount: 4000, date: '2026-01-01' })]
+      const [job] = buildRunway(items, events, TODAY, [])
+      expect(job.cashIn).toBe(0)
+      expect(job.cumulative).toBe(0)
+      expect(job.agedAr).toBe(4000)
+    })
+  })
+
+  // ── One basis for "today", whatever the viewer's clock says ────────────────
+
+  describe('a single "today" for timing AND aging', () => {
+    // Each clock below has a LOCAL date and a UTC date that DISAGREE — the daily
+    // window in which the two bases in the shipped module diverged.
+
+    it('does not call a receivable overdue on its own due date (Denver, 19:00)', () => {
+      // Denver 2026-08-16 19:00 → 2026-08-17T01:00Z. The customer has all of the
+      // 16th to pay; a UTC-derived aging basis marks them late at 18:00 local.
+      const now = clock([2026, 8, 16], '2026-08-17T01:00:00.000Z')
+      const events = [evt({ id: 'j', lead_id: 'L', event_start: '2026-08-22' })]
+      const items = [due({ id: 'i', leadId: 'L', amount: 1000, date: '2026-08-16' })]
+      const [job] = buildRunway(items, events, now, [])
+      expect(job.contributions[0].aging).toBe('due_today')
+      expect(job.contributions[0].overdue).toBe(false)
+      expect(job.pastDue).toBe(0)
       expect(job.inflowBefore).toBe(1000)
+      expect(job.agedAr).toBe(0)
+    })
+
+    it('does not read a genuinely late receivable as current (Sydney, 08:00)', () => {
+      // Sydney 2026-08-17 08:00 → 2026-08-16T22:00Z. Yesterday's invoice IS late;
+      // a UTC-derived basis calls it due-today for another ten hours.
+      const now = clock([2026, 8, 17], '2026-08-16T22:00:00.000Z')
+      const events = [evt({ id: 'j', lead_id: 'L', event_start: '2026-08-22' })]
+      const items = [due({ id: 'i', leadId: 'L', amount: 1000, date: '2026-08-16' })]
+      const [job] = buildRunway(items, events, now, [])
+      expect(job.contributions[0].aging).toBe('d1_30')
+      expect(job.contributions[0].overdue).toBe(true)
+      expect(job.pastDue).toBe(1000)
+      expect(job.inflowBefore).toBe(0)
+      // and the cash column agrees with the aging — one basis, not two
+      expect(job.cashIn).toBe(0)
+      expect(job.agedAr).toBe(1000)
     })
   })
 
@@ -362,6 +501,55 @@ describe('buildRunway', () => {
       const runway = buildRunway(items, events, TODAY, [])
       expect(runway.map((r) => r.cashIn)).toEqual([1000, 0])
       expect(runway.map((r) => r.cumulative)).toEqual([1000, 1000])
+    })
+
+    it('splits cashIn by WHOSE money it is, so the two bases on the row reconcile', () => {
+      // The row shows "what this job's client owes" (anchored to the lead) next
+      // to "cash position at this job" (chronological, every lead). Without the
+      // split those two adjacent figures differ by $4,000 with nothing to
+      // explain the gap.
+      const events = [
+        evt({ id: 'j', name: 'Alder wedding', lead_id: 'A', event_start: '2026-09-01' }),
+        evt({ id: 'other', lead_id: 'B', event_start: '2026-09-30' }),
+      ]
+      const items = [
+        due({ id: 'mine', leadId: 'A', amount: 1000, date: '2026-08-25' }),
+        due({ id: 'theirs', leadId: 'B', amount: 4000, date: '2026-08-26' }),
+      ]
+      const [job] = buildRunway(items, events, TODAY, [])
+      expect(job.inflowBefore).toBe(1000)
+      expect(job.cashIn).toBe(5000)
+      expect(job.cashInThisJob).toBe(1000)
+      expect(job.cashInOther).toBe(4000)
+    })
+
+    it('RECONCILES on every row: cashInThisJob + cashInOther = cashIn', () => {
+      const events = [
+        evt({ id: 'a', lead_id: 'A', event_start: '2026-08-20' }),
+        evt({ id: 'b', lead_id: 'B', event_start: '2026-09-10' }),
+        evt({ id: 'c', lead_id: 'C', event_start: '2026-09-20' }),
+      ]
+      const items = [
+        due({ id: 'ia', leadId: 'A', amount: 1000.25, date: '2026-08-18' }),
+        due({ id: 'ib', leadId: 'B', amount: 400.5, date: '2026-09-05' }),
+        due({ id: 'ix', leadId: 'A', amount: 60.25, date: '2026-09-08' }),
+        due({ id: 'orphan', leadId: 'GONE', amount: 12, date: '2026-09-19' }),
+      ]
+      for (const r of buildRunway(items, events, TODAY, [])) {
+        expect(Math.round((r.cashInThisJob + r.cashInOther) * 100) / 100).toBe(r.cashIn)
+      }
+    })
+
+    it('names the window each cashIn figure covers — it is not "everything up to now"', () => {
+      const events = [
+        evt({ id: 'a', event_start: '2026-08-20' }),
+        evt({ id: 'b', event_start: '2026-09-10' }),
+      ]
+      const runway = buildRunway([], events, TODAY, [])
+      // the first window opens TODAY, never at the dawn of time
+      expect(runway[0].windowFrom).toBe('2026-08-16')
+      // and each later one opens the day after the previous job
+      expect(runway[1].windowFrom).toBe('2026-08-21')
     })
 
     it('treats a missing or non-positive booth_fee as no committed cost', () => {

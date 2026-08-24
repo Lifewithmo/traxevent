@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { buttonVariants } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
+import { formatMoney } from '@/lib/money'
 import { cn } from '@/lib/utils'
 import { RunwayRow } from '@/components/admin/calendar/RunwayRow'
 import type { RunwayJob } from '@/lib/calendar-cashflow'
@@ -51,8 +52,15 @@ function shortDate(ymd: string): string {
  * Deliberately carries no money figure: the amounts already live on the rows and
  * in the ledger behind them, and a headline that restates a row's number is the
  * same value rendered twice.
+ *
+ * FOUR states, not two. The shipped version branched on `firstShortfall` alone,
+ * so anything that was not negative fell into the reassurance branch — including
+ * an org with no invoices at all, whose running balance is 0 by construction.
+ * That printed "Stays positive through Sep 10" directly above "2 jobs still to
+ * bill": a confident verdict derived from no data whatsoever. A claim needs
+ * something to be a claim ABOUT.
  */
-function verdict(runway: RunwayJob[]): { tone: string; text: string } {
+function verdict(runway: RunwayJob[], agedAr: number): { tone: string; text: string } {
   const breaks = runway.find((j) => j.firstShortfall)
   if (breaks) {
     return {
@@ -61,6 +69,19 @@ function verdict(runway: RunwayJob[]): { tone: string; text: string } {
     }
   }
   const last = runway[runway.length - 1]
+  // Nothing moves in or out across the whole horizon, so "positive" would be
+  // describing a balance of zero that no receivable and no cost ever touched.
+  if (!runway.some((j) => j.cashIn !== 0 || j.boothFee !== 0)) {
+    const owedSomewhere =
+      agedAr > 0 ||
+      runway.some((j) => j.pastDue !== 0 || j.inflowBefore !== 0 || j.dueAfter !== 0 || j.untimedOwed !== 0)
+    return {
+      tone: 'text-muted-foreground',
+      text: owedSomewhere
+        ? `Nothing is scheduled to land through ${shortDate(last.date)}`
+        : 'No receivables on file yet',
+    }
+  }
   return {
     tone: 'text-muted-foreground',
     text: `Stays positive through ${shortDate(last.date)}`,
@@ -85,7 +106,11 @@ export function RunwayStrip({ orgSlug, runway, dayHref }: RunwayStripProps) {
     (n, j) => (j.billing === 'uninvoiced' || j.billing === 'draft' ? n + 1 : n),
     0
   )
-  const punchline = runway.length > 0 ? verdict(runway) : null
+  // A standing hole, identical on every row by construction (see `agedAr`) —
+  // read off the first rather than summed, which would multiply it by the
+  // number of jobs.
+  const agedAr = runway[0]?.agedAr ?? 0
+  const punchline = runway.length > 0 ? verdict(runway, agedAr) : null
 
   return (
     <section aria-label="Cash runway" data-rail-section="runway" className="px-4 py-3">
@@ -107,6 +132,20 @@ export function RunwayStrip({ orgSlug, runway, dayHref }: RunwayStripProps) {
               <p className="text-[11px] leading-tight font-medium text-[var(--warn-fg)]">
                 {unbilled} {unbilled === 1 ? 'job' : 'jobs'} still to bill
               </p>
+            ) : null}
+            {/* Aged AR is EXCLUDED from every figure below, because a due date
+                that has passed on an unpaid invoice is a failed forecast, not
+                cash. Excluding it silently would be the same lie in the other
+                direction, so it gets its own line — and a destination, because
+                chasing it is a different job from waiting for money that is not
+                late yet. */}
+            {agedAr > 0 ? (
+              <Link
+                href={`/${orgSlug}/invoices`}
+                className="flex min-h-11 items-center rounded-md px-1 text-[11px] font-semibold text-[var(--danger-fg)] underline underline-offset-2 transition-colors hover:bg-sidebar-hover focus-visible:bg-sidebar-hover motion-reduce:transition-none"
+              >
+                {`${formatMoney(agedAr)} past due — not counted, chase it`} &rarr;
+              </Link>
             ) : null}
           </>
         ) : null}

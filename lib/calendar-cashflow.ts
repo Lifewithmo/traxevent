@@ -10,11 +10,28 @@ import { todayYmd as localDateOf } from '@/lib/opportunity-detail'
 // and what committed cost that job carries. It says nothing about profit, margin,
 // or revenue. No fetching, no React, no server imports.
 //
+// THE QUESTION THIS ANSWERS IS A FORECAST: "will the cash be there when I need
+// it?" That single sentence decides how a delinquent receivable is treated. An
+// invoice whose due date has passed and which is still unpaid is not forecast
+// inflow — the forecast for it already ran, and it failed. Counting it as money
+// that landed makes the runway most reassuring exactly when the operator is in
+// the most trouble, so it is EXCLUDED from the running balance and reported
+// separately as `agedAr`: aged debt, which is a different thing to do (chase it)
+// than waiting for money that is not late yet. It is never silently subtracted —
+// dropping $12,000 out of a number with no trace would be its own lie.
+//
 // Everything here must SHOW ITS WORK. A number the operator cannot trace is an
 // oracle, and an oracle they cannot check is one they will stop trusting the first
 // time it looks wrong. So every scalar on a RunwayJob is reconcilable from parts
-// that also ship on the row: `inflowBefore`/`dueAfter` from `contributions`, and
-// `cumulative` from `carriedIn + cashIn - boothFee`.
+// that also ship on the row: `pastDue`/`inflowBefore`/`dueAfter` from
+// `contributions`, `cashIn` from `cashInThisJob + cashInOther`, and `cumulative`
+// from `carriedIn + cashIn - boothFee`.
+//
+// TWO BASES, BOTH NAMED. `contributions` (and the three scalars they sum to) are
+// ANCHORED — this job's client, at any date. `cashIn` is CHRONOLOGICAL — every
+// client, inside one window. The row renders them adjacent, so each carries the
+// parts that explain the gap: `windowFrom` names the window, and
+// `cashInThisJob`/`cashInOther` name whose money is in it.
 
 const round2 = (n: number): number => Math.round(n * 100) / 100
 
@@ -31,14 +48,20 @@ export interface RunwayContribution {
   title: string
   /** Outstanding balance (never the gross) — the same figure that was summed. */
   amount: number
-  /** YYYY-MM-DD due date; what placed it before or after the job. */
+  /** YYYY-MM-DD due date; what placed it in one of the three buckets below. */
   dueDate: string
   aging: InvoiceAgingBucket
-  /** Past due. An "expected to land" figure that is mostly 90 days late is a lie
-   *  of omission, so this rides up to the row, not just the expanded panel. */
+  /** Past due as of the module's single "today". Equivalent to
+   *  `timing === 'overdue'` by construction — the aging bucket and the timing
+   *  split read the same clock, and a test pins that they never diverge. */
   overdue: boolean
-  /** Which side of the job's date this lands on. */
-  timing: 'before' | 'after'
+  /** Where this sits relative to the job AND to today:
+   *   • `overdue` — the due date has already passed and it is still unpaid. Aged
+   *     debt. Deliberately its own bucket rather than folded into `before`: it is
+   *     not "expected to land", it is money that was expected and did not come.
+   *   • `before`  — due from today through the job's date.
+   *   • `after`   — due after the job. */
+  timing: 'overdue' | 'before' | 'after'
   /** `/{orgSlug}/leads/{leadId}/invoices/{invoiceId}` — the receivable itself. */
   href: string
 }
@@ -70,16 +93,19 @@ export interface RunwayJob {
   title: string
   /** the job's date (YYYY-MM-DD) — event_start, the live source of truth. */
   date: string
-  /** outstanding receivables anchored here whose due date is on or before the job. */
+  /** ANCHORED HERE and ALREADY LATE: receivables on this job's client whose due
+   *  date has passed. Aged debt, excluded from every forecast figure below and
+   *  from the running balance. Reported so the operator can chase it. */
+  pastDue: number
+  /** outstanding receivables anchored here, due from today through the job date.
+   *  This is what is genuinely expected to land before the job. */
   inflowBefore: number
   /** the remainder anchored here, due after the job. */
   dueAfter: number
-  /** The invoices behind those two figures, `before` first, each by due date.
-   *  Sums EXACTLY: before → inflowBefore, after → dueAfter. */
+  /** The invoices behind those three figures, past-due first, then before, then
+   *  after, each by due date. Sums EXACTLY: overdue → pastDue,
+   *  before → inflowBefore, after → dueAfter. */
   contributions: RunwayContribution[]
-  /** How much of `inflowBefore` is already past due — money the timing counts as
-   *  landing that the customer has, in fact, not sent. */
-  overdueBefore: number
   /** The honest reading of a zero (and of a non-zero). See RunwayBilling. */
   billing: RunwayBilling
   /** Sent, unpaid, and carrying NO due date — so the feed never placed it and the
@@ -90,19 +116,42 @@ export interface RunwayJob {
   /** COMMITTED COST on this job: Event.booth_fee. Outflow side only; it is never
    *  added to any inflow and there is deliberately no booked-value field here. */
   boothFee: number
+  /** First day (YYYY-MM-DD) of the window `cashIn` covers — today for the first
+   *  job, the day after the previous job otherwise. Ships so the row can name the
+   *  window instead of implying `cashIn` is everything owed up to `date`. */
+  windowFrom: string
   /** Running cash position carried in from the previous job (0 at the first). */
   carriedIn: number
-  /** Every outstanding receivable landing since the previous job through this
-   *  job's date — chronological, whoever owes it. */
+  /** Receivables NOT YET LATE landing in `windowFrom … date`, whoever owes them.
+   *  = cashInThisJob + cashInOther. */
   cashIn: number
+  /** The share of `cashIn` owed by THIS job's client — the bridge between the
+   *  chronological cash column and the anchored contributions beside it. */
+  cashInThisJob: number
+  /** The share of `cashIn` owed by everybody else. Named because a row that
+   *  shows "$1,000 owed" next to "+$5,000 lands" owes the reader the $4,000. */
+  cashInOther: number
+  /** Every outstanding receivable that is ALREADY PAST DUE, across all leads, as
+   *  of today. Excluded from `cashIn`/`cumulative` — it is aged debt, not
+   *  forecast inflow — and identical on every row, because a standing hole does
+   *  not close as jobs go by. Surfaced so exclusion never means concealment. */
+  agedAr: number
   /** carriedIn + cashIn − boothFee. The runway's actual answer: will the cash be
-   *  there when this job arrives? Receivables minus committed costs — NOT profit. */
+   *  there when this job arrives? Receivables minus committed costs — NOT profit,
+   *  and NOT inflated by money that is already late. */
   cumulative: number
   /** The FIRST job at which `cumulative` goes negative. */
   firstShortfall: boolean
 }
 
 const ymd = (s: string) => s.slice(0, 10)
+
+/** One day on from a YYYY-MM-DD. UTC-constructed, like every date in this
+ *  module, so it can never shift by an hour in a negative-offset zone. */
+const dayAfter = (d: string): string =>
+  new Date(new Date(`${d}T00:00:00.000Z`).getTime() + 86_400_000).toISOString().slice(0, 10)
+
+const TIMING_RANK: Record<RunwayContribution['timing'], number> = { overdue: 0, before: 1, after: 2 }
 
 /**
  * Ordered upcoming booked jobs (future/today `event_start`, ascending), each with
@@ -126,11 +175,20 @@ export function buildRunway(
   today: Date,
   invoices: RunwayInvoice[]
 ): RunwayJob[] {
-  // "today" is the LOCAL calendar date (the same convention as todayYmd() used
+  // ONE basis for "today", used by every comparison in this module.
+  //
+  // It is the LOCAL calendar date (the same convention as todayYmd() used
   // everywhere else on the page), NOT the UTC date. Deriving it via
   // today.toISOString() drops tonight's jobs and mis-buckets receivables for
   // several hours each evening in any negative-UTC-offset (Americas) org.
   const todayYmd = localDateOf(today)
+  // …and `deriveAging` reads its `now` back out through toISOString(), so it is
+  // handed a Date whose UTC date IS todayYmd rather than the raw clock. Without
+  // this the aging pill runs on a second, different "today": Denver at 19:00 saw
+  // a red "Overdue" before the customer was late, and Sydney read a genuinely
+  // late receivable as current for ten hours. Two bases, one surface, opposite
+  // errors — the hazard the comment above warns about, committed one call deeper.
+  const asOf = new Date(`${todayYmd}T00:00:00.000Z`)
   const live = events.filter((e) => e.status !== 'archived' && e.event_start)
 
   // Upcoming booked jobs, nearest first.
@@ -158,7 +216,7 @@ export function buildRunway(
     // buildCalendarFeed emits `invoice_due` ONLY for a `sent`, dated invoice with
     // a positive balance (lib/calendar.ts), so the lifecycle is known and
     // `amount` IS the outstanding balance — deriveAging's two real inputs.
-    const aging = deriveAging({ dueDate, balance: it.amount, lifecycle: 'sent' }, today)
+    const aging = deriveAging({ dueDate, balance: it.amount, lifecycle: 'sent' }, asOf)
     const list = byEvent.get(anchor.id) ?? []
     list.push({
       invoiceId: it.id,
@@ -167,7 +225,10 @@ export function buildRunway(
       dueDate,
       aging,
       overdue: OVERDUE_AGING.has(aging),
-      timing: dueDate <= ymd(anchor.event_start) ? 'before' : 'after',
+      // Past due beats "before": money whose date has come and gone is not part
+      // of any forecast. Due TODAY is still `before` — the customer has the day.
+      timing:
+        dueDate < todayYmd ? 'overdue' : dueDate <= ymd(anchor.event_start) ? 'before' : 'after',
       // The feed's own href is the OPPORTUNITY (`/{orgSlug}/leads/{leadId}`); the
       // invoice record hangs off it, so the deep link is derivable here without
       // this pure module taking an orgSlug parameter it would only reassemble.
@@ -176,10 +237,11 @@ export function buildRunway(
     byEvent.set(anchor.id, list)
   }
 
-  // before-then-after, each by due date, so the panel reads as a timeline.
+  // past-due, then before, then after; each by due date, so the panel reads as a
+  // timeline that starts with the debt.
   for (const list of byEvent.values()) {
     list.sort((a, b) => {
-      if (a.timing !== b.timing) return a.timing === 'before' ? -1 : 1
+      if (a.timing !== b.timing) return TIMING_RANK[a.timing] - TIMING_RANK[b.timing]
       if (a.dueDate !== b.dueDate) return a.dueDate < b.dueDate ? -1 : 1
       return a.invoiceId < b.invoiceId ? -1 : a.invoiceId > b.invoiceId ? 1 : 0
     })
@@ -222,29 +284,53 @@ export function buildRunway(
   // entirely and invent shortfalls that do not exist. Each receivable is consumed
   // exactly once as the cursor walks the jobs, so nothing is double-counted —
   // including two jobs on the same day, where the second correctly takes in $0.
-  const dated = items
-    .filter((i) => i.kind === 'invoice_due' && i.amount != null)
-    .map((i) => ({ date: ymd(i.date), amount: i.amount as number }))
-    .sort((a, b) => a.date.localeCompare(b.date))
+  //
+  // THE LOWER BOUND IS TODAY. Without it the cursor starts at index 0 and the
+  // FIRST upcoming job absorbs every receivable ever due — including ones months
+  // delinquent, every one of which is unpaid by construction (the feed only emits
+  // `invoice_due` for a sent invoice with a positive balance). That read "the due
+  // date has passed" as "the cash arrived", and it was wrong in the reassuring
+  // direction. Those receivables go to `agedAr` instead: reported, not counted.
+  let agedAr = 0
+  const dated: { date: string; amount: number; leadId?: string }[] = []
+  for (const it of items) {
+    if (it.kind !== 'invoice_due' || it.amount == null) continue
+    const d = ymd(it.date)
+    if (d < todayYmd) {
+      agedAr = round2(agedAr + it.amount)
+      continue
+    }
+    dated.push({ date: d, amount: it.amount, leadId: it.leadId })
+  }
+  dated.sort((a, b) => a.date.localeCompare(b.date))
 
   let cursor = 0
   let running = 0
   let shortfallTaken = false
+  let prevDate: string | null = null
 
   return upcoming.map((e) => {
     const date = ymd(e.event_start)
     const contributions = byEvent.get(e.id) ?? []
     // Derived FROM the contributions, so the build-up can never drift from the
     // total it is supposed to explain.
-    const sum = (t: 'before' | 'after') =>
+    const sum = (t: RunwayContribution['timing']) =>
       round2(contributions.filter((c) => c.timing === t).reduce((s, c) => s + c.amount, 0))
 
-    let cashIn = 0
+    // The window this row's cash figure covers. Named on the row, because
+    // "lands by Sep 10" otherwise reads as "everything owed by Sep 10".
+    const windowFrom = prevDate == null ? todayYmd : dayAfter(prevDate)
+    prevDate = date
+
+    let cashInThisJob = 0
+    let cashInOther = 0
     while (cursor < dated.length && dated[cursor].date <= date) {
-      cashIn += dated[cursor].amount
+      const d = dated[cursor]
+      if (e.lead_id != null && d.leadId === e.lead_id) cashInThisJob = round2(cashInThisJob + d.amount)
+      else cashInOther = round2(cashInOther + d.amount)
       cursor++
     }
-    cashIn = round2(cashIn)
+    const cashIn = round2(cashInThisJob + cashInOther)
 
     const carriedIn = running
     // booth_fee is a COST. It only ever subtracts; a missing or nonsensical value
@@ -260,18 +346,20 @@ export function buildRunway(
       eventId: e.id,
       title: e.name,
       date,
+      pastDue: sum('overdue'),
       inflowBefore: sum('before'),
       dueAfter: sum('after'),
       contributions,
-      overdueBefore: round2(
-        contributions.filter((c) => c.timing === 'before' && c.overdue).reduce((s, c) => s + c.amount, 0)
-      ),
       billing,
       untimedOwed,
       leadId: e.lead_id,
       boothFee,
+      windowFrom,
       carriedIn,
       cashIn,
+      cashInThisJob,
+      cashInOther,
+      agedAr,
       cumulative: running,
       firstShortfall,
     }

@@ -19,16 +19,20 @@ const job = (o: Partial<RunwayJob> = {}): RunwayJob => ({
   eventId: 'e1',
   title: 'Alder wedding',
   date: '2026-08-22',
+  pastDue: 0,
   inflowBefore: 8000,
   dueAfter: 2000,
   contributions: [],
-  overdueBefore: 0,
   billing: 'outstanding',
   untimedOwed: 0,
   leadId: 'L1',
   boothFee: 0,
+  windowFrom: '2026-08-16',
   carriedIn: 0,
   cashIn: 8000,
+  cashInThisJob: 8000,
+  cashInOther: 0,
+  agedAr: 0,
   cumulative: 8000,
   firstShortfall: false,
   ...o,
@@ -36,7 +40,7 @@ const job = (o: Partial<RunwayJob> = {}): RunwayJob => ({
 
 const jobs: RunwayJob[] = [
   job(),
-  job({ eventId: 'e2', title: 'Mission gala', date: '2026-09-05', inflowBefore: 0, dueAfter: 5000, leadId: 'L2', carriedIn: 8000, cashIn: 0, cumulative: 8000 }),
+  job({ eventId: 'e2', title: 'Mission gala', date: '2026-09-05', inflowBefore: 0, dueAfter: 5000, leadId: 'L2', windowFrom: '2026-08-23', carriedIn: 8000, cashIn: 0, cashInThisJob: 0, cashInOther: 0, cumulative: 8000 }),
 ]
 
 describe('RunwayStrip', () => {
@@ -134,6 +138,75 @@ describe('RunwayStrip', () => {
     expect(screen.queryByRole('button', { name: /job 5/i })).not.toBeInTheDocument()
   })
 
+  // ── The headline may not reassure from an empty book ───────────────────────
+
+  describe('the verdict has a third state', () => {
+    const nothing = (o: Partial<RunwayJob> = {}) =>
+      job({ inflowBefore: 0, dueAfter: 0, cashIn: 0, cashInThisJob: 0, cashInOther: 0, cumulative: 0, ...o })
+
+    it('does not claim a positive position from an org with no receivables at all', () => {
+      const many = [
+        nothing({ eventId: 'a', title: 'A', date: '2026-09-01', billing: 'uninvoiced' }),
+        nothing({ eventId: 'b', title: 'B', date: '2026-09-10', billing: 'uninvoiced' }),
+      ]
+      render(<RunwayStrip orgSlug="acme" runway={many} />)
+      // "Stays positive through Sep 10" directly above "2 jobs still to bill"
+      // is a reassurance computed from nothing at all.
+      expect(screen.queryByText(/stays positive/i)).not.toBeInTheDocument()
+      expect(screen.getByText(/no receivables on file/i)).toBeInTheDocument()
+      expect(screen.getByText('2 jobs still to bill')).toBeInTheDocument()
+    })
+
+    it('says nothing is scheduled to land when the only money on file is already late', () => {
+      render(
+        <RunwayStrip orgSlug="acme" runway={[nothing({ agedAr: 12000, billing: 'uninvoiced' })]} />
+      )
+      expect(screen.queryByText(/stays positive/i)).not.toBeInTheDocument()
+      expect(screen.queryByText(/no receivables on file/i)).not.toBeInTheDocument()
+      expect(screen.getByText(/nothing.*scheduled to land/i)).toBeInTheDocument()
+    })
+
+    it('still says "stays positive" when there is real money scheduled to land', () => {
+      render(<RunwayStrip orgSlug="acme" runway={jobs} />)
+      expect(screen.getByText('Stays positive through Sep 5')).toBeInTheDocument()
+    })
+  })
+
+  // ── Aged AR is surfaced, not silently subtracted ───────────────────────────
+
+  describe('delinquent receivables', () => {
+    it('reports the past-due pile the running balance excludes, and where to chase it', () => {
+      render(
+        <RunwayStrip
+          orgSlug="acme"
+          runway={[job({ agedAr: 12000, cashIn: 0, cashInThisJob: 0, cashInOther: 0, boothFee: 500, cumulative: -500, firstShortfall: true, billing: 'uninvoiced', inflowBefore: 0, dueAfter: 0 })]}
+        />
+      )
+      const chase = screen.getByRole('link', { name: /past due/i })
+      expect(chase).toHaveAttribute('href', '/acme/invoices')
+      expect(chase.textContent).toMatch(/\$12,000/)
+      // named as excluded, in words — never signalled by colour alone
+      expect(chase.textContent).toMatch(/not counted/i)
+    })
+
+    it('says nothing about past-due money when there is none', () => {
+      render(<RunwayStrip orgSlug="acme" runway={jobs} />)
+      expect(screen.queryByRole('link', { name: /past due/i })).not.toBeInTheDocument()
+    })
+
+    it('discloses the exclusion inside the ledger, so the running figure is inspectable', () => {
+      render(
+        <RunwayStrip
+          orgSlug="acme"
+          runway={[job({ agedAr: 12000, cashIn: 0, cashInThisJob: 0, cashInOther: 0, boothFee: 500, cumulative: -500, inflowBefore: 0, dueAfter: 0 })]}
+        />
+      )
+      fireEvent.click(screen.getByRole('button', { name: /alder wedding/i }))
+      // the ledger names the exclusion where the balance is read, with the figure
+      expect(screen.getByText(/excludes \$12,000 already past due/i)).toBeInTheDocument()
+    })
+  })
+
   it('counts the unbilled jobs across the whole horizon as the action they are', () => {
     const many: RunwayJob[] = [
       job({ eventId: 'a', title: 'A', billing: 'outstanding' }),
@@ -167,15 +240,28 @@ describe('RunwayStrip', () => {
       render(<RunwayStrip orgSlug="acme" runway={withContributions} />)
       const toggle = screen.getByRole('button', { name: /alder wedding/i })
       expect(toggle).toHaveAttribute('aria-expanded', 'false')
-      const panelId = toggle.getAttribute('aria-controls')!
-      expect(panelId).toBeTruthy()
-      expect(document.getElementById(panelId)).toBeNull()
       expect(screen.queryByText('Balance 1041')).not.toBeInTheDocument()
 
       fireEvent.click(toggle)
       expect(toggle).toHaveAttribute('aria-expanded', 'true')
       // the panel the control names actually exists once open
-      expect(document.getElementById(panelId)).not.toBeNull()
+      expect(document.getElementById(toggle.getAttribute('aria-controls')!)).not.toBeNull()
+    })
+
+    it('never points aria-controls at an element that is not in the document', () => {
+      // The panel mounts only while open, so advertising its id while collapsed
+      // is a dangling IDREF — a promise to assistive tech that nothing keeps.
+      render(<RunwayStrip orgSlug="acme" runway={withContributions} />)
+      const toggle = screen.getByRole('button', { name: /alder wedding/i })
+      expect(toggle).not.toHaveAttribute('aria-controls')
+
+      fireEvent.click(toggle)
+      const panelId = toggle.getAttribute('aria-controls')
+      expect(panelId).toBeTruthy()
+      expect(document.getElementById(panelId!)).not.toBeNull()
+
+      fireEvent.click(toggle)
+      expect(toggle).not.toHaveAttribute('aria-controls')
     })
 
     it('shows the actual invoices behind the figure, each linked to its own record', () => {
@@ -209,10 +295,55 @@ describe('RunwayStrip', () => {
       expect(screen.getByText('−$150')).toBeInTheDocument()
     })
 
-    it('flags the overdue share of an “expected to land” figure', () => {
-      render(<RunwayStrip orgSlug="acme" runway={[job({ inflowBefore: 8000, overdueBefore: 5000 })]} />)
-      expect(screen.getByText(/already overdue/i)).toBeInTheDocument()
+    it('names this client’s past-due balance as debt, not as money "expected to land"', () => {
+      render(<RunwayStrip orgSlug="acme" runway={[job({ inflowBefore: 3000, pastDue: 5000 })]} />)
+      expect(screen.getByText(/past due/i)).toBeInTheDocument()
       expect(screen.getByText('$5,000')).toBeInTheDocument()
+      // the forecast figure is the honest one — the late money is not inside it
+      expect(screen.getByText('$3,000')).toBeInTheDocument()
+      expect(screen.getByText(/expected to land before this job/i)).toBeInTheDocument()
+    })
+
+    it('explains the gap between what THIS client owes and the cash figure beside it', () => {
+      // Lead A owes $1,000; unrelated lead B owes $4,000 landing in the same
+      // window. "Deposit $1,000" sitting directly above "+$5,000" with nothing
+      // between them is a $4,000 hole in a surface whose contract is that every
+      // scalar reconciles from parts that ship on the row.
+      render(
+        <RunwayStrip
+          orgSlug="acme"
+          runway={[
+            job({
+              inflowBefore: 1000,
+              dueAfter: 0,
+              contributions: [contribution({ amount: 1000 })],
+              cashIn: 5000,
+              cashInThisJob: 1000,
+              cashInOther: 4000,
+              cumulative: 5000,
+            }),
+          ]}
+        />
+      )
+      fireEvent.click(screen.getByRole('button', { name: /alder wedding/i }))
+      expect(screen.getByText('+$5,000')).toBeInTheDocument()
+      // the two parts are named and both are on the row, so the $4,000 the
+      // contributions do not explain has somewhere to come from
+      const mine = screen.getByText(/^from this job.s client$/i)
+      expect(mine.parentElement).toHaveTextContent('$1,000')
+      const theirs = screen.getByText(/^from other clients$/i)
+      expect(theirs.parentElement).toHaveTextContent('$4,000')
+    })
+
+    it('names the window a cash figure covers, so "lands" is not read as "all of it"', () => {
+      render(
+        <RunwayStrip
+          orgSlug="acme"
+          runway={[job({ windowFrom: '2026-08-16', date: '2026-08-22', contributions: [contribution()] })]}
+        />
+      )
+      fireEvent.click(screen.getByRole('button', { name: /alder wedding/i }))
+      expect(screen.getByText(/Aug 16\s*–\s*Aug 22/)).toBeInTheDocument()
     })
 
     it('discloses money that carries no due date rather than dropping it', () => {

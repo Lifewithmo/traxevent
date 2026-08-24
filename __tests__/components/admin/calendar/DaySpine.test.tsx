@@ -77,9 +77,10 @@ const detail: DayDetail = {
 
 const runway: RunwayJob[] = [
   {
-    eventId: 'e1', title: 'Ceremony at Alder', date: '2026-08-22', inflowBefore: 900, dueAfter: 0,
-    contributions: [], overdueBefore: 0, billing: 'outstanding', untimedOwed: 0, leadId: 'L1',
-    boothFee: 0, carriedIn: 0, cashIn: 900, cumulative: 900, firstShortfall: false,
+    eventId: 'e1', title: 'Ceremony at Alder', date: '2026-08-22', pastDue: 0, inflowBefore: 900,
+    dueAfter: 0, contributions: [], billing: 'outstanding', untimedOwed: 0, leadId: 'L1',
+    boothFee: 0, windowFrom: '2026-08-18', carriedIn: 0, cashIn: 900, cashInThisJob: 900,
+    cashInOther: 0, agedAr: 0, cumulative: 900, firstShortfall: false,
   },
 ]
 

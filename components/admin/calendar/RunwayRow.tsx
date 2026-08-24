@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { StatusPill } from '@/components/ui/status-pill'
 import { formatMoney } from '@/lib/money'
 import { cn } from '@/lib/utils'
-import type { RunwayJob } from '@/lib/calendar-cashflow'
+import type { RunwayContribution, RunwayJob } from '@/lib/calendar-cashflow'
 
 // ONE runway row, and the thing that stops the strip being an oracle: the money
 // figure is a disclosure, and behind it are the actual invoices that produced it
@@ -14,6 +14,12 @@ import type { RunwayJob } from '@/lib/calendar-cashflow'
 //
 // RECEIVABLES TIMING, never a P&L. `boothFee` is a committed COST and only ever
 // subtracts; there is no revenue, margin or profit figure on this surface.
+//
+// TWO BASES SIT ADJACENT ON THIS ROW, so both are labelled where they are read:
+// the contributions are ANCHORED (this job's client, any date), the ledger's cash
+// figure is CHRONOLOGICAL (every client, one named window). Rendering them next
+// to each other with neither one qualified is how "$1,000 owed" ends up directly
+// above "+$5,000 lands" with nothing to account for the $4,000.
 
 function shortDate(ymd: string): string {
   return new Date(`${ymd.slice(0, 10)}T00:00:00.000Z`).toLocaleDateString(undefined, {
@@ -73,45 +79,56 @@ function MoneyLine({ job }: { job: RunwayJob }) {
     )
   }
   // outstanding
-  if (job.inflowBefore > 0) {
-    return (
-      <span className="text-muted-foreground">
-        <span className="font-semibold tabular-nums text-[var(--money-green)]">
-          {formatMoney(job.inflowBefore)}
-        </span>{' '}
-        expected to land before this job
-        {job.overdueBefore > 0 ? (
-          <span className="mt-0.5 flex items-center gap-1 text-[var(--danger-fg)]">
-            <WarnIcon />
-            <span className="tabular-nums">{formatMoney(job.overdueBefore)}</span>
-            <span>of it already overdue</span>
-          </span>
-        ) : null}
-      </span>
-    )
-  }
   return (
     <span className="text-muted-foreground">
-      Nothing owed lands before this job
-      {job.dueAfter > 0 ? (
-        <span className="block tabular-nums">{formatMoney(job.dueAfter)} owed, due after</span>
+      {/* Debt first. Money whose due date has come and gone is the thing to act
+          on, and it is deliberately NOT inside the "expected" figure below —
+          "expected to land" cannot mean "was expected and never came". */}
+      {job.pastDue > 0 ? (
+        <span className="flex items-center gap-1 text-[var(--danger-fg)]">
+          <WarnIcon />
+          <span className="font-semibold tabular-nums">{formatMoney(job.pastDue)}</span>
+          <span className="font-semibold">past due, not counted</span>
+        </span>
       ) : null}
+      {job.inflowBefore > 0 ? (
+        <span className="block">
+          <span className="font-semibold tabular-nums text-[var(--money-green)]">
+            {formatMoney(job.inflowBefore)}
+          </span>{' '}
+          expected to land before this job
+        </span>
+      ) : (
+        <span className="block">
+          Nothing owed lands before this job
+          {job.dueAfter > 0 ? (
+            <span className="block tabular-nums">{formatMoney(job.dueAfter)} owed, due after</span>
+          ) : null}
+        </span>
+      )}
     </span>
   )
 }
 
-/** The receivables behind `inflowBefore` / `dueAfter`, each a link to the record
- *  that produced it — so a wrong figure is fixable at source rather than merely
- *  doubted. Sums exactly to the two scalars above. */
+/** Named so the three buckets are legible as three different situations rather
+ *  than one undifferentiated pile of "owed". */
+const GROUP_LABEL: Record<RunwayContribution['timing'], string> = {
+  overdue: 'Past due — not counted',
+  before: 'Expected before the job',
+  after: 'Due after the job',
+}
+
+/** The receivables behind `pastDue` / `inflowBefore` / `dueAfter`, each a link to
+ *  the record that produced it — so a wrong figure is fixable at source rather
+ *  than merely doubted. Sums exactly to the three scalars above. */
 function Contributions({ job }: { job: RunwayJob }) {
-  const firstAfter = job.contributions.findIndex((c) => c.timing === 'after')
   return (
     <ul role="list" className="space-y-0.5">
       {job.contributions.map((c, i) => (
         <li key={c.invoiceId}>
-          {i === firstAfter ? (
+          {i === 0 || job.contributions[i - 1].timing !== c.timing ? (
             <p className="px-1 pb-0.5 pt-1.5 text-[10px] font-semibold uppercase tracking-[.05em] text-muted-foreground">
-              Due after the job
+              {GROUP_LABEL[c.timing]}
             </p>
           ) : null}
           <Link
@@ -150,8 +167,18 @@ function Contributions({ job }: { job: RunwayJob }) {
 
 /** The arithmetic behind the running balance. A running-balance column is only
  *  trustworthy if each line's delta is visible, so this is the register the
- *  figure comes off: carried in + landing − committed cost = running. */
+ *  figure comes off: carried in + landing − committed cost = running.
+ *
+ *  Two things the shipped ledger left the reader to guess, both of which made
+ *  the figure irreconcilable with the invoices listed directly above it:
+ *   • WHEN — "Lands by Sep 10" reads as everything owed by Sep 10; it is only
+ *     what lands since the previous job.
+ *   • WHOSE — the cash column is every client, the invoice list is this one. */
 function Ledger({ job }: { job: RunwayJob }) {
+  const landsLabel =
+    job.windowFrom < job.date
+      ? `Lands ${shortDate(job.windowFrom)} – ${shortDate(job.date)}`
+      : `Lands ${shortDate(job.date)}`
   return (
     <dl className="space-y-0.5 text-[11px]">
       <div className="flex items-baseline justify-between gap-2">
@@ -159,11 +186,29 @@ function Ledger({ job }: { job: RunwayJob }) {
         <dd className="font-mono tabular-nums text-foreground">{formatMoney(job.carriedIn)}</dd>
       </div>
       <div className="flex items-baseline justify-between gap-2">
-        <dt className="min-w-0 truncate text-muted-foreground">Lands by {shortDate(job.date)}</dt>
+        <dt className="min-w-0 truncate text-muted-foreground">{landsLabel}</dt>
         <dd className="font-mono tabular-nums text-[var(--money-green)]">
           +{formatMoney(job.cashIn)}
         </dd>
       </div>
+      {/* Only when there IS a gap to account for. If every dollar landing here is
+          this job's client's, the list above already explains the figure. */}
+      {job.cashInOther > 0 ? (
+        <>
+          <div className="flex items-baseline justify-between gap-2 pl-3">
+            <dt className="min-w-0 truncate text-muted-foreground">from this job&rsquo;s client</dt>
+            <dd className="font-mono tabular-nums text-muted-foreground">
+              {formatMoney(job.cashInThisJob)}
+            </dd>
+          </div>
+          <div className="flex items-baseline justify-between gap-2 pl-3">
+            <dt className="min-w-0 truncate text-muted-foreground">from other clients</dt>
+            <dd className="font-mono tabular-nums text-muted-foreground">
+              {formatMoney(job.cashInOther)}
+            </dd>
+          </div>
+        </>
+      ) : null}
       {job.boothFee > 0 ? (
         <div className="flex items-baseline justify-between gap-2">
           <dt className="text-muted-foreground">Booth fee (committed cost)</dt>
@@ -226,7 +271,11 @@ export function RunwayRow({ job, orgSlug, dayHref }: RunwayRowProps) {
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
-        aria-controls={panelId}
+        // The panel mounts only while open, so naming it while collapsed is a
+        // dangling IDREF — a relationship promised to assistive tech that
+        // resolves to nothing. `aria-expanded` already carries the state; the
+        // reference is advertised only while the thing it references exists.
+        aria-controls={open ? panelId : undefined}
         className="flex min-h-11 w-full items-center gap-2 rounded-md px-1 py-1 text-left transition-colors hover:bg-sidebar-hover focus-visible:bg-sidebar-hover motion-reduce:transition-none"
       >
         <span className="min-w-0 flex-1">
@@ -280,6 +329,14 @@ export function RunwayRow({ job, orgSlug, dayHref }: RunwayRowProps) {
               Cash position at this job
             </p>
             <Ledger job={job} />
+            {/* Excluding aged debt from the balance is only honest if the
+                exclusion is visible where the balance is read. Otherwise the
+                operator cannot tell a $12,000 hole from a clean book. */}
+            {job.agedAr > 0 ? (
+              <p className="mt-1 border-t border-sidebar-border pt-1 text-[10px] leading-tight text-[var(--danger-fg)]">
+                {`Excludes ${formatMoney(job.agedAr)} already past due — aged debt, not a forecast.`}
+              </p>
+            ) : null}
           </div>
           {job.untimedOwed > 0 ? (
             <p className="flex items-start gap-1 text-[10px] leading-tight text-[var(--warn-fg)]">

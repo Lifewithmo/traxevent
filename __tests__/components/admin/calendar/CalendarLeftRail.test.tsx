@@ -35,9 +35,10 @@ function rollup(overrides: Partial<WeekRollup> = {}): WeekRollup {
 
 const runway: RunwayJob[] = [
   {
-    eventId: 'e1', title: 'Alder wedding', date: '2026-08-22', inflowBefore: 8000, dueAfter: 2000,
-    contributions: [], overdueBefore: 0, billing: 'outstanding', untimedOwed: 0, leadId: 'L1',
-    boothFee: 150, carriedIn: 0, cashIn: 8000, cumulative: 7850, firstShortfall: false,
+    eventId: 'e1', title: 'Alder wedding', date: '2026-08-22', pastDue: 0, inflowBefore: 8000,
+    dueAfter: 2000, contributions: [], billing: 'outstanding', untimedOwed: 0, leadId: 'L1',
+    boothFee: 150, windowFrom: '2026-08-18', carriedIn: 0, cashIn: 8000, cashInThisJob: 8000,
+    cashInOther: 0, agedAr: 0, cumulative: 7850, firstShortfall: false,
   },
 ]
 
