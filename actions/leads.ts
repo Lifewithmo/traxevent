@@ -6,6 +6,12 @@ import { logActivity } from '@/lib/activity'
 import { createLeadCore, leadsRef, listLeadsCore, updateLeadCore, type LeadUpdate } from '@/lib/crm/leads'
 import { findOrCreateCustomerCore, getCustomerCore } from '@/lib/crm/customers'
 import { convertOpportunityToWorkCore, type ConvertToWorkInput } from '@/lib/crm/convert'
+import { getOrg } from '@/actions/orgs'
+import { listCapacityUnitsCore } from '@/lib/capacity/units'
+import { hasMultiResourceCapacity, computeCapacity } from '@/lib/capacity/capacity'
+import { leadRequirement } from '@/lib/capacity/requirement'
+import { kindLabel } from '@/lib/capacity/labels'
+import { CapacityGuardError } from '@/lib/capacity/guard'
 import type { Lead, LeadStage, LeadWaiting, LostReason, Event, Customer } from '@/lib/types'
 
 // NOTE: this is a 'use server' module — every export must be an async function.
@@ -107,11 +113,91 @@ export async function updateLead(orgId: string, leadId: string, updates: LeadUpd
   }
 }
 
-export async function setLeadStage(orgId: string, leadId: string, stage: LeadStage): Promise<void> {
+const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+/** UTC-safe "Aug 30, 2026" for a `YYYY-MM-DD` string; echoes the input if malformed. */
+function guardDate(ymd: string): string {
+  const [y, m, d] = ymd.split('-').map(Number)
+  const month = MONTH_ABBR[m - 1]
+  if (month === undefined || !Number.isFinite(d) || !Number.isFinite(y)) return ymd
+  return `${month} ${d}, ${y}`
+}
+
+/**
+ * The capacity guard's confirm copy, or null when winning `lead` is clear.
+ *
+ * Fires only for a business-tier org with ≥1 unit and a dated lead. Simulates
+ * this lead as won, then rejects if its date goes over capacity OR its assigned
+ * unit double-books — the same `computeCapacity`/clash math the radar shows, so
+ * the server and the UI agree. Advisory-with-override: the caller passes
+ * `{ override: true }` to skip this entirely (a deliberate "yes, book both").
+ */
+async function capacityGuardMessage(orgId: string, lead: Lead): Promise<string | null> {
+  if (!lead.event_date) return null
+  const org = await getOrg(orgId)
+  if (!org || !hasMultiResourceCapacity(org)) return null
+  const units = await listCapacityUnitsCore(orgId)
+  if (units.length === 0) return null
+
+  const leads = await listLeadsCore(orgId)
+  // Simulate this lead as won on top of the live pipeline (it may still carry its
+  // pre-win stage in the loaded list). If it wasn't in the list at all, add it.
+  let found = false
+  const simulated = leads.map((l) => {
+    if (l.id !== lead.id) return l
+    found = true
+    return { ...l, stage: 'closed_won' as LeadStage }
+  })
+  if (!found) simulated.push({ ...lead, stage: 'closed_won' })
+
+  const day = computeCapacity(simulated, units, [lead.event_date], org).get(lead.event_date)
+  if (!day) return null
+
+  const date = guardDate(lead.event_date)
+
+  // Clash is the more specific, actionable conflict — name the unit(s) THIS
+  // lead's booking double-books (only kinds its requirement actually consumes).
+  const req = leadRequirement(lead, org)
+  const au = lead.assigned_units
+  const ownedClashes = day.clashes.filter((c) =>
+    (c.kind === 'mobile' && req.mobile && au?.mobile === c.unitId) ||
+    (c.kind === 'venue' && req.venue && au?.venue === c.unitId)
+  )
+  if (ownedClashes.length > 0) {
+    const names = ownedClashes.map((c) => c.unitName).join(' & ')
+    return `${names} is already booked on ${date}. Book this one too?`
+  }
+
+  const overKind = day.detail.find((d) => d.demand > d.supply)
+  if (overKind) {
+    const label = kindLabel(org, overKind.kind, overKind.demand)
+    return `${date} is over capacity — ${overKind.demand} ${label} needed but only ${overKind.supply} available. Book this one too?`
+  }
+
+  return null
+}
+
+export async function setLeadStage(
+  orgId: string,
+  leadId: string,
+  stage: LeadStage,
+  opts?: { override?: boolean }
+): Promise<void> {
   await assertOrgAdmin(orgId)
   if (!LEAD_STAGES.includes(stage)) throw new Error('Invalid stage')
   const snap = await leadsRef(orgId).doc(leadId).get()
-  const prevStage = snap.exists ? (snap.data() as Lead).stage : undefined
+  const lead = snap.exists ? (snap.data() as Lead) : undefined
+  const prevStage = lead?.stage
+
+  // Capacity guard: only on a transition INTO closed_won (from a non-won stage),
+  // and only when the operator has NOT already chosen to override. Advisory —
+  // supersedes the Inc-2 client-side pre-confirm; the client catches this and
+  // re-calls with { override: true } on confirm.
+  if (stage === 'closed_won' && prevStage !== 'closed_won' && !opts?.override && lead) {
+    const message = await capacityGuardMessage(orgId, { ...lead, id: leadId })
+    if (message) throw new CapacityGuardError(message)
+  }
+
   await updateLeadCore(orgId, leadId, {
     stage,
     ...(prevStage ? closedAtPatch(prevStage, stage, new Date().toISOString()) : {}),

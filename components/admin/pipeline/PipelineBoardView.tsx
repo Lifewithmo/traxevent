@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { EmptyState } from '@/components/ui/empty-state'
 import { StatusPill } from '@/components/ui/status-pill'
 import { setLeadStage } from '@/actions/leads'
+import { isCapacityGuardError, capacityGuardMessage } from '@/lib/capacity/guard'
 import { cn } from '@/lib/utils'
 import { OPEN_STAGES, LEAD_STAGE_LABELS, opportunityTitle } from '@/lib/leads'
 import { money, shortDate } from '@/lib/pipeline-presentation'
@@ -158,49 +159,77 @@ export function PipelineBoardView({
     setRows((p) => newStage === 'closed_won'
       ? p.filter((r) => r.lead.id !== row.lead.id)
       : p.map((r) => (r.lead.id === row.lead.id ? { ...r, lead: { ...r.lead, stage: newStage } } : r)))
+
+    // Land a successful write: closed_won drops into the converter, every other
+    // move just reconciles the refreshed rows (the optimistic patch only moved
+    // the stage, not the health accent/sentence).
+    const settle = () => {
+      if (newStage === 'closed_won') router.push(`/${orgSlug}/leads/${row.lead.id}?convert=1`)
+      else router.refresh()
+    }
+
+    /*
+      Roll back THIS CARD ONLY, functionally. Restoring a whole-array snapshot
+      taken before the optimistic update threw away anything that landed in
+      between: card A's successful move + refresh, then card B's rejection, and
+      the snapshot reverted A's column, health accent and sentence too —
+      unrecoverably, because `syncedFrom` already equalled that payload, so the
+      sync block would never re-apply it.
+
+      …and only while this call still OWNS the card. A newer move of the same card
+      has already painted its own optimistic stage; rewinding to the one this call
+      started from would drag the card backwards under the operator's hands while
+      that newer write is still running. `message` is null for a declined capacity
+      confirm — that is the operator's own choice, not a failure to report.
+    */
+    const rollback = (message: string | null) => {
+      if (pending.get(row.lead.id) !== ticket) return
+      setRows((p) => {
+        if (newStage !== 'closed_won') {
+          return p.map((r) => (
+            r.lead.id === row.lead.id ? { ...r, lead: { ...r.lead, stage: row.lead.stage } } : r
+          ))
+        }
+        if (p.some((r) => r.lead.id === row.lead.id)) return p
+        const next = [...p]
+        next.splice(prevIndex < 0 ? next.length : Math.min(prevIndex, next.length), 0, row)
+        return next
+      })
+      // The MESSAGE is inside the ownership guard for the same reason the rollback
+      // is. `setError(null)` runs at the START of every call, so a superseded move
+      // rejecting after the newer move of that same card had already succeeded
+      // left "Permission denied" standing under a card sitting correctly in its
+      // new column: the operator was told a move had failed when the one they
+      // actually made had landed.
+      if (message !== null) setError(message)
+    }
+
     try {
       await setLeadStage(orgId, row.lead.id, newStage)
-      if (newStage === 'closed_won') {
-        router.push(`/${orgSlug}/leads/${row.lead.id}?convert=1`)
-      } else {
-        // Reconcile health accents/sentences, which the optimistic update above
-        // doesn't recompute (it only patches the stage). The sync block at the
-        // top of this component is what actually lands the refreshed rows.
-        router.refresh()
-      }
+      settle()
     } catch (err: unknown) {
       /*
-        Roll back THIS CARD ONLY, functionally. Restoring a whole-array snapshot
-        taken before the optimistic update threw away anything that landed in
-        between: card A's successful move + refresh, then card B's rejection,
-        and the snapshot reverted A's column, health accent and sentence too —
-        unrecoverably, because `syncedFrom` already equalled that payload, so the
-        sync block would never re-apply it.
+        SERVER CAPACITY GUARD (increment 4). This board was previously UNGUARDED —
+        a win wrote straight through. The server now throws a CapacityGuardError
+        on a would-be over/clash win; we confirm (advisory, from the error's own
+        message) and on accept re-call with { override: true }, matching the list
+        surface. A declined confirm rolls the card back with no error line.
       */
-      // …and only while this call still OWNS the card. A newer move of the same
-      // card has already painted its own optimistic stage; rewinding to the one
-      // this call started from would drag the card backwards under the
-      // operator's hands while that newer write is still running.
-      if (pending.get(row.lead.id) === ticket) {
-        setRows((p) => {
-          if (newStage !== 'closed_won') {
-            return p.map((r) => (
-              r.lead.id === row.lead.id ? { ...r, lead: { ...r.lead, stage: row.lead.stage } } : r
-            ))
-          }
-          if (p.some((r) => r.lead.id === row.lead.id)) return p
-          const next = [...p]
-          next.splice(prevIndex < 0 ? next.length : Math.min(prevIndex, next.length), 0, row)
-          return next
-        })
-        // The MESSAGE is inside the ownership guard for the same reason the
-        // rollback is. `setError(null)` runs at the START of every call, so a
-        // superseded move rejecting after the newer move of that same card had
-        // already succeeded left "Permission denied" standing under a card
-        // sitting correctly in its new column: the operator was told a move had
-        // failed when the one they actually made had landed.
-        setError(err instanceof Error ? err.message : 'Failed to move opportunity')
+      if (isCapacityGuardError(err)) {
+        if (!window.confirm(capacityGuardMessage(err))) {
+          rollback(null)
+          return
+        }
+        try {
+          await setLeadStage(orgId, row.lead.id, newStage, { override: true })
+          settle()
+          return
+        } catch (err2: unknown) {
+          rollback(err2 instanceof Error ? err2.message : 'Failed to move opportunity')
+          return
+        }
       }
+      rollback(err instanceof Error ? err.message : 'Failed to move opportunity')
     } finally {
       // Identity, not lead id: a second move of the SAME card replaced this
       // entry, and that move is still in flight.

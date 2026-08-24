@@ -17,6 +17,7 @@ import { OPEN_STAGES, LEAD_STAGE_LABELS, LOST_REASON_LABELS, opportunityTitle } 
 import { STAGE_TONE, money, shortDate, type Tone } from '@/lib/pipeline-presentation'
 import type { PipelineGroups, PipelineRow, closedThisMonth } from '@/lib/pipeline-view'
 import { rowOwnsClash, type CapacityDay } from '@/lib/capacity/capacity'
+import { isCapacityGuardError, capacityGuardMessage } from '@/lib/capacity/guard'
 import { kindLabel } from '@/lib/capacity/labels'
 import type { Customer, Lead, LeadStage, Org } from '@/lib/types'
 import { NewOpportunityForm } from './NewOpportunityForm'
@@ -260,40 +261,18 @@ export function PipelineListClient({
       setNotice(`${opportunityTitle(row.lead)} is still moving — wait for that change to land.`)
       return
     }
-    /*
-      SAME-DAY DOUBLE-BOOK WARN. Capacity is 1 for the solo-operator anchor
-      (spec: increment 1), so winning a second job for a date that already
-      carries a `closed_won` is very likely a mistake — the operator cannot serve
-      both. We warn, we do not block: the deadline radar is advisory, and a real
-      "yes, book both" (a partner, a subcontract) must still be reachable.
-
-      The check reads props already in hand — the booked jobs are the
-      `closed_won` leads in `closed`, and we scan the open `groups` too so the
-      rule holds even if a won deal ever surfaces there. No new data, no query.
-      Cancel aborts BEFORE any `setMoving`/`setLeadStage`, so a declined confirm
-      leaves the row exactly as it was.
-    */
-    if (newStage === 'closed_won' && row.lead.event_date) {
-      const booked = [
-        ...closed,
-        ...groups.needs_attention.map((r) => r.lead),
-        ...groups.waiting.map((r) => r.lead),
-        ...groups.active.map((r) => r.lead),
-      ].some(
-        (l) =>
-          l.id !== row.lead.id &&
-          l.stage === 'closed_won' &&
-          l.event_date === row.lead.event_date,
-      )
-      if (booked && !window.confirm(
-        `Another job is already booked for ${shortDate(row.lead.event_date)}. Book this one too?`,
-      )) {
-        return
-      }
-    }
     setError(null)
     setNotice(null)
     setMoving((m) => ({ ...m, [row.lead.id]: { from: row.lead.stage, to: newStage } }))
+    /*
+      SERVER-AUTHORITATIVE CAPACITY GUARD (increment 4). The same-date double-book
+      warn is no longer computed here — the server's `setLeadStage` guard runs the
+      full `computeCapacity`/clash math (broader + more accurate than the Inc-2
+      client pre-check) and throws a `CapacityGuardError` on a would-be over/clash
+      win. We catch it, surface its message in a confirm (advisory, not a block),
+      and on confirm re-call with `{ override: true }`. One guard, one confirm, no
+      silent double-book from any non-UI path. A declined confirm re-arms the row.
+    */
     try {
       await setLeadStage(orgId, row.lead.id, newStage)
       if (newStage === 'closed_won') {
@@ -302,15 +281,35 @@ export function PipelineListClient({
         router.refresh()
       }
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to move opportunity')
-      // Re-arm ON THE FAILURE PATH ONLY — nothing else is coming. Without this
-      // a refused move leaves the advance button stuck reading "Moving…" and
-      // disabled forever. The success path is re-armed by the refreshed props.
-      setMoving((m) => {
+      const rearm = () => setMoving((m) => {
         const next = { ...m }
         delete next[row.lead.id]
         return next
       })
+      if (isCapacityGuardError(err)) {
+        if (!window.confirm(capacityGuardMessage(err))) {
+          rearm()
+          return
+        }
+        try {
+          await setLeadStage(orgId, row.lead.id, newStage, { override: true })
+          if (newStage === 'closed_won') {
+            router.push(`/${orgSlug}/leads/${row.lead.id}?convert=1`)
+          } else {
+            router.refresh()
+          }
+          return
+        } catch (err2: unknown) {
+          setError(err2 instanceof Error ? err2.message : 'Failed to move opportunity')
+          rearm()
+          return
+        }
+      }
+      setError(err instanceof Error ? err.message : 'Failed to move opportunity')
+      // Re-arm ON THE FAILURE PATH ONLY — nothing else is coming. Without this
+      // a refused move leaves the advance button stuck reading "Moving…" and
+      // disabled forever. The success path is re-armed by the refreshed props.
+      rearm()
     }
   }
 

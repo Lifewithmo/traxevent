@@ -14,6 +14,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { deleteLead, setLeadStage } from '@/actions/leads'
+import { isCapacityGuardError, capacityGuardMessage } from '@/lib/capacity/guard'
 import { LEAD_STAGE_LABELS, OPEN_STAGES, opportunityTitle } from '@/lib/leads'
 import { MarkLostDialog } from '@/components/admin/opportunity/MarkLostDialog'
 import { MarkWaitingForm } from '@/components/admin/opportunity/MarkWaitingForm'
@@ -64,13 +65,29 @@ export function OpportunityActionsMenu({ orgId, orgSlug, lead, onWon, onDone }: 
   // operators end up believing a deal moved when it did not.
   async function move(stage: LeadStage) {
     setBusy(true); setError(null)
-    try {
-      await setLeadStage(orgId, lead.id, stage)
+    const settle = () => {
       setOpen(false)
       if (stage === 'closed_won') onWon()
       onDone()
       router.refresh()
+    }
+    try {
+      await setLeadStage(orgId, lead.id, stage)
+      settle()
     } catch (e: unknown) {
+      // SERVER CAPACITY GUARD (increment 4): a would-be over/clash win throws a
+      // CapacityGuardError. Confirm (advisory) and, on accept, re-call with
+      // { override: true }. A decline leaves the deal where it was, no error.
+      if (isCapacityGuardError(e)) {
+        if (!window.confirm(capacityGuardMessage(e))) return
+        try {
+          await setLeadStage(orgId, lead.id, stage, { override: true })
+          settle()
+        } catch (e2: unknown) {
+          setError(e2 instanceof Error ? e2.message : 'Action failed')
+        }
+        return
+      }
       setError(e instanceof Error ? e.message : 'Action failed')
     } finally {
       setBusy(false)

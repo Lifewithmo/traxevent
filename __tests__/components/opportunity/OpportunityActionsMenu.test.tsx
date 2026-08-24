@@ -102,6 +102,34 @@ describe('OpportunityActionsMenu', () => {
     expect(screen.getByRole('menuitem', { name: 'Consultation' })).toBeInTheDocument()
   })
 
+  // SERVER CAPACITY GUARD (increment 4). Winning from the actions menu routes
+  // through the guarded setLeadStage; a CapacityGuardError is confirmed and,
+  // on accept, re-called with { override: true }.
+  it('confirms a CapacityGuardError on a win and re-calls with override when accepted', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    setLeadStage.mockRejectedValueOnce({ code: 'capacity_guard', message: 'Sep 30, 2026 is over capacity. Book this one too?' })
+    const { onWon } = mount()
+    openMenu()
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Closed Won' }))
+    await waitFor(() => expect(confirmSpy).toHaveBeenCalledWith('Sep 30, 2026 is over capacity. Book this one too?'))
+    await waitFor(() => expect(setLeadStage).toHaveBeenNthCalledWith(2, 'o1', 'l1', 'closed_won', { override: true }))
+    await waitFor(() => expect(onWon).toHaveBeenCalled())
+    confirmSpy.mockRestore()
+  })
+
+  it('aborts the win with no error and no override when the guard confirm is declined', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    setLeadStage.mockRejectedValueOnce({ code: 'capacity_guard', message: 'Kart 1 is already booked. Book this one too?' })
+    const { onWon } = mount()
+    openMenu()
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Closed Won' }))
+    await waitFor(() => expect(confirmSpy).toHaveBeenCalledTimes(1))
+    expect(setLeadStage).toHaveBeenCalledTimes(1)
+    expect(onWon).not.toHaveBeenCalled()
+    expect(screen.queryByRole('alert')).toBeNull()
+    confirmSpy.mockRestore()
+  })
+
   it('deletes through a kit dialog, never window.confirm', async () => {
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
     mount()

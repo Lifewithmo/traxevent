@@ -469,6 +469,47 @@ describe('PipelineBoardView', () => {
     })
 
     /*
+      SERVER CAPACITY GUARD (increment 4). The board used to be UNGUARDED — a drag
+      to Closed Won wrote straight through. It now catches the server's
+      CapacityGuardError, confirms, and on accept re-calls with { override: true }.
+    */
+    // Closed Won is not a drop column on the board (only OPEN_STAGES render
+    // dropzones); a win is triggered from the card's stage menu.
+    async function winViaMenu() {
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: /Stage: Inquiry/ })) })
+      await act(async () => { fireEvent.click(screen.getByRole('menuitem', { name: 'Closed Won' })) })
+    }
+
+    it('confirms a CapacityGuardError on a win and re-calls with override when accepted', async () => {
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+      // The first call is guarded; the override re-call falls through to the
+      // beforeEach default (resolved undefined).
+      setLeadStage.mockRejectedValueOnce({ code: 'capacity_guard', message: 'Sep 30, 2026 is over capacity. Book this one too?' })
+      render(<PipelineBoardView {...baseProps} />)
+      await winViaMenu()
+
+      expect(confirmSpy).toHaveBeenCalledWith('Sep 30, 2026 is over capacity. Book this one too?')
+      expect(setLeadStage).toHaveBeenNthCalledWith(1, 'o1', 'l1', 'closed_won')
+      expect(setLeadStage).toHaveBeenNthCalledWith(2, 'o1', 'l1', 'closed_won', { override: true })
+      await waitFor(() => expect(push).toHaveBeenCalledWith('/demo/leads/l1?convert=1'))
+      confirmSpy.mockRestore()
+    })
+
+    it('rolls the card back and does not override when the guard confirm is declined', async () => {
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+      setLeadStage.mockRejectedValueOnce({ code: 'capacity_guard', message: 'Kart 1 is already booked. Book this one too?' })
+      render(<PipelineBoardView {...baseProps} />)
+      await winViaMenu()
+
+      expect(confirmSpy).toHaveBeenCalledTimes(1)
+      expect(setLeadStage).toHaveBeenCalledTimes(1)
+      expect(push).not.toHaveBeenCalled()
+      // The optimistically-removed card is restored to its column.
+      expect(stageOf(/Halcyon Studios/)).toBe('inquiry')
+      confirmSpy.mockRestore()
+    })
+
+    /*
       Rollback used to restore a whole-array snapshot taken before the optimistic
       update, so a rejection on card B also reverted everything that had landed
       since — including card A's successful move and its refreshed sentence,

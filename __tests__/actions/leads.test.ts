@@ -10,6 +10,13 @@ const findOrCreateCustomerCore = vi.hoisted(() =>
   vi.fn().mockResolvedValue({ customer: { id: 'default-customer-id', name: 'x', created_at: 'x' }, created: true })
 )
 const getCustomerCore = vi.hoisted(() => vi.fn())
+// The capacity guard (setLeadStage → closed_won) loads the org, its units, and
+// all leads. Default the org to a NON-business plan so the guard is a no-op for
+// every pre-existing test — those assert setLeadStage's plain behavior and must
+// not see the guard. The guard tests below opt in by setting a business org +
+// units + leads.
+const orgDocGetSpy = vi.hoisted(() => vi.fn().mockResolvedValue({ exists: true, data: () => ({ id: 'org-1', plan: 'starter' }) }))
+const unitsListSpy = vi.hoisted(() => vi.fn().mockResolvedValue({ docs: [] }))
 
 vi.mock('@/lib/firebase-admin', () => {
   const leadsCol = {
@@ -22,9 +29,14 @@ vi.mock('@/lib/firebase-admin', () => {
     })),
     orderBy: vi.fn().mockReturnValue({ get: listLeadsSpy }),
   }
+  const unitsCol = {
+    orderBy: vi.fn().mockReturnValue({ get: unitsListSpy }),
+  }
   const orgDoc = {
+    get: orgDocGetSpy,
     collection: vi.fn().mockImplementation((sub: string) => {
       if (sub === 'leads') return leadsCol
+      if (sub === 'capacity_units') return unitsCol
       return {}
     }),
   }
@@ -263,6 +275,93 @@ describe('leads actions', () => {
   it('deleteLead calls .delete()', async () => {
     await deleteLead('org-1', 'l1')
     expect(leadDocDeleteSpy).toHaveBeenCalled()
+  })
+})
+
+/*
+  Server-side capacity guard (increment 4). On a transition INTO closed_won, a
+  business-tier org with ≥1 unit is protected: winning a job that would put its
+  date over capacity, or that double-books its assigned unit, throws a typed
+  CapacityGuardError — UNLESS { override: true } is passed. This supersedes the
+  Inc-2 client-side pre-confirm; the client now catches this error and confirms.
+*/
+describe('setLeadStage capacity guard (increment 4)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    // Defaults are re-established per test since clearAllMocks wipes call data
+    // but not implementations; guard tests set their own org/units/leads.
+    orgDocGetSpy.mockResolvedValue({ exists: true, data: () => ({ id: 'org-1', plan: 'business' }) })
+    unitsListSpy.mockResolvedValue({ docs: [
+      { data: () => ({ id: 'k1', name: 'Kart 1', kind: 'mobile', active: true, blockouts: [] }) },
+    ] })
+    // The lead being won (loaded by setLeadStage's own doc().get()).
+    leadDocGetSpy.mockResolvedValue({ exists: true, data: () => ({
+      id: 'win', stage: 'proposal', event_date: '2026-09-30', assigned_units: { mobile: 'k1' }, created_at: 'x',
+    }) })
+  })
+
+  const wonOnDate = { data: () => ({ id: 'won1', stage: 'closed_won', event_date: '2026-09-30', assigned_units: { mobile: 'k1' }, created_at: 'x' }) }
+  const winLeadDoc = { data: () => ({ id: 'win', stage: 'proposal', event_date: '2026-09-30', assigned_units: { mobile: 'k1' }, created_at: 'x' }) }
+
+  it('throws CapacityGuardError when winning would exceed capacity (no override)', async () => {
+    // One mobile unit; a won job already holds the date. Winning this one makes
+    // mobile demand 2 > supply 1 → over capacity.
+    listLeadsSpy.mockResolvedValue({ docs: [wonOnDate, winLeadDoc] })
+    await expect(setLeadStage('org-1', 'win', 'closed_won')).rejects.toMatchObject({ code: 'capacity_guard' })
+    expect(leadDocUpdateSpy).not.toHaveBeenCalled()
+  })
+
+  it('throws CapacityGuardError when the assigned unit clashes (no override)', async () => {
+    // Two units so capacity is not exceeded, but both leads pin k1 → clash.
+    unitsListSpy.mockResolvedValue({ docs: [
+      { data: () => ({ id: 'k1', name: 'Kart 1', kind: 'mobile', active: true, blockouts: [] }) },
+      { data: () => ({ id: 'k2', name: 'Kart 2', kind: 'mobile', active: true, blockouts: [] }) },
+    ] })
+    listLeadsSpy.mockResolvedValue({ docs: [wonOnDate, winLeadDoc] })
+    await expect(setLeadStage('org-1', 'win', 'closed_won')).rejects.toMatchObject({ code: 'capacity_guard' })
+    expect(leadDocUpdateSpy).not.toHaveBeenCalled()
+  })
+
+  it('proceeds (no throw, writes) when override is passed even over capacity', async () => {
+    listLeadsSpy.mockResolvedValue({ docs: [wonOnDate, winLeadDoc] })
+    await setLeadStage('org-1', 'win', 'closed_won', { override: true })
+    expect(leadDocUpdateSpy).toHaveBeenCalledWith(expect.objectContaining({ stage: 'closed_won' }))
+  })
+
+  it('does not guard a standard (non-business) org', async () => {
+    orgDocGetSpy.mockResolvedValue({ exists: true, data: () => ({ id: 'org-1', plan: 'starter' }) })
+    listLeadsSpy.mockResolvedValue({ docs: [wonOnDate, winLeadDoc] })
+    await setLeadStage('org-1', 'win', 'closed_won')
+    expect(leadDocUpdateSpy).toHaveBeenCalledWith(expect.objectContaining({ stage: 'closed_won' }))
+  })
+
+  it('does not guard a business org with no units', async () => {
+    unitsListSpy.mockResolvedValue({ docs: [] })
+    listLeadsSpy.mockResolvedValue({ docs: [wonOnDate, winLeadDoc] })
+    await setLeadStage('org-1', 'win', 'closed_won')
+    expect(leadDocUpdateSpy).toHaveBeenCalledWith(expect.objectContaining({ stage: 'closed_won' }))
+  })
+
+  it('does not guard a move that is not into closed_won', async () => {
+    listLeadsSpy.mockResolvedValue({ docs: [wonOnDate, winLeadDoc] })
+    await setLeadStage('org-1', 'win', 'consultation')
+    expect(leadDocUpdateSpy).toHaveBeenCalledWith(expect.objectContaining({ stage: 'consultation' }))
+  })
+
+  it('does not guard a lead that is already closed_won', async () => {
+    leadDocGetSpy.mockResolvedValue({ exists: true, data: () => ({
+      id: 'win', stage: 'closed_won', event_date: '2026-09-30', assigned_units: { mobile: 'k1' }, created_at: 'x',
+    }) })
+    listLeadsSpy.mockResolvedValue({ docs: [wonOnDate] })
+    await setLeadStage('org-1', 'win', 'closed_won')
+    expect(leadDocUpdateSpy).toHaveBeenCalledWith(expect.objectContaining({ stage: 'closed_won' }))
+  })
+
+  it('proceeds when winning a fresh date (not over, no clash)', async () => {
+    // The only booking on this date is the lead being won.
+    listLeadsSpy.mockResolvedValue({ docs: [winLeadDoc] })
+    await setLeadStage('org-1', 'win', 'closed_won')
+    expect(leadDocUpdateSpy).toHaveBeenCalledWith(expect.objectContaining({ stage: 'closed_won' }))
   })
 })
 

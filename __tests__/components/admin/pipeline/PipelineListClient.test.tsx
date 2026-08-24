@@ -666,12 +666,15 @@ describe('PipelineListClient', () => {
     })
 
     /*
-      SAME-DAY WON GUARD. Capacity is 1: closing a second job onto a date that
-      already carries a `closed_won` is warned, and a declined confirm must leave
-      the row untouched — no `setLeadStage`, no navigation.
+      SERVER-SIDE CAPACITY GUARD (increment 4). The client no longer pre-checks
+      the date itself — it calls `setLeadStage`, and if the server rejects with a
+      CapacityGuardError, it shows that error's message in a confirm. A declined
+      confirm must leave the row untouched (no override re-call, no navigation);
+      an accepted one re-calls with { override: true }.
     */
-    it('warns before winning a second job on an already-booked date and aborts on cancel', async () => {
+    it('confirms a server CapacityGuardError and aborts on cancel — no override, no navigation', async () => {
       const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+      setLeadStage.mockRejectedValueOnce({ code: 'capacity_guard', message: 'Kart 1 is already booked on Sep 30, 2026. Book this one too?' })
       render(<PipelineListClient {...baseProps}
         groups={{ ...emptyGroups, active: [
           { lead: lead({ id: 'open1', name: 'Second Wedding', stage: 'proposal', event_date: '2026-09-30' }),
@@ -680,14 +683,17 @@ describe('PipelineListClient', () => {
         closed={[lead({ id: 'won1', name: 'Booked Co', stage: 'closed_won', event_date: '2026-09-30' })]}
       />)
       await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Move to Closed Won' })) })
-      expect(confirmSpy).toHaveBeenCalledWith('Another job is already booked for Sep 30, 2026. Book this one too?')
-      expect(setLeadStage).not.toHaveBeenCalled()
+      expect(confirmSpy).toHaveBeenCalledWith('Kart 1 is already booked on Sep 30, 2026. Book this one too?')
+      // One attempt only — the guarded first call; no override re-call.
+      expect(setLeadStage).toHaveBeenCalledTimes(1)
+      expect(setLeadStage).toHaveBeenCalledWith('o1', 'open1', 'closed_won')
       expect(push).not.toHaveBeenCalled()
       confirmSpy.mockRestore()
     })
 
-    it('proceeds with the won move when the double-book warning is confirmed', async () => {
+    it('re-calls setLeadStage with { override: true } when the guard confirm is accepted', async () => {
       const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+      setLeadStage.mockRejectedValueOnce({ code: 'capacity_guard', message: 'Sep 30, 2026 is over capacity. Book this one too?' })
       render(<PipelineListClient {...baseProps}
         groups={{ ...emptyGroups, active: [
           { lead: lead({ id: 'open1', stage: 'proposal', event_date: '2026-09-30' }),
@@ -697,11 +703,12 @@ describe('PipelineListClient', () => {
       />)
       await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Move to Closed Won' })) })
       expect(confirmSpy).toHaveBeenCalledTimes(1)
-      expect(setLeadStage).toHaveBeenCalledWith('o1', 'open1', 'closed_won')
+      expect(setLeadStage).toHaveBeenNthCalledWith(1, 'o1', 'open1', 'closed_won')
+      expect(setLeadStage).toHaveBeenNthCalledWith(2, 'o1', 'open1', 'closed_won', { override: true })
       confirmSpy.mockRestore()
     })
 
-    it('does not warn when no won job shares the date', async () => {
+    it('does not confirm when the server allows the win (no guard error)', async () => {
       const confirmSpy = vi.spyOn(window, 'confirm')
       render(<PipelineListClient {...baseProps}
         groups={{ ...emptyGroups, active: [
@@ -712,6 +719,7 @@ describe('PipelineListClient', () => {
       />)
       await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Move to Closed Won' })) })
       expect(confirmSpy).not.toHaveBeenCalled()
+      expect(setLeadStage).toHaveBeenCalledTimes(1)
       expect(setLeadStage).toHaveBeenCalledWith('o1', 'open1', 'closed_won')
       confirmSpy.mockRestore()
     })
