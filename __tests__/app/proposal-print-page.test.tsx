@@ -107,7 +107,11 @@ describe('proposal print route — status gate', () => {
     )
     await renderPage()
     expect(screen.getByText('Accepted')).toBeInTheDocument()
+    // The stamp is the SAME pinned-UTC rendering the interactive page shows
+    // (formatSignedStamp) — never the server's zone: paper and screen must not
+    // state two different times for one signature.
     expect(screen.getByText(/Signed by Dana Reyes/)).toBeInTheDocument()
+    expect(screen.getByText(/on Aug 2, 2026, 5:30 PM UTC/)).toBeInTheDocument()
   })
 })
 
