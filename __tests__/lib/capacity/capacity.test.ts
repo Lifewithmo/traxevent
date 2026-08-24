@@ -430,4 +430,17 @@ describe('rowOwnsClash', () => {
     const l = lead({ assigned_units: { mobile: 'k2' } })
     expect(rowOwnsClash(l, capDay)).toEqual([])
   })
+
+  it('owns a venue clash for an OFFSITE lead when its profile needs a venue (profile-aware, mirrors computeClashes)', () => {
+    const org = { event_type_profiles: [{ name: 'Gala', needsMobile: true, needsVenue: true }] }
+    const l = lead({ event_type: 'Gala', delivery_mode: 'offsite', assigned_units: { venue: 'r1' } })
+    // needsVenue:true is authoritative over offsite — the row must own the venue clash.
+    expect(rowOwnsClash(l, capDay, org)).toEqual([r1Clash])
+  })
+
+  it('does NOT own a mobile clash when its profile needs no mobile', () => {
+    const org = { event_type_profiles: [{ name: 'Photo', needsMobile: false, needsVenue: false }] }
+    const l = lead({ event_type: 'Photo', assigned_units: { mobile: 'k1' } })
+    expect(rowOwnsClash(l, capDay, org)).toEqual([])
+  })
 })

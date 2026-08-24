@@ -131,18 +131,28 @@ function computeClashes(bookable: Lead[], units: CapacityUnit[], org: Pick<Org, 
 }
 
 /**
- * The clashing units THIS lead is assigned to (mobile always; venue only when
- * on-site). Empty when the day is undefined or the lead owns no clashing unit.
- * Pure — used to float a double-booked row up and to render its badge.
+ * The clashing units THIS lead is assigned to. A lead owns a unit's clash only
+ * when it actually CONSUMES that unit — its `leadRequirement` needs the kind AND
+ * it is pinned to the unit — mirroring `computeClashes` exactly (both route
+ * through `leadRequirement`). Without this, a profiled offsite lead (needsVenue:
+ * true) would clash in the engine yet never light its row badge, or a
+ * needsMobile:false type would falsely own a mobile clash. Empty when the day is
+ * undefined or the lead owns no clashing unit. Pure — floats a double-booked row
+ * up and renders its badge.
  */
-export function rowOwnsClash(lead: Lead, day: CapacityDay | undefined): UnitClash[] {
+export function rowOwnsClash(
+  lead: Lead,
+  day: CapacityDay | undefined,
+  org: Pick<Org, 'event_type_profiles'> = {},
+): UnitClash[] {
   if (!day) return []
   const au = lead.assigned_units
   if (!au) return []
+  const req = leadRequirement(lead, org)
   const owned: UnitClash[] = []
   for (const clash of day.clashes) {
-    if (clash.kind === 'mobile' && au.mobile === clash.unitId) owned.push(clash)
-    else if (clash.kind === 'venue' && lead.delivery_mode === 'onsite' && au.venue === clash.unitId) owned.push(clash)
+    if (clash.kind === 'mobile' && req.mobile && au.mobile === clash.unitId) owned.push(clash)
+    else if (clash.kind === 'venue' && req.venue && au.venue === clash.unitId) owned.push(clash)
   }
   return owned
 }

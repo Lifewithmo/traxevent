@@ -70,6 +70,7 @@ export default async function LeadsPage({
   const units = hasMultiResourceCapacity(org) ? await listCapacityUnitsCore(orgId) : []
   const groups = buildPipelineRows(inputs, today, {
     prepLeadDays,
+    eventTypeProfiles: org.event_type_profiles,
     ...radarConflictOpts(org, leads, units),
   })
   const monthly = closedThisMonth(leads, today)
@@ -125,7 +126,7 @@ export default async function LeadsPage({
       </div>
       {view === 'board'
         ? <PipelineBoardView {...shared} customers={customers} />
-        : <PipelineListClient {...shared} openCount={open.length} closed={closed} customers={customers} resourceLabels={resourceLabels} />}
+        : <PipelineListClient {...shared} openCount={open.length} closed={closed} customers={customers} resourceLabels={resourceLabels} eventTypeProfiles={org.event_type_profiles} />}
     </div>
   )
 }

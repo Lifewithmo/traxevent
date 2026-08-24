@@ -41,6 +41,9 @@ interface PipelineListClientProps {
   // `kindLabel`. Absent ⇒ the neutral platform defaults; base/solo orgs never
   // render the pill at all, so this is simply unused for them.
   resourceLabels?: Org['resource_labels']
+  // Event-type profiles (increment 4) so a row's clash badge/ownership is
+  // profile-aware, matching the server engine. Absent ⇒ leadRequirement default.
+  eventTypeProfiles?: Org['event_type_profiles']
 }
 
 /*
@@ -169,7 +172,7 @@ function GroupHeader({ label, rows, alert }: { label: string; rows: PipelineRow[
 }
 
 export function PipelineListClient({
-  orgId, orgSlug, groups, closed, openCount, monthly, customers, showDeliveryMode, resourceLabels,
+  orgId, orgSlug, groups, closed, openCount, monthly, customers, showDeliveryMode, resourceLabels, eventTypeProfiles,
 }: PipelineListClientProps) {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState<Tab>('open')
@@ -330,7 +333,7 @@ export function PipelineListClient({
       for any row whose assigned unit isn't among the day's clashes, so the
       increment-1 "Date conflict" path is untouched.
     */
-    const clash = rowOwnsClash(lead, row.overCapacity)
+    const clash = rowOwnsClash(lead, row.overCapacity, { event_type_profiles: eventTypeProfiles })
     return (
       <div
         key={lead.id}
