@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import { renderToString } from 'react-dom/server'
 import { InvoiceViewClient } from '@/components/invoices/InvoiceViewClient'
 import type { PublicInvoice } from '@/actions/invoices-public'
 
@@ -174,5 +175,77 @@ describe('InvoiceViewClient', () => {
     const { container } = render(<InvoiceViewClient invoice={inv({})} />)
     expect(screen.getByTestId('invoice-line-items').parentElement?.className).toMatch(/overflow-x-auto/)
     expect(container.querySelector('.invoice-document')?.className).toMatch(/max-md:px-5/)
+  })
+})
+
+// --- zone-stable date rendering (the /checkin SSR crash class, PR #134) ---
+
+// Run an assertion under an explicit process zone. Modern Node re-reads
+// process.env.TZ, so this exercises the ambient-zone hazard directly instead
+// of depending on whatever zone the host machine happens to be in.
+function withTZ(tz: string, fn: () => void) {
+  const prev = process.env.TZ
+  process.env.TZ = tz
+  try {
+    fn()
+  } finally {
+    if (prev === undefined) delete process.env.TZ
+    else process.env.TZ = prev
+  }
+}
+
+// 02:30 UTC — any zone west of UTC is still on the PREVIOUS calendar day at
+// this instant (Denver reads Aug 12). If a formatter leaks the ambient zone,
+// this instant exposes it.
+const SENT_NEAR_MIDNIGHT_UTC = '2026-08-13T02:30:00.000Z'
+
+describe('InvoiceViewClient — the customer document is zone-stable by construction', () => {
+  // This sheet is a SERVER component: it renders once, wherever the deploy
+  // region happens to be, with no hydration pass to correct it. The old
+  // ambient `toLocaleDateString()` meant the customer-visible Sent date
+  // depended on the server's clock and locale. The fix pins the date to UTC
+  // and says so — one true rendering, labeled.
+  it('pins the Sent stamp to UTC and labels it, whatever zone renders it', () => {
+    withTZ('America/Denver', () => {
+      render(<InvoiceViewClient invoice={inv({ sent_at: SENT_NEAR_MIDNIGHT_UTC })} />)
+      // Ambient Denver formatting of this instant would read Aug 12.
+      expect(screen.getByText('Sent Aug 13, 2026 (UTC)')).toBeInTheDocument()
+    })
+  })
+
+  it('SSRs the identical pinned face in every server zone — no ambient date in the payload', () => {
+    const payloads = ['America/Denver', 'Pacific/Auckland'].map((tz) => {
+      let html = ''
+      withTZ(tz, () => {
+        html = renderToString(<InvoiceViewClient invoice={inv({ sent_at: SENT_NEAR_MIDNIGHT_UTC })} />)
+      })
+      return html.replace(/<!-- -->/g, '')
+    })
+    for (const text of payloads) {
+      expect(text).toContain('Sent Aug 13, 2026 (UTC)')
+      // Neither the Denver ambient face nor the old default '8/12/2026' style.
+      expect(text).not.toContain('Aug 12, 2026')
+      expect(text).not.toMatch(/\d{1,2}\/\d{1,2}\/\d{4}/)
+    }
+    expect(payloads[0]).toBe(payloads[1])
+  })
+
+  // The balance note's overdue/due-in judgment is day math relative to "now".
+  // It must run on the UTC calendar (lib/invoice-status.daysOverdue) — the
+  // pill's aging convention — not the render machine's zone, or the same
+  // invoice reads differently per deploy region.
+  it('judges overdue on UTC day math, not the render machine\'s zone', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-08-13T02:30:00.000Z'))
+    try {
+      withTZ('America/Denver', () => {
+        // 02:30 UTC on Aug 13 is 20:30 Aug 12 in Denver: ambient-zone math
+        // said "Due today" while UTC day math says one day overdue.
+        render(<InvoiceViewClient invoice={inv({ balance: 100, due_date: '2026-08-12' })} />)
+        expect(screen.getByTestId('public-balance-note')).toHaveTextContent('1 day overdue')
+      })
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

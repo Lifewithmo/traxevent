@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { invoicePill, money0, money2 } from '@/lib/invoice-presentation'
+import { invoiceDateLocal, invoiceDateUTC, invoicePill, money0, money2 } from '@/lib/invoice-presentation'
 import type { InvoiceAgingBucket, InvoiceLifecycle, InvoicePaymentStatus } from '@/lib/types'
 
 function pill(
@@ -60,5 +60,56 @@ describe('money formatting', () => {
   it('renders negatives with a minus sign ahead of the dollar sign', () => {
     expect(money0(-50)).toBe('−$50')
     expect(money2(-50)).toBe('−$50.00')
+  })
+})
+
+// Run an assertion under an explicit process zone. Modern Node re-reads
+// process.env.TZ, so this exercises the exact ambient-zone hazard the
+// formatters exist to control — without depending on the host machine's zone.
+function withTZ(tz: string, fn: () => void) {
+  const prev = process.env.TZ
+  process.env.TZ = tz
+  try {
+    fn()
+  } finally {
+    if (prev === undefined) delete process.env.TZ
+    else process.env.TZ = prev
+  }
+}
+
+// 02:30 UTC — the TZ-sensitive fixture: any zone west of UTC is still on the
+// PREVIOUS calendar day at this instant (Denver reads Aug 12), any zone far
+// enough east is already on the same/next day. If a formatter leaks the
+// ambient zone, this instant exposes it.
+const NEAR_MIDNIGHT_UTC = '2026-08-13T02:30:00.000Z'
+
+describe('invoiceDateUTC — the pinned document date', () => {
+  it('renders the UTC calendar date, identically in every process zone', () => {
+    // Sanity that the fixture is genuinely zone-sensitive: viewer-local
+    // formatting of the SAME instant reads a day earlier in Denver.
+    withTZ('America/Denver', () => {
+      expect(invoiceDateLocal(NEAR_MIDNIGHT_UTC)).toBe('Aug 12, 2026')
+    })
+    for (const tz of ['America/Denver', 'UTC', 'Pacific/Auckland']) {
+      withTZ(tz, () => {
+        expect(invoiceDateUTC(NEAR_MIDNIGHT_UTC)).toBe('Aug 13, 2026')
+      })
+    }
+  })
+
+  it('pins the locale too, so a server locale cannot restyle the face', () => {
+    expect(invoiceDateUTC('2026-01-02T12:00:00.000Z')).toBe('Jan 2, 2026')
+  })
+})
+
+describe('invoiceDateLocal — the viewer-local (gate-only) date', () => {
+  it('follows the runtime zone by contract', () => {
+    withTZ('Pacific/Auckland', () => {
+      // UTC+12 in August: 14:30 on Aug 13 local.
+      expect(invoiceDateLocal(NEAR_MIDNIGHT_UTC)).toBe('Aug 13, 2026')
+    })
+    withTZ('America/Denver', () => {
+      expect(invoiceDateLocal(NEAR_MIDNIGHT_UTC)).toBe('Aug 12, 2026')
+    })
   })
 })
