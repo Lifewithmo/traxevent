@@ -19,6 +19,11 @@ vi.mock('@/actions/capacity-config', () => ({
   updateResourceLabels,
 }))
 
+const updateOpsBuffers = vi.hoisted(() => vi.fn())
+vi.mock('@/actions/ops-buffers', () => ({
+  updateOpsBuffers,
+}))
+
 import { CapacityUnitsClient } from '@/components/admin/settings/CapacityUnitsClient'
 import type { CapacityUnit } from '@/lib/types'
 
@@ -378,6 +383,110 @@ describe('CapacityUnitsClient', () => {
       )
       // The header adopts the new plural.
       expect(screen.getByRole('group', { name: 'Carts' })).toBeInTheDocument()
+    })
+  })
+
+  describe('Day-of timing — pack/drive buffers', () => {
+    it('renders both fields with the defaults as placeholders and the helper copy', () => {
+      render(<CapacityUnitsClient {...base} initialUnits={[]} />)
+      expect(screen.getByLabelText('Pack time (minutes)')).toHaveAttribute('placeholder', '45')
+      expect(screen.getByLabelText('Drive time (minutes)')).toHaveAttribute('placeholder', '30')
+      expect(
+        screen.getByText(/on job briefs and run sheets — leave blank for the 45m\/30m defaults/i),
+      ).toBeInTheDocument()
+    })
+
+    it('persists an edited pack time on blur, sending the full merged scalar', async () => {
+      updateOpsBuffers.mockResolvedValue(undefined)
+      render(
+        <CapacityUnitsClient
+          {...base}
+          initialUnits={[]}
+          initialOpsBuffers={{ drive_minutes: 20 }}
+        />,
+      )
+
+      const packInput = screen.getByLabelText('Pack time (minutes)')
+      fireEvent.change(packInput, { target: { value: '50' } })
+      fireEvent.blur(packInput)
+      // Both keys ride along — the action replaces the whole ops_buffers scalar.
+      await waitFor(() =>
+        expect(updateOpsBuffers).toHaveBeenCalledWith('o1', {
+          pack_minutes: 50,
+          drive_minutes: 20,
+        }),
+      )
+    })
+
+    it('a blanked field CLEARS its key (back to the constant default)', async () => {
+      updateOpsBuffers.mockResolvedValue(undefined)
+      render(
+        <CapacityUnitsClient
+          {...base}
+          initialUnits={[]}
+          initialOpsBuffers={{ pack_minutes: 50, drive_minutes: 20 }}
+        />,
+      )
+
+      const packInput = screen.getByLabelText('Pack time (minutes)')
+      fireEvent.change(packInput, { target: { value: '' } })
+      fireEvent.blur(packInput)
+      await waitFor(() =>
+        expect(updateOpsBuffers).toHaveBeenCalledWith('o1', { drive_minutes: 20 }),
+      )
+      const payload = updateOpsBuffers.mock.calls[0][1] as Record<string, unknown>
+      expect('pack_minutes' in payload).toBe(false)
+    })
+
+    it('rejects an out-of-range value inline and does NOT save', async () => {
+      render(<CapacityUnitsClient {...base} initialUnits={[]} />)
+
+      const packInput = screen.getByLabelText('Pack time (minutes)')
+      fireEvent.change(packInput, { target: { value: '900' } })
+      fireEvent.blur(packInput)
+      expect(
+        await screen.findByText(/whole number between 1 and 480/i),
+      ).toBeInTheDocument()
+      expect(updateOpsBuffers).not.toHaveBeenCalled()
+    })
+
+    it('reverts the fields and surfaces the error when the action fails', async () => {
+      updateOpsBuffers.mockRejectedValue(new Error('Forbidden'))
+      render(
+        <CapacityUnitsClient
+          {...base}
+          initialUnits={[]}
+          initialOpsBuffers={{ pack_minutes: 50 }}
+        />,
+      )
+
+      const packInput = screen.getByLabelText('Pack time (minutes)')
+      fireEvent.change(packInput, { target: { value: '60' } })
+      fireEvent.blur(packInput)
+      expect(await screen.findByText('Forbidden')).toBeInTheDocument()
+      expect(packInput).toHaveValue(50)
+    })
+
+    it('does not call the action when nothing changed', async () => {
+      render(
+        <CapacityUnitsClient
+          {...base}
+          initialUnits={[]}
+          initialOpsBuffers={{ pack_minutes: 50 }}
+        />,
+      )
+      const packInput = screen.getByLabelText('Pack time (minutes)')
+      fireEvent.blur(packInput)
+      await waitFor(() => expect(updateOpsBuffers).not.toHaveBeenCalled())
+    })
+
+    it('stays reachable on the locked (business-tier upsell) surface', () => {
+      // Buffers power job briefs / run sheets — NOT the gated multi-resource
+      // feature — so a solo operator below the business tier can still set them.
+      render(<CapacityUnitsClient {...base} locked initialUnits={[]} />)
+      expect(screen.getByText(/business[- ]plan feature/i)).toBeInTheDocument()
+      expect(screen.getByLabelText('Pack time (minutes)')).toBeInTheDocument()
+      expect(screen.getByLabelText('Drive time (minutes)')).toBeInTheDocument()
     })
   })
 
