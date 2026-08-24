@@ -14,7 +14,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { deleteLead, setLeadStage } from '@/actions/leads'
-import { isCapacityGuardError, capacityGuardMessage } from '@/lib/capacity/guard'
 import { LEAD_STAGE_LABELS, OPEN_STAGES, opportunityTitle } from '@/lib/leads'
 import { MarkLostDialog } from '@/components/admin/opportunity/MarkLostDialog'
 import { MarkWaitingForm } from '@/components/admin/opportunity/MarkWaitingForm'
@@ -72,22 +71,20 @@ export function OpportunityActionsMenu({ orgId, orgSlug, lead, onWon, onDone }: 
       router.refresh()
     }
     try {
-      await setLeadStage(orgId, lead.id, stage)
-      settle()
-    } catch (e: unknown) {
-      // SERVER CAPACITY GUARD (increment 4): a would-be over/clash win throws a
-      // CapacityGuardError. Confirm (advisory) and, on accept, re-call with
-      // { override: true }. A decline leaves the deal where it was, no error.
-      if (isCapacityGuardError(e)) {
-        if (!window.confirm(capacityGuardMessage(e))) return
-        try {
-          await setLeadStage(orgId, lead.id, stage, { override: true })
-          settle()
-        } catch (e2: unknown) {
-          setError(e2 instanceof Error ? e2.message : 'Action failed')
-        }
+      // SERVER CAPACITY GUARD (increment 4): a would-be over/clash win RETURNS
+      // { ok: false, guard } (it is never thrown — a thrown guard could not
+      // survive Next's production RSC error redaction; see lib/capacity/guard.ts).
+      // Confirm (advisory) and, on accept, re-call with { override: true }. A
+      // decline leaves the deal where it was, no error. A genuine failure throws.
+      const result = await setLeadStage(orgId, lead.id, stage)
+      if (!result.ok) {
+        if (!window.confirm(result.guard)) return
+        const override = await setLeadStage(orgId, lead.id, stage, { override: true })
+        if (override.ok) settle()
         return
       }
+      settle()
+    } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Action failed')
     } finally {
       setBusy(false)

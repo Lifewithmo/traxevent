@@ -11,7 +11,7 @@ import { listCapacityUnitsCore } from '@/lib/capacity/units'
 import { hasMultiResourceCapacity, computeCapacity } from '@/lib/capacity/capacity'
 import { leadRequirement } from '@/lib/capacity/requirement'
 import { kindLabel } from '@/lib/capacity/labels'
-import { CapacityGuardError } from '@/lib/capacity/guard'
+import type { StageChangeResult } from '@/lib/capacity/guard'
 import type { Lead, LeadStage, LeadWaiting, LostReason, Event, Customer } from '@/lib/types'
 
 // NOTE: this is a 'use server' module — every export must be an async function.
@@ -182,7 +182,7 @@ export async function setLeadStage(
   leadId: string,
   stage: LeadStage,
   opts?: { override?: boolean }
-): Promise<void> {
+): Promise<StageChangeResult> {
   await assertOrgAdmin(orgId)
   if (!LEAD_STAGES.includes(stage)) throw new Error('Invalid stage')
   const snap = await leadsRef(orgId).doc(leadId).get()
@@ -191,11 +191,17 @@ export async function setLeadStage(
 
   // Capacity guard: only on a transition INTO closed_won (from a non-won stage),
   // and only when the operator has NOT already chosen to override. Advisory —
-  // supersedes the Inc-2 client-side pre-confirm; the client catches this and
-  // re-calls with { override: true } on confirm.
+  // supersedes the Inc-2 client-side pre-confirm.
+  //
+  // RETURNED, never thrown (see lib/capacity/guard.ts): Next redacts thrown
+  // Server Action errors in production, so a thrown guard could not be detected
+  // on the client in a real build and degraded into a hard block. A refusal is
+  // a return value; the client confirms `guard` and re-calls with
+  // { override: true }. A genuine error (invalid stage above, or a Firestore
+  // write failure below) still throws.
   if (stage === 'closed_won' && prevStage !== 'closed_won' && !opts?.override && lead) {
-    const message = await capacityGuardMessage(orgId, { ...lead, id: leadId })
-    if (message) throw new CapacityGuardError(message)
+    const guard = await capacityGuardMessage(orgId, { ...lead, id: leadId })
+    if (guard) return { ok: false, guard }
   }
 
   await updateLeadCore(orgId, leadId, {
@@ -203,6 +209,7 @@ export async function setLeadStage(
     ...(prevStage ? closedAtPatch(prevStage, stage, new Date().toISOString()) : {}),
   })
   await logActivity(orgId, { parent_type: 'opportunity', parent_id: leadId, kind: 'stage', summary: `Stage → ${stage}`, stage })
+  return { ok: true }
 }
 
 export async function markLeadLost(

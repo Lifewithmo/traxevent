@@ -38,7 +38,10 @@ function closeMenu() {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  setLeadStage.mockResolvedValue(undefined)
+  // setLeadStage returns a discriminated result (increment 4): { ok: true } on a
+  // completed write, { ok: false, guard } on a refused win. A return value, not
+  // a thrown error (Next redacts thrown Server Action errors in production).
+  setLeadStage.mockResolvedValue({ ok: true })
   deleteLead.mockResolvedValue(undefined)
   markLeadLost.mockResolvedValue(undefined)
   setLeadWaiting.mockResolvedValue(undefined)
@@ -103,11 +106,11 @@ describe('OpportunityActionsMenu', () => {
   })
 
   // SERVER CAPACITY GUARD (increment 4). Winning from the actions menu routes
-  // through the guarded setLeadStage; a CapacityGuardError is confirmed and,
-  // on accept, re-called with { override: true }.
-  it('confirms a CapacityGuardError on a win and re-calls with override when accepted', async () => {
+  // through the guarded setLeadStage; a returned { ok: false, guard } is
+  // confirmed and, on accept, re-called with { override: true }.
+  it('confirms a guard refusal on a win and re-calls with override when accepted', async () => {
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
-    setLeadStage.mockRejectedValueOnce({ code: 'capacity_guard', message: 'Sep 30, 2026 is over capacity. Book this one too?' })
+    setLeadStage.mockResolvedValueOnce({ ok: false, guard: 'Sep 30, 2026 is over capacity. Book this one too?' })
     const { onWon } = mount()
     openMenu()
     fireEvent.click(screen.getByRole('menuitem', { name: 'Closed Won' }))
@@ -119,7 +122,7 @@ describe('OpportunityActionsMenu', () => {
 
   it('aborts the win with no error and no override when the guard confirm is declined', async () => {
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
-    setLeadStage.mockRejectedValueOnce({ code: 'capacity_guard', message: 'Kart 1 is already booked. Book this one too?' })
+    setLeadStage.mockResolvedValueOnce({ ok: false, guard: 'Kart 1 is already booked. Book this one too?' })
     const { onWon } = mount()
     openMenu()
     fireEvent.click(screen.getByRole('menuitem', { name: 'Closed Won' }))

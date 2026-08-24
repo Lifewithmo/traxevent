@@ -7,7 +7,13 @@ import type { Lead } from '@/lib/types'
 const push = vi.fn()
 const refresh = vi.fn()
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh, push }) }))
-const setLeadStage = vi.fn().mockResolvedValue(undefined)
+// setLeadStage returns a discriminated result (increment 4): { ok: true } on a
+// completed write, { ok: false, guard } when a would-be over/clash win is
+// refused pending an override — a RETURN VALUE, not a thrown error, because Next
+// redacts thrown Server Action errors in production. Success defaults to
+// { ok: true }; guard cases resolve { ok: false, guard }; a rejection is a
+// genuine failure (e.g. permission).
+const setLeadStage = vi.fn().mockResolvedValue({ ok: true })
 vi.mock('@/actions/leads', () => ({ setLeadStage: (...args: unknown[]) => setLeadStage(...args), createLead: vi.fn() }))
 vi.mock('@/actions/intake', () => ({
   ensureIntakeToken: vi.fn().mockResolvedValue('tok123'),
@@ -70,7 +76,7 @@ function dragLeaveTowards(target: HTMLElement, relatedTarget: Node | null) {
 
 describe('PipelineBoardView', () => {
   beforeEach(() => {
-    setLeadStage.mockClear().mockResolvedValue(undefined)
+    setLeadStage.mockClear().mockResolvedValue({ ok: true })
     push.mockClear()
     refresh.mockClear()
     const slot = document.createElement('div')
@@ -245,7 +251,7 @@ describe('PipelineBoardView', () => {
 
     it('drops onto a column: optimistic move first, server call second, highlight cleared', async () => {
       let settle: () => void = () => {}
-      setLeadStage.mockImplementation(() => new Promise<void>((res) => { settle = () => res() }))
+      setLeadStage.mockImplementation(() => new Promise<{ ok: true }>((res) => { settle = () => res({ ok: true }) }))
 
       render(<PipelineBoardView {...baseProps} />)
       const card = screen.getByRole('article', { name: /Halcyon Studios/ })
@@ -307,7 +313,7 @@ describe('PipelineBoardView', () => {
     it('keeps an in-flight optimistic move when another card\'s refresh payload lands', async () => {
       const settle: Record<string, () => void> = {}
       setLeadStage.mockImplementation((_org: string, id: string) =>
-        new Promise<void>((res) => { settle[id] = () => res() }))
+        new Promise<{ ok: true }>((res) => { settle[id] = () => res({ ok: true }) }))
 
       const twoInInquiry: PipelineGroups = {
         needs_attention: [], waiting: [],
@@ -363,7 +369,7 @@ describe('PipelineBoardView', () => {
     */
     it('keeps the SECOND move of one card when the first move\'s stale payload lands', async () => {
       const settle: Array<() => void> = []
-      setLeadStage.mockImplementation(() => new Promise<void>((res) => { settle.push(() => res()) }))
+      setLeadStage.mockImplementation(() => new Promise<{ ok: true }>((res) => { settle.push(() => res({ ok: true })) }))
 
       const oneInInquiry: PipelineGroups = {
         needs_attention: [], waiting: [],
@@ -421,8 +427,8 @@ describe('PipelineBoardView', () => {
     it('neither rewinds nor reports a superseded move that is rejected', async () => {
       const settle: Array<() => void> = []
       const reject: Array<(e: Error) => void> = []
-      setLeadStage.mockImplementation(() => new Promise<void>((res, rej) => {
-        settle.push(() => res())
+      setLeadStage.mockImplementation(() => new Promise<{ ok: true }>((res, rej) => {
+        settle.push(() => res({ ok: true }))
         reject.push(rej)
       }))
 
@@ -470,8 +476,10 @@ describe('PipelineBoardView', () => {
 
     /*
       SERVER CAPACITY GUARD (increment 4). The board used to be UNGUARDED — a drag
-      to Closed Won wrote straight through. It now catches the server's
-      CapacityGuardError, confirms, and on accept re-calls with { override: true }.
+      to Closed Won wrote straight through. It now checks the server's returned
+      { ok: false, guard } (a RETURN VALUE, not a thrown error — that could not
+      survive Next's production RSC error redaction), confirms, and on accept
+      re-calls with { override: true }.
     */
     // Closed Won is not a drop column on the board (only OPEN_STAGES render
     // dropzones); a win is triggered from the card's stage menu.
@@ -480,11 +488,11 @@ describe('PipelineBoardView', () => {
       await act(async () => { fireEvent.click(screen.getByRole('menuitem', { name: 'Closed Won' })) })
     }
 
-    it('confirms a CapacityGuardError on a win and re-calls with override when accepted', async () => {
+    it('confirms a guard refusal on a win and re-calls with override when accepted', async () => {
       const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
       // The first call is guarded; the override re-call falls through to the
-      // beforeEach default (resolved undefined).
-      setLeadStage.mockRejectedValueOnce({ code: 'capacity_guard', message: 'Sep 30, 2026 is over capacity. Book this one too?' })
+      // beforeEach default (resolved { ok: true }).
+      setLeadStage.mockResolvedValueOnce({ ok: false, guard: 'Sep 30, 2026 is over capacity. Book this one too?' })
       render(<PipelineBoardView {...baseProps} />)
       await winViaMenu()
 
@@ -497,7 +505,7 @@ describe('PipelineBoardView', () => {
 
     it('rolls the card back and does not override when the guard confirm is declined', async () => {
       const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
-      setLeadStage.mockRejectedValueOnce({ code: 'capacity_guard', message: 'Kart 1 is already booked. Book this one too?' })
+      setLeadStage.mockResolvedValueOnce({ ok: false, guard: 'Kart 1 is already booked. Book this one too?' })
       render(<PipelineBoardView {...baseProps} />)
       await winViaMenu()
 
@@ -520,7 +528,7 @@ describe('PipelineBoardView', () => {
       const settle: Record<string, () => void> = {}
       const reject: Record<string, (e: Error) => void> = {}
       setLeadStage.mockImplementation((_org: string, id: string) =>
-        new Promise<void>((res, rej) => { settle[id] = () => res(); reject[id] = rej }))
+        new Promise<{ ok: true }>((res, rej) => { settle[id] = () => res({ ok: true }); reject[id] = rej }))
 
       const twoInInquiry: PipelineGroups = {
         needs_attention: [], waiting: [],

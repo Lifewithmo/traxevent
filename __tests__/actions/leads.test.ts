@@ -281,9 +281,17 @@ describe('leads actions', () => {
 /*
   Server-side capacity guard (increment 4). On a transition INTO closed_won, a
   business-tier org with ≥1 unit is protected: winning a job that would put its
-  date over capacity, or that double-books its assigned unit, throws a typed
-  CapacityGuardError — UNLESS { override: true } is passed. This supersedes the
-  Inc-2 client-side pre-confirm; the client now catches this error and confirms.
+  date over capacity, or that double-books its assigned unit, RETURNS a refusal
+  result `{ ok: false, guard }` — UNLESS { override: true } is passed, in which
+  case it writes and returns `{ ok: true }`. This supersedes the Inc-2
+  client-side pre-confirm; the client checks the result and confirms.
+
+  MODELED AS A RETURN VALUE, not a thrown error, and deliberately so: Next 16's
+  RSC flight layer redacts thrown Server Action errors in a production build
+  (the client receives only a generic { digest } Error — message/name/code all
+  stripped), so a thrown guard could not be detected on the client in prod and
+  the advisory guard silently became an unconditional hard block. Return values
+  serialize intact in both dev and prod.
 */
 describe('setLeadStage capacity guard (increment 4)', () => {
   beforeEach(() => {
@@ -303,48 +311,56 @@ describe('setLeadStage capacity guard (increment 4)', () => {
   const wonOnDate = { data: () => ({ id: 'won1', stage: 'closed_won', event_date: '2026-09-30', assigned_units: { mobile: 'k1' }, created_at: 'x' }) }
   const winLeadDoc = { data: () => ({ id: 'win', stage: 'proposal', event_date: '2026-09-30', assigned_units: { mobile: 'k1' }, created_at: 'x' }) }
 
-  it('throws CapacityGuardError when winning would exceed capacity (no override)', async () => {
+  it('returns { ok:false, guard } when winning would exceed capacity (no override)', async () => {
     // One mobile unit; a won job already holds the date. Winning this one makes
     // mobile demand 2 > supply 1 → over capacity.
     listLeadsSpy.mockResolvedValue({ docs: [wonOnDate, winLeadDoc] })
-    await expect(setLeadStage('org-1', 'win', 'closed_won')).rejects.toMatchObject({ code: 'capacity_guard' })
+    const result = await setLeadStage('org-1', 'win', 'closed_won')
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.guard).toBeTruthy()
     expect(leadDocUpdateSpy).not.toHaveBeenCalled()
   })
 
-  it('throws CapacityGuardError when the assigned unit clashes (no override)', async () => {
+  it('returns { ok:false, guard } when the assigned unit clashes (no override)', async () => {
     // Two units so capacity is not exceeded, but both leads pin k1 → clash.
     unitsListSpy.mockResolvedValue({ docs: [
       { data: () => ({ id: 'k1', name: 'Kart 1', kind: 'mobile', active: true, blockouts: [] }) },
       { data: () => ({ id: 'k2', name: 'Kart 2', kind: 'mobile', active: true, blockouts: [] }) },
     ] })
     listLeadsSpy.mockResolvedValue({ docs: [wonOnDate, winLeadDoc] })
-    await expect(setLeadStage('org-1', 'win', 'closed_won')).rejects.toMatchObject({ code: 'capacity_guard' })
+    const result = await setLeadStage('org-1', 'win', 'closed_won')
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.guard).toMatch(/booked/i)
     expect(leadDocUpdateSpy).not.toHaveBeenCalled()
   })
 
-  it('proceeds (no throw, writes) when override is passed even over capacity', async () => {
+  it('proceeds (writes, returns { ok:true }) when override is passed even over capacity', async () => {
     listLeadsSpy.mockResolvedValue({ docs: [wonOnDate, winLeadDoc] })
-    await setLeadStage('org-1', 'win', 'closed_won', { override: true })
+    const result = await setLeadStage('org-1', 'win', 'closed_won', { override: true })
+    expect(result).toEqual({ ok: true })
     expect(leadDocUpdateSpy).toHaveBeenCalledWith(expect.objectContaining({ stage: 'closed_won' }))
   })
 
   it('does not guard a standard (non-business) org', async () => {
     orgDocGetSpy.mockResolvedValue({ exists: true, data: () => ({ id: 'org-1', plan: 'starter' }) })
     listLeadsSpy.mockResolvedValue({ docs: [wonOnDate, winLeadDoc] })
-    await setLeadStage('org-1', 'win', 'closed_won')
+    const result = await setLeadStage('org-1', 'win', 'closed_won')
+    expect(result).toEqual({ ok: true })
     expect(leadDocUpdateSpy).toHaveBeenCalledWith(expect.objectContaining({ stage: 'closed_won' }))
   })
 
   it('does not guard a business org with no units', async () => {
     unitsListSpy.mockResolvedValue({ docs: [] })
     listLeadsSpy.mockResolvedValue({ docs: [wonOnDate, winLeadDoc] })
-    await setLeadStage('org-1', 'win', 'closed_won')
+    const result = await setLeadStage('org-1', 'win', 'closed_won')
+    expect(result).toEqual({ ok: true })
     expect(leadDocUpdateSpy).toHaveBeenCalledWith(expect.objectContaining({ stage: 'closed_won' }))
   })
 
   it('does not guard a move that is not into closed_won', async () => {
     listLeadsSpy.mockResolvedValue({ docs: [wonOnDate, winLeadDoc] })
-    await setLeadStage('org-1', 'win', 'consultation')
+    const result = await setLeadStage('org-1', 'win', 'consultation')
+    expect(result).toEqual({ ok: true })
     expect(leadDocUpdateSpy).toHaveBeenCalledWith(expect.objectContaining({ stage: 'consultation' }))
   })
 
@@ -353,14 +369,16 @@ describe('setLeadStage capacity guard (increment 4)', () => {
       id: 'win', stage: 'closed_won', event_date: '2026-09-30', assigned_units: { mobile: 'k1' }, created_at: 'x',
     }) })
     listLeadsSpy.mockResolvedValue({ docs: [wonOnDate] })
-    await setLeadStage('org-1', 'win', 'closed_won')
+    const result = await setLeadStage('org-1', 'win', 'closed_won')
+    expect(result).toEqual({ ok: true })
     expect(leadDocUpdateSpy).toHaveBeenCalledWith(expect.objectContaining({ stage: 'closed_won' }))
   })
 
   it('proceeds when winning a fresh date (not over, no clash)', async () => {
     // The only booking on this date is the lead being won.
     listLeadsSpy.mockResolvedValue({ docs: [winLeadDoc] })
-    await setLeadStage('org-1', 'win', 'closed_won')
+    const result = await setLeadStage('org-1', 'win', 'closed_won')
+    expect(result).toEqual({ ok: true })
     expect(leadDocUpdateSpy).toHaveBeenCalledWith(expect.objectContaining({ stage: 'closed_won' }))
   })
 })

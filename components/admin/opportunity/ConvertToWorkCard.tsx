@@ -11,7 +11,6 @@ import { Label } from '@/components/ui/label'
 import { RelatedRecordCard, type RelatedRow } from '@/components/ui/related-record-card'
 import { StatusPill } from '@/components/ui/status-pill'
 import { convertOpportunityToWork, setLeadStage } from '@/actions/leads'
-import { isCapacityGuardError, capacityGuardMessage } from '@/lib/capacity/guard'
 import { eventCreateFieldsFromType, DEFAULT_EVENT_TYPE_ID } from '@/lib/event-types'
 import type { EventType } from '@/lib/event-types'
 import { opportunityTitle } from '@/lib/leads'
@@ -149,22 +148,20 @@ export function ConvertToWorkCard({ orgId, orgSlug, lead, job, eventTypes, open:
     // but not on the calendar".
     const settle = () => { openForm(); router.refresh() }
     try {
-      await setLeadStage(orgId, lead.id, 'closed_won')
-      settle()
-    } catch (e: unknown) {
-      // SERVER CAPACITY GUARD (increment 4): a would-be over/clash win throws a
-      // CapacityGuardError. Confirm (advisory) and, on accept, re-call with
-      // { override: true }. A decline leaves the deal un-won, no error.
-      if (isCapacityGuardError(e)) {
-        if (!window.confirm(capacityGuardMessage(e))) return
-        try {
-          await setLeadStage(orgId, lead.id, 'closed_won', { override: true })
-          settle()
-        } catch (e2: unknown) {
-          setError(e2 instanceof Error ? e2.message : 'Could not mark this won')
-        }
+      // SERVER CAPACITY GUARD (increment 4): a would-be over/clash win RETURNS
+      // { ok: false, guard } (never thrown — a thrown guard could not survive
+      // Next's production RSC error redaction; see lib/capacity/guard.ts).
+      // Confirm (advisory) and, on accept, re-call with { override: true }. A
+      // decline leaves the deal un-won, no error. A genuine failure throws.
+      const result = await setLeadStage(orgId, lead.id, 'closed_won')
+      if (!result.ok) {
+        if (!window.confirm(result.guard)) return
+        const override = await setLeadStage(orgId, lead.id, 'closed_won', { override: true })
+        if (override.ok) settle()
         return
       }
+      settle()
+    } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Could not mark this won')
     } finally {
       setWinning(false)

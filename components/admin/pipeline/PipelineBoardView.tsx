@@ -10,7 +10,6 @@ import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { EmptyState } from '@/components/ui/empty-state'
 import { StatusPill } from '@/components/ui/status-pill'
 import { setLeadStage } from '@/actions/leads'
-import { isCapacityGuardError, capacityGuardMessage } from '@/lib/capacity/guard'
 import { cn } from '@/lib/utils'
 import { OPEN_STAGES, LEAD_STAGE_LABELS, opportunityTitle } from '@/lib/leads'
 import { money, shortDate } from '@/lib/pipeline-presentation'
@@ -205,30 +204,33 @@ export function PipelineBoardView({
     }
 
     try {
-      await setLeadStage(orgId, row.lead.id, newStage)
-      settle()
-    } catch (err: unknown) {
       /*
         SERVER CAPACITY GUARD (increment 4). This board was previously UNGUARDED —
-        a win wrote straight through. The server now throws a CapacityGuardError
-        on a would-be over/clash win; we confirm (advisory, from the error's own
-        message) and on accept re-call with { override: true }, matching the list
-        surface. A declined confirm rolls the card back with no error line.
+        a win wrote straight through. The server now RETURNS `{ ok: false, guard }`
+        on a would-be over/clash win (never throws it — a thrown guard could not
+        survive Next's production RSC error redaction; see lib/capacity/guard.ts).
+        We confirm (advisory, from `guard`) and on accept re-call with
+        { override: true }, matching the list surface. A declined confirm rolls
+        the card back with no error line. A genuine failure still throws below.
       */
-      if (isCapacityGuardError(err)) {
-        if (!window.confirm(capacityGuardMessage(err))) {
+      const result = await setLeadStage(orgId, row.lead.id, newStage)
+      if (!result.ok) {
+        if (!window.confirm(result.guard)) {
           rollback(null)
           return
         }
-        try {
-          await setLeadStage(orgId, row.lead.id, newStage, { override: true })
-          settle()
-          return
-        } catch (err2: unknown) {
-          rollback(err2 instanceof Error ? err2.message : 'Failed to move opportunity')
+        const override = await setLeadStage(orgId, row.lead.id, newStage, { override: true })
+        if (!override.ok) {
+          // Override skips the guard, so this is unreachable in practice; treat
+          // an unexpected refusal as a silent rollback rather than a false win.
+          rollback(null)
           return
         }
+        settle()
+        return
       }
+      settle()
+    } catch (err: unknown) {
       rollback(err instanceof Error ? err.message : 'Failed to move opportunity')
     } finally {
       // Identity, not lead id: a second move of the SAME card replaced this

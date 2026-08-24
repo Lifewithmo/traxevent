@@ -1,40 +1,26 @@
 /**
- * The server-side capacity guard's typed rejection (increment 4).
+ * The server-side capacity guard's result shape (increment 4).
  *
- * Lives in a plain module (NOT the `'use server'` `actions/leads.ts`) because a
- * `'use server'` file may export only async functions — a class export breaks
- * `next build` (same rule as the LeadUpdate type note in actions/leads.ts). The
- * action imports and throws this; clients detect it and re-call with override.
+ * MODELED AS A RETURN VALUE, not a thrown error — and this is load-bearing, not
+ * a style choice. Next 16's RSC flight layer REDACTS thrown Server Action errors
+ * in a production build: the compiled server emits only a `{ digest }` chunk and
+ * the client reconstructs a generic `Error` — message replaced with a canned
+ * "An error occurred in the Server Components render…", `name` = 'Error', no
+ * custom `code` (see react-server-dom-*-server/-client `.production.js`). A
+ * thrown guard was therefore indistinguishable from a real failure on the client
+ * in prod, so the advisory guard silently degraded into an unconditional HARD
+ * BLOCK: an over-capacity or clashing win could never be confirmed-and-overridden
+ * from any of the four UI surfaces. (It only ever "worked" under `next dev`,
+ * where the real message crosses, and in vitest, where the mock threw a
+ * dev-shaped error object.)
  *
- * CROSS-BOUNDARY DETECTION. A server action reconstructs a thrown error on the
- * client — the class prototype is gone and custom own-props (`code`/`name`) are
- * not guaranteed to survive serialization; the `message` is the one field that
- * reliably crosses. So the message carries a leading `MARKER`, and detection
- * matches on ANY of `code` / `name` / the message marker. `capacityGuardMessage`
- * strips the marker so the operator sees only the human confirm copy.
+ * Return values serialize intact in BOTH dev and prod — this is Next's own
+ * guidance ("model expected errors as return values; avoid try/catch and
+ * throwing" for expected, recoverable conditions). `setLeadStage` returns
+ * `{ ok: true }` once the write lands, and `{ ok: false, guard }` when the win
+ * is refused pending an override, where `guard` is the human confirm copy. Each
+ * client caller checks `ok`, `window.confirm(guard)`, and on accept re-calls
+ * `setLeadStage(…, { override: true })`. Genuine failures (permission, invalid
+ * stage, network) still throw and are caught separately.
  */
-export const CAPACITY_GUARD_CODE = 'capacity_guard' as const
-const MARKER = '[capacity-guard]'
-
-export class CapacityGuardError extends Error {
-  readonly code = CAPACITY_GUARD_CODE
-  constructor(message: string) {
-    super(`${MARKER} ${message}`)
-    this.name = 'CapacityGuardError'
-  }
-}
-
-/** True when a caught value is a capacity-guard rejection (see the module note). */
-export function isCapacityGuardError(err: unknown): err is { message: string } {
-  if (typeof err !== 'object' || err === null) return false
-  const e = err as { code?: unknown; name?: unknown; message?: unknown }
-  if (e.code === CAPACITY_GUARD_CODE || e.name === 'CapacityGuardError') return true
-  return typeof e.message === 'string' && e.message.startsWith(MARKER)
-}
-
-/** The human confirm copy for a guard rejection, with the detection marker stripped. */
-export function capacityGuardMessage(err: unknown): string {
-  const raw = (err as { message?: unknown })?.message
-  const msg = typeof raw === 'string' ? raw : ''
-  return msg.startsWith(MARKER) ? msg.slice(MARKER.length).trim() : msg
-}
+export type StageChangeResult = { ok: true } | { ok: false; guard: string }

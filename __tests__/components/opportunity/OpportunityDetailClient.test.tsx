@@ -9,7 +9,10 @@ vi.mock('next/navigation', () => ({
   useSearchParams: () => search,
 }))
 const deleteLead = vi.fn().mockResolvedValue(undefined)
-const setLeadStage = vi.fn().mockResolvedValue(undefined)
+// setLeadStage returns a discriminated result (increment 4): { ok: true } on a
+// completed write, { ok: false, guard } on a refused win. A return value, not a
+// thrown error (Next redacts thrown Server Action errors in production).
+const setLeadStage = vi.fn().mockResolvedValue({ ok: true })
 const updateLead = vi.fn().mockResolvedValue(undefined)
 vi.mock('@/actions/leads', () => ({
   deleteLead: (...a: unknown[]) => deleteLead(...a),
@@ -76,7 +79,7 @@ describe('OpportunityDetailClient', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     deleteLead.mockResolvedValue(undefined)
-    setLeadStage.mockResolvedValue(undefined)
+    setLeadStage.mockResolvedValue({ ok: true })
     updateLead.mockResolvedValue(undefined)
     search = new URLSearchParams()
   })
