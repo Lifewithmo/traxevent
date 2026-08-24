@@ -2,11 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const closeoutSetSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const closeoutGetSpy = vi.hoisted(() => vi.fn())
+const eventGetSpy = vi.hoisted(() => vi.fn())
 const opsDocIdSpy = vi.hoisted(() => vi.fn())
 const opsDoc = vi.hoisted(() => ({ set: closeoutSetSpy, get: closeoutGetSpy, update: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('@/lib/firebase-admin', () => {
   const opsColl = { doc: vi.fn((id?: string) => { opsDocIdSpy(id); return opsDoc }) }
-  const eventDoc = { collection: vi.fn(() => opsColl) }
+  const eventDoc = { collection: vi.fn(() => opsColl), get: eventGetSpy }
   const eventsColl = { doc: vi.fn(() => eventDoc) }
   const orgDoc = { collection: vi.fn(() => eventsColl) }
   return { adminDb: { collection: vi.fn(() => ({ doc: vi.fn(() => orgDoc) })) } }
@@ -18,7 +19,10 @@ vi.mock('@/lib/ops/resources', () => ({ listResourcesCore: vi.fn() }))
 import { getOpsPlanCore } from '@/lib/ops/event-ops'
 import { getWorkPackagesByIdsCore } from '@/lib/ops/work-packages'
 import { listResourcesCore } from '@/lib/ops/resources'
-import { saveActualsCore, closeoutSummaryCore, completeCloseoutCore } from '@/lib/ops/closeout'
+import {
+  saveActualsCore, closeoutSummaryCore, completeCloseoutCore, listSeriesCloseoutsCore,
+  selectSeriesRollupDays, SERIES_ROLLUP_CAP,
+} from '@/lib/ops/closeout'
 
 const PLAN = {
   package_ids: ['wp1'], requirements: { guests: 100 },
@@ -36,6 +40,8 @@ beforeEach(() => {
   vi.mocked(getOpsPlanCore).mockResolvedValue(PLAN as never)
   vi.mocked(getWorkPackagesByIdsCore).mockResolvedValue([PKG])
   vi.mocked(listResourcesCore).mockResolvedValue(RES)
+  // Default: event doc absent (no booth fee, kind unknown) — the pre-fees behavior.
+  eventGetSpy.mockResolvedValue({ exists: false })
 })
 
 describe('saveActualsCore', () => {
@@ -99,6 +105,115 @@ describe('closeoutSummaryCore', () => {
     closeoutGetSpy.mockResolvedValue({ exists: false })
     vi.mocked(getWorkPackagesByIdsCore).mockResolvedValue([])
     await expect(closeoutSummaryCore('o1', 'e1')).rejects.toThrow('Package no longer exists: wp1')
+  })
+
+  // ——— Booth-fee join + closeout-lite (spec 2026-08-23 S1) ————————————————
+  it('reads the event doc and joins its booth fee into both margins on the plan path', async () => {
+    eventGetSpy.mockResolvedValue({ exists: true, data: () => ({ kind: 'market_day', booth_fee: 45 }) })
+    closeoutGetSpy.mockResolvedValue({ exists: false })
+    const summary = await closeoutSummaryCore('o1', 'e1')
+    expect(summary.fees).toBe(45)
+    expect(summary.revenue).toBe(1200)
+    expect(summary.planned_margin).toBeCloseTo(1200 - 55 - 45)
+    expect(summary.actual_margin).toBeCloseTo(1200 - 0 - 45)
+  })
+
+  it('computes closeout-lite for a plan-less market day — no throw, revenue = sales', async () => {
+    vi.mocked(getOpsPlanCore).mockResolvedValue(null)
+    eventGetSpy.mockResolvedValue({ exists: true, data: () => ({ kind: 'market_day', booth_fee: 35 }) })
+    closeoutGetSpy.mockResolvedValue({
+      exists: true,
+      data: () => ({ actuals: { sales: 176 }, completed: false, created_at: 't' }),
+    })
+    const summary = await closeoutSummaryCore('o1', 'e1')
+    expect(summary.revenue).toBe(176)
+    expect(summary.fees).toBe(35)
+    expect(summary.planned_consumable_cost).toBe(0)
+    expect(summary.planned_margin).toBe(141)
+    expect(summary.actual_margin).toBe(141)
+    expect(getWorkPackagesByIdsCore).not.toHaveBeenCalled()
+    // No consumable actuals recorded → the resources read is skipped entirely.
+    expect(listResourcesCore).not.toHaveBeenCalled()
+  })
+
+  it('lite branch costs recorded consumable actuals against org resources', async () => {
+    vi.mocked(getOpsPlanCore).mockResolvedValue(null)
+    eventGetSpy.mockResolvedValue({ exists: true, data: () => ({ kind: 'market_day', booth_fee: 35 }) })
+    closeoutGetSpy.mockResolvedValue({
+      exists: true,
+      data: () => ({ actuals: { sales: 176, consumables: [{ resource_id: 'res-beans', qty_used: 10 }] }, completed: false, created_at: 't' }),
+    })
+    const summary = await closeoutSummaryCore('o1', 'e1')
+    expect(listResourcesCore).toHaveBeenCalled()
+    expect(summary.actual_consumable_cost).toBeCloseTo(5.5)
+    expect(summary.actual_margin).toBeCloseTo(176 - 5.5 - 35)
+  })
+
+  it('still requires a plan for client jobs (kind absent = client_job)', async () => {
+    vi.mocked(getOpsPlanCore).mockResolvedValue(null)
+    eventGetSpy.mockResolvedValue({ exists: true, data: () => ({ booth_fee: 35 }) })
+    await expect(closeoutSummaryCore('o1', 'e1')).rejects.toThrow('No ops plan')
+  })
+})
+
+describe('listSeriesCloseoutsCore', () => {
+  it('maps read docs, keeps a missing doc as null, and drops FAILED reads entirely', async () => {
+    closeoutGetSpy
+      .mockResolvedValueOnce({ exists: true, data: () => ({ actuals: { sales: 100 }, completed: true, created_at: 't' }) })
+      .mockResolvedValueOnce({ exists: false })
+      .mockRejectedValueOnce(new Error('unavailable'))
+    const out = await listSeriesCloseoutsCore('o1', ['d1', 'd2', 'd3'])
+    expect(out['d1']?.actuals?.sales).toBe(100)
+    expect(out['d2']).toBeNull()          // read succeeded, no closeout — honest "not closed out"
+    expect('d3' in out).toBe(false)       // failed ≠ missing — never a false $0 day
+  })
+
+  it('caps at 30 direct doc gets', async () => {
+    closeoutGetSpy.mockResolvedValue({ exists: false })
+    const ids = Array.from({ length: 35 }, (_, i) => `d${i}`)
+    const out = await listSeriesCloseoutsCore('o1', ids)
+    expect(closeoutGetSpy).toHaveBeenCalledTimes(30)
+    expect(Object.keys(out)).toHaveLength(30)
+  })
+})
+
+describe('selectSeriesRollupDays', () => {
+  // A weekly day per index: day(0) = 2026-01-04, day(1) = 2026-01-11, …
+  const day = (i: number) => {
+    const d = new Date(Date.UTC(2026, 0, 4 + i * 7))
+    return { id: `d${i}`, event_start: d.toISOString().slice(0, 10) }
+  }
+
+  it('an extended season reads the NEWEST 30 days <= today — never the oldest 30', () => {
+    // 34-week season, all past (the "created 30 + one extend" case): the 4
+    // OLDEST days fall beyond the cap; yesterday's market is always read.
+    const days = Array.from({ length: 34 }, (_, i) => day(i))
+    const today = '2027-01-01' // after every day in the season
+    const { readIds, beyondCapIds } = selectSeriesRollupDays(days, today)
+    expect(readIds).toHaveLength(SERIES_ROLLUP_CAP)
+    expect(readIds[0]).toBe('d33')                        // newest first
+    expect(readIds).toContain('d33')
+    expect(readIds).toContain('d4')
+    expect(beyondCapIds.sort()).toEqual(['d0', 'd1', 'd2', 'd3'])
+  })
+
+  it('days that can hold a closeout (<= today) win the budget over future days', () => {
+    // Mid-season: 28 past + 6 future. All 28 past days are read; the two
+    // soonest future days take the remaining budget; the rest sit beyond.
+    const days = Array.from({ length: 34 }, (_, i) => day(i))
+    const today = day(27).event_start // day 27 is "today" — 28 days <= today
+    const { readIds, beyondCapIds } = selectSeriesRollupDays(days, today)
+    for (let i = 0; i <= 27; i++) expect(readIds).toContain(`d${i}`)
+    expect(readIds).toContain('d28')                      // soonest future
+    expect(readIds).toContain('d29')
+    expect(beyondCapIds.sort()).toEqual(['d30', 'd31', 'd32', 'd33'])
+  })
+
+  it('a season inside the cap reads every day — nothing beyond', () => {
+    const days = Array.from({ length: 12 }, (_, i) => day(i))
+    const { readIds, beyondCapIds } = selectSeriesRollupDays(days, day(5).event_start)
+    expect(readIds).toHaveLength(12)
+    expect(beyondCapIds).toEqual([])
   })
 })
 

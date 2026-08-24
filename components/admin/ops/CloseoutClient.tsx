@@ -26,6 +26,10 @@ export interface CloseoutClientProps {
    *  server summary instead of recomputing live. */
   packages?: WorkPackage[]
   resources?: OpsResource[]
+  /** The event's booth fee (page already holds the event doc) — threaded into
+   *  the live recompute so it matches closeoutSummaryCore's event-read join
+   *  exactly. Absent/zero on client jobs without a fee. */
+  boothFee?: number
   closeout: OpsCloseout | null
   summary: CloseoutSummary | null
   summaryError: string | null
@@ -96,10 +100,11 @@ export function CloseoutClient(props: CloseoutClientProps) {
           .map((i) => ({ resource_id: i.resource_id, qty_used: Number(qtyUsed[i.resource_id]) }))
           .filter((c) => Number.isFinite(c.qty_used)),
         sales: sales !== '' && Number.isFinite(salesNum) ? salesNum : 0,
+        ...(props.boothFee !== undefined ? { booth_fee: props.boothFee } : {}),
       }),
       error: null,
     }
-  }, [packages, resources, plan, qtyUsed, sales])
+  }, [packages, resources, plan, qtyUsed, sales, props.boothFee])
 
   const shownSummary = dirty && live?.summary ? live.summary : summary
   const shownError = shownSummary ? null : dirty && live?.error ? live.error : props.summaryError
@@ -249,6 +254,13 @@ export function CloseoutClient(props: CloseoutClientProps) {
                   </>
                 )}
               </p>
+              {shownSummary.fees !== undefined && shownSummary.fees > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  −{' '}
+                  <span className="font-medium tabular-nums text-foreground">{formatMoney(shownSummary.fees)}</span>
+                  {' '}booth fee — subtracted from both margins
+                </p>
+              )}
               {shownSummary.cost_gaps && shownSummary.cost_gaps.length > 0 && (
                 <p className="rounded-lg border border-[var(--warn-border)] bg-[var(--warn-bg)] px-3 py-2 text-sm text-[var(--warn-fg)]">
                   Planned cost omits {shownSummary.cost_gaps.length} resource(s) with no unit conversion: {shownSummary.cost_gaps.join(', ')}

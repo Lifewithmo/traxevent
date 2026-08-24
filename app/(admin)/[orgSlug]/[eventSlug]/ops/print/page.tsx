@@ -4,7 +4,19 @@ import { headers } from 'next/headers'
 import { requireEventPage } from '@/lib/auth/guards'
 import { getOpsPlan } from '@/actions/event-ops'
 import { PrintButton } from '@/components/admin/ops/PrintButton'
+import { encodeQr, qrSvgPath, qrViewBox, type QrCode } from '@/lib/qr'
 import type { OpsListItem } from '@/lib/types'
+
+/** Printed→live bridge (inc-2 S4.1): QR of the live URL, rendered from the
+ *  vendored zero-dep encoder. null when the URL exceeds the encoder's range —
+ *  the plain URL beside it is the fallback, never a broken code. */
+function tryEncodeQr(url: string): QrCode | null {
+  try {
+    return encodeQr(url)
+  } catch {
+    return null
+  }
+}
 
 // UTC-labeled so a server-rendered stamp never lies about the operator's local
 // time (this page has no client hydration to re-render it in their timezone).
@@ -55,6 +67,7 @@ export default async function OpsPrintPage({
   const origin = process.env.NEXT_PUBLIC_APP_ORIGIN ??
     (host ? `${headerList.get('x-forwarded-proto') ?? 'https'}://${host}` : 'https://traxevent.com')
   const loadoutUrl = `${origin}/${orgSlug}/${eventSlug}/ops/loadout`
+  const qr = tryEncodeQr(loadoutUrl)
   return (
     // Paper never inverts: force both halves — white ground AND black ink — so
     // the document reads identically on a dark-mode screen and out of the printer.
@@ -63,10 +76,19 @@ export default async function OpsPrintPage({
         <h1 className="text-xl font-bold">{event.name} — {plan.requirements.guests} guests</h1>
         <PrintButton />
       </div>
-      {/* Freshness + the printed→live bridge (plain URL — QR is a named deferral). */}
-      <p className="mb-6 text-xs text-neutral-600">
-        List updated {freshnessStamp(plan.updated_at ?? plan.created_at)} · Live version: {loadoutUrl}
-      </p>
+      {/* Freshness + the printed→live bridge: QR (inc-2 S4.1) with the plain
+          URL beside it — the paper goes stale the moment a box is ticked. */}
+      <div className="mb-6 flex items-start gap-3">
+        {qr && (
+          // Explicit white/black (paper rule) — the QR must scan on any screen theme.
+          <svg viewBox={qrViewBox(qr)} className="size-20 shrink-0 bg-white" role="img" aria-label={`QR code for ${loadoutUrl}`} shapeRendering="crispEdges">
+            <path d={qrSvgPath(qr)} fill="#000" />
+          </svg>
+        )}
+        <p className="text-xs text-neutral-600">
+          List updated {freshnessStamp(plan.updated_at ?? plan.created_at)} · Live version: {loadoutUrl}
+        </p>
+      </div>
       <List title="Shopping list" items={plan.shopping_list} />
       <List title="Packing list" items={plan.packing_list} />
     </div>

@@ -23,11 +23,18 @@ vi.mock('@/lib/ops/work-packages', () => ({ getWorkPackagesByIdsCore: vi.fn() })
 vi.mock('@/lib/ops/resources', () => ({ listResourcesCore: vi.fn() }))
 vi.mock('@/lib/ops/checklist-templates', () => ({ getTemplatesForOrg: vi.fn() }))
 
+import { FieldValue } from 'firebase-admin/firestore'
 import { getWorkPackagesByIdsCore } from '@/lib/ops/work-packages'
 import { listResourcesCore } from '@/lib/ops/resources'
 import { getTemplatesForOrg } from '@/lib/ops/checklist-templates'
-import { instantiateOpsPlanCore, updateOpsRequirementsCore, recomputeOpsListsCore } from '@/lib/ops/event-ops'
+import {
+  instantiateOpsPlanCore, updateOpsRequirementsCore, recomputeOpsListsCore,
+  confirmReadyCore, clearReadyConfirmedCore,
+} from '@/lib/ops/event-ops'
 import type { OpsPlan } from '@/lib/types'
+
+// FieldValue.delete() sentinel — same instance class the cores write.
+const DELETE_SENTINEL = FieldValue.delete()
 
 const PKG = {
   id: 'wp1', name: 'Espresso Bar', price: 1200, created_at: 't',
@@ -183,6 +190,36 @@ describe('updateOpsRequirementsCore', () => {
     vi.mocked(getWorkPackagesByIdsCore).mockResolvedValue([])
     await expect(updateOpsRequirementsCore('o1', 'e1', { guests: 120 }, 'u2')).rejects.toThrow('Package no longer exists: wp1')
   })
+
+  // ── Confirm-ready clearing path (a) — inc-2 P2 ─────────────────────────────
+
+  it('clears ready_confirmed on ANY logged change — a non-guests field like site_needs counts', async () => {
+    planGetSpy.mockResolvedValue({
+      exists: true,
+      data: () => ({ ...existing, ready_confirmed: { at: 't0', by: 'u9' } }),
+    })
+    await updateOpsRequirementsCore('o1', 'e1', { site_needs: ['power', 'water'] }, 'u2')
+    const payload = planUpdateSpy.mock.calls[0][0]
+    expect(payload.ready_confirmed).toEqual(DELETE_SENTINEL)
+  })
+
+  it('clears ready_confirmed on a service_start change too', async () => {
+    planGetSpy.mockResolvedValue({
+      exists: true,
+      data: () => ({ ...existing, ready_confirmed: { at: 't0', by: 'u9' } }),
+    })
+    await updateOpsRequirementsCore('o1', 'e1', { service_start: '2026-09-12T15:00' }, 'u2')
+    expect(planUpdateSpy.mock.calls[0][0].ready_confirmed).toEqual(DELETE_SENTINEL)
+  })
+
+  it('does NOT clear on a same-value write (no logged entry → no write at all)', async () => {
+    planGetSpy.mockResolvedValue({
+      exists: true,
+      data: () => ({ ...existing, ready_confirmed: { at: 't0', by: 'u9' } }),
+    })
+    await updateOpsRequirementsCore('o1', 'e1', { site_needs: ['power'] }, 'u2')
+    expect(planUpdateSpy).not.toHaveBeenCalled()
+  })
 })
 
 describe('recomputeOpsListsCore (spec 2026-08-19 B5)', () => {
@@ -268,6 +305,74 @@ describe('recomputeOpsListsCore (spec 2026-08-19 B5)', () => {
 
   it('rejects a non-positive guests option', async () => {
     await expect(recomputeOpsListsCore('o1', 'e1', 'u3', { guests: 0 })).rejects.toThrow('Guest count must be positive')
+    expect(planUpdateSpy).not.toHaveBeenCalled()
+  })
+
+  // ── Confirm-ready clearing path (b) — inc-2 P2: BOTH callers route here ────
+
+  it('clears ready_confirmed on every recompute AND strips it from the returned plan', async () => {
+    planGetSpy.mockResolvedValue({
+      exists: true,
+      data: () => ({ ...existing, ready_confirmed: { at: 't0', by: 'u9' } }),
+    })
+    const result = await recomputeOpsListsCore('o1', 'e1', 'u3')
+    const payload = planUpdateSpy.mock.calls[0][0]
+    expect(payload.ready_confirmed).toEqual(DELETE_SENTINEL)
+    // The returned plan feeds client state — the cleared attestation must not linger.
+    expect('ready_confirmed' in result).toBe(false)
+  })
+
+  it('clears ready_confirmed on the headcount-hook (guests) path too', async () => {
+    planGetSpy.mockResolvedValue({
+      exists: true,
+      data: () => ({ ...existing, ready_confirmed: { at: 't0', by: 'u9' } }),
+    })
+    await recomputeOpsListsCore('o1', 'e1', 'u3', { guests: 120 })
+    expect(planUpdateSpy.mock.calls[0][0].ready_confirmed).toEqual(DELETE_SENTINEL)
+  })
+})
+
+describe('confirmReadyCore / clearReadyConfirmedCore (inc-2 P2)', () => {
+  const existing: OpsPlan = {
+    package_ids: ['wp1'],
+    requirements: { guests: 100 },
+    deadlines: [], packing_list: [], shopping_list: [],
+    checklists: [], needs_review: false, change_log: [],
+    created_at: 't',
+  }
+
+  it('confirmReadyCore stamps {at, by}, logs the attestation, and returns the stamp', async () => {
+    planGetSpy.mockResolvedValue({ exists: true, data: () => existing })
+    const stamp = await confirmReadyCore('o1', 'e1', 'u7')
+    expect(stamp).toEqual({ at: expect.any(String), by: 'u7' })
+    const payload = planUpdateSpy.mock.calls[0][0]
+    expect(payload.ready_confirmed).toEqual(stamp)
+    expect(payload.change_log.elements[0]).toMatchObject({ by: 'u7', field: 'ready_confirmed' })
+    expect(payload.updated_at).toBe(stamp.at)
+  })
+
+  it('confirmReadyCore throws when no plan exists — nothing to attest to', async () => {
+    planGetSpy.mockResolvedValue({ exists: false })
+    await expect(confirmReadyCore('o1', 'e1', 'u7')).rejects.toThrow('No ops plan')
+    expect(planUpdateSpy).not.toHaveBeenCalled()
+  })
+
+  it('clearReadyConfirmedCore deletes the field and logs, when an attestation stands', async () => {
+    planGetSpy.mockResolvedValue({
+      exists: true,
+      data: () => ({ ...existing, ready_confirmed: { at: 't0', by: 'u9' } }),
+    })
+    await clearReadyConfirmedCore('o1', 'e1', 'u2')
+    const payload = planUpdateSpy.mock.calls[0][0]
+    expect(payload.ready_confirmed).toEqual(DELETE_SENTINEL)
+    expect(payload.change_log.elements[0]).toMatchObject({ by: 'u2', field: 'ready_confirm_cleared' })
+  })
+
+  it('clearReadyConfirmedCore is a silent no-op without a plan or without an attestation', async () => {
+    planGetSpy.mockResolvedValue({ exists: false })
+    await clearReadyConfirmedCore('o1', 'e1', 'u2')
+    planGetSpy.mockResolvedValue({ exists: true, data: () => existing })
+    await clearReadyConfirmedCore('o1', 'e1', 'u2')
     expect(planUpdateSpy).not.toHaveBeenCalled()
   })
 })

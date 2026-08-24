@@ -103,4 +103,55 @@ describe('AgendaRail', () => {
     render(<AgendaRail orgSlug="acme" agenda={{ ...agenda, upcoming: [{ ...agenda.upcoming[0], ops }] }} />)
     expect(screen.getByText('1 overdue')).toBeInTheDocument()
   })
+
+  it('gives today’s market day a Close out deep-link — day-of, admins only (spec 2026-08-23 S1 bonus)', () => {
+    const marketToday: Agenda = {
+      ...agenda,
+      isAdmin: true,
+      today: [
+        { ...agenda.today[0] },
+        { eventId: 'm1', slug: 'city-market', name: 'City Market', date: '2026-08-05', daysUntil: 0, multiDay: false, kind: 'market_day' },
+      ],
+      upcoming: [{ ...agenda.upcoming[0], kind: 'market_day', daysUntil: 2 }],
+    }
+    render(<AgendaRail orgSlug="acme" agenda={marketToday} />)
+    // Compact today row: market day links its closeout; the future market day does not.
+    const link = screen.getByRole('link', { name: 'Close out →' })
+    expect(link).toHaveAttribute('href', '/acme/city-market/closeout')
+    // Hard gate: day-of actions get 44px touch targets (visual size stays small).
+    expect(link.className).toMatch(/min-h-11/)
+    expect(screen.queryByRole('link', { name: 'Close out the day →' })).not.toBeInTheDocument()
+  })
+
+  it('links the closeout under the pinned block when the market day IS the next job', () => {
+    const pinnedMarket: Agenda = {
+      ...agenda,
+      isAdmin: true,
+      today: [{ eventId: 'm1', slug: 'city-market', name: 'City Market', date: '2026-08-05', daysUntil: 0, multiDay: false, kind: 'market_day' }],
+    }
+    render(<AgendaRail orgSlug="acme" agenda={pinnedMarket} />)
+    const link = screen.getByRole('link', { name: 'Close out the day →' })
+    expect(link).toHaveAttribute('href', '/acme/city-market/closeout')
+    expect(link.className).toMatch(/min-h-11/)
+  })
+
+  it('never shows a Close out link to a non-admin — the closeout page would just bounce them', () => {
+    // isAdmin absent (hand-built fixture) and explicitly false behave alike.
+    for (const isAdmin of [undefined, false]) {
+      const marketDay: Agenda = {
+        ...agenda,
+        ...(isAdmin === undefined ? {} : { isAdmin }),
+        today: [
+          { eventId: 'm1', slug: 'city-market', name: 'City Market', date: '2026-08-05', daysUntil: 0, multiDay: false, kind: 'market_day' },
+          { eventId: 'm2', slug: 'night-market', name: 'Night Market', date: '2026-08-05', daysUntil: 0, multiDay: false, kind: 'market_day' },
+        ],
+      }
+      const { unmount } = render(<AgendaRail orgSlug="acme" agenda={marketDay} />)
+      // Neither the pinned-block link nor the compact-row link renders…
+      expect(screen.queryByRole('link', { name: /Close out/ })).not.toBeInTheDocument()
+      // …but the market day itself still shows normally.
+      expect(screen.getByText('City Market')).toBeInTheDocument()
+      unmount()
+    }
+  })
 })

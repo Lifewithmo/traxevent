@@ -88,6 +88,9 @@ describe('getTodayAgenda', () => {
     const agenda = await getTodayAgenda('o1')
     expect(getOpsPlanCore).toHaveBeenCalledTimes(1)
     expect(getOpsPlanCore).toHaveBeenCalledWith('o1', 'job-today')
+    // Admin viewer (mock default role: 'admin') → the rail may render the
+    // market-day closeout deep-links.
+    expect(agenda.isAdmin).toBe(true)
     expect(agenda.today.find((e) => e.eventId === 'job-today')?.ops).toMatchObject({
       hasPlan: true,
       packed: { done: 0, total: 1 },
@@ -121,6 +124,8 @@ describe('getTodayAgenda', () => {
     const denied = agenda.today.find((e) => e.eventId === 'denied')
     expect(denied?.ops).toBeUndefined()
     expect(denied && 'ops' in denied).toBe(false)
+    // Staff never get the closeout deep-links — the closeout page bounces them.
+    expect(agenda.isAdmin).toBe(false)
   })
 
   it('missing plan marks hasPlan:false; a failed read attaches nothing', async () => {

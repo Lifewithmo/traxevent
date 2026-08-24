@@ -131,17 +131,54 @@ export const PACK_MINUTES = 45
 export const DRIVE_MINUTES = 30
 
 /**
- * Back-planned 'Pack by / Leave by' from the resolved job time minus FIXED
- * default buffers (45m pack, 30m drive) — an accepted ratchet, always labeled
- * as an assumption; configurable buffers are named increment-2. Zero storage.
- * null when the time is malformed or back-planning crosses midnight.
+ * Sanity ceiling for the org pack/drive buffers: nobody packs or drives for
+ * more than 8 hours before a job. SINGLE source — actions/ops-buffers.ts
+ * enforces it server-side and CapacityUnitsClient mirrors it in the inputs'
+ * `max`, the pre-flight parse, and the error copy. It lives here (not in the
+ * action) because a 'use server' module may only export async functions.
  */
-export function backPlanChips(hhmm: string): { packBy: string; leaveBy: string } | null {
+export const MAX_BUFFER_MINUTES = 480
+
+/**
+ * Read-cost cap on the series season rollup (newest days ≤ today win the
+ * budget). Lives here (client-safe) so SeriesClient's copy can interpolate the
+ * same number the server slices by; lib/ops/closeout.ts re-exports it.
+ */
+export const SERIES_ROLLUP_CAP = 30
+
+/** Org-default pack/drive buffers (Org.ops_buffers shape); absent fields fall back to the constants. */
+export interface OpsBuffers {
+  pack_minutes?: number
+  drive_minutes?: number
+}
+
+/** Effective buffer minutes after fallback — single source for chips and labels. */
+export function resolveBuffers(buffers?: OpsBuffers): { pack: number; drive: number } {
+  return {
+    pack: buffers?.pack_minutes && buffers.pack_minutes > 0 ? buffers.pack_minutes : PACK_MINUTES,
+    drive: buffers?.drive_minutes && buffers.drive_minutes > 0 ? buffers.drive_minutes : DRIVE_MINUTES,
+  }
+}
+
+/** The assumption caption rendered wherever the chips render, e.g. "assumes 50m pack · 20m drive". */
+export function bufferAssumptionLabel(buffers?: OpsBuffers): string {
+  const { pack, drive } = resolveBuffers(buffers)
+  return `assumes ${pack}m pack · ${drive}m drive`
+}
+
+/**
+ * Back-planned 'Pack by / Leave by' from the resolved job time minus the org's
+ * buffers (fixed 45m/30m defaults when unset) — always labeled as an assumption
+ * via bufferAssumptionLabel. null when the time is malformed or back-planning
+ * crosses midnight.
+ */
+export function backPlanChips(hhmm: string, buffers?: OpsBuffers): { packBy: string; leaveBy: string } | null {
   const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm)
   if (!m) return null
+  const { pack: packMin, drive: driveMin } = resolveBuffers(buffers)
   const start = Number(m[1]) * 60 + Number(m[2])
-  const leave = start - DRIVE_MINUTES
-  const pack = leave - PACK_MINUTES
+  const leave = start - driveMin
+  const pack = leave - packMin
   if (pack < 0) return null
   const fmt = (mins: number) =>
     formatClockTime(`${String(Math.floor(mins / 60)).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}`)

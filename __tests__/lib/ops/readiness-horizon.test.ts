@@ -235,6 +235,41 @@ describe('selectReadinessHorizon — plan-backed rows', () => {
     ])
   })
 
+  // ── Confirm-ready signal (inc-2): ok-tone, ranked BELOW alerts ─────────────
+
+  it('shows "Confirmed ready" ahead of routine progress on a confirmed-but-not-ready row', () => {
+    const e = event({ id: 'a' })
+    const p = plan({
+      ready_confirmed: { at: '2026-08-09T21:14:00.000Z', by: 'u1' },
+      shopping_list: [{ resource_id: 'r1', name: 'Beans', qty: 38, checked: false }],
+      packing_list: [],
+    })
+    const rows = selectReadinessHorizon([e], plans([['a', p]]), TODAY)
+    expect(rows[0].signals).toEqual([
+      { text: 'Confirmed ready', tone: 'ok' },
+      { text: 'Load list 0/1', tone: 'pending' },
+    ])
+  })
+
+  it('never displaces an overdue signal inside the 2-signal cap', () => {
+    const e = event({ id: 'a' })
+    const p = plan({
+      ready_confirmed: { at: '2026-08-09T21:14:00.000Z', by: 'u1' },
+      deadlines: [{ id: 'd1', label: 'x', due: '2026-08-01', done: false }],
+    })
+    const rows = selectReadinessHorizon([e], plans([['a', p]]), TODAY)
+    expect(rows[0].signals).toEqual([
+      { text: '1 overdue', tone: 'alert' },
+      { text: 'Confirmed ready', tone: 'ok' },
+    ])
+  })
+
+  it('a no-plan row can never carry the confirm signal — there is no plan to attest to', () => {
+    const e = event({ id: 'a' })
+    const rows = selectReadinessHorizon([e], plans([['a', null]]), TODAY)
+    expect(rows[0].signals).toEqual([{ text: 'No ops plan yet', tone: 'alert' }])
+  })
+
   it('ranks by overdue desc, then days_until asc, then name', () => {
     const worst = event({ id: 'a', name: 'A', event_start: '2026-08-20' })
     const sooner = event({ id: 'b', name: 'B', event_start: '2026-08-11' })

@@ -49,7 +49,7 @@ function atRiskLabel(ops?: AgendaOps): string | null {
   return overdue > 0 ? `${overdue} overdue` : null
 }
 
-function EventLine({ entry, orgSlug }: { entry: AgendaEntry; orgSlug: string }) {
+function EventLine({ entry, orgSlug, canCloseout }: { entry: AgendaEntry; orgSlug: string; canCloseout: boolean }) {
   const risk = atRiskLabel(entry.ops)
   return (
     <div className="min-w-0 flex-1">
@@ -67,6 +67,15 @@ function EventLine({ entry, orgSlug }: { entry: AgendaEntry; orgSlug: string }) 
           .filter(Boolean)
           .join(' · ') || 'Booked'}
       </p>
+      {/* Day-of only: today's market day ends with money — deep-link its closeout.
+          Owner/admin only (the closeout page bounces everyone else — never a
+          silently dead link), with a 44px day-of hit area (min-h-11; the text
+          stays small, w-fit keeps the target off the rest of the rail). */}
+      {canCloseout && entry.kind === 'market_day' && entry.daysUntil === 0 && (
+        <Link href={`/${orgSlug}/${entry.slug}/closeout`} className={`flex min-h-11 w-fit items-center text-xs underline ${GREEN}`}>
+          Close out →
+        </Link>
+      )}
     </div>
   )
 }
@@ -103,6 +112,9 @@ export function AgendaRail({ orgSlug, agenda }: { orgSlug: string; agenda: Agend
   // The rail's job: what's my next physical commitment, and is it ready.
   // The next event is the focal entry; everything after it stays compact.
   const next: AgendaEntry | null = agenda.today[0] ?? agenda.upcoming[0] ?? null
+  // Closing out the day is an owner/admin task (the closeout page bounces
+  // everyone else) — members never see a link that can only dead-end.
+  const canCloseout = agenda.isAdmin === true
   const todayRest = next && next.daysUntil === 0 ? agenda.today.slice(1) : agenda.today
   const upcoming = next
     ? agenda.upcoming.filter((e) => !(e.eventId === next.eventId && e.date === next.date))
@@ -128,6 +140,16 @@ export function AgendaRail({ orgSlug, agenda }: { orgSlug: string; agenda: Agend
       className="order-first w-full border-b border-border bg-muted/40 p-4 md:order-none md:w-72 md:shrink-0 md:border-b-0 md:border-l"
     >
       {next && <NextJobBlock entry={next} orgSlug={orgSlug} />}
+      {/* NextJobBlock is itself a Link, so the market-day closeout deep-link
+          sits directly beneath it rather than nesting an anchor inside one.
+          Owner/admin only (the page bounces everyone else), and min-h-11 gives
+          this day-of action its 44px hit area so a one-handed evening tap
+          can't land on the dashboard block above instead. */}
+      {canCloseout && next && next.kind === 'market_day' && next.daysUntil === 0 && (
+        <Link href={`/${orgSlug}/${next.slug}/closeout`} className={`mt-1 flex min-h-11 w-fit items-center text-xs underline ${GREEN}`}>
+          Close out the day →
+        </Link>
+      )}
 
       {showTodaySection && (
         <>
@@ -142,7 +164,7 @@ export function AgendaRail({ orgSlug, agenda }: { orgSlug: string; agenda: Agend
                 key={e.eventId}
                 className="mt-3 rounded-md border border-emerald-200 border-l-[3px] border-l-emerald-600 bg-background p-3 dark:border-emerald-900"
               >
-                <EventLine entry={e} orgSlug={orgSlug} />
+                <EventLine entry={e} orgSlug={orgSlug} canCloseout={canCloseout} />
               </div>
             ))
           )}
@@ -163,7 +185,7 @@ export function AgendaRail({ orgSlug, agenda }: { orgSlug: string; agenda: Agend
                 <div className={`w-12 shrink-0 font-mono text-xs font-semibold ${GREEN}`}>{dayLabel(ymd)}</div>
                 <div className="min-w-0 flex-1 space-y-2">
                   {items.map((e) => (
-                    <EventLine key={e.eventId} entry={e} orgSlug={orgSlug} />
+                    <EventLine key={e.eventId} entry={e} orgSlug={orgSlug} canCloseout={canCloseout} />
                   ))}
                 </div>
               </div>

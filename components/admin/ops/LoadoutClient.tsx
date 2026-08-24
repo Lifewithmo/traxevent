@@ -15,18 +15,20 @@
 // working column. Check-offs are optimistic with VISIBLE failure + retry —
 // never a silent revert (hard gate). The gate is held three ways: per-row
 // writes are serialized per key (last tap wins on the server or fails
-// visibly), a recompute MERGES the fresh plan over rows with unsettled
+// visibly — useSerializedCheckWrites, the machinery shared with the
+// shopping run), a recompute MERGES the fresh plan over rows with unsettled
 // writes instead of replacing them, and bulk writes are mutually exclusive
 // with both. Urgency = unchecked × T-minus only; there are deliberately no
 // shortage flags (refuted — no on-hand data exists).
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { Check, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { StatusPill } from '@/components/ui/status-pill'
 import { toggleListItem, bulkSetListChecked, recomputeOpsLists } from '@/actions/event-ops'
+import { useSerializedCheckWrites } from '@/components/admin/ops/useSerializedCheckWrites'
 import { computeReadiness } from '@/lib/ops/readiness'
 import { cn } from '@/lib/utils'
 import type { OpsPlan, OpsListItem } from '@/lib/types'
@@ -74,8 +76,6 @@ function timeLabel(d: Date): string {
 export function LoadoutClient(props: LoadoutClientProps) {
   const { orgId, eventId, orgSlug, eventSlug, eventHeadcount } = props
   const [plan, setPlan] = useState<OpsPlan | null>(props.plan)
-  const [pending, setPending] = useState<ReadonlySet<string>>(new Set())
-  const [failed, setFailed] = useState<ReadonlySet<string>>(new Set())
   const [groupBusy, setGroupBusy] = useState<ListKey | null>(null)
   const [groupError, setGroupError] = useState<{ list: ListKey; message: string; checked: boolean } | null>(null)
   const [recomputing, setRecomputing] = useState<'plain' | 'guests' | null>(null)
@@ -83,20 +83,11 @@ export function LoadoutClient(props: LoadoutClientProps) {
   // Freshness stamp — set after mount so it reads in the OPERATOR's timezone
   // (SSR runs in the server's), and refreshed on every successful recompute.
   const [loadedAt, setLoadedAt] = useState<Date | null>(null)
-  // Per-row write machinery. Writes are SERIALIZED per key: at most one
-  // request is ever on the wire, and a newer tap while one is in flight only
-  // records the newest intent — the settle handler then chains one more
-  // request carrying it. The server therefore receives states in tap order,
-  // so the LAST intended state always wins (or fails visibly): a rapid
-  // double-tap can no longer commit out of order and leave the server
-  // opposite the display with nothing shown.
-  const writesRef = useRef(new Map<string, { seq: number; intent: boolean; inflight: boolean }>())
-  // Keys whose DISPLAYED checked state has an unconfirmed or failed write —
-  // the synchronous mirror of pending ∪ failed. handleRecompute's merge reads
-  // it (the state sets would be closure-stale in an async continuation), and
-  // sendToggle treats removal from it as "superseded: someone else settled my
-  // flags" (bulk check-all, or a recompute that dropped the row).
-  const unsettledRef = useRef(new Set<string>())
+  // Per-row write machinery — serialized per key, last tap wins or fails
+  // visibly. Extracted to useSerializedCheckWrites (shared with the shopping
+  // run); the semantics are documented there.
+  const writes = useSerializedCheckWrites()
+  const { pending, failed } = writes
 
   useEffect(() => { setLoadedAt(new Date()) }, [])
 
@@ -107,51 +98,12 @@ export function LoadoutClient(props: LoadoutClientProps) {
     setPlan((p) => (p ? { ...p, [list]: p[list].map((x) => (sameItem(x, item) ? { ...x, checked } : x)) } : p))
   }
 
-  /** Record the newest intended state for a row and make sure exactly one
-   *  request is (or will be) carrying it. Every tap and every retry funnels
-   *  through here. */
+  /** Every tap and every retry funnels through the shared hook, which
+   *  serializes the writes per row key (last tap wins or fails visibly). */
   function enqueueToggle(list: ListKey, item: OpsListItem, checked: boolean) {
-    const key = keyOf(list, item)
-    const prev = writesRef.current.get(key)
-    const seq = (prev?.seq ?? 0) + 1
-    writesRef.current.set(key, { seq, intent: checked, inflight: prev?.inflight ?? false })
-    unsettledRef.current.add(key)
-    setPending((s) => new Set(s).add(key))
-    setFailed((s) => { const n = new Set(s); n.delete(key); return n })
-    // A request is already on the wire: its settle handler will see the seq
-    // moved on and chain a request with the newest intent — never two at once.
-    if (writesRef.current.get(key)!.inflight) return
-    void sendToggle(list, item, checked, seq)
-  }
-
-  async function sendToggle(list: ListKey, item: OpsListItem, checked: boolean, seq: number) {
-    const key = keyOf(list, item)
-    const started = writesRef.current.get(key)
-    if (started) started.inflight = true
-    let ok = true
-    try {
-      await toggleListItem(orgId, eventId, list, item.resource_id, checked, item.unit)
-    } catch {
-      ok = false
-    }
-    const cur = writesRef.current.get(key)
-    if (cur) cur.inflight = false
-    // Superseded: a bulk check-all took the list over, or a recompute removed
-    // this row — whoever superseded already settled the flags for this key.
-    if (!cur || !unsettledRef.current.has(key)) return
-    if (cur.seq !== seq) {
-      // Newer tap(s) landed while this was on the wire. Send the latest
-      // intent as its own request; this write's own outcome is moot because
-      // the chained one lands after it on the server (last intent wins).
-      void sendToggle(list, item, cur.intent, cur.seq)
-      return
-    }
-    setPending((s) => { const n = new Set(s); n.delete(key); return n })
-    if (ok) {
-      unsettledRef.current.delete(key)
-    } else {
-      setFailed((s) => new Set(s).add(key)) // stays unsettled until a retry lands
-    }
+    writes.enqueue(keyOf(list, item), checked, (intent) =>
+      toggleListItem(orgId, eventId, list, item.resource_id, intent, item.unit),
+    )
   }
 
   function handleRowTap(list: ListKey, item: OpsListItem) {
@@ -160,28 +112,16 @@ export function LoadoutClient(props: LoadoutClientProps) {
     enqueueToggle(list, item, next)
   }
 
-  /** A bulk write supersedes the list's per-row writes: settle their flags
-   *  here and drop them from `unsettled` so a (theoretical) still-in-flight
-   *  settle handler stands down. Check-all is disabled while the list has
-   *  pending rows, so in practice nothing is on the wire when this runs —
-   *  it mostly clears `failed` rows the bulk write is about to overwrite. */
-  function supersedeList(list: ListKey, items: OpsListItem[]) {
-    const keys = items.map((i) => keyOf(list, i))
-    for (const k of keys) {
-      unsettledRef.current.delete(k)
-      const w = writesRef.current.get(k)
-      if (w && !w.inflight) writesRef.current.delete(k)
-    }
-    const drop = new Set(keys)
-    setPending((s) => new Set([...s].filter((k) => !drop.has(k))))
-    setFailed((s) => new Set([...s].filter((k) => !drop.has(k))))
-  }
-
   async function handleCheckAll(list: ListKey, checked: boolean) {
     if (!plan) return
     setGroupBusy(list)
     setGroupError(null)
-    supersedeList(list, plan[list])
+    // A bulk write supersedes the list's per-row writes (the hook settles
+    // their flags and stands any in-flight settle handler down). Check-all is
+    // disabled while the list has pending rows, so in practice nothing is on
+    // the wire when this runs — it mostly clears `failed` rows the bulk write
+    // is about to overwrite.
+    writes.supersede(plan[list].map((i) => keyOf(list, i)))
     setPlan((p) => (p ? { ...p, [list]: p[list].map((x) => ({ ...x, checked })) } : p))
     try {
       await bulkSetListChecked(orgId, eventId, list, checked)
@@ -216,15 +156,13 @@ export function LoadoutClient(props: LoadoutClientProps) {
       )
       // Rows the recompute removed can no longer render a badge or retry —
       // prune their flags so the header counts never point at nothing (their
-      // settle handlers stand down via the unsettled check).
-      for (const k of [...unsettledRef.current]) if (!freshKeys.has(k)) unsettledRef.current.delete(k)
-      setPending((s) => new Set([...s].filter((k) => freshKeys.has(k))))
-      setFailed((s) => new Set([...s].filter((k) => freshKeys.has(k))))
+      // settle handlers stand down via the hook's unsettled check).
+      writes.prune(freshKeys)
       setPlan((prev) => {
         if (!prev) return fresh
         const preserve = (l: ListKey, items: OpsListItem[]) =>
           items.map((item) => {
-            if (!unsettledRef.current.has(keyOf(l, item))) return item
+            if (!writes.isUnsettled(keyOf(l, item))) return item
             const shown = prev[l].find((x) => sameItem(x, item))
             return shown ? { ...item, checked: shown.checked } : item
           })

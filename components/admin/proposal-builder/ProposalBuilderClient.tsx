@@ -302,7 +302,7 @@ export function ProposalBuilderClient({
         ))}
       </div>
 
-      <main className="flex-1 overflow-y-auto bg-muted px-6 py-8">
+      <div className="flex-1 overflow-y-auto bg-muted px-6 py-8">
         {voided && (
           <Card className="mx-auto mb-4 max-w-3xl border-destructive/50 bg-destructive/10">
             <CardContent className="pt-6">
@@ -382,7 +382,7 @@ export function ProposalBuilderClient({
             )}
           </div>
         </div>
-      </main>
+      </div>
 
       <DraftComposer
         variant="modal"

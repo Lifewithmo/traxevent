@@ -21,6 +21,8 @@ interface AdminSidebarProps {
   terminology?: Terminology
   allowedEventPages?: EventPage[]
   enabledModules?: ModuleId[]
+  /** Viewer is owner/admin — gates the market-day Closeout row (lib/event-nav.ts). */
+  isAdmin?: boolean
   catalogLabel?: string
   storefrontLabel?: string
   upcomingEvents?: SidebarEventRow[]
@@ -203,7 +205,7 @@ function IconRailGroup({ items }: { items: NavLink[] }) {
   )
 }
 
-export function AdminSidebar({ orgSlug, eventSlug, eventKind, terminology, allowedEventPages, enabledModules, catalogLabel, storefrontLabel, upcomingEvents }: AdminSidebarProps) {
+export function AdminSidebar({ orgSlug, eventSlug, eventKind, terminology, allowedEventPages, enabledModules, isAdmin, catalogLabel, storefrontLabel, upcomingEvents }: AdminSidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
 
@@ -398,6 +400,7 @@ export function AdminSidebar({ orgSlug, eventSlug, eventKind, terminology, allow
     terminology: t,
     allowedPages: allowedEventPages,
     enabledModules,
+    isAdmin,
   })
 
   async function handleSignOut() {

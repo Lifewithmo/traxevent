@@ -8,9 +8,14 @@ const checkinDocSpy = vi.hoisted(() => ({
 const getCheckinDocSpy = vi.hoisted(() => vi.fn())
 const getCheckinsByDateSpy = vi.hoisted(() => vi.fn())
 const getFamiliesSpy = vi.hoisted(() => vi.fn())
+const getFamilyDocSpy = vi.hoisted(() => vi.fn())
 const getMembersSpy = vi.hoisted(() => vi.fn())
 const getAssignmentsSpy = vi.hoisted(() => vi.fn())
 const getSignedFormsSpy = vi.hoisted(() => vi.fn())
+const getEventDocSpy = vi.hoisted(() => vi.fn())
+const getOrgDocSpy = vi.hoisted(() => vi.fn())
+// Ordering ledger for the post-transaction send contract (inc-2 P3).
+const callOrder = vi.hoisted(() => [] as string[])
 
 // The custody mutations run inside adminDb.runTransaction. The mock threads a
 // tx whose get() delegates to the per-doc read spy and whose writes land on one
@@ -22,14 +27,16 @@ const txSpy = vi.hoisted(() => ({
   delete: vi.fn(),
 }))
 const runTransactionSpy = vi.hoisted(() =>
-  vi.fn(async (fn: (tx: unknown) => unknown) =>
-    fn({
+  vi.fn(async (fn: (tx: unknown) => unknown) => {
+    const out = await fn({
       get: (ref: { get: () => Promise<unknown> }) => ref.get(),
       set: txSpy.set,
       update: txSpy.update,
       delete: txSpy.delete,
     })
-  )
+    callOrder.push('tx-committed')
+    return out
+  })
 )
 
 vi.mock('@/lib/firebase-admin', () => {
@@ -43,10 +50,12 @@ vi.mock('@/lib/firebase-admin', () => {
         if (col === 'orgs') {
           return {
             doc: vi.fn().mockReturnValue({
+              get: getOrgDocSpy,
               collection: vi.fn().mockImplementation((sub: string) => {
                 if (sub === 'events') {
                   return {
                     doc: vi.fn().mockReturnValue({
+                      get: getEventDocSpy,
                       collection: vi.fn().mockImplementation((sub2: string) => {
                         if (sub2 === 'checkins') {
                           return {
@@ -62,6 +71,7 @@ vi.mock('@/lib/firebase-admin', () => {
                           return {
                             get: getFamiliesSpy,
                             doc: vi.fn().mockReturnValue({
+                              get: getFamilyDocSpy,
                               collection: vi.fn().mockReturnValue({ get: getMembersSpy }),
                             }),
                           }
@@ -91,6 +101,16 @@ vi.mock('@/lib/auth/assert', () => ({
   assertEventPage: vi.fn().mockResolvedValue({ role: 'admin', event_access: {} }),
 }))
 
+const sendPickupSpy = vi.hoisted(() => vi.fn())
+vi.mock('@/lib/email', () => ({
+  sendGuardianPickupNotice: sendPickupSpy.mockImplementation(async () => {
+    callOrder.push('send')
+  }),
+}))
+vi.mock('@/actions/domains', () => ({
+  getVerifiedSendingDomain: vi.fn().mockResolvedValue('mail.demo.co'),
+}))
+
 import {
   listAllEventMembers,
   getCheckinsForDate,
@@ -107,6 +127,18 @@ import {
 function lastTxSetArg(): CustodyCheckinRecord {
   return txSpy.set.mock.calls[txSpy.set.mock.calls.length - 1][1]
 }
+
+// Default for every legacy test: the post-checkout notification gate reads the
+// event doc; "no doc" makes it a silent no-op so custody assertions stay pure.
+// The guardian-email describe overrides these. Runs BEFORE each describe's own
+// beforeEach (outer hooks first); vi.clearAllMocks clears calls, not these
+// implementations.
+beforeEach(() => {
+  callOrder.length = 0
+  getEventDocSpy.mockResolvedValue({ exists: false })
+  getFamilyDocSpy.mockResolvedValue({ exists: false })
+  getOrgDocSpy.mockResolvedValue({ exists: false, data: () => undefined })
+})
 
 describe('listAllEventMembers', () => {
   beforeEach(() => {
@@ -517,6 +549,175 @@ describe('checkOutFamily', () => {
       checkOutFamily('org-1', 'camp-1', { recordIds: ['a', 'b'], guardianPickupName: 'Jane' })
     ).rejects.toThrow('Check-in record not found')
     expect(txSpy.update).not.toHaveBeenCalled()
+  })
+})
+
+// ── Guardian who-collected email (inc-2 P3) ─────────────────────────────────
+describe('guardian who-collected email', () => {
+  const PRIOR = {
+    id: '2026-07-10_m-1',
+    date: '2026-07-10',
+    member_id: 'm-1',
+    family_id: 'fam-1',
+    member_name: 'Ann Smith',
+    status: 'in' as const,
+    checked_in_at: '2026-07-10T15:02:00.000Z',
+  }
+  const CHILD_EVENT = { name: 'Summer Camp', registration_type: 'child', reply_to_email: 'director@x.co' }
+  const FAMILY = { first_name: 'Pat', last_name: 'Smith', email: 'pat@x.co' }
+  const ORG = { name: 'First Hills', branding: { display_name: 'First Hills Fellowship' } }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    callOrder.length = 0
+    getCheckinDocSpy.mockResolvedValue({ exists: true, data: () => PRIOR })
+    getEventDocSpy.mockResolvedValue({ exists: true, data: () => CHILD_EVENT })
+    getFamilyDocSpy.mockResolvedValue({ exists: true, data: () => FAMILY })
+    getOrgDocSpy.mockResolvedValue({ exists: true, data: () => ORG })
+  })
+
+  it('sends who/when to the family, via the event reply-to + verified domain pattern', async () => {
+    await checkOutMember('org-1', 'camp-1', '2026-07-10_m-1', 'Jane Smith (mother)')
+    expect(sendPickupSpy).toHaveBeenCalledTimes(1)
+    expect(sendPickupSpy).toHaveBeenCalledWith(expect.objectContaining({
+      to: 'pat@x.co',
+      familyFirstName: 'Pat',
+      childNames: ['Ann Smith'],
+      guardianName: 'Jane Smith (mother)',
+      checkedOutAt: expect.any(String),
+      eventName: 'Summer Camp',
+      orgName: 'First Hills Fellowship',
+      replyTo: 'director@x.co',
+      fromDomain: 'mail.demo.co',
+    }))
+    // Content contract: nothing medical, no balance — the params carry only
+    // identity/who/when fields.
+    const params = sendPickupSpy.mock.calls[0][0]
+    expect(Object.keys(params).join()).not.toMatch(/medical|allerg|balance|due/i)
+  })
+
+  it('is strictly POST-transaction: the send fires only after the custody commit', async () => {
+    await checkOutMember('org-1', 'camp-1', '2026-07-10_m-1', 'Jane Smith (mother)')
+    expect(callOrder).toEqual(['tx-committed', 'send'])
+  })
+
+  it('a failed send never fails the committed checkout', async () => {
+    sendPickupSpy.mockRejectedValueOnce(new Error('resend down'))
+    const record = await checkOutMember('org-1', 'camp-1', '2026-07-10_m-1', 'Jane Smith (mother)')
+    expect(record.status).toBe('out')
+    expect(txSpy.update).toHaveBeenCalledTimes(1)
+  })
+
+  it('still sends for an UNLISTED guardian, flagged for the distinct copy', async () => {
+    await checkOutMember('org-1', 'camp-1', '2026-07-10_m-1', 'Randy', { unlistedGuardian: true })
+    expect(sendPickupSpy).toHaveBeenCalledWith(expect.objectContaining({
+      guardianName: 'Randy',
+      unlistedGuardian: true,
+    }))
+  })
+
+  it('family batch checkout sends ONE email naming every sibling', async () => {
+    getCheckinDocSpy
+      .mockResolvedValueOnce({ exists: true, data: () => PRIOR })
+      .mockResolvedValueOnce({
+        exists: true,
+        data: () => ({ ...PRIOR, id: '2026-07-10_m-2', member_id: 'm-2', member_name: 'Bo Smith' }),
+      })
+    await checkOutFamily('org-1', 'camp-1', {
+      recordIds: ['2026-07-10_m-1', '2026-07-10_m-2'],
+      guardianPickupName: 'Jane Smith (mother)',
+    })
+    expect(sendPickupSpy).toHaveBeenCalledTimes(1)
+    expect(sendPickupSpy).toHaveBeenCalledWith(expect.objectContaining({
+      childNames: ['Ann Smith', 'Bo Smith'],
+      guardianName: 'Jane Smith (mother)',
+    }))
+    expect(callOrder).toEqual(['tx-committed', 'send'])
+  })
+
+  it('a batch spanning families NEVER sends — no email can name another family’s children', async () => {
+    // Defense-in-depth: today's UI passes one family's records, but a buggy
+    // client or a crafted server-action call could pass mixed recordIds. The
+    // recipient would be records[0]'s family while childNames listed every
+    // record — a cross-family child-name disclosure. The guard skips the send
+    // entirely (and logs), before any family read; the committed checkout is
+    // unaffected.
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    getCheckinDocSpy
+      .mockResolvedValueOnce({ exists: true, data: () => PRIOR })
+      .mockResolvedValueOnce({
+        exists: true,
+        data: () => ({
+          ...PRIOR,
+          id: '2026-07-10_m-9',
+          member_id: 'm-9',
+          member_name: 'Zed Jones',
+          family_id: 'fam-2',
+        }),
+      })
+
+    const records = await checkOutFamily('org-1', 'camp-1', {
+      recordIds: ['2026-07-10_m-1', '2026-07-10_m-9'],
+      guardianPickupName: 'Jane Smith (mother)',
+    })
+
+    expect(sendPickupSpy).not.toHaveBeenCalled()
+    // The skip fires before ANY notify-path read — no family doc is touched.
+    expect(getFamilyDocSpy).not.toHaveBeenCalled()
+    // The custody commit itself is unaffected by the skipped notice.
+    expect(records).toHaveLength(2)
+    expect(records.every((r) => r.status === 'out')).toBe(true)
+    // The log names family ids only — never a child's name.
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('spans multiple families'),
+      expect.objectContaining({ familyIds: ['fam-1', 'fam-2'] }),
+    )
+    for (const call of errorSpy.mock.calls) {
+      expect(JSON.stringify(call)).not.toMatch(/Ann Smith|Zed Jones/)
+    }
+    errorSpy.mockRestore()
+  })
+
+  // Gating matrix (P3): explicit toggle wins; absent → ON only for child-registration.
+  it('gating: default-ON for child registration, default-OFF otherwise, explicit boolean overrides both', async () => {
+    // child + absent toggle → sends (covered above); family + absent → silent.
+    getEventDocSpy.mockResolvedValue({ exists: true, data: () => ({ name: 'Gala', registration_type: 'family' }) })
+    await checkOutMember('org-1', 'camp-1', '2026-07-10_m-1', 'Jane')
+    expect(sendPickupSpy).not.toHaveBeenCalled()
+    expect(getFamilyDocSpy).not.toHaveBeenCalled() // gate short-circuits before any further read
+
+    // family + explicit true → sends.
+    getEventDocSpy.mockResolvedValue({
+      exists: true,
+      data: () => ({ name: 'Gala', registration_type: 'family', notify_family_on_pickup: true }),
+    })
+    await checkOutMember('org-1', 'camp-1', '2026-07-10_m-1', 'Jane')
+    expect(sendPickupSpy).toHaveBeenCalledTimes(1)
+
+    // child + explicit false → silent.
+    sendPickupSpy.mockClear()
+    getEventDocSpy.mockResolvedValue({
+      exists: true,
+      data: () => ({ name: 'Camp', registration_type: 'child', notify_family_on_pickup: false }),
+    })
+    await checkOutMember('org-1', 'camp-1', '2026-07-10_m-1', 'Jane')
+    expect(sendPickupSpy).not.toHaveBeenCalled()
+  })
+
+  it('no family email on file → no send, checkout unaffected', async () => {
+    getFamilyDocSpy.mockResolvedValue({ exists: true, data: () => ({ first_name: 'Pat' }) })
+    const record = await checkOutMember('org-1', 'camp-1', '2026-07-10_m-1', 'Jane')
+    expect(sendPickupSpy).not.toHaveBeenCalled()
+    expect(record.status).toBe('out')
+  })
+
+  it('check-IN never triggers the notice — pickup only', async () => {
+    getCheckinDocSpy.mockResolvedValue({ exists: false })
+    await checkInMember('org-1', 'camp-1', {
+      date: '2026-07-10', memberId: 'm-1', familyId: 'fam-1', memberName: 'Ann Smith',
+    })
+    expect(sendPickupSpy).not.toHaveBeenCalled()
+    expect(getEventDocSpy).not.toHaveBeenCalled()
   })
 })
 
