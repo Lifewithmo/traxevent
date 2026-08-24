@@ -21,6 +21,7 @@ export default async function CapacityPage({
       initialUnits={units}
       initialServiceableDays={org.serviceable_days}
       initialResourceLabels={org.resource_labels}
+      initialEventTypeProfiles={org.event_type_profiles}
       locked={!unlocked}
     />
   )

@@ -12,7 +12,11 @@ import {
   updateCapacityUnit,
   deleteCapacityUnit,
 } from '@/actions/capacity'
-import { updateServiceableDays, updateResourceLabels } from '@/actions/capacity-config'
+import {
+  updateServiceableDays,
+  updateResourceLabels,
+  updateEventTypeProfiles,
+} from '@/actions/capacity-config'
 import { kindLabel } from '@/lib/capacity/labels'
 import type { CapacityBlockout, CapacityUnit, CapacityUnitKind, Org } from '@/lib/types'
 
@@ -23,9 +27,13 @@ interface CapacityUnitsClientProps {
   initialServiceableDays?: Org['serviceable_days']
   /** The org's saved kind vocabulary; absent per-kind ⇒ neutral defaults. */
   initialResourceLabels?: Org['resource_labels']
+  /** The org's saved per-event-type resource profiles; absent ⇒ the default rule. */
+  initialEventTypeProfiles?: Org['event_type_profiles']
   /** True for orgs below the business tier — render the upsell, not the editor. */
   locked?: boolean
 }
+
+type EventTypeProfile = NonNullable<Org['event_type_profiles']>[number]
 
 interface GroupMeta {
   kind: CapacityUnitKind
@@ -106,6 +114,7 @@ export function CapacityUnitsClient({
   initialUnits,
   initialServiceableDays,
   initialResourceLabels,
+  initialEventTypeProfiles,
   locked = false,
 }: CapacityUnitsClientProps) {
   const [units, setUnits] = useState<CapacityUnit[]>(initialUnits)
@@ -118,6 +127,10 @@ export function CapacityUnitsClient({
   const [labels, setLabels] = useState<NonNullable<Org['resource_labels']>>(
     initialResourceLabels ?? {},
   )
+  const [profiles, setProfiles] = useState<EventTypeProfile[]>(
+    initialEventTypeProfiles ?? [],
+  )
+  const [addingProfile, setAddingProfile] = useState(false)
   const [addingClosure, setAddingClosure] = useState(false)
   const [addingKind, setAddingKind] = useState<CapacityUnitKind | null>(null)
   const [saving, setSaving] = useState(false)
@@ -260,9 +273,49 @@ export function CapacityUnitsClient({
     })
   }
 
+  // --- Event-type resource profiles -------------------------------------------
+  // The action replaces the whole `event_type_profiles` scalar, so every save
+  // sends the full array. Optimistic with rollback, mirroring saveLabel.
+  async function saveProfiles(next: EventTypeProfile[]) {
+    const prev = profiles
+    setProfiles(next)
+    await run(async () => {
+      try {
+        await updateEventTypeProfiles(orgId, next)
+      } catch (err) {
+        setProfiles(prev)
+        throw err
+      }
+    })
+  }
+
+  function addProfile(p: EventTypeProfile) {
+    setAddingProfile(false)
+    void saveProfiles([...profiles, p])
+  }
+
+  function renameProfile(index: number, name: string) {
+    const trimmed = name.trim()
+    // Empty name is invalid (the action rejects it); the row reverts locally.
+    if (!trimmed || trimmed === profiles[index]?.name) return
+    void saveProfiles(profiles.map((p, i) => (i === index ? { ...p, name: trimmed } : p)))
+  }
+
+  function toggleProfileKind(index: number, key: 'needsMobile' | 'needsVenue') {
+    void saveProfiles(
+      profiles.map((p, i) => (i === index ? { ...p, [key]: !p[key] } : p)),
+    )
+  }
+
+  function removeProfile(index: number) {
+    void saveProfiles(profiles.filter((_, i) => i !== index))
+  }
+
   const everyDayClosed = weekdays.length === 0
   const mobileMany = kindLabel({ resource_labels: labels }, 'mobile', 2)
   const venueMany = kindLabel({ resource_labels: labels }, 'venue', 2)
+  const mobileOne = kindLabel({ resource_labels: labels }, 'mobile', 1)
+  const venueOne = kindLabel({ resource_labels: labels }, 'venue', 1)
 
   return (
     <div className="max-w-2xl space-y-6 p-6">
@@ -479,6 +532,65 @@ export function CapacityUnitsClient({
               </section>
             )
           })}
+
+          {/* Event types — which kinds a named type consumes (0/1 each). An
+              unlisted type falls back to leadRequirement's default rule, so the
+              hint below is required: an empty list = today's behavior, stated. */}
+          <section className="space-y-3" aria-label="Event types">
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="text-sm font-semibold uppercase tracking-[.04em] text-muted-foreground">
+                Event types
+                {profiles.length > 0 && (
+                  <span className="ml-1.5 font-normal tabular-nums">({profiles.length})</span>
+                )}
+              </h2>
+              {!addingProfile && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => { setAddingProfile(true); setError(null) }}
+                >
+                  Add event type
+                </Button>
+              )}
+            </div>
+
+            <p className="rounded-lg bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
+              Types not listed use the default — a {mobileOne} always, a {venueOne} when on-site.
+              A listed type overrides that: it consumes exactly the kinds you switch on.
+            </p>
+
+            {addingProfile && (
+              <Card>
+                <CardContent className="py-3">
+                  <AddEventTypeForm
+                    mobileOne={mobileOne}
+                    venueOne={venueOne}
+                    saving={saving}
+                    onAdd={addProfile}
+                    onCancel={() => setAddingProfile(false)}
+                  />
+                </CardContent>
+              </Card>
+            )}
+
+            {profiles.length > 0 && (
+              <div className="space-y-3">
+                {profiles.map((p, i) => (
+                  <EventTypeRow
+                    key={`${p.name}-${i}`}
+                    profile={p}
+                    mobileOne={mobileOne}
+                    venueOne={venueOne}
+                    saving={saving}
+                    onRename={(name) => renameProfile(i, name)}
+                    onToggle={(key) => toggleProfileKind(i, key)}
+                    onRemove={() => removeProfile(i)}
+                  />
+                ))}
+              </div>
+            )}
+          </section>
         </>
       )}
 
@@ -782,6 +894,179 @@ function UnitRow({
         </div>
       </CardContent>
     </Card>
+  )
+}
+
+/** A single needs-{kind} toggle pill — the weekday-pill idiom, AA status tokens. */
+function KindTogglePill({
+  pressed,
+  label,
+  ariaLabel,
+  disabled,
+  onToggle,
+}: {
+  pressed: boolean
+  label: string
+  ariaLabel: string
+  disabled?: boolean
+  onToggle: () => void
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={pressed}
+      aria-label={ariaLabel}
+      disabled={disabled}
+      onClick={onToggle}
+      className={
+        'inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50 motion-reduce:transition-none ' +
+        (pressed
+          ? 'bg-[var(--status-confirmed-bg)] text-[var(--status-confirmed-fg)]'
+          : 'bg-[var(--status-neutral-bg)] text-[var(--status-neutral-fg)]')
+      }
+    >
+      <span aria-hidden="true" className="text-current">{pressed ? '✓' : '+'}</span>
+      needs {label}
+    </button>
+  )
+}
+
+/** An existing event-type profile: inline-editable name + two kind toggles + remove. */
+function EventTypeRow({
+  profile,
+  mobileOne,
+  venueOne,
+  saving,
+  onRename,
+  onToggle,
+  onRemove,
+}: {
+  profile: EventTypeProfile
+  mobileOne: string
+  venueOne: string
+  saving: boolean
+  onRename: (name: string) => void
+  onToggle: (key: 'needsMobile' | 'needsVenue') => void
+  onRemove: () => void
+}) {
+  const [name, setName] = useState(profile.name)
+  const nameId = useId()
+
+  function commitName() {
+    const trimmed = name.trim()
+    if (!trimmed) { setName(profile.name); return }
+    if (trimmed !== profile.name) onRename(trimmed)
+  }
+
+  return (
+    <Card size="sm">
+      <CardContent className="flex flex-wrap items-center gap-x-3 gap-y-2 py-3">
+        <div className="min-w-0 flex-1 basis-40">
+          <Label htmlFor={nameId} className="sr-only">Event type name</Label>
+          <Input
+            id={nameId}
+            value={name}
+            aria-label={`${profile.name} — event type name`}
+            className="h-8 max-w-56 font-medium"
+            onChange={(e) => setName(e.target.value)}
+            onBlur={commitName}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') { e.preventDefault(); (e.target as HTMLInputElement).blur() }
+              if (e.key === 'Escape') { setName(profile.name); (e.target as HTMLInputElement).blur() }
+            }}
+          />
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <KindTogglePill
+            pressed={profile.needsMobile}
+            label={mobileOne}
+            ariaLabel={`${profile.name} — needs ${mobileOne}`}
+            disabled={saving}
+            onToggle={() => onToggle('needsMobile')}
+          />
+          <KindTogglePill
+            pressed={profile.needsVenue}
+            label={venueOne}
+            ariaLabel={`${profile.name} — needs ${venueOne}`}
+            disabled={saving}
+            onToggle={() => onToggle('needsVenue')}
+          />
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            aria-label={`Remove event type ${profile.name}`}
+            disabled={saving}
+            onClick={onRemove}
+          >
+            <TrashIcon />
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+/** The add-a-profile form: name + two kind toggles + Add/Cancel. */
+function AddEventTypeForm({
+  mobileOne,
+  venueOne,
+  saving,
+  onAdd,
+  onCancel,
+}: {
+  mobileOne: string
+  venueOne: string
+  saving: boolean
+  onAdd: (p: EventTypeProfile) => void
+  onCancel: () => void
+}) {
+  const [name, setName] = useState('')
+  const [needsMobile, setNeedsMobile] = useState(true)
+  const [needsVenue, setNeedsVenue] = useState(false)
+  const inputId = useId()
+
+  function submit() {
+    const trimmed = name.trim()
+    if (!trimmed) return
+    onAdd({ name: trimmed, needsMobile, needsVenue })
+  }
+
+  return (
+    <div className="space-y-2">
+      <Label htmlFor={inputId}>Event type name</Label>
+      <Input
+        id={inputId}
+        value={name}
+        autoFocus
+        placeholder="e.g. Wedding"
+        className="max-w-56"
+        onChange={(e) => setName(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') { e.preventDefault(); submit() }
+          if (e.key === 'Escape') onCancel()
+        }}
+      />
+      <div className="flex flex-wrap items-center gap-1.5">
+        <KindTogglePill
+          pressed={needsMobile}
+          label={mobileOne}
+          ariaLabel={`needs ${mobileOne}`}
+          onToggle={() => setNeedsMobile((v) => !v)}
+        />
+        <KindTogglePill
+          pressed={needsVenue}
+          label={venueOne}
+          ariaLabel={`needs ${venueOne}`}
+          onToggle={() => setNeedsVenue((v) => !v)}
+        />
+      </div>
+      <div className="flex gap-2">
+        <Button size="sm" onClick={submit} disabled={saving || !name.trim()}>
+          {saving ? 'Saving…' : 'Add'}
+        </Button>
+        <Button size="sm" variant="ghost" onClick={onCancel}>Cancel</Button>
+      </div>
+    </div>
   )
 }
 
