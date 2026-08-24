@@ -10,7 +10,14 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh, push }) }))
 vi.mock('@/actions/nudge', () => ({ nudgeProposal: vi.fn() }))
 // 'use server' modules backed by firebase-admin — mocked like NewOpportunityForm's
 // createLead mock in new-opportunity-form-linked.test.tsx.
-const setLeadStage = vi.fn().mockResolvedValue(undefined)
+// setLeadStage returns a discriminated result (increment 4): { ok: true } on a
+// completed write, { ok: false, guard } when a would-be over/clash win is
+// refused pending an override. Modeled as a RETURN VALUE, not a thrown error,
+// because Next redacts thrown Server Action errors in production — a thrown
+// guard could not be detected on the client in a real build. The success
+// default is { ok: true }; guard cases resolve { ok: false, guard } (never
+// reject — a rejection is a genuine failure, e.g. permission).
+const setLeadStage = vi.fn().mockResolvedValue({ ok: true })
 vi.mock('@/actions/leads', () => ({ createLead: vi.fn(), setLeadStage: (...args: unknown[]) => setLeadStage(...args) }))
 vi.mock('@/actions/intake', () => ({
   ensureIntakeToken: vi.fn().mockResolvedValue('tok123'),
@@ -47,7 +54,7 @@ describe('PipelineListClient', () => {
   beforeEach(() => {
     // mockReset, not mockClear: the in-flight test installs a deferred
     // implementation that would otherwise hang every test after it.
-    setLeadStage.mockReset().mockResolvedValue(undefined)
+    setLeadStage.mockReset().mockResolvedValue({ ok: true })
     push.mockClear()
     refresh.mockClear()
     const slot = document.createElement('div')
@@ -141,7 +148,7 @@ describe('PipelineListClient', () => {
   */
   it('shows a pending label and disables the advance button while the move is in flight', async () => {
     let settle: () => void = () => {}
-    setLeadStage.mockImplementation(() => new Promise<void>((res) => { settle = () => res() }))
+    setLeadStage.mockImplementation(() => new Promise<{ ok: true }>((res) => { settle = () => res({ ok: true }) }))
 
     render(<PipelineListClient {...baseProps} />)
     const advance = screen.getByRole('button', { name: 'Move to Closed Won' })
@@ -190,7 +197,7 @@ describe('PipelineListClient', () => {
   it('lets a different row advance normally while another row is still writing', async () => {
     const settle: Record<string, () => void> = {}
     setLeadStage.mockImplementation((_org: string, id: string) =>
-      new Promise<void>((res) => { settle[id] = () => res() }))
+      new Promise<{ ok: true }>((res) => { settle[id] = () => res({ ok: true }) }))
 
     render(<PipelineListClient {...baseProps} groups={{
       ...emptyGroups,
@@ -291,7 +298,7 @@ describe('PipelineListClient', () => {
   */
   it('keeps the refusal on screen after the in-flight move it warned about lands', async () => {
     let settle: () => void = () => {}
-    setLeadStage.mockImplementation(() => new Promise<void>((res) => { settle = () => res() }))
+    setLeadStage.mockImplementation(() => new Promise<{ ok: true }>((res) => { settle = () => res({ ok: true }) }))
 
     render(<PipelineListClient {...baseProps} />)
     fireEvent.click(screen.getByRole('button', { name: 'Move to Closed Won' }))
@@ -313,7 +320,7 @@ describe('PipelineListClient', () => {
   it('keeps one row’s refusal on screen when a different row’s move lands', async () => {
     const settle: Record<string, () => void> = {}
     setLeadStage.mockImplementation((_org: string, id: string) =>
-      new Promise<void>((res) => { settle[id] = () => res() }))
+      new Promise<{ ok: true }>((res) => { settle[id] = () => res({ ok: true }) }))
 
     render(<PipelineListClient {...baseProps} groups={{
       ...emptyGroups,
@@ -666,12 +673,16 @@ describe('PipelineListClient', () => {
     })
 
     /*
-      SAME-DAY WON GUARD. Capacity is 1: closing a second job onto a date that
-      already carries a `closed_won` is warned, and a declined confirm must leave
-      the row untouched — no `setLeadStage`, no navigation.
+      SERVER-SIDE CAPACITY GUARD (increment 4). The client no longer pre-checks
+      the date itself — it calls `setLeadStage`, and if the server RETURNS
+      `{ ok: false, guard }` (never a thrown error — that could not survive
+      Next's production RSC error redaction), it shows `guard` in a confirm. A
+      declined confirm must leave the row untouched (no override re-call, no
+      navigation); an accepted one re-calls with { override: true }.
     */
-    it('warns before winning a second job on an already-booked date and aborts on cancel', async () => {
+    it('confirms a server guard refusal and aborts on cancel — no override, no navigation', async () => {
       const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+      setLeadStage.mockResolvedValueOnce({ ok: false, guard: 'Kart 1 is already booked on Sep 30, 2026. Book this one too?' })
       render(<PipelineListClient {...baseProps}
         groups={{ ...emptyGroups, active: [
           { lead: lead({ id: 'open1', name: 'Second Wedding', stage: 'proposal', event_date: '2026-09-30' }),
@@ -680,14 +691,17 @@ describe('PipelineListClient', () => {
         closed={[lead({ id: 'won1', name: 'Booked Co', stage: 'closed_won', event_date: '2026-09-30' })]}
       />)
       await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Move to Closed Won' })) })
-      expect(confirmSpy).toHaveBeenCalledWith('Another job is already booked for Sep 30, 2026. Book this one too?')
-      expect(setLeadStage).not.toHaveBeenCalled()
+      expect(confirmSpy).toHaveBeenCalledWith('Kart 1 is already booked on Sep 30, 2026. Book this one too?')
+      // One attempt only — the guarded first call; no override re-call.
+      expect(setLeadStage).toHaveBeenCalledTimes(1)
+      expect(setLeadStage).toHaveBeenCalledWith('o1', 'open1', 'closed_won')
       expect(push).not.toHaveBeenCalled()
       confirmSpy.mockRestore()
     })
 
-    it('proceeds with the won move when the double-book warning is confirmed', async () => {
+    it('re-calls setLeadStage with { override: true } when the guard confirm is accepted', async () => {
       const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+      setLeadStage.mockResolvedValueOnce({ ok: false, guard: 'Sep 30, 2026 is over capacity. Book this one too?' })
       render(<PipelineListClient {...baseProps}
         groups={{ ...emptyGroups, active: [
           { lead: lead({ id: 'open1', stage: 'proposal', event_date: '2026-09-30' }),
@@ -697,11 +711,12 @@ describe('PipelineListClient', () => {
       />)
       await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Move to Closed Won' })) })
       expect(confirmSpy).toHaveBeenCalledTimes(1)
-      expect(setLeadStage).toHaveBeenCalledWith('o1', 'open1', 'closed_won')
+      expect(setLeadStage).toHaveBeenNthCalledWith(1, 'o1', 'open1', 'closed_won')
+      expect(setLeadStage).toHaveBeenNthCalledWith(2, 'o1', 'open1', 'closed_won', { override: true })
       confirmSpy.mockRestore()
     })
 
-    it('does not warn when no won job shares the date', async () => {
+    it('does not confirm when the server allows the win (no guard error)', async () => {
       const confirmSpy = vi.spyOn(window, 'confirm')
       render(<PipelineListClient {...baseProps}
         groups={{ ...emptyGroups, active: [
@@ -712,6 +727,7 @@ describe('PipelineListClient', () => {
       />)
       await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Move to Closed Won' })) })
       expect(confirmSpy).not.toHaveBeenCalled()
+      expect(setLeadStage).toHaveBeenCalledTimes(1)
       expect(setLeadStage).toHaveBeenCalledWith('o1', 'open1', 'closed_won')
       confirmSpy.mockRestore()
     })

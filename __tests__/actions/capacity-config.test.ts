@@ -16,7 +16,11 @@ vi.mock('@/lib/auth/assert', () => ({
   assertOrgAdmin: vi.fn().mockResolvedValue({ role: 'admin' }),
 }))
 
-import { updateServiceableDays, updateResourceLabels } from '@/actions/capacity-config'
+import {
+  updateServiceableDays,
+  updateResourceLabels,
+  updateEventTypeProfiles,
+} from '@/actions/capacity-config'
 
 beforeEach(() => vi.clearAllMocks())
 
@@ -111,6 +115,74 @@ describe('updateResourceLabels', () => {
     vi.mocked(assertOrgAdmin).mockRejectedValueOnce(new Error('Forbidden'))
     await expect(
       updateResourceLabels('org-1', { mobile: { one: 'Cart', many: 'Carts' } }),
+    ).rejects.toThrow('Forbidden')
+    expect(orgDocUpdateSpy).not.toHaveBeenCalled()
+  })
+})
+
+describe('updateEventTypeProfiles', () => {
+  it('asserts admin then persists the profiles array (names trimmed, booleans coerced)', async () => {
+    const { assertOrgAdmin } = await import('@/lib/auth/assert')
+    await updateEventTypeProfiles('org-1', [
+      { name: '  Wedding ', needsMobile: true, needsVenue: false },
+      { name: 'Photo package', needsMobile: false, needsVenue: false },
+    ])
+    expect(assertOrgAdmin).toHaveBeenCalledWith('org-1')
+    expect(orgDocUpdateSpy).toHaveBeenCalledWith({
+      event_type_profiles: [
+        { name: 'Wedding', needsMobile: true, needsVenue: false },
+        { name: 'Photo package', needsMobile: false, needsVenue: false },
+      ],
+    })
+  })
+
+  it('coerces truthy/falsy needs values into real booleans', async () => {
+    await updateEventTypeProfiles('org-1', [
+      // deliberately pass non-boolean shapes through the (typed) boundary
+      { name: 'Gala', needsMobile: 1 as unknown as boolean, needsVenue: 0 as unknown as boolean },
+    ])
+    expect(orgDocUpdateSpy).toHaveBeenCalledWith({
+      event_type_profiles: [{ name: 'Gala', needsMobile: true, needsVenue: false }],
+    })
+  })
+
+  it('persists an empty array (operator cleared all profiles ⇒ back to the default rule)', async () => {
+    await updateEventTypeProfiles('org-1', [])
+    expect(orgDocUpdateSpy).toHaveBeenCalledWith({ event_type_profiles: [] })
+  })
+
+  it('collapses duplicate names case-insensitively, last wins', async () => {
+    await updateEventTypeProfiles('org-1', [
+      { name: 'Wedding', needsMobile: true, needsVenue: false },
+      { name: '  wedding ', needsMobile: false, needsVenue: true },
+    ])
+    expect(orgDocUpdateSpy).toHaveBeenCalledWith({
+      event_type_profiles: [{ name: 'wedding', needsMobile: false, needsVenue: true }],
+    })
+  })
+
+  it('rejects an empty (or whitespace-only) name and does NOT write', async () => {
+    await expect(
+      updateEventTypeProfiles('org-1', [{ name: '   ', needsMobile: true, needsVenue: false }]),
+    ).rejects.toThrow()
+    expect(orgDocUpdateSpy).not.toHaveBeenCalled()
+  })
+
+  it('writes to the orgs/{orgId} document — pinning the write TARGET, not just the payload', async () => {
+    const { adminDb } = await import('@/lib/firebase-admin')
+    await updateEventTypeProfiles('org-1', [
+      { name: 'Wedding', needsMobile: true, needsVenue: true },
+    ])
+    expect(adminDb.collection).toHaveBeenCalledWith('orgs')
+    expect(adminDb.collection).not.toHaveBeenCalledWith('org')
+    expect(adminDb.doc).toHaveBeenCalledWith('org-1')
+  })
+
+  it('rejects and does NOT write when admin is denied', async () => {
+    const { assertOrgAdmin } = await import('@/lib/auth/assert')
+    vi.mocked(assertOrgAdmin).mockRejectedValueOnce(new Error('Forbidden'))
+    await expect(
+      updateEventTypeProfiles('org-1', [{ name: 'Wedding', needsMobile: true, needsVenue: false }]),
     ).rejects.toThrow('Forbidden')
     expect(orgDocUpdateSpy).not.toHaveBeenCalled()
   })

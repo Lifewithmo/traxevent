@@ -140,16 +140,27 @@ export function ConvertToWorkCard({ orgId, orgSlug, lead, job, eventTypes, open:
   async function handleMarkWon() {
     if (winning) return
     setWinning(true); setError(null)
+    // Latch the form open, seeded from the lead as it stands right now (winning
+    // changes the stage, not the title/date/guest count). The card keeps
+    // rendering this blocked branch until the refreshed `lead` arrives with
+    // `closed_won` — at which point the scheduler is already open, so the
+    // operator lands one click from a scheduled job rather than back on "Won,
+    // but not on the calendar".
+    const settle = () => { openForm(); router.refresh() }
     try {
-      await setLeadStage(orgId, lead.id, 'closed_won')
-      // Latch the form open, seeded from the lead as it stands right now
-      // (winning changes the stage, not the title/date/guest count). The card
-      // keeps rendering this blocked branch until the refreshed `lead` arrives
-      // with `closed_won` — at which point the scheduler is already open, so
-      // the operator lands one click from a scheduled job rather than back on
-      // "Won, but not on the calendar".
-      openForm()
-      router.refresh()
+      // SERVER CAPACITY GUARD (increment 4): a would-be over/clash win RETURNS
+      // { ok: false, guard } (never thrown — a thrown guard could not survive
+      // Next's production RSC error redaction; see lib/capacity/guard.ts).
+      // Confirm (advisory) and, on accept, re-call with { override: true }. A
+      // decline leaves the deal un-won, no error. A genuine failure throws.
+      const result = await setLeadStage(orgId, lead.id, 'closed_won')
+      if (!result.ok) {
+        if (!window.confirm(result.guard)) return
+        const override = await setLeadStage(orgId, lead.id, 'closed_won', { override: true })
+        if (override.ok) settle()
+        return
+      }
+      settle()
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Could not mark this won')
     } finally {

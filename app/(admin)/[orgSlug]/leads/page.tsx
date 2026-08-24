@@ -29,7 +29,13 @@ export default async function LeadsPage({
   const orgId = orgSnap.docs[0].id
   const orgData = orgSnap.docs[0].data()
   const prepLeadDays = (orgData.prep_lead_days as number | undefined) ?? DEFAULT_PREP_LEAD_DAYS
-  const org = { plan: orgData.plan as BillingPlan | undefined }
+  const org = {
+    plan: orgData.plan as BillingPlan | undefined,
+    // Per-event-type resource profiles (Inc 4). Threaded into radarConflictOpts →
+    // computeCapacity so the resource-aware radar honors "which kinds this event
+    // type consumes"; absent ⇒ leadRequirement's default rule (backstop).
+    event_type_profiles: orgData.event_type_profiles as Org['event_type_profiles'],
+  }
   // The operator's kind vocabulary (increment 3 de-silo). Threaded into the
   // pipeline surface so the over-capacity pill's noun reads in their words via
   // `kindLabel`. Absent ⇒ the neutral platform defaults; base/solo orgs never
@@ -64,6 +70,7 @@ export default async function LeadsPage({
   const units = hasMultiResourceCapacity(org) ? await listCapacityUnitsCore(orgId) : []
   const groups = buildPipelineRows(inputs, today, {
     prepLeadDays,
+    eventTypeProfiles: org.event_type_profiles,
     ...radarConflictOpts(org, leads, units),
   })
   const monthly = closedThisMonth(leads, today)
@@ -119,7 +126,7 @@ export default async function LeadsPage({
       </div>
       {view === 'board'
         ? <PipelineBoardView {...shared} customers={customers} />
-        : <PipelineListClient {...shared} openCount={open.length} closed={closed} customers={customers} resourceLabels={resourceLabels} />}
+        : <PipelineListClient {...shared} openCount={open.length} closed={closed} customers={customers} resourceLabels={resourceLabels} eventTypeProfiles={org.event_type_profiles} />}
     </div>
   )
 }

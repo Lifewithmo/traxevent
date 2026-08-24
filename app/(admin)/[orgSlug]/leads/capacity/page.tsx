@@ -8,7 +8,7 @@ import { OPEN_STAGES } from '@/lib/leads'
 import { todayYmd } from '@/lib/opportunity-detail'
 import { hasMultiResourceCapacity, listCapacityUnitsCore } from '@/lib/capacity/units'
 import { forecastByMonth } from '@/lib/capacity/forecast'
-import { buildSchedule } from '@/lib/capacity/schedule'
+import { buildSchedule, scheduleAssignTargets } from '@/lib/capacity/schedule'
 import { PipelineSubNav } from '@/components/admin/pipeline/PipelineSubNav'
 import { CapacityOutlookClient } from '@/components/admin/pipeline/CapacityOutlookClient'
 
@@ -35,15 +35,23 @@ export default async function CapacityOutlookPage({ params }: { params: Promise<
 
   const serviceableDays = orgData.serviceable_days as Org['serviceable_days']
   const resourceLabels = orgData.resource_labels as Org['resource_labels']
+  // Per-event-type resource profiles (Inc 4): routed through leadRequirement so
+  // the forecast + schedule count only the kinds each event type consumes.
+  // Absent ⇒ the default rule (mobile always, room when on-site) — backstop.
+  const eventTypeProfiles = orgData.event_type_profiles as Org['event_type_profiles']
 
   const leads = await listLeads(orgId)
   const open = leads.filter((l) => (OPEN_STAGES as (typeof l.stage)[]).includes(l.stage))
 
   const today = todayYmd()
-  const forecast = forecastByMonth(leads, units, { serviceable_days: serviceableDays }, today)
+  const forecast = forecastByMonth(leads, units, { serviceable_days: serviceableDays, event_type_profiles: eventTypeProfiles }, today)
   // Near-term day grid: 4 weeks of dates, legible desktop→mobile and
   // horizontal-scroll-contained on its own container (never the page body).
-  const schedule = buildSchedule(leads, units, { serviceable_days: serviceableDays }, today, 28)
+  const schedule = buildSchedule(leads, units, { serviceable_days: serviceableDays, event_type_profiles: eventTypeProfiles }, today, 28)
+  // Click-to-assign payload for the schedule's Unassigned lane (Inc 4): the units
+  // each still-unassigned booking can be pinned to, annotated free/taken over the
+  // same 28-day window as the grid. Pure over the leads + units already loaded.
+  const assignTargets = scheduleAssignTargets(leads, units, { event_type_profiles: eventTypeProfiles }, today, 28)
 
   return (
     <div>
@@ -53,8 +61,10 @@ export default async function CapacityOutlookPage({ params }: { params: Promise<
       <div className="mx-auto max-w-6xl px-6 py-6">
         <CapacityOutlookClient
           orgSlug={orgSlug}
+          orgId={orgId}
           forecast={forecast}
           schedule={schedule}
+          assignTargets={assignTargets}
           resourceLabels={resourceLabels}
         />
       </div>

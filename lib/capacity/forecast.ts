@@ -1,5 +1,6 @@
 import type { CapacityUnit, Lead, Org } from '@/lib/types'
 import { BOOKABLE_STAGES, supply } from '@/lib/capacity/capacity'
+import { leadRequirement } from '@/lib/capacity/requirement'
 import { serviceableDatesInMonth } from '@/lib/capacity/serviceable'
 import { addMonths } from '@/lib/pipeline-stats'
 
@@ -49,7 +50,7 @@ function avgBookableValue(leads: Lead[]): number {
 export function forecastByMonth(
   leads: Lead[],
   units: CapacityUnit[],
-  org: Pick<Org, 'serviceable_days'>,
+  org: Pick<Org, 'serviceable_days' | 'event_type_profiles'>,
   today: string,
   months = 3,
 ): CapacityMonth[] {
@@ -74,8 +75,8 @@ export function forecastByMonth(
       const venueSupply = supply(units, 'venue', d)
 
       const onDate = bookable.filter((l) => l.event_date === d)
-      const mobileDemand = onDate.length
-      const venueDemand = onDate.filter((l) => l.delivery_mode === 'onsite').length
+      const mobileDemand = onDate.filter((l) => leadRequirement(l, org).mobile).length
+      const venueDemand = onDate.filter((l) => leadRequirement(l, org).venue).length
 
       cart.ceiling += mobileSupply
       cart.booked += Math.min(mobileDemand, mobileSupply)

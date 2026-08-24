@@ -72,3 +72,39 @@ export async function updateResourceLabels(
 
   await adminDb.collection('orgs').doc(orgId).update({ resource_labels })
 }
+
+/**
+ * Persist the org's per-event-type resource profiles — which capacity kinds a
+ * named event type consumes (0/1 each). Org-admin only. Mirrors
+ * `updateServiceableDays`: an `orgs/{orgId}` `.update()` of a single scalar.
+ *
+ * Each `name` is trimmed and must be non-empty. Names are deduped
+ * case-insensitively (last wins), and the `needs*` flags are coerced to real
+ * booleans. An empty array is valid — it clears all profiles, so every lead
+ * falls back to `leadRequirement`'s default rule (see lib/capacity/requirement.ts).
+ */
+export async function updateEventTypeProfiles(
+  orgId: string,
+  profiles: NonNullable<Org['event_type_profiles']>,
+): Promise<void> {
+  await assertOrgAdmin(orgId)
+
+  if (!Array.isArray(profiles)) throw new Error('event_type_profiles must be an array')
+
+  // Dedupe by case-insensitive trimmed name, last-wins. A Map keeps the first
+  // occurrence's position while overwriting its value on a later duplicate.
+  const byName = new Map<string, NonNullable<Org['event_type_profiles']>[number]>()
+  for (const p of profiles) {
+    const name = typeof p?.name === 'string' ? p.name.trim() : ''
+    if (!name) throw new Error('An event type needs a name')
+    byName.set(name.toLowerCase(), {
+      name,
+      needsMobile: Boolean(p.needsMobile),
+      needsVenue: Boolean(p.needsVenue),
+    })
+  }
+
+  const event_type_profiles = Array.from(byName.values())
+
+  await adminDb.collection('orgs').doc(orgId).update({ event_type_profiles })
+}

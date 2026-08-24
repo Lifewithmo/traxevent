@@ -20,7 +20,10 @@ describe('ConvertToWorkCard', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     convertOpportunityToWork.mockResolvedValue({ id: 'e1', slug: 'nguyen-wedding-2026' } as Event)
-    setLeadStage.mockResolvedValue(undefined)
+    // setLeadStage returns a discriminated result (increment 4): { ok: true } on
+    // a completed write, { ok: false, guard } on a refused win — a return value,
+    // not a thrown error (Next redacts thrown Server Action errors in prod).
+    setLeadStage.mockResolvedValue({ ok: true })
   })
 
   it('shows the block reason for an opportunity that is not won', () => {
@@ -78,6 +81,30 @@ describe('ConvertToWorkCard', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Mark won' }))
       expect(await screen.findByRole('alert')).toHaveTextContent('offline')
       expect(screen.queryByLabelText('Job name')).toBeNull()
+    })
+
+    // SERVER CAPACITY GUARD (increment 4). Winning from the detail card routes
+    // through the same guarded setLeadStage; a returned { ok: false, guard } is
+    // confirmed, and on accept re-called with { override: true }.
+    it('confirms a guard refusal and re-calls with override when accepted', async () => {
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+      setLeadStage.mockResolvedValueOnce({ ok: false, guard: 'Sep 12, 2026 is over capacity. Book this one too?' })
+      blocked('not_won', 'Ready — mark the deal won to convert.')
+      fireEvent.click(screen.getByRole('button', { name: 'Mark won' }))
+      await waitFor(() => expect(confirmSpy).toHaveBeenCalledWith('Sep 12, 2026 is over capacity. Book this one too?'))
+      await waitFor(() => expect(setLeadStage).toHaveBeenNthCalledWith(2, 'o1', 'l1', 'closed_won', { override: true }))
+      confirmSpy.mockRestore()
+    })
+
+    it('aborts the win with no error and no override when the guard confirm is declined', async () => {
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+      setLeadStage.mockResolvedValueOnce({ ok: false, guard: 'Kart 1 is already booked. Book this one too?' })
+      blocked('not_won', 'Ready — mark the deal won to convert.')
+      fireEvent.click(screen.getByRole('button', { name: 'Mark won' }))
+      await waitFor(() => expect(confirmSpy).toHaveBeenCalledTimes(1))
+      expect(setLeadStage).toHaveBeenCalledTimes(1)
+      expect(screen.queryByRole('alert')).toBeNull()
+      confirmSpy.mockRestore()
     })
 
     it('points at the proposals pane when the signature is what is missing', () => {

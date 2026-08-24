@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildSchedule } from '@/lib/capacity/schedule'
+import { buildSchedule, scheduleAssignTargets } from '@/lib/capacity/schedule'
 import type { CapacityUnit, Lead, Org } from '@/lib/types'
 
 function unit(over: Partial<CapacityUnit> & { kind: CapacityUnit['kind'] }): CapacityUnit {
@@ -159,5 +159,103 @@ describe('buildSchedule', () => {
     const lanes = buildSchedule(leads, units, {}, '2026-09-01', 7)
     expect(cellOn(lanes[0], '2026-09-03').leadId).toBeUndefined()
     expect(cellOn(lanes.at(-1)!, '2026-09-04').leadId).toBeUndefined()
+  })
+
+  // --- Per-event-type profiles (Inc 4) ---------------------------------------
+
+  it('BACKSTOP: consumption is byte-for-byte with no profiles (or undefined profiles)', () => {
+    const units = [unit({ id: 'm1', kind: 'mobile' }), unit({ id: 'r1', kind: 'venue' })]
+    const leads = [
+      lead({ id: 'ON', title: 'On-site', stage: 'proposal', event_date: '2026-09-04', delivery_mode: 'onsite', assigned_units: { mobile: 'm1', venue: 'r1' }, event_type: 'Wedding' }),
+    ]
+    const base = buildSchedule(leads, units, {}, '2026-09-01', 7)
+    const undef = buildSchedule(leads, units, { event_type_profiles: undefined }, '2026-09-01', 7)
+    expect(cellOn(base.find((l) => l.unitId === 'm1')!, '2026-09-04').leadId).toBe('ON')
+    expect(cellOn(base.find((l) => l.unitId === 'r1')!, '2026-09-04').leadId).toBe('ON')
+    expect(cellOn(undef.find((l) => l.unitId === 'm1')!, '2026-09-04').leadId).toBe('ON')
+    expect(cellOn(undef.find((l) => l.unitId === 'r1')!, '2026-09-04').leadId).toBe('ON')
+  })
+
+  it('a {needsMobile:false, needsVenue:false} profile drops the lead off every lane (not even unassigned)', () => {
+    const units = [unit({ id: 'm1', kind: 'mobile' })]
+    const org = { event_type_profiles: [{ name: 'Photo package', needsMobile: false, needsVenue: false }] }
+    const leads = [
+      lead({ id: 'P', title: 'Photo gig', stage: 'proposal', event_date: '2026-09-04', assigned_units: { mobile: 'm1' }, event_type: 'Photo package' }),
+    ]
+    const lanes = buildSchedule(leads, units, org, '2026-09-01', 7)
+    // Needs no mobile ⇒ the pin does not consume m1…
+    expect(cellOn(lanes.find((l) => l.unitId === 'm1')!, '2026-09-04').leadId).toBeUndefined()
+    // …and it needs no unit at all ⇒ it is NOT in the unassigned lane either.
+    expect(cellOn(lanes.at(-1)!, '2026-09-04').leadId).toBeUndefined()
+  })
+
+  it('a {needsVenue:true} profile books a room lane for an OFFSITE lead', () => {
+    const units = [unit({ id: 'r1', kind: 'venue', name: 'Room A' })]
+    const org = { event_type_profiles: [{ name: 'Room rental', needsMobile: false, needsVenue: true }] }
+    const leads = [
+      lead({ id: 'RR', title: 'Rental', stage: 'proposal', event_date: '2026-09-04', delivery_mode: 'offsite', assigned_units: { venue: 'r1' }, event_type: 'Room rental' }),
+    ]
+    const lanes = buildSchedule(leads, units, org, '2026-09-01', 7)
+    // The default rule would NOT book a room for an offsite lead; the profile does.
+    expect(cellOn(lanes.find((l) => l.unitId === 'r1')!, '2026-09-04').leadId).toBe('RR')
+    expect(cellOn(lanes.at(-1)!, '2026-09-04').leadId).toBeUndefined()
+  })
+})
+
+describe('scheduleAssignTargets', () => {
+  it('offers only the kinds the booking needs, defaulting to mobile for an offsite lead', () => {
+    const units = [
+      unit({ id: 'm1', kind: 'mobile', name: 'Kart 1' }),
+      unit({ id: 'r1', kind: 'venue', name: 'Room A' }),
+    ]
+    const leads = [lead({ id: 'U', title: 'Gala', stage: 'proposal', event_date: '2026-09-05' })]
+    const targets = scheduleAssignTargets(leads, units, {}, '2026-09-01', 7)
+    expect(Object.keys(targets)).toEqual(['U'])
+    // offsite default ⇒ needs a mobile only; the room is NOT an option.
+    expect(targets.U.options.map((o) => o.unitId)).toEqual(['m1'])
+    expect(targets.U.options[0].free).toBe(true)
+  })
+
+  it('offers a room too for an on-site lead, and merges onto existing assigned_units', () => {
+    const units = [
+      unit({ id: 'm1', kind: 'mobile', name: 'Kart 1' }),
+      unit({ id: 'r1', kind: 'venue', name: 'Room A' }),
+    ]
+    // Stale venue pin to a RETIRED/unknown unit ⇒ no live assignment, still unassigned.
+    const leads = [
+      lead({ id: 'U', stage: 'proposal', event_date: '2026-09-05', delivery_mode: 'onsite', assigned_units: { venue: 'gone' } }),
+    ]
+    const targets = scheduleAssignTargets(leads, units, {}, '2026-09-01', 7)
+    expect(targets.U.options.map((o) => o.unitId).sort()).toEqual(['m1', 'r1'])
+    // The merge base preserves the stale key so a mobile pick never clobbers it.
+    expect(targets.U.currentAssigned).toEqual({ venue: 'gone' })
+  })
+
+  it('annotates a unit taken by another same-date booking as not free', () => {
+    const units = [
+      unit({ id: 'm1', kind: 'mobile', name: 'Kart 1' }),
+      unit({ id: 'm2', kind: 'mobile', name: 'Kart 2' }),
+    ]
+    const leads = [
+      lead({ id: 'U', title: 'Needs a cart', stage: 'proposal', event_date: '2026-09-05' }),
+      lead({ id: 'HAS', title: 'Owns Kart 1', stage: 'closed_won', event_date: '2026-09-05', assigned_units: { mobile: 'm1' } }),
+    ]
+    const targets = scheduleAssignTargets(leads, units, {}, '2026-09-01', 7)
+    const opts = targets.U.options
+    expect(opts.find((o) => o.unitId === 'm1')).toMatchObject({ free: false, note: 'taken by Owns Kart 1' })
+    expect(opts.find((o) => o.unitId === 'm2')).toMatchObject({ free: true })
+  })
+
+  it('omits a needs-nothing (photo-only) booking entirely', () => {
+    const units = [unit({ id: 'm1', kind: 'mobile' })]
+    const org = { event_type_profiles: [{ name: 'Photo', needsMobile: false, needsVenue: false }] }
+    const leads = [lead({ id: 'P', stage: 'proposal', event_date: '2026-09-05', event_type: 'Photo' })]
+    expect(scheduleAssignTargets(leads, units, org, '2026-09-01', 7)).toEqual({})
+  })
+
+  it('omits a booking that already has a live assignment', () => {
+    const units = [unit({ id: 'm1', kind: 'mobile' })]
+    const leads = [lead({ id: 'A', stage: 'proposal', event_date: '2026-09-05', assigned_units: { mobile: 'm1' } })]
+    expect(scheduleAssignTargets(leads, units, {}, '2026-09-01', 7)).toEqual({})
   })
 })
