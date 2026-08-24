@@ -66,6 +66,13 @@ describe('unitAnnotations', () => {
     expect(map.get('r1')).toEqual({ takenBy: 'Onsite gala' })
   })
 
+  it('is profile-aware: an OFFSITE lead whose profile needs a venue DOES take it', () => {
+    const org = { event_type_profiles: [{ name: 'Gala', needsMobile: true, needsVenue: true }] }
+    const other = lead({ id: 'x', title: 'Offsite gala', event_type: 'Gala', event_date: '2026-09-05', delivery_mode: 'offsite', assigned_units: { venue: 'r1' } })
+    // needsVenue:true is authoritative over the offsite mode ⇒ the venue reads as taken.
+    expect(unitAnnotations(subject, [r1], [other], org).get('r1')).toEqual({ takenBy: 'Offsite gala' })
+  })
+
   it('falls back to the lead name when it has no title', () => {
     const other = lead({ id: 'x', name: 'Nameless Co', event_date: '2026-09-05', assigned_units: { mobile: 'k1' } })
     const map = unitAnnotations(subject, [k1], [other])

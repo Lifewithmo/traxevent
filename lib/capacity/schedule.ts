@@ -183,7 +183,7 @@ export function scheduleAssignTargets(
 
     // Reuse the picker's annotation over the SAME-date bookable leads.
     const sameDate = bookable.filter((l) => l.event_date === lead.event_date)
-    const ann = unitAnnotations(lead, units, sameDate)
+    const ann = unitAnnotations(lead, units, sameDate, org)
     const options: ScheduleAssignOption[] = relevant.map((u) => {
       const a = ann.get(u.id)
       const free = !a?.blocked && !a?.takenBy
