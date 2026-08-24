@@ -1,16 +1,23 @@
 import Link from 'next/link'
 
-export type PipelineSubPage = 'opportunities' | 'tasks'
+export type PipelineSubPage = 'opportunities' | 'tasks' | 'capacity'
 
 interface PipelineSubNavProps {
   orgSlug: string
   active: PipelineSubPage
   openCount?: number
   dueTodayCount?: number
+  /**
+   * Whether to surface the Capacity Outlook tab. Callers gate this on
+   * `hasMultiResourceCapacity(org) && ≥1 configured unit` (increment 3) — base
+   * and solo orgs never see it. On the outlook page itself it is implicitly
+   * true, since the page only renders for a qualifying org.
+   */
+  showCapacity?: boolean
 }
 
-/** 16a: Pipeline is a section, not a page — two sub-items sharing one header. */
-export function PipelineSubNav({ orgSlug, active, openCount, dueTodayCount }: PipelineSubNavProps) {
+/** 16a: Pipeline is a section, not a page — sub-items sharing one header. */
+export function PipelineSubNav({ orgSlug, active, openCount, dueTodayCount, showCapacity }: PipelineSubNavProps) {
   const tabs: Array<{ key: PipelineSubPage; label: string; href: string; badge?: string }> = [
     {
       key: 'opportunities',
@@ -29,6 +36,12 @@ export function PipelineSubNav({ orgSlug, active, openCount, dueTodayCount }: Pi
       // tab reading "5 due today" above a tile reading "Due today 1".
       badge: dueTodayCount ? `${dueTodayCount} owed` : undefined,
     },
+    // The outlook is always the ACTIVE tab on its own page (which only renders
+    // for a qualifying org), so it must appear whenever it's active even if a
+    // caller forgot to pass the gate.
+    ...(showCapacity || active === 'capacity'
+      ? [{ key: 'capacity' as const, label: 'Capacity', href: `/${orgSlug}/leads/capacity` }]
+      : []),
   ]
 
   // R8: below `sm` the action slot takes its own full-width line ABOVE the tabs

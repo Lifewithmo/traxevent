@@ -17,7 +17,8 @@ import { OPEN_STAGES, LEAD_STAGE_LABELS, LOST_REASON_LABELS, opportunityTitle } 
 import { STAGE_TONE, money, shortDate, type Tone } from '@/lib/pipeline-presentation'
 import type { PipelineGroups, PipelineRow, closedThisMonth } from '@/lib/pipeline-view'
 import { rowOwnsClash, type CapacityDay } from '@/lib/capacity/capacity'
-import type { Customer, Lead, LeadStage } from '@/lib/types'
+import { kindLabel } from '@/lib/capacity/labels'
+import type { Customer, Lead, LeadStage, Org } from '@/lib/types'
 import { NewOpportunityForm } from './NewOpportunityForm'
 import { IntakeLinkCard } from './IntakeLinkCard'
 import { ClosedMonthSummary } from './ClosedMonthSummary'
@@ -35,6 +36,11 @@ interface PipelineListClientProps {
   // offsite / on-site delivery toggle. Computed on the server (page.tsx) so the
   // client never queries the org's plan or units. Undefined ⇒ hidden.
   showDeliveryMode?: boolean
+  // The operator's vocabulary for the two capacity kinds (increment 3 de-silo).
+  // Threaded from the org so the over-capacity pill reads in their words via
+  // `kindLabel`. Absent ⇒ the neutral platform defaults; base/solo orgs never
+  // render the pill at all, so this is simply unused for them.
+  resourceLabels?: Org['resource_labels']
 }
 
 /*
@@ -97,24 +103,34 @@ export function bookByChip(row: PipelineRow): { text: string; tone: Tone } | nul
  *
  * WHICH kind it names: only the kind(s) that actually breached (demand > supply)
  * — a spare cart is not the story on a day the ROOMS ran out. If both breach,
- * lead with the larger overage (demand − supply), the sharper shortfall. mobile
- * → "carts", venue → "rooms"; `demand` is that kind's own demand (all bookable
- * for mobile, on-site only for venue), so venue reads "N events" meaning the
- * on-site ones. ONE date format: `shortDate`, the module's single vocabulary.
+ * lead with the larger overage (demand − supply), the sharper shortfall. `demand`
+ * is that kind's own demand (all bookable for mobile, on-site only for venue), so
+ * venue reads "N events" meaning the on-site ones. ONE date format: `shortDate`,
+ * the module's single vocabulary.
+ *
+ * DE-SILO (increment 3): the kind NOUN is not the hardcoded BrewTrax
+ * "cart"/"room" any longer — it routes through `kindLabel(org, kind, count)`, the
+ * single source of the kind vocabulary, so it reads in the operator's own words
+ * (a truck op → "trucks"; an org that has named nothing → the neutral platform
+ * default "serving unit(s)"/"room(s)"). `count` is the supply, which also drives
+ * singular vs plural, so "1 serving unit" / "2 serving units" comes out right.
  *
  * Returns null when the day is not actually over (defensive — the caller already
  * gates on `overCapacity?.over`, but a `detail` with no breach would otherwise
  * pick a non-breaching kind and print a contradiction).
  */
-export function overCapacityChip(cap: CapacityDay, eventDate?: string): string | null {
+export function overCapacityChip(
+  cap: CapacityDay,
+  resourceLabels: Org['resource_labels'],
+  eventDate?: string,
+): string | null {
   const breaches = cap.detail
     .filter((d) => d.demand > d.supply)
     .sort((a, b) => b.demand - b.supply - (a.demand - a.supply))
   const worst = breaches[0]
   if (!worst) return null
-  const noun = worst.kind === 'venue' ? 'room' : 'cart'
   const events = `${worst.demand} event${worst.demand === 1 ? '' : 's'}`
-  const units = `${worst.supply} ${noun}${worst.supply === 1 ? '' : 's'}`
+  const units = `${worst.supply} ${kindLabel({ resource_labels: resourceLabels }, worst.kind, worst.supply)}`
   return `Over capacity — ${events} · ${units} (${shortDate(eventDate ?? cap.date)})`
 }
 
@@ -153,7 +169,7 @@ function GroupHeader({ label, rows, alert }: { label: string; rows: PipelineRow[
 }
 
 export function PipelineListClient({
-  orgId, orgSlug, groups, closed, openCount, monthly, customers, showDeliveryMode,
+  orgId, orgSlug, groups, closed, openCount, monthly, customers, showDeliveryMode, resourceLabels,
 }: PipelineListClientProps) {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState<Tab>('open')
@@ -375,7 +391,7 @@ export function PipelineListClient({
                 */}
                 {row.overCapacity?.over ? (
                   (() => {
-                    const text = overCapacityChip(row.overCapacity, row.eventDate)
+                    const text = overCapacityChip(row.overCapacity, resourceLabels, row.eventDate)
                     return text
                       ? <StatusPill tone="alert" className="max-w-full whitespace-normal">{text}</StatusPill>
                       : null

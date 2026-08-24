@@ -736,7 +736,7 @@ describe('PipelineListClient', () => {
     })
 
     it('names the mobile shortfall — "N events · M carts" — instead of a bare conflict flag', () => {
-      render(<PipelineListClient {...baseProps} groups={{
+      render(<PipelineListClient {...baseProps} resourceLabels={{ mobile: { one: 'cart', many: 'carts' } }} groups={{
         ...emptyGroups,
         active: [capRow({
           date: '2026-09-30', over: true,
@@ -798,6 +798,84 @@ describe('PipelineListClient', () => {
         }],
       }} />)
       expect(screen.getByText('Date conflict — Sep 30, 2026')).toBeInTheDocument()
+      expect(screen.queryByText(/Over capacity/)).toBeNull()
+    })
+  })
+
+  /*
+    DE-SILO (increment 3). The over-capacity pill's kind noun is no longer the
+    hardcoded BrewTrax "cart"/"room" — it routes through `kindLabel(org, kind,
+    count)`, so the noun is whatever the operator named the CATEGORY in their
+    Resources settings (`resource_labels`). A truck op reads "trucks"; an org
+    that has named nothing reads the neutral platform default ("serving units").
+    The venue default is "room(s)" either way. The base/solo "Date conflict"
+    path carries no `overCapacity` and is untouched by any of this.
+  */
+  describe('operator-labeled resource kinds (de-silo)', () => {
+    const capRow = (overCapacity: Record<string, unknown>) => ({
+      lead: lead({ id: 'cap1', name: 'Saturday Rush', stage: 'proposal', event_date: '2026-09-30' }),
+      health: 'active' as const,
+      statusLine: 'Next: call',
+      eventDate: '2026-09-30',
+      conflict: true,
+      overCapacity,
+    })
+    const mobileOver = {
+      date: '2026-09-30', over: true,
+      detail: [{ kind: 'mobile', demand: 4, supply: 2 }, { kind: 'venue', demand: 0, supply: 2 }],
+    }
+
+    it('reads the operator override — "2 carts" — for a BrewTrax-labeled org', () => {
+      render(<PipelineListClient {...baseProps}
+        resourceLabels={{ mobile: { one: 'cart', many: 'carts' } }}
+        groups={{ ...emptyGroups, active: [capRow(mobileOver)] }} />)
+      expect(screen.getByText('Over capacity — 4 events · 2 carts (Sep 30, 2026)')).toBeInTheDocument()
+    })
+
+    it('reads a "trucks" override for a mobile-catering op, never "carts"', () => {
+      render(<PipelineListClient {...baseProps}
+        resourceLabels={{ mobile: { one: 'truck', many: 'trucks' } }}
+        groups={{ ...emptyGroups, active: [capRow(mobileOver)] }} />)
+      expect(screen.getByText('Over capacity — 4 events · 2 trucks (Sep 30, 2026)')).toBeInTheDocument()
+      expect(screen.queryByText(/carts/)).toBeNull()
+    })
+
+    it('falls back to the neutral platform default "serving units" when the org has named nothing', () => {
+      render(<PipelineListClient {...baseProps}
+        groups={{ ...emptyGroups, active: [capRow(mobileOver)] }} />)
+      expect(screen.getByText('Over capacity — 4 events · 2 serving units (Sep 30, 2026)')).toBeInTheDocument()
+      expect(screen.queryByText(/carts/)).toBeNull()
+    })
+
+    it('uses the singular label at a supply of one — "1 serving unit"', () => {
+      render(<PipelineListClient {...baseProps}
+        groups={{ ...emptyGroups, active: [capRow({
+          date: '2026-09-30', over: true,
+          detail: [{ kind: 'mobile', demand: 3, supply: 1 }, { kind: 'venue', demand: 0, supply: 2 }],
+        })] }} />)
+      expect(screen.getByText('Over capacity — 3 events · 1 serving unit (Sep 30, 2026)')).toBeInTheDocument()
+    })
+
+    it('labels a venue breach "rooms" by default, independent of the mobile override', () => {
+      render(<PipelineListClient {...baseProps}
+        resourceLabels={{ mobile: { one: 'truck', many: 'trucks' } }}
+        groups={{ ...emptyGroups, active: [capRow({
+          date: '2026-09-30', over: true,
+          detail: [{ kind: 'mobile', demand: 2, supply: 3 }, { kind: 'venue', demand: 3, supply: 2 }],
+        })] }} />)
+      expect(screen.getByText('Over capacity — 3 events · 2 rooms (Sep 30, 2026)')).toBeInTheDocument()
+    })
+
+    it('leaves the base/solo "Date conflict" path — which carries no labels — byte-for-byte unchanged', () => {
+      render(<PipelineListClient {...baseProps} groups={{
+        ...emptyGroups,
+        active: [{
+          lead: lead({ id: 'b1', stage: 'proposal', event_date: '2026-09-30' }),
+          health: 'active', statusLine: 'x', eventDate: '2026-09-30', conflict: true,
+        }],
+      }} />)
+      expect(screen.getByText('Date conflict — Sep 30, 2026')).toBeInTheDocument()
+      expect(screen.queryByText(/serving unit/)).toBeNull()
       expect(screen.queryByText(/Over capacity/)).toBeNull()
     })
   })
@@ -876,7 +954,7 @@ describe('PipelineListClient', () => {
     })
 
     it('shows the clash badge ALONGSIDE the over-capacity pill when the day is both', () => {
-      render(<PipelineListClient {...baseProps} groups={{
+      render(<PipelineListClient {...baseProps} resourceLabels={{ mobile: { one: 'cart', many: 'carts' } }} groups={{
         ...emptyGroups,
         active: [clashRow({
           lead: lead({ id: 'cl1', stage: 'proposal', event_date: '2026-09-30', assigned_units: { mobile: 'k1' } }),

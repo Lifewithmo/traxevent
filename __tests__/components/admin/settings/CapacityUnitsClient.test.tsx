@@ -12,6 +12,13 @@ vi.mock('@/actions/capacity', () => ({
   listCapacityUnits: vi.fn(),
 }))
 
+const updateServiceableDays = vi.hoisted(() => vi.fn())
+const updateResourceLabels = vi.hoisted(() => vi.fn())
+vi.mock('@/actions/capacity-config', () => ({
+  updateServiceableDays,
+  updateResourceLabels,
+}))
+
 import { CapacityUnitsClient } from '@/components/admin/settings/CapacityUnitsClient'
 import type { CapacityUnit } from '@/lib/types'
 
@@ -122,9 +129,26 @@ describe('CapacityUnitsClient', () => {
 
   it('shows an onboarding empty state, not a blank void, when there are no units', () => {
     render(<CapacityUnitsClient {...base} initialUnits={[]} />)
-    expect(screen.getByText(/pipeline uses this to know when you're overbooked/i)).toBeInTheDocument()
+    // The noun is label-driven (neutral default), not a hardcoded literal.
+    expect(
+      screen.getByText(/Add your first serving unit — the pipeline uses this to know when you're overbooked\./i),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/cart/i)).not.toBeInTheDocument()
     // No summary line for an empty inventory.
     expect(screen.queryByText(/you can serve up to/i)).not.toBeInTheDocument()
+  })
+
+  it('routes the empty-state noun through the org resource label', () => {
+    render(
+      <CapacityUnitsClient
+        {...base}
+        initialUnits={[]}
+        initialResourceLabels={{ mobile: { one: 'trailer', many: 'trailers' } }}
+      />,
+    )
+    expect(
+      screen.getByText(/Add your first trailer — the pipeline uses this to know when you're overbooked\./i),
+    ).toBeInTheDocument()
   })
 
   it('creates a serving unit through createCapacityUnit', async () => {
@@ -230,6 +254,131 @@ describe('CapacityUnitsClient', () => {
         blockouts: [{ start: '2026-09-12', end: '2026-09-14' }],
       }),
     )
+  })
+
+  describe('When you\'re open — serviceable days', () => {
+    it('defaults every weekday on and toggles one off through updateServiceableDays', async () => {
+      updateServiceableDays.mockResolvedValue(undefined)
+      render(
+        <CapacityUnitsClient
+          {...base}
+          initialUnits={[unit({ id: 'm1', name: 'Kart 1', kind: 'mobile' })]}
+        />,
+      )
+
+      // All seven pills start pressed (absent config ⇒ all-on).
+      expect(screen.getByRole('button', { name: 'Sunday' })).toHaveAttribute('aria-pressed', 'true')
+      expect(screen.getByRole('button', { name: 'Wednesday' })).toHaveAttribute('aria-pressed', 'true')
+
+      fireEvent.click(screen.getByRole('button', { name: 'Sunday' }))
+      await waitFor(() =>
+        expect(updateServiceableDays).toHaveBeenCalledWith('o1', {
+          weekdays: [1, 2, 3, 4, 5, 6],
+          closures: [],
+        }),
+      )
+      expect(screen.getByRole('button', { name: 'Sunday' })).toHaveAttribute('aria-pressed', 'false')
+    })
+
+    it('warns when every day is marked closed', async () => {
+      updateServiceableDays.mockResolvedValue(undefined)
+      render(
+        <CapacityUnitsClient
+          {...base}
+          initialServiceableDays={{ weekdays: [0] }}
+          initialUnits={[unit({ id: 'm1', name: 'Kart 1', kind: 'mobile' })]}
+        />,
+      )
+
+      // Only Sunday on, no warning yet.
+      expect(screen.queryByText(/marked every day closed/i)).not.toBeInTheDocument()
+
+      fireEvent.click(screen.getByRole('button', { name: 'Sunday' }))
+      expect(await screen.findByText(/marked every day closed/i)).toBeInTheDocument()
+      await waitFor(() =>
+        expect(updateServiceableDays).toHaveBeenCalledWith('o1', { weekdays: [], closures: [] }),
+      )
+    })
+
+    it('adds a closure range and persists it through updateServiceableDays', async () => {
+      updateServiceableDays.mockResolvedValue(undefined)
+      render(
+        <CapacityUnitsClient
+          {...base}
+          initialUnits={[unit({ id: 'm1', name: 'Kart 1', kind: 'mobile' })]}
+        />,
+      )
+
+      fireEvent.click(screen.getByRole('button', { name: /\+ add closure/i }))
+      fireEvent.change(screen.getByLabelText('From'), { target: { value: '2026-12-24' } })
+      fireEvent.change(screen.getByLabelText('To'), { target: { value: '2026-12-26' } })
+      fireEvent.change(screen.getByLabelText(/note/i), { target: { value: 'Holiday' } })
+      fireEvent.click(screen.getByRole('button', { name: /^add closure$/i }))
+
+      await waitFor(() =>
+        expect(updateServiceableDays).toHaveBeenCalledWith('o1', {
+          weekdays: [0, 1, 2, 3, 4, 5, 6],
+          closures: [{ start: '2026-12-24', end: '2026-12-26', note: 'Holiday' }],
+        }),
+      )
+      // The chip renders and is removable.
+      expect(screen.getByRole('button', { name: /remove closure Dec 24.26/i })).toBeInTheDocument()
+    })
+  })
+
+  describe('Resource labels — editable category names', () => {
+    it('defaults to neutral category headers when no labels are set', () => {
+      render(
+        <CapacityUnitsClient
+          {...base}
+          initialUnits={[
+            unit({ id: 'm1', name: 'Kart 1', kind: 'mobile' }),
+            unit({ id: 'v1', name: 'Room #1', kind: 'venue' }),
+          ]}
+        />,
+      )
+      expect(screen.getByRole('group', { name: 'Serving units' })).toBeInTheDocument()
+      expect(screen.getByRole('group', { name: 'Rooms' })).toBeInTheDocument()
+    })
+
+    it('renders operator overrides as the category header', () => {
+      render(
+        <CapacityUnitsClient
+          {...base}
+          initialResourceLabels={{ mobile: { one: 'cart', many: 'carts' } }}
+          initialUnits={[unit({ id: 'm1', name: 'Kart 1', kind: 'mobile' })]}
+        />,
+      )
+      expect(screen.getByRole('group', { name: 'Carts' })).toBeInTheDocument()
+    })
+
+    it('edits a kind label through updateResourceLabels', async () => {
+      const user = userEvent.setup()
+      updateResourceLabels.mockResolvedValue(undefined)
+      render(
+        <CapacityUnitsClient
+          {...base}
+          initialUnits={[unit({ id: 'm1', name: 'Kart 1', kind: 'mobile' })]}
+        />,
+      )
+
+      await user.click(screen.getByRole('button', { name: /rename serving units category/i }))
+      const singular = screen.getByLabelText('Singular')
+      const plural = screen.getByLabelText('Plural')
+      await user.clear(singular)
+      await user.type(singular, 'Cart')
+      await user.clear(plural)
+      await user.type(plural, 'Carts')
+      await user.click(screen.getByRole('button', { name: /^save$/i }))
+
+      await waitFor(() =>
+        expect(updateResourceLabels).toHaveBeenCalledWith('o1', {
+          mobile: { one: 'Cart', many: 'Carts' },
+        }),
+      )
+      // The header adopts the new plural.
+      expect(screen.getByRole('group', { name: 'Carts' })).toBeInTheDocument()
+    })
   })
 
   it('shows an honest upsell panel and no editor when locked', () => {
