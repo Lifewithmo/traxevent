@@ -236,6 +236,41 @@ describe('orgBookabilityCtx — the read budget', () => {
     expect(ctx?.radar.mode).toBe('capacity')
   })
 
+  /**
+   * C1, end to end through the data layer: the ctx is only as honest as the
+   * sources handed to it. `buildBookabilityCtx` requires `events`, so a caller
+   * that forgot them would not compile — but one that passed `[]` would, and the
+   * verdict would silently go back to lead-only demand. This counts the demand
+   * that actually arrives.
+   */
+  const eventDoc = (over: Record<string, unknown>) => ({
+    id: 'e1', name: 'Wedding', slug: 'wedding', year: 2026, status: 'active',
+    event_type_id: 'type-1', event_start: '2026-12-05', event_end: '2026-12-05',
+    created_at: '2026-01-01T00:00:00.000Z', ...over,
+  })
+
+  it('feeds the org EVENTS into demand, not just its leads', async () => {
+    orgQuery.doc = { id: 'org-1', plan: 'standard', prep_lead_days: undefined }
+    // An event with NO lead_id — exactly what /new-event creates, and the shape
+    // lead-only demand could not see at all.
+    listEventsCoreSpy.mockResolvedValue([eventDoc({})])
+
+    const ctx = await orgBookabilityCtx('org-1', 'acme', TODAY)
+    expect(ctx?.radar).toMatchObject({ mode: 'degraded', bookedCounts: { '2026-12-05': 1 } })
+  })
+
+  it('does not double-count a converted opportunity through the data layer', async () => {
+    orgQuery.doc = { id: 'org-1', plan: 'standard', prep_lead_days: undefined }
+    listLeadsCoreSpy.mockResolvedValue([
+      { id: 'l1', name: 'Dana', stage: 'closed_won', created_at: 'x', event_date: '2026-12-05' },
+    ])
+    listEventsCoreSpy.mockResolvedValue([eventDoc({ lead_id: 'l1' })])
+
+    const ctx = await orgBookabilityCtx('org-1', 'acme', TODAY)
+    // One job, one record of demand — not two.
+    expect(ctx?.radar).toMatchObject({ mode: 'degraded', bookedCounts: { '2026-12-05': 1 }, conflictDates: [] })
+  })
+
   /** The zero-units backstop, end to end through the data layer this time. */
   it('stays on the backstop for a business org with no units defined yet', async () => {
     listLeadsCoreSpy.mockResolvedValue([

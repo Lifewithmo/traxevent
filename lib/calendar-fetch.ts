@@ -259,7 +259,7 @@ export const orgCapacityUnits = cache(
  * Reads, in full:
  *   • the Org doc      — 0 added; `orgBySlug` keeps the document the slug lookup
  *                        was already paying for.
- *   • leads            — 0 added; the memoised `loadCalendarSources` fan-out the
+ *   • leads AND events — 0 added; the memoised `loadCalendarSources` fan-out the
  *                        feed, events, invoices and unscheduled list all share.
  *   • capacity_units   — 1 added collection query, business tier only, memoised.
  *
@@ -283,6 +283,11 @@ export const orgBookabilityCtx = cache(
       orgSlug,
       org: found.org,
       leads: sources.leads,
+      // The SAME events the feed renders — demand has to be read off the records
+      // the grid draws, or the verdict contradicts the job block sitting under
+      // it (see `calendarDemand`). Free: this is the memoised unbounded source
+      // load the feed, events, invoices and unscheduled list already share.
+      events: sources.events,
       units,
       today,
     })

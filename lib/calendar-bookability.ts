@@ -1,5 +1,5 @@
-import type { CapacityUnit, CapacityUnitKind, Lead, Org } from '@/lib/types'
-import { supply, type CapacityDay } from '@/lib/capacity/capacity'
+import type { CapacityUnit, CapacityUnitKind, Event, Lead, Org } from '@/lib/types'
+import { BOOKABLE_STAGES, supply, type CapacityDay } from '@/lib/capacity/capacity'
 import { DEFAULT_PREP_LEAD_DAYS, radarConflictOpts } from '@/lib/pipeline-view'
 import { addDays } from '@/lib/opportunity-detail'
 
@@ -78,10 +78,50 @@ export interface BookabilityBinding {
   fixHref: string
 }
 
+/**
+ * THE PROVENANCE CHANNEL FOR `open` — the mirror image of `BookabilityBinding`.
+ *
+ * `binding` answers "what stopped this day?", so an open day has none: forcing a
+ * binding constraint onto a verdict where nothing bound would corrupt both the
+ * word and the worst-first ordering that ranks them, and `fixHref` (REQUIRED on
+ * a binding) has nothing to point at when nothing is wrong. But an open verdict
+ * is still a CLAIM, and until now it shipped with zero evidence — `binding:
+ * null` and a UI sentence asserting "nothing on file stands in the way".
+ *
+ * That sentence is only true for one of the two things `open` actually means:
+ *
+ *   • `clear`      — either literally nothing is on the date, or a real capacity
+ *                    model reports real headroom. The claim is supported.
+ *   • `unverified` — the date already carries a job, and we are on the degraded
+ *                    arm with no capacity model at all, so we cannot say whether
+ *                    that job is the operator's whole Saturday or a third of it.
+ *                    The honest answer is "nothing ELSE on file", plus the link
+ *                    that would let us do better — exactly the shape
+ *                    `capacity.unknown` already uses one severity up.
+ *
+ * The distinction is not cosmetic: `nextOpenDates` offers only `clear` days, so
+ * the rail's "Next open Saturday" chips can no longer hand the operator a
+ * one-tap double-booking.
+ */
+export type BookabilityBasisKind = 'clear' | 'unverified'
+
+export interface BookabilityBasis {
+  kind: BookabilityBasisKind
+  /** How many jobs the cockpit already renders on this date. */
+  booked: number
+  /** One human sentence. Never claims more than `kind` supports. */
+  reason: string
+  /** `unverified` only — where to go to make the answer knowable next time. */
+  fixHref?: string
+}
+
 export interface Bookability {
   verdict: BookabilityVerdict
   /** The worst constraint that fired. `null` — and only null — when open. */
   binding: BookabilityBinding | null
+  /** What the `open` verdict rests on. Non-null exactly when open — the
+   *  complement of `binding`; the two never coexist. */
+  basis: BookabilityBasis | null
   /** Nearest open dates to offer instead. Empty when the date is already open. */
   alternatives: string[]
 }
@@ -100,7 +140,25 @@ export interface Bookability {
  */
 export type BookabilityRadar =
   | { mode: 'capacity'; capacityByDate: Record<string, CapacityDay>; units: CapacityUnit[] }
-  | { mode: 'degraded'; conflictDates: string[] }
+  | {
+      mode: 'degraded'
+      /** The ROUTER's answer: dates carrying ≥2 jobs. Comes from
+       *  `radarConflictOpts` and nothing else — `lib/pipeline-view.ts` stays the
+       *  single authority on what counts as a conflict. */
+      conflictDates: string[]
+      /**
+       * The HONESTY channel: how many jobs each date carries. Not a second
+       * conflict rule — it never changes a verdict, it only decides whether an
+       * `open` one is allowed to say "nothing on file". Derived from the same
+       * demand records with the same stage filter as `conflictEventDates`, so
+       * `bookedCounts[d] >= 2` and `conflictDates.includes(d)` cannot disagree.
+       *
+       * Lives INSIDE the degraded arm for the same structural reason `units`
+       * lives inside the capacity one: on the capacity arm the real supply/demand
+       * breakdown is in scope and this weaker signal must not be reachable.
+       */
+      bookedCounts: Record<string, number>
+    }
 
 export interface BookabilityCtx {
   /** ISO ymd. Lead time is measured from here. */
@@ -153,6 +211,108 @@ export const VERDICT_LABEL: Record<BookabilityVerdict, string> = {
   closed: 'Closed',
 }
 
+// ── DEMAND: the same records the grid renders ────────────────────────────────
+//
+// The capacity engine reads demand off `Lead.event_date`, exactly. The COCKPIT
+// renders bookings off `Event.event_start`. Those are not the same set, and the
+// gap between them is where the verdict used to contradict the grid inside one
+// 360px pane — "nothing on file stands in the way of this day" printed directly
+// above that day's job block, with its venue and headcount.
+//
+// Three concrete holes, all one root cause:
+//
+//   1. `app/(admin)/[orgSlug]/new-event/page.tsx` calls `createEvent` with NO
+//      `lead_id` — and it is the target of the day spine's OWN empty-day CTA.
+//      That job exists only as an Event, so lead-only demand cannot see it.
+//   2. `l.event_date === date` is exact equality, so only the START of a
+//      multi-day job counted. The grid draws it on every interior day
+//      (`feedForDay` honours `endDate`); the verdict called those days free.
+//   3. An event-only reschedule (actions/calendar-bulk.ts:68-77) moves
+//      `Event.event_start` and leaves `Lead.event_date` behind, so demand landed
+//      on a day the job is no longer on.
+//
+// `lib/capacity/capacity.ts` and `lib/pipeline-view.ts` are shared with the
+// Pipeline module and are not ours to change, so this is an ADAPTER, not a new
+// engine: it translates the calendar's real bookings into the record shape the
+// existing engine already understands, and hands the result to the SAME
+// `radarConflictOpts` router. The gate and the zero-units backstop are untouched.
+
+/**
+ * Ceiling on how many days one event may occupy, so a malformed `event_end`
+ * (a typo'd year is the realistic case) costs a bounded amount of work instead
+ * of synthesising ~27,000 demand records and capacity entries. Beyond this the
+ * job simply stops consuming days; it is never dropped.
+ */
+export const MAX_EVENT_SPAN_DAYS = 366
+
+/**
+ * The org's real per-day demand, expressed as the record shape
+ * `computeCapacity` / `conflictEventDates` consume.
+ *
+ * THE CONVERTED-OPPORTUNITY RULE, mirrored from `buildCalendarFeed`
+ * (lib/calendar.ts): a converted opportunity has BOTH an Event and a Lead, and
+ * the feed keeps the event row and skips the lead — `scheduledLeadIds` is built
+ * from EVERY event carrying a `lead_id`, and the tentative-hold loop skips any
+ * lead in that set. Mirrored byte-for-byte here, because unioning the two
+ * instead would report two carts needed where one is.
+ *
+ * The stage filter is deliberately NOT applied here: `BOOKABLE_STAGES` (open ∪
+ * closed_won = everything but `closed_lost`) is applied downstream by the
+ * capacity engine and by `conflictEventDates`, and it is identical to the feed's
+ * own `stage !== 'closed_lost'` hold filter. Leaving it downstream means an org
+ * with no events gets back its lead list unchanged — the fix cannot alter the
+ * lead-only path even by accident.
+ *
+ * Events are emitted at `closed_won` because a job on the calendar IS booked
+ * work whatever produced it, including the `/new-event` case that has no
+ * opportunity at all. Delivery mode and any pinned unit ride across from the
+ * source lead so room demand and unit clashes survive the translation.
+ */
+export function calendarDemand(leads: Lead[], events: Event[]): Lead[] {
+  const scheduledLeadIds = new Set(events.map((e) => e.lead_id).filter((id): id is string => !!id))
+  // Same liveness test the feed uses: an archived or undated event is on no
+  // calendar surface, so it consumes nothing.
+  const liveEvents = events.filter((e) => e.status !== 'archived' && e.event_start)
+  const leadById = new Map(leads.map((l) => [l.id, l]))
+
+  const out: Lead[] = leads.filter((l) => !scheduledLeadIds.has(l.id))
+
+  for (const e of liveEvents) {
+    const start = e.event_start.slice(0, 10)
+    const rawEnd = e.event_end?.slice(0, 10)
+    // `event_end` is absent on legacy rows and can be malformed; both read as a
+    // single day, matching lib/calendar.ts's `endDate` rule.
+    const end = rawEnd && rawEnd > start ? rawEnd : start
+    const src = e.lead_id ? leadById.get(e.lead_id) : undefined
+    for (let i = 0; i <= MAX_EVENT_SPAN_DAYS; i++) {
+      const day = addDays(start, i)
+      if (day > end) break
+      out.push({
+        id: `event:${e.id}:${day}`,
+        name: e.name,
+        stage: 'closed_won',
+        created_at: e.created_at,
+        event_date: day,
+        ...(src?.delivery_mode ? { delivery_mode: src.delivery_mode } : {}),
+        ...(src?.assigned_units ? { assigned_units: src.assigned_units } : {}),
+      })
+    }
+  }
+
+  return out
+}
+
+/** Jobs per date, on the SAME filter `conflictEventDates` uses, so the two can
+ *  never disagree about what "≥2" means. */
+function bookedCountsByDate(demand: Lead[]): Record<string, number> {
+  const counts: Record<string, number> = {}
+  for (const l of demand) {
+    if (!l.event_date || !BOOKABLE_STAGES.has(l.stage)) continue
+    counts[l.event_date] = (counts[l.event_date] ?? 0) + 1
+  }
+  return counts
+}
+
 /**
  * Build the context from the raw org sources.
  *
@@ -167,15 +327,25 @@ export const VERDICT_LABEL: Record<BookabilityVerdict, string> = {
  *     over-capacity and the whole calendar would read `closed`. That is the
  *     DEFAULT state of a newly-upgraded org — it has no units until someone
  *     opens Settings — not an edge case.
+ *
+ * What changed with events: only the LIST handed to the router. The router, the
+ * gate and the backstop are exactly as they were.
+ *
+ * `events` is REQUIRED, not optional with a `[]` default. An optional argument
+ * is how this defect gets reintroduced: a new caller forgets it, the verdict
+ * silently goes back to lead-only demand, and every test still passes.
  */
 export function buildBookabilityCtx(input: {
   orgSlug: string
   org: Pick<Org, 'plan' | 'prep_lead_days'>
   leads: Lead[]
+  /** Every event the calendar renders. See `calendarDemand`. */
+  events: Event[]
   units: CapacityUnit[]
   today: string
 }): BookabilityCtx {
-  const opts = radarConflictOpts(input.org, input.leads, input.units)
+  const demand = calendarDemand(input.leads, input.events)
+  const opts = radarConflictOpts(input.org, demand, input.units)
   const radar: BookabilityRadar =
     'capacityByDate' in opts
       ? {
@@ -183,7 +353,11 @@ export function buildBookabilityCtx(input: {
           capacityByDate: Object.fromEntries(opts.capacityByDate),
           units: input.units,
         }
-      : { mode: 'degraded', conflictDates: [...opts.conflictDates] }
+      : {
+          mode: 'degraded',
+          conflictDates: [...opts.conflictDates],
+          bookedCounts: bookedCountsByDate(demand),
+        }
   return {
     today: input.today.slice(0, 10),
     prepLeadDays: input.org.prep_lead_days ?? DEFAULT_PREP_LEAD_DAYS,
@@ -210,8 +384,79 @@ export function buildBookabilityCtx(input: {
 export function bindingConstraint(
   date: string,
   ctx: BookabilityCtx
-): { verdict: BookabilityVerdict; binding: BookabilityBinding | null } {
+): { verdict: BookabilityVerdict; binding: BookabilityBinding | null; basis: BookabilityBasis | null } {
   const ymd = date.slice(0, 10)
+  const { verdict, binding } = worstConstraint(ymd, ctx)
+  // Structural, not conventional: `basis` is attached in exactly one place and
+  // only on the open path, so "non-null iff open" cannot drift as rules are
+  // added below.
+  return { verdict, binding, basis: verdict === 'open' ? openBasis(ymd, ctx) : null }
+}
+
+/**
+ * WHAT AN OPEN VERDICT IS ALLOWED TO CLAIM, and the numbers behind it.
+ *
+ * Two arms, two very different epistemic positions:
+ *
+ * • CAPACITY arm — a real model, with real supply. Reaching `open` here means
+ *   the day is genuinely under capacity, un-blocked and un-clashed, so the claim
+ *   is supported and the sentence can name the headroom it is resting on. That
+ *   is why a busy-but-not-full day stays offerable as an alternative: refusing
+ *   to offer 1-of-3 carts would under-sell availability the model can vouch for.
+ *
+ * • DEGRADED arm — no capacity model at all. `tight` fires only at ≥2 jobs, so
+ *   the ONE-job case fell through to an unqualified "nothing on file stands in
+ *   the way" — the most frequent case, and the one where a one-cart operator is
+ *   most likely to double-book on the strength of it. The module already knew it
+ *   could not tell (see `capacity.unknown` below); the hedge was just never
+ *   applied at this severity. Now it is: same ignorance, same admission, same
+ *   link — and the day stops being offered as an alternative.
+ *
+ * NOT escalated to `tight`. Flagging every single-job day would fire on the
+ * default state of every solo org, which is the same false-flag class the
+ * zero-units backstop exists to prevent. The verdict is honest; only the claim
+ * attached to it narrows.
+ */
+function openBasis(ymd: string, ctx: BookabilityCtx): BookabilityBasis {
+  if (ctx.radar.mode === 'capacity') {
+    const day = ctx.radar.capacityByDate[ymd]
+    // Every bookable job consumes a serving unit, so mobile demand IS the job
+    // count for the date (lib/capacity/capacity.ts).
+    const mobile = day?.detail.find((d) => d.kind === 'mobile')
+    const booked = mobile?.demand ?? 0
+    if (booked === 0) return { kind: 'clear', booked: 0, reason: clearReason(ymd) }
+    // Reaching `open` past the over/at-capacity rules means supply > demand.
+    const free = Math.max(0, (mobile?.supply ?? 0) - booked)
+    return {
+      kind: 'clear',
+      booked,
+      reason:
+        `${booked} job${booked === 1 ? '' : 's'} already on ${shortDayLabel(ymd)} — ` +
+        `${nUnits(free, 'mobile')} still free.`,
+    }
+  }
+
+  const booked = ctx.radar.bookedCounts[ymd] ?? 0
+  if (booked === 0) return { kind: 'clear', booked: 0, reason: clearReason(ymd) }
+  return {
+    kind: 'unverified',
+    booked,
+    reason:
+      `${booked === 1 ? 'One job already shares' : `${booked} jobs already share`} ` +
+      `${shortDayLabel(ymd)}. No cart or room capacity is set up, so I can't tell whether ` +
+      `you have room for another.`,
+    fixHref: capacityFixHref(ctx.orgSlug),
+  }
+}
+
+const clearReason = (ymd: string) => `Nothing on file stands in the way of ${shortDayLabel(ymd)}.`
+
+/** The worst constraint binding on `ymd`, worst-first. `bindingConstraint`
+ *  wraps this and attaches the open-verdict provenance. */
+function worstConstraint(
+  ymd: string,
+  ctx: BookabilityCtx
+): { verdict: BookabilityVerdict; binding: BookabilityBinding | null } {
 
   // ── CONSTRAINT 2: LEAD TIME (closed) ───────────────────────────────────────
   // Pure arithmetic on a field the org already stores. The book-by date is the
@@ -396,6 +641,15 @@ export const ALTERNATIVE_COUNT = 3
  * The trade-off is stated plainly rather than hidden: the caller renders these
  * under the weekday name ("Next open Saturday"), so an operator who wants a
  * weekday instead can still read the grid.
+ *
+ * OFFERABLE MEANS `clear`, NOT MERELY `open`. These are rendered as <Link>s — in
+ * the rail's "Next open Saturday" chips and under the day spine's banner — so a
+ * date returned here is a date the operator taps and books. On the degraded arm
+ * a day already carrying a job comes back `open` (we cannot substantiate
+ * anything stronger), and offering that as an alternative would be handing them
+ * a one-tap double-booking on the strength of a verdict that explicitly says it
+ * cannot tell. A capacity-arm day with real headroom stays offerable: there the
+ * model can vouch for it.
  */
 export function nextOpenDates(
   date: string,
@@ -406,7 +660,8 @@ export function nextOpenDates(
   let cursor = date.slice(0, 10)
   for (let week = 1; week <= ALTERNATIVE_HORIZON_WEEKS && out.length < limit; week++) {
     cursor = addDays(cursor, 7)
-    if (bindingConstraint(cursor, ctx).verdict === 'open') out.push(cursor)
+    const { verdict, basis } = bindingConstraint(cursor, ctx)
+    if (verdict === 'open' && basis?.kind === 'clear') out.push(cursor)
   }
   return out
 }
@@ -417,10 +672,11 @@ export function nextOpenDates(
  * the nearest dates to offer instead.
  */
 export function bookability(date: string, ctx: BookabilityCtx): Bookability {
-  const { verdict, binding } = bindingConstraint(date, ctx)
+  const { verdict, binding, basis } = bindingConstraint(date, ctx)
   return {
     verdict,
     binding,
+    basis,
     // Nothing to offer instead of a day that is already open — a list of other
     // free Saturdays under a free Saturday is noise.
     alternatives: verdict === 'open' ? [] : nextOpenDates(date, ctx),

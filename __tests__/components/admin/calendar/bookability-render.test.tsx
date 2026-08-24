@@ -9,7 +9,7 @@ import { BookabilityMark } from '@/components/admin/calendar/BookabilityMark'
 import { bookability, buildBookabilityCtx, type BookabilityCtx } from '@/lib/calendar-bookability'
 import type { DayDetail } from '@/actions/calendar'
 import type { CalendarItem } from '@/lib/calendar'
-import type { CapacityUnit, Lead, Org } from '@/lib/types'
+import type { CapacityUnit, Event, Lead, Org } from '@/lib/types'
 import type { WeekRollup } from '@/lib/calendar-week'
 
 // The grids import the reschedule engine, which imports its server action.
@@ -62,8 +62,13 @@ function lead(over: Partial<Lead>): Lead {
   }
 }
 
-function ctxFor(leads: Lead[], units: CapacityUnit[], org: Pick<Org, 'plan'> = { plan: 'business' }): BookabilityCtx {
-  return buildBookabilityCtx({ orgSlug: 'acme', org, leads, units, today: TODAY })
+function ctxFor(
+  leads: Lead[],
+  units: CapacityUnit[],
+  org: Pick<Org, 'plan'> = { plan: 'business' },
+  events: Event[] = []
+): BookabilityCtx {
+  return buildBookabilityCtx({ orgSlug: 'acme', org, leads, units, events, today: TODAY })
 }
 
 /** One cart, two jobs on FAR ⇒ over capacity ⇒ closed. */
@@ -79,6 +84,29 @@ const TIGHT = () =>
 
 /** Nothing booked, three carts ⇒ open everywhere past the prep window. */
 const CLEAR = () => ctxFor([], [unit({ id: 'k1', kind: 'mobile' }), unit({ id: 'k2', kind: 'mobile' })])
+
+function event(over: Partial<Event> & { event_start: string }): Event {
+  return {
+    id: Math.random().toString(36).slice(2),
+    name: 'Booked job',
+    slug: 'booked-job',
+    year: 2026,
+    status: 'active',
+    event_type_id: 'type-1',
+    event_end: over.event_start,
+    created_at: '2026-01-01T00:00:00.000Z',
+    ...over,
+  }
+}
+
+/**
+ * THE ANCHOR PERSONA'S DAY: a solo operator on the degraded arm (no capacity
+ * model at all) with ONE job on FAR. `tight` needs two jobs, so this comes back
+ * `open` — and it used to come back with "nothing on file stands in the way of
+ * this day" printed above that job. It is the single most common state on the
+ * whole surface, so it gets its own fixture.
+ */
+const UNVERIFIED = () => ctxFor([lead({ id: 'a', event_date: FAR })], [], { plan: 'standard' })
 
 const boxEl = (c: HTMLElement, d: string) =>
   c.querySelector(`[data-slot="month-cell-box"][data-day="${d}"]`) as HTMLElement
@@ -102,6 +130,29 @@ function month(ctx: BookabilityCtx | null, items: CalendarItem[] = FILLER) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 describe('MonthGrid — the verdict in a month cell', () => {
+  /**
+   * The grid is the ONE surface that needed no narrowing for an unverified
+   * `open`, and the reason is worth pinning: the cell already renders the job.
+   * It makes no claim in words, so there is nothing to walk back — and putting a
+   * third glyph on every single-job day of every solo org's calendar would put
+   * ink on the default state, which is the thing BookabilityMark's own doc
+   * forbids. The narrowing belongs where sentences are spoken (the spine) and
+   * where days are OFFERED as taps (the rail).
+   */
+  it('puts no mark on an open day it cannot fully vouch for — the cell shows the job itself', () => {
+    const booked: CalendarItem[] = [
+      ...FILLER,
+      { id: 'j', title: 'Wedding', date: FAR, kind: 'event', href: '/acme/x' },
+    ]
+    const { container } = month(UNVERIFIED(), booked)
+    const box = boxEl(container, FAR)
+
+    expect(within(box).queryByTestId('bookability-mark')).toBeNull()
+    expect(box.className).not.toContain('warn-bg')
+    // …and the cell discloses the booking, so nothing here reads as "empty".
+    expect(cellLink(container, FAR).getAttribute('aria-label')).toContain('1 Booked event')
+  })
+
   it('marks a closed day with a SHAPE, not colour alone', () => {
     const { container } = month(OVER())
     const box = boxEl(container, FAR)
@@ -384,9 +435,65 @@ describe('DaySpine — the verdict stated in full', () => {
     )
     const banner = document.querySelector('[data-slot="bookability-banner"]') as HTMLElement
     expect(banner).toHaveAttribute('data-verdict', 'open')
+    expect(banner).toHaveAttribute('data-basis', 'clear')
     expect(banner.className).not.toContain('warn-bg')
     expect(banner.className).not.toContain('bg-muted')
     expect(banner.textContent).toContain('Open for booking')
+    // The DATE, not "this day": the sentence is the engine's, carried on the
+    // basis, not a string the component invented. Mutation-found — a hardcoded
+    // "nothing on file stands in the way of this day" satisfied the looser
+    // wording while making the unverified case wrong.
+    expect(banner.textContent).toMatch(/nothing on file stands in the way of Dec 5\./i)
+  })
+
+  /**
+   * THE SELF-CONTRADICTION, closed.
+   *
+   * The degraded arm cannot reach `tight` on one job, so this day is `open` —
+   * and the banner used to answer it with a hardcoded "nothing on file stands in
+   * the way of this day", rendered directly above that same day's job block. The
+   * module already knew it could not tell (`capacity.unknown` says so one
+   * severity up); the hedge just was not applied at the frequent case.
+   */
+  it('never claims "nothing on file" over a day that already carries a job', () => {
+    render(
+      <DaySpine orgSlug="acme" today={TODAY} detail={detail(FAR)} bookability={bookability(FAR, UNVERIFIED())} />
+    )
+    const banner = document.querySelector('[data-slot="bookability-banner"]') as HTMLElement
+
+    expect(banner).toHaveAttribute('data-basis', 'unverified')
+    // It leads with the claim it CAN support…
+    expect(banner.textContent).toContain('Nothing else on file')
+    // …names what it does not know, in the module's own voice…
+    expect(banner.textContent).toMatch(/One job already shares Dec 5/)
+    expect(banner.textContent).toMatch(/can't tell/i)
+    // …and does NOT make the claim it could not substantiate.
+    expect(banner.textContent).not.toMatch(/nothing on file stands in the way/i)
+  })
+
+  it('links an unverified day to the fix, the way capacity.unknown does', () => {
+    render(
+      <DaySpine orgSlug="acme" today={TODAY} detail={detail(FAR)} bookability={bookability(FAR, UNVERIFIED())} />
+    )
+    const banner = document.querySelector('[data-slot="bookability-banner"]') as HTMLElement
+    expect(within(banner).getByRole('link', { name: 'Set up capacity' })).toHaveAttribute(
+      'href',
+      '/acme/capacity'
+    )
+  })
+
+  /** The claim narrows; the ANSWER does not. Tinting an `open` day would flag the
+   *  default state of every solo org — the false-flag class the zero-units
+   *  backstop exists to prevent. */
+  it('stays a quiet line on an unverified day — no panel, no tint, no mark', () => {
+    render(
+      <DaySpine orgSlug="acme" today={TODAY} detail={detail(FAR)} bookability={bookability(FAR, UNVERIFIED())} />
+    )
+    const banner = document.querySelector('[data-slot="bookability-banner"]') as HTMLElement
+    expect(banner).toHaveAttribute('data-verdict', 'open')
+    expect(banner.className).not.toContain('warn-bg')
+    expect(banner.className).not.toContain('bg-muted')
+    expect(banner.querySelector('[data-slot="bookability-mark"]')).toBeNull()
   })
 
   it('renders no banner at all when no verdict was computed', () => {
@@ -444,6 +551,37 @@ describe('CalendarLeftRail — the standing answer', () => {
     expect(collapsed.every((b) => !b.textContent?.match(/tight|closed|no mark/i))).toBe(true)
     // the kind legend it now sits with is present in the SAME footer
     expect(within(key).getByText('Key')).toBeInTheDocument()
+  })
+
+  /**
+   * THE ONE-TAP DOUBLE-BOOKING, closed.
+   *
+   * These chips are <Link>s: a date offered here is a date the operator taps and
+   * books. On the degraded arm a Saturday already carrying a job still comes back
+   * `open` — we cannot substantiate anything stronger — so offering it handed
+   * them a double-booking on the strength of a verdict that says it cannot tell.
+   */
+  it('never offers a Saturday that already carries a job', () => {
+    // Sep 12 is the first Saturday clear of the 14-day prep window (see above),
+    // so it is the chip this rail would otherwise lead with.
+    railWith(ctxFor([], [], { plan: 'standard' }, [event({ id: 'e1', event_start: '2026-09-12' })]))
+    const block = document.querySelector('[data-slot="rail-bookability"]') as HTMLElement
+
+    expect(within(block).queryByRole('link', { name: 'Sep 12' })).toBeNull()
+    expect(within(block).getByRole('link', { name: 'Sep 19' })).toHaveAttribute(
+      'href',
+      '/acme/calendar/2026-09-19'
+    )
+  })
+
+  /** …but a capacity-arm day with REAL headroom stays offerable. Refusing to
+   *  offer 1-of-3 carts would under-sell availability the model can vouch for —
+   *  the opposite failure, and just as expensive. */
+  it('still offers a Saturday the capacity model can vouch for', () => {
+    const carts = [unit({ id: 'k1', kind: 'mobile' }), unit({ id: 'k2', kind: 'mobile' })]
+    railWith(ctxFor([lead({ id: 'a', event_date: '2026-09-12' })], carts))
+    const block = document.querySelector('[data-slot="rail-bookability"]') as HTMLElement
+    expect(within(block).getByRole('link', { name: 'Sep 12' })).toBeInTheDocument()
   })
 
   it('hides the whole block when there is no context', () => {

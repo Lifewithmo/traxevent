@@ -49,7 +49,7 @@ const bookCtx: BookabilityCtx = {
   today: '2026-08-18',
   prepLeadDays: 14,
   orgSlug: 'acme',
-  radar: { mode: 'degraded', conflictDates: [] },
+  radar: { mode: 'degraded', conflictDates: [], bookedCounts: {} },
 }
 
 // Same list the rail traps Tab against.

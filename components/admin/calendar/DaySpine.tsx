@@ -281,16 +281,45 @@ interface DaySpineProps {
  * be wrong exactly when it mattered most.
  */
 function BookabilityBanner({ orgSlug, bookability }: { orgSlug: string; bookability: Bookability }) {
-  const { verdict, binding, alternatives } = bookability
+  const { verdict, binding, basis, alternatives } = bookability
 
   // Open: one quiet line, no panel, no green. The operator asked and got a
   // positive answer — Norman's feedback — but a free day is the default state
   // and the default state does not get a coloured box.
+  //
+  // WHAT THE LINE IS ALLOWED TO SAY depends on `basis`. This sentence used to be
+  // a hardcoded "nothing on file stands in the way of this day" printed on every
+  // open verdict — including, on the degraded arm, directly above that same
+  // day's job block, because a lone booking is not enough to reach `tight` when
+  // no capacity is configured. An `unverified` basis leads with the claim the
+  // engine can actually support ("nothing ELSE on file"), states the ignorance
+  // in the module's own words, and carries the link that resolves it.
+  //
+  // Still no tint and still no mark: the verdict IS open, and painting it would
+  // flag the default state of every solo org — the same false-flag class the
+  // zero-units backstop exists to prevent. What narrows is the claim, not the
+  // answer.
   if (verdict === 'open' || !binding) {
+    const unverified = basis?.kind === 'unverified'
     return (
-      <p data-slot="bookability-banner" data-verdict="open" className="px-4 pt-3 text-xs text-muted-foreground">
-        <span className="font-medium text-foreground">Open for booking</span> — nothing on file stands in
-        the way of this day.
+      <p
+        data-slot="bookability-banner"
+        data-verdict="open"
+        data-basis={basis?.kind ?? 'clear'}
+        className="px-4 pt-3 text-xs leading-snug text-muted-foreground"
+      >
+        <span className="font-medium text-foreground">
+          {unverified ? 'Nothing else on file.' : 'Open for booking.'}
+        </span>{' '}
+        {basis ? basis.reason : 'Nothing on file stands in the way of this day.'}{' '}
+        {unverified && basis?.fixHref ? (
+          <Link
+            href={basis.fixHref}
+            className="inline-flex min-h-6 items-center font-medium underline underline-offset-2 hover:no-underline"
+          >
+            Set up capacity
+          </Link>
+        ) : null}
       </p>
     )
   }

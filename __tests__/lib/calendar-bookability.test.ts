@@ -5,12 +5,13 @@ import {
   buildBookabilityCtx,
   nextOpenDates,
   ALTERNATIVE_HORIZON_WEEKS,
+  MAX_EVENT_SPAN_DAYS,
   type BookabilityBinding,
   type BookabilityCtx,
 } from '@/lib/calendar-bookability'
 import { DEFAULT_PREP_LEAD_DAYS } from '@/lib/pipeline-view'
 import { addDays } from '@/lib/opportunity-detail'
-import type { CapacityUnit, Lead, Org } from '@/lib/types'
+import type { CapacityUnit, Event, Lead, Org } from '@/lib/types'
 
 /**
  * THE BOOKABILITY VERDICT — "are you free September 13?"
@@ -59,13 +60,28 @@ function lead(over: Partial<Lead>): Lead {
   }
 }
 
+function event(over: Partial<Event> & { event_start: string }): Event {
+  return {
+    id: Math.random().toString(36).slice(2),
+    name: 'Booked job',
+    slug: 'booked-job',
+    year: 2026,
+    status: 'active',
+    event_type_id: 'type-1',
+    event_end: over.event_start,
+    created_at: '2026-01-01T00:00:00.000Z',
+    ...over,
+  }
+}
+
 function ctxFor(
   org: Pick<Org, 'plan' | 'prep_lead_days'>,
   leads: Lead[],
   units: CapacityUnit[],
+  events: Event[] = [],
   today = TODAY
 ): BookabilityCtx {
-  return buildBookabilityCtx({ orgSlug: 'acme', org, leads, units, today })
+  return buildBookabilityCtx({ orgSlug: 'acme', org, leads, units, events, today })
 }
 
 const BUSINESS: Pick<Org, 'plan'> = { plan: 'business' }
@@ -104,7 +120,12 @@ describe('the zero-units backstop', () => {
 
   it('does not flag an undated business org with no units on an arbitrary day', () => {
     const ctx = ctxFor(BUSINESS, [], [])
-    expect(bookability(FAR, ctx)).toEqual({ verdict: 'open', binding: null, alternatives: [] })
+    expect(bookability(FAR, ctx)).toEqual({
+      verdict: 'open',
+      binding: null,
+      basis: { kind: 'clear', booked: 0, reason: 'Nothing on file stands in the way of Dec 5.' },
+      alternatives: [],
+    })
   })
 
   it('enters capacity mode only once a unit exists', () => {
@@ -448,9 +469,18 @@ describe('provenance', () => {
     expect(_fixHrefIsRequired).toBe(true)
   })
 
-  it('an open verdict carries no binding at all', () => {
+  /** `binding` is the constraint that STOPPED the day, so an open day has none.
+   *  Its provenance rides the complementary `basis` channel instead — see the
+   *  "basis of an OPEN verdict" block below. The two are never both non-null. */
+  it('an open verdict carries no binding at all — its provenance is the basis', () => {
     const out = bookability(FAR, ctxFor(SOLO, [], []))
-    expect(out).toEqual({ verdict: 'open', binding: null, alternatives: [] })
+    expect(out.binding).toBeNull()
+    expect(out).toEqual({
+      verdict: 'open',
+      binding: null,
+      basis: { kind: 'clear', booked: 0, reason: 'Nothing on file stands in the way of Dec 5.' },
+      alternatives: [],
+    })
   })
 
   it('the fixHref for a lead-time verdict points at the org setting, not at capacity', () => {
@@ -521,10 +551,16 @@ describe('alternatives', () => {
     expect(nextOpenDates(FAR, ctx)).not.toContain(FAR)
   })
 
+  /** The grid path asks 42 times per render, so it must not run the 26-week
+   *  alternatives scan. Asserted as the ABSENCE of `alternatives` rather than an
+   *  exact key list: pinning the whole shape made the test fail for the
+   *  unrelated reason that a new provenance field was added, which tells you
+   *  nothing about whether the cheap path is still cheap. */
   it('bindingConstraint is the cheap path — it computes no alternatives', () => {
     const leads = [lead({ id: 'a', event_date: FAR }), lead({ id: 'b', event_date: FAR })]
     const ctx = ctxFor(BUSINESS, leads, carts)
-    expect(Object.keys(bindingConstraint(FAR, ctx))).toEqual(['verdict', 'binding'])
+    expect(Object.keys(bindingConstraint(FAR, ctx))).not.toContain('alternatives')
+    expect(bookability(FAR, ctx).alternatives.length).toBeGreaterThan(0)
   })
 })
 
@@ -541,5 +577,262 @@ describe('serialisability', () => {
     expect(wire).toEqual(ctx)
     expect(bookability(FAR, wire)).toEqual(bookability(FAR, ctx))
     expect(bookability(FAR, wire).verdict).toBe('closed')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+/**
+ * C1 — THE VERDICT MUST SEE THE JOBS THE COCKPIT BOOKS.
+ *
+ * Demand used to be read off `Lead.event_date` alone. But the grid renders
+ * bookings from `Event.event_start`, and the day spine's own empty-day CTA
+ * points at /new-event, which creates an Event with NO `lead_id` at all. So the
+ * banner could say "nothing on file stands in the way of this day" directly
+ * above that same day's job block. Three blind spots, one root cause:
+ *
+ *   1. an event with no lead behind it            — invisible
+ *   2. the interior days of a multi-day job       — invisible (exact ===)
+ *   3. an event moved off its lead's event_date   — counted on the wrong day
+ *
+ * …and one hazard in fixing it: a converted opportunity has BOTH an Event and a
+ * Lead, so naively unioning them reports two carts needed where one is.
+ */
+describe('demand comes from the same records the grid renders', () => {
+  const oneCart = [unit({ id: 'k1', name: 'Kart 1', kind: 'mobile' })]
+  const twoCarts = [...oneCart, unit({ id: 'k2', name: 'Kart 2', kind: 'mobile' })]
+
+  it('an EVENT with no lead_id occupies the day — the /new-event booking is seen', () => {
+    // The exact path the day spine's own "Book a job" CTA takes.
+    const ctx = ctxFor(BUSINESS, [], oneCart, [event({ id: 'e1', event_start: FAR })])
+    const out = bookability(FAR, ctx)
+
+    expect(out.verdict).not.toBe('open')
+    expect(out.binding).toMatchObject({
+      rule: 'capacity.at-capacity',
+      inputs: { kind: 'mobile', demand: 1, supply: 1 },
+    })
+  })
+
+  it('a multi-day job occupies its INTERIOR days, not just its start', () => {
+    const ctx = ctxFor(BUSINESS, [], oneCart, [
+      event({ id: 'e1', event_start: FAR, event_end: addDays(FAR, 2) }),
+    ])
+    for (const d of [FAR, addDays(FAR, 1), addDays(FAR, 2)]) {
+      expect(bindingConstraint(d, ctx).binding?.rule, `day ${d}`).toBe('capacity.at-capacity')
+    }
+    // …and stops at the end date. The day after is untouched.
+    expect(bindingConstraint(addDays(FAR, 3), ctx).verdict).toBe('open')
+  })
+
+  it('a converted opportunity counts ONCE — the event row, never both', () => {
+    // The lead and its event are the same job. Double-counted, this is 2 jobs on
+    // 1 cart ⇒ `capacity.over` (closed). Counted once it is 1 on 1 ⇒ at-capacity.
+    const converted = lead({ id: 'l1', event_date: FAR, stage: 'closed_won' })
+    const ctx = ctxFor(BUSINESS, [converted], oneCart, [
+      event({ id: 'e1', event_start: FAR, lead_id: 'l1' }),
+    ])
+    const out = bindingConstraint(FAR, ctx)
+
+    expect(out.binding?.rule).toBe('capacity.at-capacity')
+    expect(out.binding?.inputs).toMatchObject({ demand: 1, supply: 1 })
+  })
+
+  it('a converted opportunity counts once on the DEGRADED arm too', () => {
+    // Two records, one job: the backstop's ≥2 rule must not fire on it.
+    const converted = lead({ id: 'l1', event_date: FAR, stage: 'closed_won' })
+    const ctx = ctxFor(SOLO, [converted], [], [event({ id: 'e1', event_start: FAR, lead_id: 'l1' })])
+    expect(bindingConstraint(FAR, ctx).binding?.rule).not.toBe('capacity.unknown')
+  })
+
+  it('an EVENT-ONLY reschedule moves the demand with the event, not the lead', () => {
+    // actions/calendar-bulk.ts moves Event.event_start and leaves Lead.event_date
+    // where it was. The day the job is actually ON is the one that must be full.
+    const stale = lead({ id: 'l1', event_date: FAR, stage: 'closed_won' })
+    const ctx = ctxFor(BUSINESS, [stale], oneCart, [
+      event({ id: 'e1', event_start: FAR_2, lead_id: 'l1' }),
+    ])
+    expect(bindingConstraint(FAR_2, ctx).binding?.rule).toBe('capacity.at-capacity')
+    // …and the lead's abandoned date is free again.
+    expect(bindingConstraint(FAR, ctx).verdict).toBe('open')
+  })
+
+  it('an event and an UNRELATED lead on one day are two jobs, not one', () => {
+    const ctx = ctxFor(BUSINESS, [lead({ id: 'l1', event_date: FAR })], oneCart, [
+      event({ id: 'e1', event_start: FAR }),
+    ])
+    const out = bindingConstraint(FAR, ctx)
+    expect(out.verdict).toBe('closed')
+    expect(out.binding).toMatchObject({ rule: 'capacity.over', inputs: { demand: 2, supply: 1 } })
+  })
+
+  it('an archived or undated event is not demand — it is on no calendar surface', () => {
+    const ctx = ctxFor(BUSINESS, [], oneCart, [
+      event({ id: 'e1', event_start: FAR, status: 'archived' }),
+      { ...event({ id: 'e2', event_start: FAR }), event_start: '', event_end: '' },
+    ])
+    expect(bookability(FAR, ctx).verdict).toBe('open')
+  })
+
+  it('carries the source lead’s on-site mode onto the event’s days', () => {
+    const onsite = lead({ id: 'l1', event_date: FAR, stage: 'closed_won', delivery_mode: 'onsite' })
+    // Carts only: no room exists, so an on-site job is over on venue.
+    const ctx = ctxFor(BUSINESS, [onsite], twoCarts, [
+      event({ id: 'e1', event_start: FAR, lead_id: 'l1' }),
+    ])
+    expect(bindingConstraint(FAR, ctx).binding).toMatchObject({
+      rule: 'capacity.over',
+      inputs: { kind: 'venue', demand: 1, supply: 0 },
+    })
+  })
+
+  it('carries the source lead’s pinned unit onto the event’s days', () => {
+    const three = [...twoCarts, unit({ id: 'k3', kind: 'mobile' })]
+    const pinned = lead({ id: 'l1', event_date: FAR, stage: 'closed_won', assigned_units: { mobile: 'k1' } })
+    const other = lead({ id: 'l2', event_date: FAR, assigned_units: { mobile: 'k1' } })
+    const ctx = ctxFor(BUSINESS, [pinned, other], three, [
+      event({ id: 'e1', event_start: FAR, lead_id: 'l1' }),
+    ])
+    expect(bindingConstraint(FAR, ctx).binding).toMatchObject({
+      rule: 'capacity.unit-clash',
+      inputs: { unit: 'Kart 1', jobs: 2 },
+    })
+  })
+
+  /** The sacred backstop, re-checked with events in the mix: a business org that
+   *  has defined no units must still not be flagged on every date. */
+  it('the zero-units backstop survives events being folded into demand', () => {
+    const ctx = ctxFor(BUSINESS, [], [], [
+      event({ id: 'e1', event_start: FAR }),
+      event({ id: 'e2', event_start: FAR_2, event_end: addDays(FAR_2, 3) }),
+    ])
+    expect(ctx.radar.mode).toBe('degraded')
+    for (const d of [FAR, FAR_2, addDays(FAR_2, 1), '2026-12-26']) {
+      expect(bookability(d, ctx).verdict, `day ${d}`).toBe('open')
+    }
+  })
+
+  /** A typo'd `event_end` year is the realistic case. The span is bounded so it
+   *  costs a fixed amount of work instead of ~350,000 synthetic records; the job
+   *  is never dropped, it just stops consuming days past the ceiling. */
+  it('bounds a malformed span instead of synthesising a millennium of demand', () => {
+    const ctx = ctxFor(SOLO, [], [], [event({ id: 'e1', event_start: FAR, event_end: '2999-12-31' })])
+    const last = addDays(FAR, MAX_EVENT_SPAN_DAYS)
+    expect(bindingConstraint(last, ctx).basis?.kind).toBe('unverified')
+    expect(bindingConstraint(addDays(last, 1), ctx).basis?.kind).toBe('clear')
+  })
+
+  it('two events on one day are a conflict on the degraded arm', () => {
+    const ctx = ctxFor(SOLO, [], [], [
+      event({ id: 'e1', event_start: FAR }),
+      event({ id: 'e2', event_start: FAR }),
+    ])
+    expect(bindingConstraint(FAR, ctx).binding?.rule).toBe('capacity.unknown')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+/**
+ * C2 — `open` MUST NOT CLAIM MORE THAN IT CAN KNOW.
+ *
+ * On the degraded arm there is no capacity model at all: `tight` fires only at
+ * ≥2 jobs, and everything else fell through to an unqualified `open` with
+ * `binding: null` — zero provenance on the verdict that most needs a caveat.
+ * A one-cart operator with one wedding on Saturday was told Saturday was open.
+ *
+ * The fix is a second provenance channel — `basis` — naming which of two things
+ * an `open` verdict means:
+ *   • `clear`      — nothing on file, or a real model reporting real headroom
+ *   • `unverified` — the day already carries a job and we cannot say whether
+ *                    that is over the operator's limit
+ */
+describe('the basis of an OPEN verdict', () => {
+  const oneCart = [unit({ id: 'k1', name: 'Kart 1', kind: 'mobile' })]
+
+  it('is `clear` on an empty day, and says only what "nothing on file" supports', () => {
+    const b = bookability(FAR, ctxFor(SOLO, [], [])).basis!
+    expect(b.kind).toBe('clear')
+    expect(b.booked).toBe(0)
+    expect(b.reason).toMatch(/nothing on file/i)
+    expect(b.fixHref).toBeUndefined()
+  })
+
+  it('is `unverified` when the degraded arm has a job on the day', () => {
+    const ctx = ctxFor(SOLO, [lead({ id: 'a', event_date: FAR })], [])
+    const out = bookability(FAR, ctx)
+
+    // Still open — escalating to `tight` would flag every single-job day for
+    // every solo org, which is exactly the false flag the backstop prevents.
+    expect(out.verdict).toBe('open')
+    expect(out.binding).toBeNull()
+    expect(out.basis).toMatchObject({ kind: 'unverified', booked: 1, fixHref: '/acme/capacity' })
+    // It names its ignorance, the way `capacity.unknown` does.
+    expect(out.basis!.reason).toMatch(/can't tell/i)
+    expect(out.basis!.reason).toMatch(/no cart or room capacity is set up/i)
+    // …and it must NOT claim the thing it cannot support.
+    expect(out.basis!.reason).not.toMatch(/nothing on file/i)
+  })
+
+  it('is `unverified` for a booked EVENT on the degraded arm too', () => {
+    const ctx = ctxFor(SOLO, [], [], [event({ id: 'e1', event_start: FAR })])
+    expect(bookability(FAR, ctx).basis).toMatchObject({ kind: 'unverified', booked: 1 })
+  })
+
+  it('is `clear` on the capacity arm even with a job on the day — the model KNOWS', () => {
+    const twoCarts = [...oneCart, unit({ id: 'k2', name: 'Kart 2', kind: 'mobile' })]
+    const b = bookability(FAR, ctxFor(BUSINESS, [lead({ id: 'a', event_date: FAR })], twoCarts)).basis!
+    expect(b.kind).toBe('clear')
+    expect(b.booked).toBe(1)
+    // Provenance: the numbers behind the "yes", not a bare assertion.
+    expect(b.reason).toMatch(/1 cart still free/)
+  })
+
+  it('is null on every non-open verdict — `binding` and `basis` never coexist', () => {
+    const leads = [lead({ id: 'a', event_date: FAR }), lead({ id: 'b', event_date: FAR })]
+    const over = bookability(FAR, ctxFor(BUSINESS, leads, oneCart))
+    expect(over.verdict).toBe('closed')
+    expect(over.basis).toBeNull()
+    expect(over.binding).not.toBeNull()
+  })
+
+  it('rides the RSC wire — bindingConstraint carries it on the grid path too', () => {
+    const ctx = ctxFor(SOLO, [lead({ id: 'a', event_date: FAR })], [])
+    const wire = JSON.parse(JSON.stringify(ctx)) as BookabilityCtx
+    expect(bindingConstraint(FAR, wire).basis).toEqual(bindingConstraint(FAR, ctx).basis)
+    expect(bindingConstraint(FAR, wire).basis?.kind).toBe('unverified')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+describe('alternatives are never a double-booking', () => {
+  it('nextOpenDates skips a day the degraded arm cannot vouch for', () => {
+    // One job on the next Saturday. The rail renders these as <Link>s, so
+    // offering it is offering the operator a double-booking in one tap.
+    const ctx = ctxFor(SOLO, [lead({ id: 'a', event_date: FAR_2 })], [])
+    const out = nextOpenDates(FAR, ctx)
+
+    expect(out).not.toContain(FAR_2)
+    expect(out).toEqual(['2026-12-19', '2026-12-26', '2027-01-02'])
+  })
+
+  it('skips a day held by an EVENT with no lead behind it', () => {
+    const ctx = ctxFor(SOLO, [], [], [event({ id: 'e1', event_start: FAR_2 })])
+    expect(nextOpenDates(FAR, ctx)).not.toContain(FAR_2)
+  })
+
+  it('skips every interior day of a multi-day job', () => {
+    // A job running Sat 12th → Sat 19th. Both Saturdays are inside it.
+    const ctx = ctxFor(SOLO, [], [], [
+      event({ id: 'e1', event_start: FAR_2, event_end: '2026-12-19' }),
+    ])
+    const out = nextOpenDates(FAR, ctx)
+    expect(out).not.toContain(FAR_2)
+    expect(out).not.toContain('2026-12-19')
+    expect(out[0]).toBe('2026-12-26')
+  })
+
+  it('still offers a capacity-arm day with real headroom — the model can vouch for it', () => {
+    const carts = [unit({ id: 'k1', kind: 'mobile' }), unit({ id: 'k2', kind: 'mobile' })]
+    const ctx = ctxFor(BUSINESS, [lead({ id: 'a', event_date: FAR_2 })], carts)
+    expect(nextOpenDates(FAR, ctx)).toContain(FAR_2)
   })
 })
