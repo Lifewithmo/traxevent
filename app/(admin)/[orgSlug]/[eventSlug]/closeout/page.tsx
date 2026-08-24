@@ -21,8 +21,9 @@ export default async function MarketDayCloseoutPage({
   // close out on the plan-centric, ops-gated screen instead.
   if (kindOf(event) === 'client_job') redirect(`/${orgSlug}/${eventSlug}/ops/closeout`)
 
-  // Market-day nav bypasses allowedPages (buildEventNav returns MARKET_DAY_NAV
-  // unfiltered), so this page carries its own guard: closing out the day is an
+  // Market-day nav bypasses allowedPages (and although buildEventNav now hides
+  // the Closeout row from non-admins, deep URLs still resolve), so this page
+  // carries its own guard: closing out the day is an
   // owner/admin task — the same role line the series page draws (isAdmin) and
   // the same gate completeCloseout enforces server-side.
   if (member.role !== 'owner' && member.role !== 'admin') {

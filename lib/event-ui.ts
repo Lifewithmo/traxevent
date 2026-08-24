@@ -139,6 +139,13 @@ export const DRIVE_MINUTES = 30
  */
 export const MAX_BUFFER_MINUTES = 480
 
+/**
+ * Read-cost cap on the series season rollup (newest days ≤ today win the
+ * budget). Lives here (client-safe) so SeriesClient's copy can interpolate the
+ * same number the server slices by; lib/ops/closeout.ts re-exports it.
+ */
+export const SERIES_ROLLUP_CAP = 30
+
 /** Org-default pack/drive buffers (Org.ops_buffers shape); absent fields fall back to the constants. */
 export interface OpsBuffers {
   pack_minutes?: number

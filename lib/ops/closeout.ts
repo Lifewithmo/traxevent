@@ -100,8 +100,11 @@ function hasRecordedActuals(actuals: OpsActuals | undefined): boolean {
     || actuals.waste_notes !== undefined
 }
 
-/** The season strip is a rollup, not an archive — at most this many doc gets. */
-export const SERIES_ROLLUP_CAP = 30
+/** The season strip is a rollup, not an archive — at most this many doc gets.
+ * Canonical value lives in lib/event-ui (client-safe, so SeriesClient's copy
+ * interpolates the same number); re-exported here for the server callers. */
+export { SERIES_ROLLUP_CAP } from '@/lib/event-ui'
+import { SERIES_ROLLUP_CAP } from '@/lib/event-ui'
 
 export interface SeriesRollupSelection {
   /** Day ids the rollup actually reads (at most `cap`). */

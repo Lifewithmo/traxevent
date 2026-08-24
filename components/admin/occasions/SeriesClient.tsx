@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { SERIES_ROLLUP_CAP } from '@/lib/event-ui'
 import { updateSeries, extendSeries, endSeries } from '@/actions/series'
 import { updateEvent } from '@/actions/events'
 import type { Event, EventSeries } from '@/lib/types'
@@ -44,7 +45,7 @@ function dayMoneyCell(m: SeriesDayMoney | undefined, dayPast: boolean): React.Re
     // Honest truncation, not a failure: the read was never attempted. Only a
     // past day owes the note — a future beyond-cap day has nothing to report.
     return dayPast
-      ? <span className="text-xs text-muted-foreground" title="The season rollup reads the most recent 30 days — this day sits beyond it">beyond the 30-day rollup</span>
+      ? <span className="text-xs text-muted-foreground" title={`The season rollup reads the most recent ${SERIES_ROLLUP_CAP} days — this day sits beyond it`}>beyond the {SERIES_ROLLUP_CAP}-day rollup</span>
       : null
   }
   if (m.state === 'none') {
@@ -180,7 +181,7 @@ export function SeriesClient({
           ) : null}
           {beyondCapPastDays > 0 && (
             <p className="mt-1 text-xs text-muted-foreground">
-              Season money covers the most recent 30 days — {beyondCapPastDays} earlier day{beyondCapPastDays === 1 ? '' : 's'} not counted.
+              Season money covers the most recent {SERIES_ROLLUP_CAP} days — {beyondCapPastDays} earlier day{beyondCapPastDays === 1 ? '' : 's'} not counted.
             </p>
           )}
         </div>
