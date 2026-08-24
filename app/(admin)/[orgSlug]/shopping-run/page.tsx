@@ -2,7 +2,7 @@ import { requireOrgMember, allowedEventPages } from '@/lib/auth/guards'
 import { listEventsCore } from '@/lib/events'
 import { getOpsPlanCore } from '@/lib/ops/event-ops'
 import { listResourcesCore } from '@/lib/ops/resources'
-import { parseRunDays, selectShoppingRunWindow, type ShoppingRunPair } from '@/lib/ops/shopping-run'
+import { carryExcludedIds, parseRunDays, selectShoppingRunWindow, type ShoppingRunPair } from '@/lib/ops/shopping-run'
 import { todayYmd } from '@/lib/opportunity-detail'
 import { ShoppingRunClient, type ShoppingRunJob } from '@/components/admin/ops/ShoppingRunClient'
 import type { OpsPlan } from '@/lib/types'
@@ -34,6 +34,11 @@ export default async function ShoppingRunPage({
   )
   const windowEvents = selectShoppingRunWindow(opsVisible, today, days)
   const included = windowEvents.filter((e) => !excluded.has(e.id))
+  // Exclusions survive window changes: the client serializes THIS list (the
+  // raw param, minus ids that left the widest window) into every scope link —
+  // re-deriving from in-window jobs would silently drop a day-10 exclusion on
+  // a trip through the 3-day view and re-include the job on the way back.
+  const carriedExcluded = carryExcludedIds(excluded, opsVisible, today)
 
   // Windowed fan-out, ≤ RUN_CAP plan reads. Per-read guard (actions/today.ts
   // pattern): one flaky Firestore read must not 500 the run, and a FAILED read
@@ -84,6 +89,7 @@ export default async function ShoppingRunPage({
       days={days}
       jobs={jobs}
       pairs={pairs}
+      excludedIds={carriedExcluded}
       resources={resources}
       failedReads={failedReads}
     />

@@ -29,6 +29,23 @@ export function parseRunDays(raw: string | undefined): number {
   return (RUN_WINDOW_OPTIONS as readonly number[]).includes(n) ? n : RUN_DAYS
 }
 
+/**
+ * Exclusions carried across window changes (the ?exclude= round-trip): an id
+ * survives verbatim while its event still sits inside the WIDEST selectable
+ * window — narrowing 14→3 must not silently drop a day-10 exclusion from the
+ * URL and have that job rejoin the run when the window widens again. Ids that
+ * left range entirely (past, beyond every window, archived, deleted) are
+ * dropped: they can never render a scope chip again in ANY window, so the
+ * drop changes nothing visible. (The capped widest window is a superset of
+ * every narrower capped window — narrower windows only remove later-sorting
+ * events — so "in the widest window" is exactly "can render a chip somewhere".)
+ */
+export function carryExcludedIds(raw: Iterable<string>, events: Event[], todayYmd: string): string[] {
+  const widest = Math.max(...RUN_WINDOW_OPTIONS)
+  const inRange = new Set(selectShoppingRunWindow(events, todayYmd, widest).map((e) => e.id))
+  return [...raw].filter((id) => inRange.has(id))
+}
+
 export type ShoppingRunEventRef = Pick<Event, 'id' | 'name' | 'slug' | 'event_start'>
 
 export interface ShoppingRunPair {
@@ -85,7 +102,7 @@ export function constituentKey(c: Pick<RunConstituent, 'event_id' | 'resource_id
 }
 
 export interface ShoppingRunRow {
-  key: string                  // stable row identity (resource_id, or resource_id|unit for per-unit rows)
+  key: string                  // stable row identity: resource_id for canonical rows, resource_id|unit for every per-unit row (display/stuck/unknown) — a resource can yield a canonical AND a display row at once, so per-unit rows must never use the bare id
   resource_id: string
   name: string
   qty: number                  // display quantity (human unit via formatQuantity)
@@ -223,8 +240,13 @@ export function computeShoppingRun(pairs: ShoppingRunPair[], resources: OpsResou
   for (const [id, b] of display) {
     const res = byId.get(id)!
     const dim = resolveDimension(res)
+    // Key includes the unit: the SAME resource can also hold a canonical row
+    // (e.g. a bag-unit resource whose items arrive mixed 'each' + 'bag' — the
+    // 'each' item converts trivially, the 'bag' item lands here). A bare-id
+    // key would collide with that canonical row and cross-wire the client's
+    // key-addressed expanded/busy/error state between the two rows.
     rows.push({
-      key: id, resource_id: id, name: b.name,
+      key: `${id}|${b.unit ?? ''}`, resource_id: id, name: b.name,
       qty: dim === 'count' ? Math.ceil(b.total) : round2(b.total),
       ...(b.unit !== undefined ? { unit: b.unit } : {}),
       checked: triState(b.constituents), constituents: b.constituents,

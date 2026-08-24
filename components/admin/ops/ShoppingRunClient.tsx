@@ -58,6 +58,12 @@ export interface ShoppingRunClientProps {
   jobs: ShoppingRunJob[]
   /** Included jobs whose plan doc exists — the merge inputs. */
   pairs: ShoppingRunPair[]
+  /** The ?exclude= scope as the SERVER parsed and carried it (verbatim, minus
+   *  ids that left the widest window) — NOT re-derived from in-window jobs.
+   *  May hold ids outside the CURRENT window: a day-10 exclusion must survive
+   *  a trip through the 3-day view, so every scope link serializes this list,
+   *  letting out-of-window exclusions ride along inertly. */
+  excludedIds: string[]
   resources: OpsResource[]
   /** Plan reads that FAILED (not "missing"): those jobs are excluded from the
    *  run and named visibly — never silently absent. */
@@ -84,11 +90,57 @@ export function ShoppingRunClient(props: ShoppingRunClientProps) {
   )
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set())
   const [rowBusy, setRowBusy] = useState<string | null>(null)
-  const [rowError, setRowError] = useState<{ key: string; message: string; checked: boolean } | null>(null)
+  // Per-ROW bulk-failure state — a Map, deliberately not one global slot: with
+  // N rows, tapping row B's check-all right after row A's failed is the normal
+  // shopping flow, and a single slot would erase A's only visible trace while
+  // A still displays its optimistic checked state (the LoadoutClient
+  // single-busy-slot lesson, which N rows turn from rare into routine).
+  const [rowErrors, setRowErrors] = useState<ReadonlyMap<string, { message: string; checked: boolean }>>(new Map())
   const [loadedAt, setLoadedAt] = useState<Date | null>(null)
   const writes = useSerializedCheckWrites()
 
   useEffect(() => { setLoadedAt(new Date()) }, [])
+
+  // ── Fresh server reads win (scope navigation / refresh) ──
+  // The window/exclude toggles are soft navigations to this same route: the
+  // server re-fetches every plan doc and passes fresh `pairs` (a new identity
+  // each pass), but React preserves this component instance — so the mount-
+  // time overlay must not shadow the reads the navigation just paid for.
+  // Re-baseline on the fresh plans, preserving ONLY the checked state the
+  // operator can SEE an unsettled write for (LoadoutClient's recompute-merge
+  // precedent — a pending/failed tap never silently reverts; its write still
+  // re-lands last on the server), and prune write flags for constituents that
+  // left the scope so the header counts never point at rows that no longer
+  // render. (Render-phase state adjustment — the sanctioned React pattern for
+  // deriving state from changed props without an intermediate stale frame.)
+  const [seenPairs, setSeenPairs] = useState(props.pairs)
+  if (props.pairs !== seenPairs) {
+    setSeenPairs(props.pairs)
+    const itemKey = (eventId: string, i: { resource_id: string; unit?: string }) =>
+      constituentKey({ event_id: eventId, resource_id: i.resource_id, unit: i.unit })
+    writes.prune(new Set(
+      props.pairs.flatMap((p) => p.plan.shopping_list.map((i) => itemKey(p.event.id, i))),
+    ))
+    setPlans((prevPlans) => Object.fromEntries(props.pairs.map((p) => {
+      const prev = prevPlans[p.event.id]
+      if (!prev) return [p.event.id, p.plan]
+      return [p.event.id, {
+        ...p.plan,
+        shopping_list: p.plan.shopping_list.map((item) => {
+          if (!writes.isUnsettled(itemKey(p.event.id, item))) return item
+          const shown = prev.shopping_list.find(
+            (x) => x.resource_id === item.resource_id && (x.unit ?? null) === (item.unit ?? null),
+          )
+          return shown ? { ...item, checked: shown.checked } : item
+        }),
+      }]
+    })))
+    // Bulk failures don't outlive a fresh read: a failed bulk's keys are
+    // settled (supersede), so the merge above just replaced its optimistic
+    // display with server truth — the screen is honest again, and a stale
+    // "didn't save" banner would now be the false claim.
+    setRowErrors(new Map())
+  }
 
   const livePairs: ShoppingRunPair[] = useMemo(
     () => props.pairs.map((p) => ({ event: p.event, plan: plans[p.event.id] ?? p.plan })),
@@ -107,7 +159,10 @@ export function ShoppingRunClient(props: ShoppingRunClientProps) {
     return s ? `?${s}` : ''
   }
   const runHref = (nextDays: number, ids: string[]) => `/${orgSlug}/shopping-run${runQuery(nextDays, ids)}`
-  const excludedIds = jobs.filter((j) => j.excluded).map((j) => j.id)
+  // The server-carried scope, never re-derived from in-window jobs: deriving
+  // from `jobs` silently dropped any exclusion whose job sat outside the
+  // current window, so ?days=14 → 3 → 14 re-included it with no signal.
+  const excludedIds = props.excludedIds
   const toggleHref = (job: ShoppingRunJob) =>
     runHref(days, job.excluded ? excludedIds.filter((id) => id !== job.id) : [...excludedIds, job.id])
   const printHref = `/${orgSlug}/shopping-run/print${runQuery(days, excludedIds)}`
@@ -139,7 +194,15 @@ export function ShoppingRunClient(props: ShoppingRunClientProps) {
   /** Row check-all: ONE transaction across every plan this row draws from. */
   async function handleRowTap(row: ShoppingRunRow, checked: boolean) {
     setRowBusy(row.key)
-    setRowError(null)
+    // Clear only THIS row's earlier failure (the retry path funnels here):
+    // another row's failure must stay visible while that row still displays
+    // its optimistic state — never one global slot.
+    setRowErrors((m) => {
+      if (!m.has(row.key)) return m
+      const n = new Map(m)
+      n.delete(row.key)
+      return n
+    })
     // The bulk write supersedes this row's per-constituent writes (the hook
     // settles their flags); the row is disabled while any is on the wire, so
     // in practice this clears failed constituents the bulk is overwriting.
@@ -154,7 +217,7 @@ export function ShoppingRunClient(props: ShoppingRunClientProps) {
     try {
       await bulkSetRunChecked(orgId, [...byEvent].map(([event_id, keys]) => ({ event_id, keys })), checked)
     } catch (err: unknown) {
-      setRowError({ key: row.key, message: err instanceof Error ? err.message : 'Failed to save', checked })
+      setRowErrors((m) => new Map(m).set(row.key, { message: err instanceof Error ? err.message : 'Failed to save', checked }))
     } finally {
       setRowBusy(null)
     }
@@ -299,11 +362,12 @@ export function ShoppingRunClient(props: ShoppingRunClientProps) {
             // Mirror LoadoutClient's bulk rules: a row's check-all waits until
             // none of its constituent writes is on the wire (the two requests
             // would race on the server and whichever committed last would
-            // silently win), and only ONE bulk runs at a time — rowBusy and
-            // rowError are single-slot, so a second concurrent bulk would
-            // orphan the first's busy/error display.
+            // silently win), and only ONE bulk runs at a time — rowBusy is
+            // single-slot, so a second concurrent bulk would orphan the
+            // first's busy spinner. Failures are per-row (rowErrors map): a
+            // LATER bulk must never erase an EARLIER bulk's visible failure.
             const hasPending = row.constituents.some((c) => writes.pending.has(constituentKey(c)))
-            const error = rowError?.key === row.key ? rowError : null
+            const error = rowErrors.get(row.key) ?? null
             return (
               <li key={row.key}>
                 <div className="flex items-center gap-1">

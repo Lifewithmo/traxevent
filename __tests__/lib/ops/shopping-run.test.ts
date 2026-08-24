@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   RUN_CAP, RUN_DAYS,
-  computeShoppingRun, constituentKey, parseRunDays, selectShoppingRunWindow, shoppingRunStats,
+  carryExcludedIds, computeShoppingRun, constituentKey, parseRunDays, selectShoppingRunWindow, shoppingRunStats,
   type ShoppingRunPair,
 } from '@/lib/ops/shopping-run'
 import { selectHorizonWindow } from '@/lib/ops/readiness-horizon'
@@ -127,6 +127,29 @@ describe('computeShoppingRun', () => {
     expect(rows[0].canonical).toBeUndefined()
   })
 
+  it('keys a canonical and a display row from the SAME resource distinctly (mixed each + custom-unit items)', () => {
+    // A bag-unit resource with no stored dimension resolves to 'count': an
+    // 'each' item converts trivially into the canonical bucket while a 'bag'
+    // item (no bridge) lands in the display bucket — ONE resource, TWO rows.
+    // Regression: both rows carried the bare id 'r-ice' as their key, so the
+    // client's key-addressed expanded/busy/error state (and React's list
+    // reconciliation) cross-wired between them — a failed bulk's Retry on the
+    // twin row bulk-wrote the WRONG row's constituents.
+    const bags = resource({ id: 'r-ice', name: 'Ice', unit: 'bag' })
+    const a = pair(event({ id: 'a' }), [
+      { resource_id: 'r-ice', name: 'Ice', qty: 10, unit: 'each', checked: false },
+      { resource_id: 'r-ice', name: 'Ice', qty: 3, unit: 'bag', checked: false },
+    ])
+    const rows = computeShoppingRun([a], [bags])
+    expect(rows).toHaveLength(2)
+    expect(new Set(rows.map((r) => r.key)).size).toBe(2)
+    const eachRow = rows.find((r) => r.unit === 'each')!
+    const bagRow = rows.find((r) => r.unit === 'bag')!
+    expect(eachRow).toMatchObject({ key: 'r-ice', resource_id: 'r-ice', qty: 10, checked: 'none' })
+    expect(bagRow).toMatchObject({ key: 'r-ice|bag', resource_id: 'r-ice', qty: 3, checked: 'none' })
+    expect(bagRow.needs_conversion).toBeUndefined() // still the never-flagged display bucket
+  })
+
   it('converts bridged custom units so mixed-unit events still merge into one row', () => {
     const beans = resource({
       id: 'r-beans', name: 'Beans', unit: 'lb', dimension: 'weight',
@@ -211,6 +234,24 @@ describe('constituentKey', () => {
     expect(constituentKey({ event_id: 'e1', resource_id: 'r1' })).toBe('e1:r1|')
     expect(constituentKey({ event_id: 'e2', resource_id: 'r1', unit: 'lb' })).not.toBe(
       constituentKey({ event_id: 'e1', resource_id: 'r1', unit: 'lb' }))
+  })
+})
+
+describe('carryExcludedIds', () => {
+  it('keeps exclusions for events still inside the widest window; drops what left range (and unknowns)', () => {
+    const far = event({ id: 'far', event_start: '2026-08-20' })       // outside 3d/7d, inside 14d
+    const near = event({ id: 'near', event_start: '2026-08-11' })
+    const past = event({ id: 'past', event_start: '2026-08-01' })
+    const beyond = event({ id: 'beyond', event_start: '2026-08-30' }) // beyond even the 14d window
+    const gone = event({ id: 'gone', event_start: '2026-08-12', status: 'archived' })
+    // 'far' is the exact round-trip case: excluded in the 14-day view, then a
+    // trip through the 3-day view must not drop it from the carried scope.
+    expect(carryExcludedIds(['far', 'near', 'past', 'beyond', 'gone', 'ghost'], [far, near, past, beyond, gone], TODAY))
+      .toEqual(['far', 'near'])
+  })
+
+  it('carries nothing when nothing was excluded', () => {
+    expect(carryExcludedIds([], [event({ id: 'a' })], TODAY)).toEqual([])
   })
 })
 
