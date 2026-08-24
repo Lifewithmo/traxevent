@@ -1,9 +1,10 @@
 import { adminDb } from '@/lib/firebase-admin'
+import { kindOf } from '@/lib/occasions/kind'
 import { getOpsPlanCore } from '@/lib/ops/event-ops'
 import { getWorkPackagesByIdsCore } from '@/lib/ops/work-packages'
 import { listResourcesCore } from '@/lib/ops/resources'
-import { computeCloseoutSummary } from '@/lib/ops/derive'
-import type { OpsCloseout, OpsActuals, CloseoutSummary } from '@/lib/types'
+import { computeCloseoutSummary, marketDayCloseoutSummary } from '@/lib/ops/derive'
+import type { Event, OpsCloseout, OpsActuals, CloseoutSummary } from '@/lib/types'
 
 // Invoice generation deliberately does NOT live here: phase 3 (screens) wires
 // "generate final invoice" to the existing invoicing system using
@@ -45,8 +46,32 @@ export async function saveActualsCore(orgId: string, eventId: string, actuals: O
 }
 
 export async function closeoutSummaryCore(orgId: string, eventId: string): Promise<CloseoutSummary> {
-  const plan = await getOpsPlanCore(orgId, eventId)
-  if (!plan) throw new Error('No ops plan for this event')
+  // The action is client-called with no event in scope, so the core reads the
+  // event doc itself (one direct get): booth_fee joins BOTH margins, and kind
+  // decides whether a plan is required at all (spec 2026-08-23 S1).
+  const [plan, eventSnap] = await Promise.all([
+    getOpsPlanCore(orgId, eventId),
+    adminDb.collection('orgs').doc(orgId).collection('events').doc(eventId).get(),
+  ])
+  const event = eventSnap.exists ? (eventSnap.data() as Event) : null
+  const boothFee = event?.booth_fee ?? 0
+
+  if (!plan) {
+    // Closeout-lite: market days have no ops layer, and saveActualsCore /
+    // completeCloseoutCore are already plan-free — the summary follows.
+    if (!event || kindOf(event) !== 'market_day') throw new Error('No ops plan for this event')
+    const closeout = await getCloseoutCore(orgId, eventId)
+    // Resources are only needed to cost recorded consumable actuals — the lite
+    // screen records none, so skip the read on the common path.
+    const resources = closeout?.actuals?.consumables?.length ? await listResourcesCore(orgId) : []
+    return marketDayCloseoutSummary({
+      resources,
+      actual_consumables: closeout?.actuals?.consumables ?? [],
+      sales: closeout?.actuals?.sales ?? 0,
+      booth_fee: boothFee,
+    })
+  }
+
   const [packages, resources, closeout] = await Promise.all([
     getWorkPackagesByIdsCore(orgId, plan.package_ids),
     listResourcesCore(orgId),
@@ -62,6 +87,7 @@ export async function closeoutSummaryCore(orgId: string, eventId: string): Promi
     guests: plan.requirements.guests,
     actual_consumables: closeout?.actuals?.consumables ?? [],
     sales: closeout?.actuals?.sales ?? 0,
+    booth_fee: boothFee,
   })
 }
 
@@ -72,6 +98,31 @@ function hasRecordedActuals(actuals: OpsActuals | undefined): boolean {
     || actuals.hours_worked !== undefined
     || actuals.sales !== undefined
     || actuals.waste_notes !== undefined
+}
+
+/**
+ * Closeout docs for a series' days — direct doc gets via Promise.all, capped
+ * at 30 (a weekly season; the season strip is a rollup, not an archive).
+ * Failed ≠ missing: a successful read of a nonexistent doc maps to `null`
+ * ("not closed out"), while a FAILED read is absent from the result entirely,
+ * so callers render "unknown" — never a false $0 day.
+ */
+export async function listSeriesCloseoutsCore(
+  orgId: string,
+  eventIds: string[],
+): Promise<Record<string, OpsCloseout | null>> {
+  const reads = await Promise.all(
+    eventIds.slice(0, 30).map(async (id) => {
+      try {
+        return { id, closeout: await getCloseoutCore(orgId, id) }
+      } catch {
+        return null
+      }
+    }),
+  )
+  const out: Record<string, OpsCloseout | null> = {}
+  for (const r of reads) if (r) out[r.id] = r.closeout
+  return out
 }
 
 export async function completeCloseoutCore(orgId: string, eventId: string): Promise<void> {

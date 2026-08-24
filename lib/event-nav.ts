@@ -15,10 +15,11 @@ export interface EventNavItem {
 const ROSTER_KEYS = new Set(['families', 'assignments', 'checkin'])
 
 // Market days get an explicit, minimal nav — none of the client-job pages
-// (Ops, roster, etc.) apply. Register + Closeout join this list with the
-// counter-register increment.
+// (Ops, roster, etc.) apply. Register joins this list with the
+// counter-register increment (POS spec).
 const MARKET_DAY_NAV: EventNavItem[] = [
   { key: 'dashboard', label: 'Overview' },
+  { key: 'closeout', label: 'Closeout' },
   { key: 'settings', label: 'Settings' },
 ]
 

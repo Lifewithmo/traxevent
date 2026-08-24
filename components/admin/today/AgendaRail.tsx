@@ -67,6 +67,12 @@ function EventLine({ entry, orgSlug }: { entry: AgendaEntry; orgSlug: string }) 
           .filter(Boolean)
           .join(' · ') || 'Booked'}
       </p>
+      {/* Day-of only: today's market day ends with money — deep-link its closeout. */}
+      {entry.kind === 'market_day' && entry.daysUntil === 0 && (
+        <Link href={`/${orgSlug}/${entry.slug}/closeout`} className={`mt-0.5 inline-block text-xs underline ${GREEN}`}>
+          Close out →
+        </Link>
+      )}
     </div>
   )
 }
@@ -128,6 +134,13 @@ export function AgendaRail({ orgSlug, agenda }: { orgSlug: string; agenda: Agend
       className="order-first w-full border-b border-border bg-muted/40 p-4 md:order-none md:w-72 md:shrink-0 md:border-b-0 md:border-l"
     >
       {next && <NextJobBlock entry={next} orgSlug={orgSlug} />}
+      {/* NextJobBlock is itself a Link, so the market-day closeout deep-link
+          sits directly beneath it rather than nesting an anchor inside one. */}
+      {next && next.kind === 'market_day' && next.daysUntil === 0 && (
+        <Link href={`/${orgSlug}/${next.slug}/closeout`} className={`mt-1 inline-block text-xs underline ${GREEN}`}>
+          Close out the day →
+        </Link>
+      )}
 
       {showTodaySection && (
         <>

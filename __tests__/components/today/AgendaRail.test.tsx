@@ -103,4 +103,28 @@ describe('AgendaRail', () => {
     render(<AgendaRail orgSlug="acme" agenda={{ ...agenda, upcoming: [{ ...agenda.upcoming[0], ops }] }} />)
     expect(screen.getByText('1 overdue')).toBeInTheDocument()
   })
+
+  it('gives today’s market day a Close out deep-link — day-of only (spec 2026-08-23 S1 bonus)', () => {
+    const marketToday: Agenda = {
+      ...agenda,
+      today: [
+        { ...agenda.today[0] },
+        { eventId: 'm1', slug: 'city-market', name: 'City Market', date: '2026-08-05', daysUntil: 0, multiDay: false, kind: 'market_day' },
+      ],
+      upcoming: [{ ...agenda.upcoming[0], kind: 'market_day', daysUntil: 2 }],
+    }
+    render(<AgendaRail orgSlug="acme" agenda={marketToday} />)
+    // Compact today row: market day links its closeout; the future market day does not.
+    expect(screen.getByRole('link', { name: 'Close out →' })).toHaveAttribute('href', '/acme/city-market/closeout')
+    expect(screen.queryByRole('link', { name: 'Close out the day →' })).not.toBeInTheDocument()
+  })
+
+  it('links the closeout under the pinned block when the market day IS the next job', () => {
+    const pinnedMarket: Agenda = {
+      ...agenda,
+      today: [{ eventId: 'm1', slug: 'city-market', name: 'City Market', date: '2026-08-05', daysUntil: 0, multiDay: false, kind: 'market_day' }],
+    }
+    render(<AgendaRail orgSlug="acme" agenda={pinnedMarket} />)
+    expect(screen.getByRole('link', { name: 'Close out the day →' })).toHaveAttribute('href', '/acme/city-market/closeout')
+  })
 })

@@ -53,6 +53,7 @@ export default async function CloseoutPage({
       plan={plan}
       packages={packages}
       resources={resources}
+      boothFee={event.booth_fee}
       closeout={closeout}
       summary={summary}
       summaryError={summaryError}

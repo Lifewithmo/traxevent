@@ -12,14 +12,57 @@ import type { Event, EventSeries } from '@/lib/types'
 
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
+/** Whole dollars stay whole ("$45"); cents only when they exist. */
+function fmtMoney(n: number): string {
+  const abs = Math.abs(n)
+  const rounded = Math.round(abs * 100) / 100
+  const s = Number.isInteger(rounded) ? `$${rounded}` : `$${rounded.toFixed(2)}`
+  return n < 0 ? `−${s}` : s
+}
+
+/** Per-day money facts, computed server-side through marketDayCloseoutSummary.
+ *  'closed' = saved sales exist (counting rule: ANY saved sales counts —
+ *  Mark-complete is optional); 'none' = read succeeded, no sales saved;
+ *  'unknown' = the read FAILED — rendered as unknown, never as a $0 day. */
+export type SeriesDayMoney =
+  | { state: 'closed'; sales: number; fee: number; net: number }
+  | { state: 'none' }
+  | { state: 'unknown' }
+
+/** "sales − fee = net" cell for one day row; null = render nothing. */
+function dayMoneyCell(m: SeriesDayMoney | undefined, dayPast: boolean): React.ReactNode {
+  if (!m) return null
+  if (m.state === 'unknown') {
+    return <span className="text-xs text-muted-foreground" title="Couldn’t load this day’s closeout">—</span>
+  }
+  if (m.state === 'none') {
+    // Only a past day owes a number; a future day showing "not closed out" would nag.
+    return dayPast ? <span className="text-xs text-muted-foreground">not closed out</span> : null
+  }
+  const netClass = m.net < 0 ? 'text-destructive' : 'text-[var(--money-green)]'
+  return (
+    <span className="text-sm tabular-nums text-muted-foreground">
+      {m.fee > 0 ? (
+        <>{fmtMoney(m.sales)} − {fmtMoney(m.fee)} = <span className={`font-medium ${netClass}`}>{fmtMoney(m.net)}</span></>
+      ) : (
+        <>net <span className={`font-medium ${netClass}`}>{fmtMoney(m.net)}</span></>
+      )}
+    </span>
+  )
+}
+
 export function SeriesClient({
-  orgId, orgSlug, series, days, isAdmin,
+  orgId, orgSlug, series, days, isAdmin, money, today,
 }: {
   orgId: string
   orgSlug: string
   series: EventSeries
   days: Event[]
   isAdmin: boolean
+  /** Admin-only season money (absent for non-admins — B4 money gate). */
+  money?: Record<string, SeriesDayMoney>
+  /** Server-computed YYYY-MM-DD; gates the "not closed out" nudge to past days. */
+  today?: string
 }) {
   const router = useRouter()
   const [skippedIds, setSkippedIds] = useState<Set<string>>(new Set())
@@ -34,6 +77,13 @@ export function SeriesClient({
   const [extendUntil, setExtendUntil] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Season totals: closed-out days only (any saved sales counts).
+  const closedDays = money
+    ? Object.values(money).filter((m): m is Extract<SeriesDayMoney, { state: 'closed' }> => m.state === 'closed')
+    : []
+  const seasonNet = closedDays.reduce((sum, m) => sum + m.net, 0)
+  const positiveDays = closedDays.filter((m) => m.net > 0).length
 
   async function run(fn: () => Promise<unknown>): Promise<boolean> {
     setBusy(true)
@@ -84,6 +134,20 @@ export function SeriesClient({
             {series.booth_fee != null ? ` · $${series.booth_fee} booth` : ''} ·{' '}
             {series.active ? 'Active' : 'Ended'} through {series.recurrence.until}
           </p>
+          {/* Season verdict — "is this market worth it", from closed-out days only. */}
+          {closedDays.length > 0 ? (
+            <p className="mt-1 text-sm font-medium tabular-nums">
+              <span className={seasonNet < 0 ? 'text-destructive' : 'text-[var(--money-green)]'}>
+                {seasonNet >= 0 ? '+' : ''}{fmtMoney(seasonNet)} net
+              </span>{' '}
+              over {closedDays.length} day{closedDays.length === 1 ? '' : 's'} ·{' '}
+              {positiveDays} of {closedDays.length} day{closedDays.length === 1 ? '' : 's'} positive
+            </p>
+          ) : money ? (
+            <p className="mt-1 text-sm text-muted-foreground">
+              No days closed out yet — the season net shows up here after the first closeout.
+            </p>
+          ) : null}
         </div>
         {isAdmin && !editing && (
           <Button variant="outline" disabled={busy} onClick={() => setEditing(true)}>Edit series</Button>
@@ -136,6 +200,12 @@ export function SeriesClient({
                   {status === 'archived' ? 'Skipped' : status === 'active' ? 'On' : status}
                 </span>
               </Link>
+              {/* Money column: skipped days owe nothing unless money was actually recorded. */}
+              {(status !== 'archived' || money?.[d.id]?.state === 'closed') && (
+                <span className="shrink-0 text-right">
+                  {dayMoneyCell(money?.[d.id], !!today && d.event_start.slice(0, 10) <= today)}
+                </span>
+              )}
               {isAdmin && status !== 'archived' && (
                 <Button variant="outline" size="sm" disabled={busy} onClick={() => handleSkip(d)}>Skip</Button>
               )}

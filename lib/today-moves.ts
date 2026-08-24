@@ -1,6 +1,8 @@
 import type { TodayData } from '@/lib/today'
-import type { Event, OpsPlan } from '@/lib/types'
+import type { Event, EventKind, OpsPlan } from '@/lib/types'
 import { addDays } from '@/lib/opportunity-detail'
+// Pure lookup, no Firestore — safe here for the same reason computeReadiness is.
+import { kindOf } from '@/lib/occasions/kind'
 // Pure math, no Firestore — explicitly safe in client components (see its header).
 import { computeReadiness, type Readiness } from '@/lib/ops/readiness'
 
@@ -169,6 +171,9 @@ export interface AgendaEntry {
   daysUntil: number
   headcount?: number
   multiDay: boolean
+  /** Optional so hand-built fixtures stay valid; buildAgenda always sets it.
+   *  Lets the rail give today's market day its "Close out" deep-link. */
+  kind?: EventKind
   /** Present only for client jobs whose ops plan was read (today+7 fan-out in actions/today.ts). */
   ops?: AgendaOps
 }
@@ -225,6 +230,7 @@ export function buildAgenda(events: Event[], today: string, days = 7): Agenda {
     daysUntil: dayDiff(today, date),
     headcount: e.headcount,
     multiDay: !!e.event_end && e.event_end.slice(0, 10) !== e.event_start.slice(0, 10),
+    kind: kindOf(e),
   })
 
   const onDay = (e: Event, ymd: string) => {
