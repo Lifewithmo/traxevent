@@ -56,7 +56,9 @@ export default async function OpsPrintPage({
     (host ? `${headerList.get('x-forwarded-proto') ?? 'https'}://${host}` : 'https://traxevent.com')
   const loadoutUrl = `${origin}/${orgSlug}/${eventSlug}/ops/loadout`
   return (
-    <div className="p-8 bg-white min-h-screen">
+    // Paper never inverts: force both halves — white ground AND black ink — so
+    // the document reads identically on a dark-mode screen and out of the printer.
+    <div className="p-8 bg-white text-black min-h-screen">
       <div className="flex items-center justify-between mb-1">
         <h1 className="text-xl font-bold">{event.name} — {plan.requirements.guests} guests</h1>
         <PrintButton />
