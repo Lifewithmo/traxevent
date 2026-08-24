@@ -1,6 +1,7 @@
 import type { CapacityUnit, CapacityUnitKind, Lead, Org } from '@/lib/types'
 import { BOOKABLE_STAGES, unitAvailableOn } from '@/lib/capacity/capacity'
 import { leadRequirement } from '@/lib/capacity/requirement'
+import { unitAnnotations } from '@/lib/capacity/assignment'
 import { isServiceable } from '@/lib/capacity/serviceable'
 import { addDaysYmd } from '@/lib/pipeline-stats'
 
@@ -127,4 +128,76 @@ export function buildSchedule(
   }
 
   return [...lanes, unassignedLane]
+}
+
+/** One assignable unit for an Unassigned booking, annotated free/taken for the
+ *  booking's own date. `free` ⇒ neither blocked nor consumed by another same-date
+ *  booking; `note` explains why not (mirrors the assignment picker's annotations). */
+export interface ScheduleAssignOption {
+  unitId: string
+  unitName: string
+  kind: CapacityUnitKind
+  free: boolean
+  note?: string // "taken by ‹title›" | "unavailable" when not free
+}
+
+/** The click-to-assign payload for one Unassigned-lane booking: the units it can
+ *  be pinned to (only the kinds its `leadRequirement` actually needs) and the
+ *  existing `assigned_units` to MERGE onto — so assigning a cart never clobbers a
+ *  stale room pin (matches `UnitAssignmentControl`). */
+export interface ScheduleAssignTarget {
+  leadId: string
+  currentAssigned: NonNullable<Lead['assigned_units']>
+  options: ScheduleAssignOption[]
+}
+
+/**
+ * Per-booking assign options for the schedule's Unassigned lane, keyed by leadId.
+ * Same window + bookable + still-needs-a-unit filter as `buildSchedule`'s
+ * unassigned lane, so every Unassigned booking has exactly one target here (and a
+ * photo-only, needs-nothing lead — off every lane — has none). Each target lists
+ * the org's units for the kinds the lead REQUIRES (`leadRequirement`), annotated
+ * free/taken for that lead's date via the same `unitAnnotations` the picker uses.
+ * Pure over the leads + units already loaded — no extra reads.
+ */
+export function scheduleAssignTargets(
+  leads: Lead[],
+  units: CapacityUnit[],
+  org: Pick<Org, 'event_type_profiles'>,
+  today: string,
+  days = 84,
+): Record<string, ScheduleAssignTarget> {
+  const windowEnd = addDaysYmd(today, days - 1)
+  const inWindow = (d?: string): d is string => !!d && d >= today && d <= windowEnd
+  const bookable = leads.filter((l) => BOOKABLE_STAGES.has(l.stage) && inWindow(l.event_date))
+
+  const targets: Record<string, ScheduleAssignTarget> = {}
+  for (const lead of bookable) {
+    const req = leadRequirement(lead, org)
+    if (!req.mobile && !req.venue) continue // needs no unit → not in the Unassigned lane
+    if (hasLiveAssignment(lead, units, org)) continue // already pinned → in a unit lane
+
+    // Only the kinds this booking actually needs are assignable.
+    const relevant = units.filter((u) => req[u.kind])
+    if (relevant.length === 0) continue
+
+    // Reuse the picker's annotation over the SAME-date bookable leads.
+    const sameDate = bookable.filter((l) => l.event_date === lead.event_date)
+    const ann = unitAnnotations(lead, units, sameDate)
+    const options: ScheduleAssignOption[] = relevant.map((u) => {
+      const a = ann.get(u.id)
+      const free = !a?.blocked && !a?.takenBy
+      return {
+        unitId: u.id,
+        unitName: u.name,
+        kind: u.kind,
+        free,
+        note: a?.blocked ? 'unavailable' : a?.takenBy ? `taken by ${a.takenBy}` : undefined,
+      }
+    })
+
+    targets[lead.id] = { leadId: lead.id, currentAssigned: lead.assigned_units ?? {}, options }
+  }
+
+  return targets
 }

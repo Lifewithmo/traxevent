@@ -1,18 +1,26 @@
 'use client'
 
 import Link from 'next/link'
+import { useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { updateLead } from '@/actions/leads'
 import { kindLabel } from '@/lib/capacity/labels'
 import { weekdayOf } from '@/lib/capacity/serviceable'
 import type { CapacityMonth, CapacitySlot } from '@/lib/capacity/forecast'
-import type { ScheduleCell, ScheduleLane } from '@/lib/capacity/schedule'
+import type { ScheduleAssignTarget, ScheduleCell, ScheduleLane } from '@/lib/capacity/schedule'
 import type { CapacityUnitKind, Org } from '@/lib/types'
 
 interface CapacityOutlookClientProps {
   orgSlug: string
+  /** The org id — needed only for the schedule's click-to-assign writes. */
+  orgId?: string
   /** Per-month forecast from `forecastByMonth`, already computed on the server. */
   forecast: CapacityMonth[]
   /** Per-unit schedule lanes from `buildSchedule`; absent ⇒ no schedule section. */
   schedule?: ScheduleLane[]
+  /** Click-to-assign options for each Unassigned-lane booking (`scheduleAssignTargets`),
+   *  keyed by leadId; absent ⇒ the Unassigned lane stays read-only. */
+  assignTargets?: Record<string, ScheduleAssignTarget>
   /** The operator's kind vocabulary; absent per-kind ⇒ neutral platform defaults. */
   resourceLabels?: Org['resource_labels']
 }
@@ -43,7 +51,7 @@ function compactHeadroom(value: number): string {
   return `~$${Math.round(value)}`
 }
 
-export function CapacityOutlookClient({ orgSlug, forecast, schedule, resourceLabels }: CapacityOutlookClientProps) {
+export function CapacityOutlookClient({ orgSlug, orgId, forecast, schedule, assignTargets, resourceLabels }: CapacityOutlookClientProps) {
   const org = { resource_labels: resourceLabels }
   // Everything closed / no units of any kind across the whole window — the
   // forecast is honest but empty. Point the operator at the one lever.
@@ -83,7 +91,13 @@ export function CapacityOutlookClient({ orgSlug, forecast, schedule, resourceLab
       </section>
 
       {schedule && schedule.length > 0 && (
-        <ScheduleSection orgSlug={orgSlug} lanes={schedule} org={org} />
+        <ScheduleSection
+          orgSlug={orgSlug}
+          orgId={orgId}
+          lanes={schedule}
+          org={org}
+          assignTargets={assignTargets}
+        />
       )}
     </div>
   )
@@ -191,13 +205,20 @@ const HATCH =
 
 function ScheduleSection({
   orgSlug,
+  orgId,
   lanes,
   org,
+  assignTargets,
 }: {
   orgSlug: string
+  orgId?: string
   lanes: ScheduleLane[]
   org: Pick<Org, 'resource_labels'>
+  assignTargets?: Record<string, ScheduleAssignTarget>
 }) {
+  // Click-to-assign is live only when the page threaded both the org id (for the
+  // write) and the per-booking targets; otherwise the Unassigned lane is read-only.
+  const assign = orgId && assignTargets ? { orgId, targets: assignTargets } : undefined
   // Group the unit lanes by kind, preserving input order; the unassigned lane
   // is pulled out and rendered last in its own warning-toned group.
   const unitLanes = lanes.filter((l) => l.kind !== 'unassigned')
@@ -219,19 +240,26 @@ function ScheduleSection({
         <p className="text-sm text-muted-foreground">
           Each {kindLabel(org, 'mobile', 1)} and {kindLabel(org, 'venue', 1)} as its own lane. Filled blocks are booked;{' '}
           <span className="whitespace-nowrap">hatched = unavailable</span>, muted = closed.
+          {assign && (
+            <> The <span className="font-medium text-[var(--status-alert-fg)]">Unassigned</span> lane is your to-do list — pick a unit right on the booking to book it.</>
+          )}
         </p>
       </div>
 
       {/* Desktop / tablet: the day-grid. Horizontal scroll is contained HERE,
           inside its own overflow container — never the page body. */}
-      <ScheduleGrid orgSlug={orgSlug} groups={groups} unassigned={unassigned} />
+      <ScheduleGrid orgSlug={orgSlug} groups={groups} unassigned={unassigned} assign={assign} org={org} />
 
       {/* Mobile: a crushed grid is unreadable — degrade to a per-unit list of
           upcoming bookings (identity first, dates as a running line). */}
-      <ScheduleList orgSlug={orgSlug} groups={groups} unassigned={unassigned} />
+      <ScheduleList orgSlug={orgSlug} groups={groups} unassigned={unassigned} assign={assign} org={org} />
     </section>
   )
 }
+
+/** Click-to-assign context threaded to the Unassigned lane: the org id for the
+ *  write plus the per-booking targets (keyed by leadId). */
+type AssignCtx = { orgId: string; targets: Record<string, ScheduleAssignTarget> }
 
 function ScheduleLegend() {
   return (
@@ -266,10 +294,14 @@ function ScheduleGrid({
   orgSlug,
   groups,
   unassigned,
+  assign,
+  org,
 }: {
   orgSlug: string
   groups: { kind: CapacityUnitKind; title: string; lanes: ScheduleLane[] }[]
   unassigned?: ScheduleLane
+  assign?: AssignCtx
+  org: Pick<Org, 'resource_labels'>
 }) {
   // Every lane shares the same date axis — read it off the first available lane.
   const dates = (groups[0]?.lanes[0] ?? unassigned)?.cells.map((c) => c.date) ?? []
@@ -318,6 +350,8 @@ function ScheduleGrid({
                 lanes={[unassigned]}
                 colCount={colCount}
                 warn
+                assign={assign}
+                org={org}
               />
             )}
           </tbody>
@@ -333,12 +367,16 @@ function GroupRows({
   lanes,
   colCount,
   warn = false,
+  assign,
+  org,
 }: {
   orgSlug: string
   title: string
   lanes: ScheduleLane[]
   colCount: number
   warn?: boolean
+  assign?: AssignCtx
+  org?: Pick<Org, 'resource_labels'>
 }) {
   return (
     <>
@@ -368,9 +406,25 @@ function GroupRows({
           >
             <span className="block truncate">{lane.unitName}</span>
           </th>
-          {lane.cells.map((cell) => (
-            <ScheduleGridCell key={cell.date} orgSlug={orgSlug} unitName={lane.unitName} cell={cell} />
-          ))}
+          {lane.cells.map((cell) => {
+            // The one interactive spot in the read-only grid: an Unassigned
+            // booking with a live assign target becomes a click-to-assign menu.
+            const target = warn && cell.leadId ? assign?.targets[cell.leadId] : undefined
+            if (target && assign && org) {
+              return (
+                <td key={cell.date} className="border-b border-l border-border p-0.5 align-middle h-9">
+                  <AssignMenu
+                    orgId={assign.orgId}
+                    target={target}
+                    leadTitle={cell.leadTitle ?? 'this booking'}
+                    org={org}
+                    className="w-full max-w-[120px]"
+                  />
+                </td>
+              )
+            }
+            return <ScheduleGridCell key={cell.date} orgSlug={orgSlug} unitName={lane.unitName} cell={cell} />
+          })}
         </tr>
       ))}
     </>
@@ -439,10 +493,14 @@ function ScheduleList({
   orgSlug,
   groups,
   unassigned,
+  assign,
+  org,
 }: {
   orgSlug: string
   groups: { kind: CapacityUnitKind; title: string; lanes: ScheduleLane[] }[]
   unassigned?: ScheduleLane
+  assign?: AssignCtx
+  org: Pick<Org, 'resource_labels'>
 }) {
   const renderLane = (lane: ScheduleLane, warn: boolean) => {
     const booked = lane.cells.filter((c) => c.leadId)
@@ -452,18 +510,32 @@ function ScheduleList({
         {booked.length === 0 ? (
           <p className="text-xs text-muted-foreground">No bookings in the weeks ahead</p>
         ) : (
-          <ul className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs">
-            {booked.map((c) => (
-              <li key={c.date} className="whitespace-nowrap">
-                <Link
-                  href={`/${orgSlug}/leads/${c.leadId}`}
-                  className={`no-underline hover:underline ${warn ? 'text-[var(--status-alert-fg)]' : 'text-foreground'}`}
-                >
-                  <span className="font-medium tabular-nums">{fmtShort(c.date)}</span>{' '}
-                  <span className="text-muted-foreground">{c.leadTitle}</span>
-                </Link>
-              </li>
-            ))}
+          <ul className="mt-1 space-y-1.5 text-xs">
+            {booked.map((c) => {
+              // On the Unassigned lane, each booking is a click-to-assign row —
+              // its date + title, then the same unit menu the grid uses.
+              const target = warn && c.leadId ? assign?.targets[c.leadId] : undefined
+              return (
+                <li key={c.date} className={warn && target ? 'flex flex-wrap items-center gap-2' : 'whitespace-nowrap'}>
+                  <Link
+                    href={`/${orgSlug}/leads/${c.leadId}`}
+                    className={`no-underline hover:underline ${warn ? 'text-[var(--status-alert-fg)]' : 'text-foreground'}`}
+                  >
+                    <span className="font-medium tabular-nums">{fmtShort(c.date)}</span>{' '}
+                    <span className="text-muted-foreground">{c.leadTitle}</span>
+                  </Link>
+                  {target && assign && (
+                    <AssignMenu
+                      orgId={assign.orgId}
+                      target={target}
+                      leadTitle={c.leadTitle ?? 'this booking'}
+                      org={org}
+                      className="max-w-[180px]"
+                    />
+                  )}
+                </li>
+              )
+            })}
           </ul>
         )}
       </div>
@@ -487,5 +559,102 @@ function ScheduleList({
         </div>
       )}
     </div>
+  )
+}
+
+/**
+ * Click-to-assign for one Unassigned booking — the loop-closing control the
+ * design calls for: a native `<select>` styled as an alert-toned, actionable chip
+ * (distinct from the static booked cells), so it is keyboard-operable and
+ * mobile-safe with an OS menu that never clips inside the scroll container — and
+ * never drag. Options are the org's units for the kinds this booking needs, each
+ * annotated free/taken (reused from `scheduleAssignTargets`), grouped by kind and
+ * led by a "use a free unit" shortcut. Choosing one writes the MERGED
+ * `assigned_units` (a mobile pick never clobbers a stale room) optimistically,
+ * then `router.refresh()` re-pulls — the booking moves to the chosen unit's lane.
+ */
+function AssignMenu({
+  orgId,
+  target,
+  leadTitle,
+  org,
+  className = '',
+}: {
+  orgId: string
+  target: ScheduleAssignTarget
+  leadTitle: string
+  org: Pick<Org, 'resource_labels'>
+  className?: string
+}) {
+  const router = useRouter()
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const firstFree = target.options.find((o) => o.free)
+  // Group options by kind so the menu reads in the operator's own vocabulary.
+  const kinds = [...new Set(target.options.map((o) => o.kind))]
+
+  async function pick(value: string) {
+    if (!value || saving) return
+    let kind: CapacityUnitKind
+    let unitId: string
+    if (value === 'free') {
+      if (!firstFree) return
+      kind = firstFree.kind
+      unitId = firstFree.unitId
+    } else {
+      const [k, id] = value.split(':')
+      kind = k as CapacityUnitKind
+      unitId = id
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      await updateLead(orgId, target.leadId, {
+        assigned_units: { ...target.currentAssigned, [kind]: unitId },
+      })
+      router.refresh()
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Could not assign')
+      setSaving(false)
+    }
+  }
+
+  return (
+    <span className="inline-flex min-w-0 flex-col gap-0.5">
+      <select
+        aria-label={`Assign a unit to ${leadTitle}`}
+        title={`${leadTitle} — assign a unit`}
+        disabled={saving}
+        value=""
+        onChange={(e) => pick(e.target.value)}
+        className={`min-w-0 truncate rounded-[4px] border px-1 py-0.5 text-[11px] font-medium leading-tight outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-60 ${className}`}
+        style={{
+          color: 'var(--status-alert-fg)',
+          background: 'color-mix(in oklab, var(--status-alert-fg) 12%, var(--card))',
+          borderColor: 'color-mix(in oklab, var(--status-alert-fg) 45%, transparent)',
+        }}
+      >
+        {/* The chip shows the booking title; the menu is the action. */}
+        <option value="">{leadTitle}</option>
+        {firstFree && <option value="free">Use a free {kindLabel(org, firstFree.kind, 1)}</option>}
+        {kinds.map((kind) => (
+          <optgroup key={kind} label={kindLabel(org, kind, 2)}>
+            {target.options
+              .filter((o) => o.kind === kind)
+              .map((o) => (
+                <option key={o.unitId} value={`${o.kind}:${o.unitId}`}>
+                  {o.unitName} — {o.free ? 'free' : o.note}
+                </option>
+              ))}
+          </optgroup>
+        ))}
+      </select>
+      {error && (
+        <span role="alert" className="text-[10px] font-medium text-destructive">
+          {error}
+        </span>
+      )}
+    </span>
   )
 }

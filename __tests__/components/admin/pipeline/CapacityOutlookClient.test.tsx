@@ -1,9 +1,16 @@
-import { describe, it, expect, afterEach } from 'vitest'
-import { render, screen, within, cleanup } from '@testing-library/react'
+import { describe, it, expect, afterEach, vi, beforeEach } from 'vitest'
+import { render, screen, within, cleanup, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { CapacityOutlookClient } from '@/components/admin/pipeline/CapacityOutlookClient'
 import type { CapacityMonth } from '@/lib/capacity/forecast'
-import type { ScheduleLane } from '@/lib/capacity/schedule'
+import type { ScheduleAssignTarget, ScheduleLane } from '@/lib/capacity/schedule'
 import type { Org } from '@/lib/types'
+
+const refresh = vi.fn()
+vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh, push: vi.fn() }) }))
+
+const updateLead = vi.fn().mockResolvedValue(undefined)
+vi.mock('@/actions/leads', () => ({ updateLead: (...a: unknown[]) => updateLead(...a) }))
 
 const month = (over: Partial<CapacityMonth>): CapacityMonth => ({
   ym: '2026-09',
@@ -171,5 +178,79 @@ describe('CapacityOutlookClient — schedule', () => {
   it('renders no schedule section when no schedule is passed', () => {
     render(<CapacityOutlookClient orgSlug="demo" forecast={[month({})]} />)
     expect(screen.queryByRole('region', { name: /booked where/i })).toBeNull()
+  })
+})
+
+describe('CapacityOutlookClient — click-to-assign (Unassigned lane)', () => {
+  beforeEach(() => {
+    refresh.mockClear()
+    updateLead.mockClear()
+    updateLead.mockResolvedValue(undefined)
+  })
+
+  const assignTargets: Record<string, ScheduleAssignTarget> = {
+    'lead-9': {
+      leadId: 'lead-9',
+      currentAssigned: { venue: 'stale' },
+      options: [
+        { unitId: 'u1', unitName: 'Kart 1', kind: 'mobile', free: false, note: 'taken by Crestline Wedding' },
+        { unitId: 'u3', unitName: 'Kart 2', kind: 'mobile', free: true },
+      ],
+    },
+  }
+
+  const renderAssignable = () =>
+    render(
+      <CapacityOutlookClient
+        orgSlug="demo"
+        orgId="o1"
+        forecast={[month({})]}
+        schedule={scheduleFixture}
+        assignTargets={assignTargets}
+      />,
+    )
+
+  it('exposes an assign control for an Unassigned booking (the ONE interactive element in its lane)', () => {
+    renderAssignable()
+    // The unassigned booking is now an assign control, not a bare read-only cell.
+    const controls = screen.getAllByRole('combobox', { name: /assign a unit to Orphan Gala/i })
+    expect(controls.length).toBeGreaterThan(0)
+  })
+
+  it('lists each candidate unit annotated free/taken', () => {
+    renderAssignable()
+    const control = screen.getAllByRole('combobox', { name: /assign a unit to Orphan Gala/i })[0]
+    expect(within(control).getByRole('option', { name: /Kart 2 — free/i })).toBeInTheDocument()
+    expect(within(control).getByRole('option', { name: /Kart 1 — taken by Crestline Wedding/i })).toBeInTheDocument()
+  })
+
+  it('assigning a unit calls updateLead with the merged assigned_units, then refreshes', async () => {
+    const user = userEvent.setup()
+    renderAssignable()
+    const control = screen.getAllByRole('combobox', { name: /assign a unit to Orphan Gala/i })[0]
+    await user.selectOptions(control, 'mobile:u3')
+    await waitFor(() => expect(updateLead).toHaveBeenCalledWith('o1', 'lead-9', { assigned_units: { venue: 'stale', mobile: 'u3' } }))
+    await waitFor(() => expect(refresh).toHaveBeenCalled())
+  })
+
+  it('offers a "use a free unit" shortcut that assigns the first free candidate', async () => {
+    const user = userEvent.setup()
+    renderAssignable()
+    const control = screen.getAllByRole('combobox', { name: /assign a unit to Orphan Gala/i })[0]
+    await user.selectOptions(control, 'free')
+    await waitFor(() => expect(updateLead).toHaveBeenCalledWith('o1', 'lead-9', { assigned_units: { venue: 'stale', mobile: 'u3' } }))
+  })
+
+  it('leaves booked unit-lane cells non-interactive (read-only links only)', () => {
+    renderAssignable()
+    const region = screen.getByRole('region', { name: /booked where/i })
+    // The booked mobile cell stays a link, never an assign control.
+    expect(within(region).getAllByRole('link', { name: /Crestline Wedding/ }).length).toBeGreaterThan(0)
+    expect(screen.queryByRole('combobox', { name: /assign a unit to Crestline Wedding/i })).toBeNull()
+  })
+
+  it('is inert with no assignTargets — the Unassigned booking stays a read-only cell', () => {
+    render(<CapacityOutlookClient orgSlug="demo" forecast={[month({})]} schedule={scheduleFixture} />)
+    expect(screen.queryByRole('combobox', { name: /assign a unit to Orphan Gala/i })).toBeNull()
   })
 })

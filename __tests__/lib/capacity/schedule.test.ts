@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildSchedule } from '@/lib/capacity/schedule'
+import { buildSchedule, scheduleAssignTargets } from '@/lib/capacity/schedule'
 import type { CapacityUnit, Lead, Org } from '@/lib/types'
 
 function unit(over: Partial<CapacityUnit> & { kind: CapacityUnit['kind'] }): CapacityUnit {
@@ -199,5 +199,63 @@ describe('buildSchedule', () => {
     // The default rule would NOT book a room for an offsite lead; the profile does.
     expect(cellOn(lanes.find((l) => l.unitId === 'r1')!, '2026-09-04').leadId).toBe('RR')
     expect(cellOn(lanes.at(-1)!, '2026-09-04').leadId).toBeUndefined()
+  })
+})
+
+describe('scheduleAssignTargets', () => {
+  it('offers only the kinds the booking needs, defaulting to mobile for an offsite lead', () => {
+    const units = [
+      unit({ id: 'm1', kind: 'mobile', name: 'Kart 1' }),
+      unit({ id: 'r1', kind: 'venue', name: 'Room A' }),
+    ]
+    const leads = [lead({ id: 'U', title: 'Gala', stage: 'proposal', event_date: '2026-09-05' })]
+    const targets = scheduleAssignTargets(leads, units, {}, '2026-09-01', 7)
+    expect(Object.keys(targets)).toEqual(['U'])
+    // offsite default ⇒ needs a mobile only; the room is NOT an option.
+    expect(targets.U.options.map((o) => o.unitId)).toEqual(['m1'])
+    expect(targets.U.options[0].free).toBe(true)
+  })
+
+  it('offers a room too for an on-site lead, and merges onto existing assigned_units', () => {
+    const units = [
+      unit({ id: 'm1', kind: 'mobile', name: 'Kart 1' }),
+      unit({ id: 'r1', kind: 'venue', name: 'Room A' }),
+    ]
+    // Stale venue pin to a RETIRED/unknown unit ⇒ no live assignment, still unassigned.
+    const leads = [
+      lead({ id: 'U', stage: 'proposal', event_date: '2026-09-05', delivery_mode: 'onsite', assigned_units: { venue: 'gone' } }),
+    ]
+    const targets = scheduleAssignTargets(leads, units, {}, '2026-09-01', 7)
+    expect(targets.U.options.map((o) => o.unitId).sort()).toEqual(['m1', 'r1'])
+    // The merge base preserves the stale key so a mobile pick never clobbers it.
+    expect(targets.U.currentAssigned).toEqual({ venue: 'gone' })
+  })
+
+  it('annotates a unit taken by another same-date booking as not free', () => {
+    const units = [
+      unit({ id: 'm1', kind: 'mobile', name: 'Kart 1' }),
+      unit({ id: 'm2', kind: 'mobile', name: 'Kart 2' }),
+    ]
+    const leads = [
+      lead({ id: 'U', title: 'Needs a cart', stage: 'proposal', event_date: '2026-09-05' }),
+      lead({ id: 'HAS', title: 'Owns Kart 1', stage: 'closed_won', event_date: '2026-09-05', assigned_units: { mobile: 'm1' } }),
+    ]
+    const targets = scheduleAssignTargets(leads, units, {}, '2026-09-01', 7)
+    const opts = targets.U.options
+    expect(opts.find((o) => o.unitId === 'm1')).toMatchObject({ free: false, note: 'taken by Owns Kart 1' })
+    expect(opts.find((o) => o.unitId === 'm2')).toMatchObject({ free: true })
+  })
+
+  it('omits a needs-nothing (photo-only) booking entirely', () => {
+    const units = [unit({ id: 'm1', kind: 'mobile' })]
+    const org = { event_type_profiles: [{ name: 'Photo', needsMobile: false, needsVenue: false }] }
+    const leads = [lead({ id: 'P', stage: 'proposal', event_date: '2026-09-05', event_type: 'Photo' })]
+    expect(scheduleAssignTargets(leads, units, org, '2026-09-01', 7)).toEqual({})
+  })
+
+  it('omits a booking that already has a live assignment', () => {
+    const units = [unit({ id: 'm1', kind: 'mobile' })]
+    const leads = [lead({ id: 'A', stage: 'proposal', event_date: '2026-09-05', assigned_units: { mobile: 'm1' } })]
+    expect(scheduleAssignTargets(leads, units, {}, '2026-09-01', 7)).toEqual({})
   })
 })
