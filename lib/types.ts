@@ -40,6 +40,12 @@ export interface Org {
     mobile?: { one: string; many: string }
     venue?: { one: string; many: string }
   }
+  // Optional per-event-type resource profiles: declare which capacity kinds an
+  // event_type consumes (0/1 each). Absent ⇒ leadRequirement's default rule
+  // (a mobile unit always, a room when on-site) — migration-free. `name` is
+  // matched trimmed + case-insensitive against the free-text `lead.event_type`
+  // (an overlay, not a picklist migration). See lib/capacity/requirement.ts.
+  event_type_profiles?: Array<{ name: string; needsMobile: boolean; needsVenue: boolean }>
   created_at: string
 }
 

@@ -35,15 +35,19 @@ export default async function CapacityOutlookPage({ params }: { params: Promise<
 
   const serviceableDays = orgData.serviceable_days as Org['serviceable_days']
   const resourceLabels = orgData.resource_labels as Org['resource_labels']
+  // Per-event-type resource profiles (Inc 4): routed through leadRequirement so
+  // the forecast + schedule count only the kinds each event type consumes.
+  // Absent ⇒ the default rule (mobile always, room when on-site) — backstop.
+  const eventTypeProfiles = orgData.event_type_profiles as Org['event_type_profiles']
 
   const leads = await listLeads(orgId)
   const open = leads.filter((l) => (OPEN_STAGES as (typeof l.stage)[]).includes(l.stage))
 
   const today = todayYmd()
-  const forecast = forecastByMonth(leads, units, { serviceable_days: serviceableDays }, today)
+  const forecast = forecastByMonth(leads, units, { serviceable_days: serviceableDays, event_type_profiles: eventTypeProfiles }, today)
   // Near-term day grid: 4 weeks of dates, legible desktop→mobile and
   // horizontal-scroll-contained on its own container (never the page body).
-  const schedule = buildSchedule(leads, units, { serviceable_days: serviceableDays }, today, 28)
+  const schedule = buildSchedule(leads, units, { serviceable_days: serviceableDays, event_type_profiles: eventTypeProfiles }, today, 28)
 
   return (
     <div>

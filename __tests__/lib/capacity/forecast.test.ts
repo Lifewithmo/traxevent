@@ -148,4 +148,45 @@ describe('forecastByMonth', () => {
     expect(oct.serviceableDays).toBe(31) // all of October
     expect(oct.cart.ceiling).toBe(31)
   })
+
+  // --- Per-event-type profiles (Inc 4) ---------------------------------------
+
+  it('BACKSTOP: booked is byte-for-byte with no profiles (or an undefined profiles field)', () => {
+    const cfg: Org['serviceable_days'] = { weekdays: [1] } // Mondays only
+    const units = [unit({ kind: 'mobile' }), unit({ kind: 'venue' })]
+    const leads = [
+      lead({ stage: 'inquiry', event_date: '2026-10-05', delivery_mode: 'onsite', event_type: 'Wedding' }),
+      lead({ stage: 'inquiry', event_date: '2026-10-12', delivery_mode: 'offsite', event_type: 'Photo package' }),
+    ]
+    const base = forecastByMonth(leads, units, { serviceable_days: cfg }, '2026-09-30', 2).find((m) => m.ym === '2026-10')!
+    const undef = forecastByMonth(leads, units, { serviceable_days: cfg, event_type_profiles: undefined }, '2026-09-30', 2).find((m) => m.ym === '2026-10')!
+    expect(base.cart.booked).toBe(2) // both need a cart by default
+    expect(base.room.booked).toBe(1) // only the onsite one
+    expect(undef.cart.booked).toBe(base.cart.booked)
+    expect(undef.room.booked).toBe(base.room.booked)
+  })
+
+  it('a {needsMobile:false} profile drops that lead from cart.booked', () => {
+    const cfg: Org['serviceable_days'] = { weekdays: [1] }
+    const units = [unit({ kind: 'mobile' })]
+    const org = { serviceable_days: cfg, event_type_profiles: [{ name: 'Photo package', needsMobile: false, needsVenue: false }] }
+    const leads = [
+      lead({ stage: 'inquiry', event_date: '2026-10-05', event_type: 'Photo package' }),
+      lead({ stage: 'inquiry', event_date: '2026-10-12', event_type: 'Wedding' }),
+    ]
+    const oct = forecastByMonth(leads, units, org, '2026-09-30', 2).find((m) => m.ym === '2026-10')!
+    expect(oct.cart.booked).toBe(1) // only Wedding needs a cart
+  })
+
+  it('a {needsVenue:true} profile counts room.booked regardless of delivery_mode', () => {
+    const cfg: Org['serviceable_days'] = { weekdays: [1] }
+    const units = [unit({ kind: 'mobile' }), unit({ kind: 'venue' })]
+    const org = { serviceable_days: cfg, event_type_profiles: [{ name: 'Room rental', needsMobile: false, needsVenue: true }] }
+    const leads = [
+      lead({ stage: 'inquiry', event_date: '2026-10-05', delivery_mode: 'offsite', event_type: 'Room rental' }),
+    ]
+    const oct = forecastByMonth(leads, units, org, '2026-09-30', 2).find((m) => m.ym === '2026-10')!
+    expect(oct.room.booked).toBe(1) // counted though offsite
+    expect(oct.cart.booked).toBe(0) // needsMobile false
+  })
 })

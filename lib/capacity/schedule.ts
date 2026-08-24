@@ -1,5 +1,6 @@
 import type { CapacityUnit, CapacityUnitKind, Lead, Org } from '@/lib/types'
 import { BOOKABLE_STAGES, unitAvailableOn } from '@/lib/capacity/capacity'
+import { leadRequirement } from '@/lib/capacity/requirement'
 import { isServiceable } from '@/lib/capacity/serviceable'
 import { addDaysYmd } from '@/lib/pipeline-stats'
 
@@ -31,21 +32,24 @@ function titleOf(lead: Lead): string {
  * nothing, so the lead reads as still needing a unit.
  */
 /**
- * Does `lead` actually consume `unit`? A mobile unit is consumed by any bookable
- * lead pinned to it; a VENUE only by an ON-SITE one — an offsite lead never uses
- * a room, so a stale `assigned_units.venue` on an offsite lead consumes nothing.
- * This mirrors the forecast's venue.booked and the clash engine (both on-site
- * gated), so a booking can't read as a booked room here yet uncounted there.
+ * Does `lead` actually consume `unit`? A lead consumes its mobile pin only when
+ * its `leadRequirement` needs mobile, and its venue pin only when its requirement
+ * needs venue. By default (no profiles) that is: a mobile unit for any pinned
+ * lead, a VENUE only for an ON-SITE one — so a stale venue pin on an offsite lead
+ * consumes nothing. This mirrors the forecast's booked counts and the clash
+ * engine (all three route through `leadRequirement`), so a booking can't read as
+ * a booked room here yet uncounted there.
  */
-function consumes(lead: Lead, unit: CapacityUnit): boolean {
+function consumes(lead: Lead, unit: CapacityUnit, org: Pick<Org, 'event_type_profiles'>): boolean {
   const au = lead.assigned_units
   if (!au) return false
-  if (unit.kind === 'mobile') return au.mobile === unit.id
-  return au.venue === unit.id && lead.delivery_mode === 'onsite'
+  const req = leadRequirement(lead, org)
+  if (unit.kind === 'mobile') return au.mobile === unit.id && req.mobile
+  return au.venue === unit.id && req.venue
 }
 
-function hasLiveAssignment(lead: Lead, units: CapacityUnit[]): boolean {
-  return units.some((u) => consumes(lead, u))
+function hasLiveAssignment(lead: Lead, units: CapacityUnit[], org: Pick<Org, 'event_type_profiles'>): boolean {
+  return units.some((u) => consumes(lead, u, org))
 }
 
 /**
@@ -65,7 +69,7 @@ function hasLiveAssignment(lead: Lead, units: CapacityUnit[]): boolean {
 export function buildSchedule(
   leads: Lead[],
   units: CapacityUnit[],
-  org: Pick<Org, 'serviceable_days'>,
+  org: Pick<Org, 'serviceable_days' | 'event_type_profiles'>,
   today: string,
   days = 84,
 ): ScheduleLane[] {
@@ -86,7 +90,7 @@ export function buildSchedule(
     unitName: unit.name,
     kind: unit.kind,
     cells: dates.map((date) => {
-      const booking = bookable.find((l) => l.event_date === date && consumes(l, unit))
+      const booking = bookable.find((l) => l.event_date === date && consumes(l, unit, org))
       return {
         date,
         leadId: booking?.id,
@@ -97,8 +101,15 @@ export function buildSchedule(
     }),
   }))
 
-  // Unassigned lane: bookable in-window dated leads with no live unit assignment.
-  const unassignedLeads = bookable.filter((l) => !hasLiveAssignment(l, units))
+  // Unassigned lane: bookable in-window dated leads that still NEED a unit but
+  // have no live assignment. A lead whose `leadRequirement` needs nothing (e.g. a
+  // profile with needsMobile:false + needsVenue:false, like a photo-only package)
+  // falls off every lane — it is not "unassigned", it simply consumes no resource.
+  const unassignedLeads = bookable.filter((l) => {
+    const req = leadRequirement(l, org)
+    if (!req.mobile && !req.venue) return false
+    return !hasLiveAssignment(l, units, org)
+  })
   const unassignedLane: ScheduleLane = {
     unitId: 'unassigned',
     unitName: 'Unassigned',

@@ -63,7 +63,7 @@ export function conflictEventDates(leads: Lead[]): Set<string> {
  * so this is the DEFAULT state, not an edge case.
  */
 export function radarConflictOpts(
-  org: Pick<Org, 'plan'>,
+  org: Pick<Org, 'plan' | 'event_type_profiles'>,
   leads: Lead[],
   units: CapacityUnit[],
 ): { capacityByDate: Map<string, CapacityDay> } | { conflictDates: Set<string> } {
@@ -75,7 +75,7 @@ export function radarConflictOpts(
           .map((l) => l.event_date!)
       ),
     ]
-    return { capacityByDate: computeCapacity(leads, units, dates) }
+    return { capacityByDate: computeCapacity(leads, units, dates, org) }
   }
   return { conflictDates: conflictEventDates(leads) }
 }

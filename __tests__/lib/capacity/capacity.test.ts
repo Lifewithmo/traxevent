@@ -321,6 +321,78 @@ describe('computeCapacity — unit clashes', () => {
   })
 })
 
+// --- Per-event-type profiles (Inc 4) -----------------------------------------
+
+describe('computeCapacity — event_type_profiles', () => {
+  const mobiles = (n: number) => Array.from({ length: n }, (_, i) => unit({ id: `m${i}`, kind: 'mobile', name: `Kart ${i}` }))
+  const venues = (n: number) => Array.from({ length: n }, (_, i) => unit({ id: `v${i}`, kind: 'venue', name: `Room ${i}` }))
+
+  it('BACKSTOP: with no org arg (or no profiles) demand is byte-for-byte the default rule', () => {
+    const leads = [
+      lead({ event_date: '2026-09-05', stage: 'inquiry', delivery_mode: 'onsite', event_type: 'Wedding' }),
+      lead({ event_date: '2026-09-05', stage: 'proposal', delivery_mode: 'offsite', event_type: 'Photo package' }),
+      lead({ event_date: '2026-09-05', stage: 'closed_won', event_type: 'Anything' }),
+    ]
+    const units = [...mobiles(3), ...venues(2)]
+    const noArg = computeCapacity(leads, units, ['2026-09-05']).get('2026-09-05')!
+    const emptyOrg = computeCapacity(leads, units, ['2026-09-05'], {}).get('2026-09-05')!
+    const undefProfiles = computeCapacity(leads, units, ['2026-09-05'], { event_type_profiles: undefined }).get('2026-09-05')!
+    // 3 bookable ⇒ mobile demand 3; only the onsite one ⇒ venue demand 1.
+    expect(noArg.detail.find((d) => d.kind === 'mobile')!.demand).toBe(3)
+    expect(noArg.detail.find((d) => d.kind === 'venue')!.demand).toBe(1)
+    expect(emptyOrg.detail).toEqual(noArg.detail)
+    expect(undefProfiles.detail).toEqual(noArg.detail)
+  })
+
+  it('a {needsMobile:false} profile drops that lead from mobile demand', () => {
+    const org = { event_type_profiles: [{ name: 'Photo package', needsMobile: false, needsVenue: false }] }
+    const leads = [
+      lead({ event_date: '2026-09-05', stage: 'inquiry', event_type: 'Photo package' }),
+      lead({ event_date: '2026-09-05', stage: 'proposal', event_type: 'Wedding' }),
+    ]
+    const day = computeCapacity(leads, mobiles(3), ['2026-09-05'], org).get('2026-09-05')!
+    // Only the Wedding needs a cart.
+    expect(day.detail.find((d) => d.kind === 'mobile')!.demand).toBe(1)
+  })
+
+  it('a {needsVenue:true} profile counts a room regardless of delivery_mode (offsite)', () => {
+    const org = { event_type_profiles: [{ name: 'Room rental', needsMobile: false, needsVenue: true }] }
+    const leads = [
+      lead({ event_date: '2026-09-05', stage: 'inquiry', delivery_mode: 'offsite', event_type: 'Room rental' }),
+    ]
+    const day = computeCapacity(leads, [...mobiles(1), ...venues(1)], ['2026-09-05'], org).get('2026-09-05')!
+    expect(day.detail.find((d) => d.kind === 'venue')!.demand).toBe(1) // counted though offsite
+    expect(day.detail.find((d) => d.kind === 'mobile')!.demand).toBe(0) // needsMobile false
+  })
+
+  it('BACKSTOP: clashes unchanged with no profiles; a {needsMobile:false} profile suppresses a mobile clash', () => {
+    const leads = [
+      lead({ event_date: '2026-09-05', stage: 'inquiry', assigned_units: { mobile: 'm0' }, event_type: 'Photo package' }),
+      lead({ event_date: '2026-09-05', stage: 'proposal', assigned_units: { mobile: 'm0' }, event_type: 'Photo package' }),
+    ]
+    // No profiles ⇒ both consume Kart m0 ⇒ clash.
+    const noProfiles = computeCapacity(leads, mobiles(2), ['2026-09-05']).get('2026-09-05')!
+    expect(noProfiles.clashes).toHaveLength(1)
+    // Photo package needs no mobile ⇒ neither consumes m0 ⇒ no clash.
+    const org = { event_type_profiles: [{ name: 'Photo package', needsMobile: false, needsVenue: false }] }
+    const withProfile = computeCapacity(leads, mobiles(2), ['2026-09-05'], org).get('2026-09-05')!
+    expect(withProfile.clashes).toEqual([])
+  })
+
+  it('a {needsVenue:true} profile makes an OFFSITE venue pin clash (default would not)', () => {
+    const leads = [
+      lead({ event_date: '2026-09-05', stage: 'inquiry', delivery_mode: 'offsite', assigned_units: { venue: 'v0' }, event_type: 'Room rental' }),
+      lead({ event_date: '2026-09-05', stage: 'proposal', delivery_mode: 'offsite', assigned_units: { venue: 'v0' }, event_type: 'Room rental' }),
+    ]
+    const org = { event_type_profiles: [{ name: 'Room rental', needsMobile: false, needsVenue: true }] }
+    const day = computeCapacity(leads, venues(1), ['2026-09-05'], org).get('2026-09-05')!
+    expect(day.clashes).toEqual([{ unitId: 'v0', unitName: 'Room 0', kind: 'venue', count: 2 }])
+    // Sanity: with no profiles these offsite venue pins never clash.
+    const def = computeCapacity(leads, venues(1), ['2026-09-05']).get('2026-09-05')!
+    expect(def.clashes).toEqual([])
+  })
+})
+
 describe('rowOwnsClash', () => {
   const k1Clash = { unitId: 'k1', unitName: 'Kart 1', kind: 'mobile' as const, count: 2 }
   const r1Clash = { unitId: 'r1', unitName: 'Room A', kind: 'venue' as const, count: 2 }
