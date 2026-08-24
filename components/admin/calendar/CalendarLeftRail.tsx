@@ -1,11 +1,12 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { TabLinks } from '@/components/ui/tab-links'
 import { addDays } from '@/lib/opportunity-detail'
 import { calendarHref } from '@/lib/calendar-href'
+import { formatMoney } from '@/lib/money'
 import { cn } from '@/lib/utils'
 import type { WeekRollup } from '@/lib/calendar-week'
 import type { RunwayJob } from '@/lib/calendar-cashflow'
@@ -22,7 +23,44 @@ import {
   weekdayName,
   type BookabilityCtx,
 } from '@/lib/calendar-bookability'
-import { Button } from '@/components/ui/button'
+
+/**
+ * ─────────────────────────────────────────────────────────────────────────────
+ * THE RAIL'S JOB, in the operator's words — one solo mobile-beverage owner who
+ * also drives the cart, on a phone, in a van:
+ *
+ *     "What still needs a day put on it, and what day can I say yes to?"
+ *
+ * Everything in here serves that or gets quieter. The COMPOSITION PASS that
+ * produced this shape found seven sections in one scroll — filter+legend,
+ * mini-month, next-open, unscheduled queue, this-week KPIs, cash runway, ICS
+ * subscribe — each with the identical 11px/600/uppercase eyebrow, each
+ * individually disciplined about "not adding a fourth hierarchy level", and the
+ * sum with no hierarchy at all: navigation, a queue and three reports all
+ * reading as siblings.
+ *
+ * FIVE ZONES NOW, with exactly one figure and four grounds:
+ *
+ *  1. WHICH DAY (nav) — scope filter + mini-month + next-open chips, merged into
+ *     ONE hairline-separated zone. Three boxes became one. Kept at the top
+ *     because every calendar the operator has ever used puts the month grid
+ *     top-left (Jakob), and it reads as texture — a repeating 11px lattice — not
+ *     as a claim on attention.
+ *  2. NEEDS A DATE — **the focal element**. The rail's only real heading, its
+ *     only 26px number, and its only full border. See UnscheduledSection.
+ *  3. THIS WEEK — collapsed to a one-line summary; the five StatTiles are one
+ *     tap away. They are param-independent (always the CURRENT week, even while
+ *     you browse October) and largely restate the grid beside them, so 270px of
+ *     card chrome was the rail's worst signal-per-pixel. The summary keeps every
+ *     value AND escalates overdue money / blockers so no alarm hides behind a
+ *     disclosure.
+ *  4. CASH RUNWAY — hairline rows instead of five bordered cards, plus the
+ *     verdict line it never had.
+ *  5. KEY & SETUP — the two always-on mark legends and the ICS link, together in
+ *     one footer. Reference material, not content: it belongs at the bottom edge
+ *     where a legend belongs, not in the rail's loudest slot.
+ * ─────────────────────────────────────────────────────────────────────────────
+ */
 
 interface CalendarLeftRailProps {
   orgSlug: string
@@ -71,27 +109,25 @@ function nextAnchorDay(ymd: string): string {
  * The month grid can only answer about days you are already looking at, and the
  * day spine only about the day you opened. The operator on the phone has neither:
  * they have a customer asking for "a Saturday in the autumn". This line answers
- * that with zero navigation — the interaction budget for the highest-frequency
- * flow in the module drops from "step through months, one full org read each,
- * and end up unsure" to "read the rail".
+ * that with zero navigation.
  *
- * Deliberately NOT a second copy of the selected day's verdict: the spine
- * already owns that day in full, and a rail that echoes the pane beside it is
- * chrome. This block is param-independent, like everything else in the rail.
+ * COMPOSITION: this is no longer its own bordered section. It is about DATES, so
+ * it is a footer INSIDE the mini-month zone — same question, same box. Its
+ * always-on <BookabilityKey/> moved to the rail's Key footer, where the other
+ * mark legend already lives; a key belongs with the other key, not wedged
+ * between the date picker and the queue.
  */
-function BookabilityBlock({ ctx, today }: { ctx: BookabilityCtx; today: string }) {
+function NextOpenLine({ ctx, today }: { ctx: BookabilityCtx; today: string }) {
   const anchor = nextAnchorDay(today)
   // nextOpenDates scans forward in +7 steps from the date it is GIVEN, so
   // stepping back one week makes `anchor` itself the first candidate.
   const open = nextOpenDates(addDays(anchor, -7), ctx, 3)
 
   return (
-    <div data-slot="rail-bookability" className="border-b border-sidebar-border px-4 py-3">
-      <p className="text-[11px] font-semibold uppercase tracking-[.06em] text-muted-foreground">
-        Next open {weekdayName(anchor)}
-      </p>
+    <div data-slot="rail-bookability" className="mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+      <p className="text-[11px] text-muted-foreground">Next open {weekdayName(anchor)}</p>
       {open.length > 0 ? (
-        <ul className="mt-1.5 flex flex-wrap gap-1.5">
+        <ul className="flex flex-wrap gap-1.5">
           {open.map((d) => (
             <li key={d}>
               {/* One tap to that day's spine — the answer is offerable, not just
@@ -108,17 +144,90 @@ function BookabilityBlock({ ctx, today }: { ctx: BookabilityCtx; today: string }
       ) : (
         // Never a blank state: a fully-booked six months is real news, and the
         // next thing to do about it is add capacity.
-        <p className="mt-1 text-[11px] leading-tight text-muted-foreground">
+        <p className="text-[11px] leading-tight text-muted-foreground">
           None in the next six months.{' '}
           <Link href={`/${ctx.orgSlug}/capacity`} className="underline underline-offset-2">
             Add capacity
           </Link>
         </p>
       )}
-      {/* Nielsen #6: the grids now carry a second mark grammar, so it gets the
-          same always-on key the kind dots already have rather than a tooltip. */}
-      <BookabilityKey className="mt-2.5" />
     </div>
+  )
+}
+
+/**
+ * ZONE 3's collapsed face: every week number in one line, with the two that are
+ * ALARMS escalated so a disclosure can never hide them (Nielsen #1).
+ *
+ * This is what buys back ~220px of the rail. The five StatTiles are still one
+ * tap away and still carry their per-tile "so what" notes; what the operator
+ * loses by default is five borders, five card backgrounds and five shadows in a
+ * 280px column, on numbers that describe a week they may not even be looking at.
+ */
+function WeekSummary({ rollup }: { rollup: WeekRollup }) {
+  // A zero is not a fact worth a slot. Only what is actually there gets named,
+  // so a quiet week reads as one clause instead of four "0 …"s.
+  const parts: React.ReactNode[] = []
+  if (rollup.eventCount > 0) {
+    parts.push(
+      <span key="events">
+        <span className="tabular-nums">{rollup.eventCount}</span>{' '}
+        {rollup.eventCount === 1 ? 'event' : 'events'}
+      </span>
+    )
+  }
+  if (rollup.guestCount > 0) {
+    parts.push(
+      <span key="guests">
+        <span className="tabular-nums">{rollup.guestCount.toLocaleString()}</span>{' '}
+        {rollup.guestCount === 1 ? 'guest' : 'guests'}
+      </span>
+    )
+  }
+  if (rollup.bookedValue > 0) {
+    parts.push(
+      <span key="booked">
+        <span className="tabular-nums text-[var(--money-green)]">{formatMoney(rollup.bookedValue)}</span> booked
+      </span>
+    )
+  }
+  if (rollup.dueAmount > 0) {
+    parts.push(
+      <span key="due">
+        <span className="tabular-nums">{formatMoney(rollup.dueAmount)}</span> due
+      </span>
+    )
+  }
+  // The two ALARMS. They ride the summary rather than the tiles precisely
+  // because the tiles are collapsed: a disclosure must never be the only place
+  // overdue money or a blocked job is stated (Nielsen #1).
+  if (rollup.overdueDueAmount > 0) {
+    parts.push(
+      <span key="overdue" className="font-semibold text-[var(--danger-fg)]">
+        <span className="tabular-nums">{formatMoney(rollup.overdueDueAmount)}</span> overdue
+      </span>
+    )
+  }
+  if (rollup.blockerCount > 0) {
+    parts.push(
+      <span key="blockers" className="font-semibold text-[var(--danger-fg)]">
+        <span className="tabular-nums">{rollup.blockerCount}</span>{' '}
+        {rollup.blockerCount === 1 ? 'blocker' : 'blockers'}
+      </span>
+    )
+  }
+
+  return (
+    <span data-slot="week-summary" className="text-[11px] leading-tight text-muted-foreground">
+      {parts.length === 0
+        ? 'Nothing booked this week.'
+        : parts.map((p, i) => (
+            <span key={i}>
+              {i > 0 ? ' · ' : null}
+              {p}
+            </span>
+          ))}
+    </span>
   )
 }
 
@@ -162,6 +271,14 @@ function MenuIcon() {
   )
 }
 
+function CloseIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden focusable="false">
+      <path d="M5 5l10 10M15 5L5 15" />
+    </svg>
+  )
+}
+
 function monthTitle(monthKey: string): string {
   return new Date(`${monthKey}-01T00:00:00.000Z`).toLocaleDateString(undefined, {
     month: 'long',
@@ -201,9 +318,15 @@ export function CalendarLeftRail({
   const params = useSearchParams()
   const pathname = usePathname() ?? ''
   const [showSubscribe, setShowSubscribe] = useState(false)
+  const subscribeId = useId()
+  // ZONE 3 starts collapsed: see <WeekSummary/>. Not persisted — the collapsed
+  // state IS the default, and the summary carries the signal, so there is
+  // nothing for a returning operator to have their preference restored to.
+  const [showWeek, setShowWeek] = useState(false)
+  const weekId = useId()
   // Below md the rail is an off-canvas drawer (mirrors AdminSidebar / ClientQueueRail)
-  // so the kind filter, mini-month, KPIs, runway and ICS subscribe stay reachable on
-  // mobile instead of being hidden. Always opens closed.
+  // so the kind filter, mini-month, queue, KPIs, runway and ICS subscribe stay
+  // reachable on mobile instead of being hidden. Always opens closed.
   const [mobileOpen, setMobileOpen] = useState(false)
 
   const belowMd = useBelowMd()
@@ -213,10 +336,16 @@ export function CalendarLeftRail({
   // column and must stay fully interactive.
   const drawerOpen = belowMd && mobileOpen
 
-  // Navigating (picking a day / toggling scope) dismisses the drawer.
-  useEffect(() => {
-    setMobileOpen(false)
-  }, [pathname])
+  // Navigating (picking a day / toggling scope) dismisses the drawer. Adjusted
+  // DURING render off a previous-value marker rather than in an effect: the
+  // effect version set state on every commit after a route change, which React
+  // flags (`set-state-in-effect`) and which renders the drawer once in its
+  // stale-open shape before closing it.
+  const [lastPath, setLastPath] = useState(pathname)
+  if (pathname !== lastPath) {
+    setLastPath(pathname)
+    if (mobileOpen) setMobileOpen(false)
+  }
 
   useEffect(() => {
     if (!mobileOpen) return
@@ -361,123 +490,174 @@ export function CalendarLeftRail({
           mobileOpen ? 'max-md:translate-x-0' : 'max-md:-translate-x-full'
         )}
       >
-      <div className="space-y-3 border-b border-sidebar-border px-4 py-3">
-        <TabLinks
-          tabs={filterTabs}
-          active={kinds === 'pipeline' ? 'pipeline' : 'all'}
-          ariaLabel="Calendar filter"
-          className="w-full"
-        />
-        {/* Persistent, not behind a disclosure: the shape/colour grammar the
-            grids use is only an accessible channel if it is decodable. */}
-        <KindLegend />
-      </div>
-
-      {/* Mini-month */}
-      <div className="border-b border-sidebar-border px-4 py-3">
-        <div className="mb-2 flex items-center justify-between">
-          <span className="text-[13px] font-semibold text-sidebar-foreground">{monthTitle(cursor)}</span>
-          <div className="flex items-center gap-0.5">
-            <button
-              type="button"
-              aria-label="Previous month"
-              onClick={() => stepMonth(-1)}
-              className="flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-sidebar-hover focus-visible:bg-sidebar-hover motion-reduce:transition-none"
-            >
-              ←
-            </button>
-            <button
-              type="button"
-              aria-label="Next month"
-              onClick={() => stepMonth(1)}
-              className="flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-sidebar-hover focus-visible:bg-sidebar-hover motion-reduce:transition-none"
-            >
-              →
-            </button>
-          </div>
+        {/* Drawer header, mobile only and STICKY. The 280px drawer had no way out
+            of it except Escape (no keyboard on a phone), the scrim (off-screen
+            once you have scrolled), or navigating away — Nielsen #3, and the
+            reason the drawer felt like a trap rather than a panel. */}
+        <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-sidebar-border bg-sidebar px-4 py-1.5 md:hidden">
+          <span className="text-[13px] font-semibold text-sidebar-foreground">Calendar panel</span>
+          <button
+            type="button"
+            onClick={() => setMobileOpen(false)}
+            aria-label="Close calendar panel"
+            className="ml-auto flex size-11 items-center justify-center rounded-md text-muted-foreground hover:bg-sidebar-hover focus-visible:bg-sidebar-hover"
+          >
+            <CloseIcon />
+          </button>
         </div>
-        <div role="grid" aria-label={`Mini calendar, ${monthTitle(cursor)}`} className="grid grid-cols-7 gap-0.5">
-          {WEEKDAYS.map((w, i) => (
-            <div
-              key={i}
-              role="columnheader"
-              aria-hidden
-              className="pb-1 text-center font-mono text-[9px] font-bold uppercase text-muted-foreground"
-            >
-              {w}
+
+        {/* ── ZONE 1 · WHICH DAY ─────────────────────────────────────────────
+            Scope filter, mini-month and next-open, in ONE box. They answer one
+            question between them, and three borders around three halves of one
+            question is exactly the noise the composition review named. */}
+        <div data-rail-section="dates" className="border-b border-sidebar-border px-4 py-3">
+          <TabLinks
+            tabs={filterTabs}
+            active={kinds === 'pipeline' ? 'pipeline' : 'all'}
+            ariaLabel="Calendar filter"
+            className="w-full"
+          />
+
+          <div className="mb-2 mt-3 flex items-center justify-between">
+            <span className="text-[13px] font-semibold text-sidebar-foreground">{monthTitle(cursor)}</span>
+            <div className="flex items-center gap-0.5">
+              <button
+                type="button"
+                aria-label="Previous month"
+                onClick={() => stepMonth(-1)}
+                className="flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-sidebar-hover focus-visible:bg-sidebar-hover motion-reduce:transition-none"
+              >
+                ←
+              </button>
+              <button
+                type="button"
+                aria-label="Next month"
+                onClick={() => stepMonth(1)}
+                className="flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-sidebar-hover focus-visible:bg-sidebar-hover motion-reduce:transition-none"
+              >
+                →
+              </button>
             </div>
-          ))}
-          {cells.map(({ day, inMonth }) => {
-            const dayNum = Number(day.slice(8, 10))
-            const isToday = day === today
-            const isSelected = day === selected
-            if (!inMonth) {
-              return <span key={day} aria-hidden className="py-1 text-center text-[11px] text-muted-foreground/30" />
-            }
-            return (
-              <Link
-                key={day}
-                href={dayHref(day)}
-                aria-current={isSelected ? 'date' : undefined}
+          </div>
+          <div role="grid" aria-label={`Mini calendar, ${monthTitle(cursor)}`} className="grid grid-cols-7 gap-0.5">
+            {WEEKDAYS.map((w, i) => (
+              <div
+                key={i}
+                role="columnheader"
+                aria-hidden
+                className="pb-1 text-center font-mono text-[9px] font-bold uppercase text-muted-foreground"
+              >
+                {w}
+              </div>
+            ))}
+            {cells.map(({ day, inMonth }) => {
+              const dayNum = Number(day.slice(8, 10))
+              const isToday = day === today
+              const isSelected = day === selected
+              if (!inMonth) {
+                return <span key={day} aria-hidden className="py-1 text-center text-[11px] text-muted-foreground/30" />
+              }
+              return (
+                <Link
+                  key={day}
+                  href={dayHref(day)}
+                  aria-current={isSelected ? 'date' : undefined}
+                  className={cn(
+                    'flex h-6 items-center justify-center rounded-md text-[11px] tabular-nums transition-colors hover:bg-sidebar-hover focus-visible:bg-sidebar-hover motion-reduce:transition-none',
+                    isToday && 'bg-foreground font-bold text-background',
+                    isSelected && !isToday && 'bg-sidebar-accent font-semibold text-sidebar-accent-foreground ring-1 ring-inset ring-ring',
+                    !isToday && !isSelected && 'text-sidebar-foreground'
+                  )}
+                >
+                  {dayNum}
+                </Link>
+              )
+            })}
+          </div>
+
+          {bookability ? <NextOpenLine ctx={bookability} today={today} /> : null}
+        </div>
+
+        {/* ── ZONE 2 · THE FOCAL ELEMENT ─────────────────────────────────────
+            The work with NO date: the only zone that is work rather than
+            navigation or reporting, the only thing on the calendar module that
+            is invisible everywhere else, and the drag source a later increment
+            drags onto the grid beside it. It carries the rail's only heading,
+            only 26px number and only full border. */}
+        <UnscheduledSection orgSlug={orgSlug} rows={unscheduled} today={today} />
+
+        {/* ── ZONE 3 · THIS WEEK ─────────────────────────────────────────────
+            Summary always; the five tiles on request. */}
+        <section
+          aria-label="This week"
+          data-rail-section="week"
+          className={cn(!showWeek && 'border-b border-sidebar-border')}
+        >
+          <h3>
+            <button
+              type="button"
+              onClick={() => setShowWeek((s) => !s)}
+              aria-expanded={showWeek}
+              aria-controls={weekId}
+              className="flex min-h-11 w-full items-start gap-1.5 rounded-md px-5 py-2 text-left transition-colors hover:bg-sidebar-hover focus-visible:bg-sidebar-hover motion-reduce:transition-none"
+            >
+              <span
+                aria-hidden
                 className={cn(
-                  'flex h-6 items-center justify-center rounded-md text-[11px] tabular-nums transition-colors hover:bg-sidebar-hover focus-visible:bg-sidebar-hover motion-reduce:transition-none',
-                  isToday && 'bg-foreground font-bold text-background',
-                  isSelected && !isToday && 'bg-sidebar-accent font-semibold text-sidebar-accent-foreground ring-1 ring-inset ring-ring',
-                  !isToday && !isSelected && 'text-sidebar-foreground'
+                  'mt-0.5 inline-block text-[10px] text-muted-foreground transition-transform motion-reduce:transition-none',
+                  showWeek && 'rotate-90'
                 )}
               >
-                {dayNum}
-              </Link>
-            )
-          })}
-        </div>
-      </div>
+                &#9654;
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[11px] font-semibold uppercase tracking-[.06em] text-muted-foreground">
+                  This week
+                </span>
+                <span className="mt-0.5 block">
+                  <WeekSummary rollup={rollup} />
+                </span>
+              </span>
+            </button>
+          </h3>
+          {/* Unmounted, not hidden — the mobile focus trap walks the panel's
+              focusable list and a display:none subtree would leave stops in it.
+              (The tiles hold no controls today; the rule is the rail's, and it
+              costs nothing to keep.) */}
+          <div id={weekId}>{showWeek ? <CalendarKpiBand rollup={rollup} /> : null}</div>
+        </section>
 
-      {/* Bookability sits directly under the mini-month because it is about
-          DATES, and the two together are the "which day" half of the rail. */}
-      {bookability ? <BookabilityBlock ctx={bookability} today={today} /> : null}
+        {/* ── ZONE 4 · CASH RUNWAY ───────────────────────────────────────── */}
+        <RunwayStrip orgSlug={orgSlug} runway={runway} dayHref={dayHref} />
 
-      {/*
-        The work with NO date — a QUEUE, not a report, so it sits with the
-        navigation half of the rail rather than the reporting half: directly
-        under the mini-month and above the this-week KPIs. It is also the drag
-        source a later increment drags onto the grid beside it, and a drag
-        source parked below two reporting panes on a scrolling 280px rail is
-        unusable. What it displaced: the KPI band's first-below-the-mini-month
-        slot. What it does NOT add: a new hierarchy level — its header is the
-        same 11px/600/uppercase/.06em eyebrow the two sections below already use.
-      */}
-      <UnscheduledSection orgSlug={orgSlug} rows={unscheduled} today={today} />
-
-      {/* This-week KPIs (Booked-$ wired here) */}
-      <div className="border-b border-sidebar-border">
-        <p className="px-5 pt-3 text-[11px] font-semibold uppercase tracking-[.06em] text-muted-foreground">
-          This week
-        </p>
-        <CalendarKpiBand rollup={rollup} />
-      </div>
-
-      {/* Cash-flow runway (category-defining) */}
-      <RunwayStrip orgSlug={orgSlug} runway={runway} dayHref={dayHref} />
-
-      {/* ICS subscribe — parity with the retired week view. */}
-      {subscribeUrl ? (
-        <div className="mt-auto border-t border-sidebar-border">
+        {/* ── ZONE 5 · KEY & SETUP ───────────────────────────────────────────
+            Both mark legends (still ALWAYS ON — a shape grammar you have to
+            reverse-engineer is not an accessible one) plus the ICS link, in one
+            footer at the rail's bottom edge. They are reference and setup, not
+            content; they used to occupy the rail's loudest slot and its own
+            bordered section respectively. The subscribe entry point is a text
+            link now rather than a full-width outline Button: a once-a-year
+            action should not out-weigh the daily queue three zones above it. */}
+        <div data-rail-section="key" className="mt-auto border-t border-sidebar-border">
           <div className="px-4 py-3">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="w-full"
-              aria-expanded={showSubscribe}
-              onClick={() => setShowSubscribe((s) => !s)}
-            >
-              Subscribe in Google / Outlook
-            </Button>
+            <KindLegend />
+            {bookability ? <BookabilityKey className="mt-1.5" /> : null}
+            {subscribeUrl ? (
+              <button
+                type="button"
+                aria-expanded={showSubscribe}
+                aria-controls={subscribeId}
+                onClick={() => setShowSubscribe((s) => !s)}
+                className="mt-1.5 flex min-h-11 w-full items-center rounded-md text-left text-[11px] font-medium text-muted-foreground underline underline-offset-2 transition-colors hover:bg-sidebar-hover hover:text-foreground focus-visible:bg-sidebar-hover motion-reduce:transition-none"
+              >
+                Subscribe in Google / Outlook &rarr;
+              </button>
+            ) : null}
           </div>
-          {showSubscribe ? <SubscribePanel url={subscribeUrl} /> : null}
+          {subscribeUrl ? (
+            <div id={subscribeId}>{showSubscribe ? <SubscribePanel url={subscribeUrl} /> : null}</div>
+          ) : null}
         </div>
-      ) : null}
       </div>
     </>
   )

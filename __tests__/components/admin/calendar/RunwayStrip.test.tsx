@@ -86,12 +86,68 @@ describe('RunwayStrip', () => {
       job({ eventId: `e${i}`, title: `Job ${i}`, date: `2026-09-0${(i % 9) + 1}`, inflowBefore: 100 * i })
     )
     render(<RunwayStrip orgSlug="acme" runway={many} />)
-    // Miller: keep the visible list to a scannable few.
+    // Three, not five. The verdict line above now covers the whole horizon, so
+    // the rows only carry what the operator can still act on — and the rail is
+    // ~130px shorter on a 280px phone drawer for it.
     const list = screen.getByRole('list', { name: /runway/i })
-    expect(within(list).getAllByRole('listitem').length).toBeLessThanOrEqual(5)
+    expect(within(list).getAllByRole('listitem')).toHaveLength(3)
     // …and the tail is a LINK to the full book, not a dead-end <p>.
-    const more = screen.getByRole('link', { name: /\+3 more/i })
+    const more = screen.getByRole('link', { name: /\+5 more/i })
     expect(more).toHaveAttribute('href', '/acme/calendar?view=agenda')
+  })
+
+  // ── Composition: no card stack, and a verdict at the top ───────────────────
+
+  it('divides the rows with hairlines instead of stacking five bordered cards', () => {
+    render(<RunwayStrip orgSlug="acme" runway={jobs} />)
+    const list = screen.getByRole('list', { name: /runway/i })
+    // the LIST carries the rules…
+    expect(list.className).toMatch(/divide-y/)
+    // …and no row is a card of its own.
+    for (const li of within(list).getAllByRole('listitem')) {
+      expect(li.className).not.toMatch(/\bborder\b/)
+      expect(li.className).not.toMatch(/bg-card/)
+      expect(li.className).not.toMatch(/rounded-md/)
+    }
+  })
+
+  it('states the verdict up front instead of making you expand rows to find it', () => {
+    render(<RunwayStrip orgSlug="acme" runway={jobs} />)
+    expect(screen.getByText('Stays positive through Sep 5')).toBeInTheDocument()
+  })
+
+  it('names WHERE the cash breaks, reading the whole runway and not just the visible rows', () => {
+    // The shortfall is job six of eight — past the three-row cap, so before the
+    // verdict line existed it was undiscoverable from this surface.
+    const many: RunwayJob[] = Array.from({ length: 8 }, (_, i) =>
+      job({
+        eventId: `e${i}`,
+        title: `Job ${i}`,
+        date: `2026-09-0${i + 1}`,
+        cumulative: i >= 5 ? -400 : 500,
+        firstShortfall: i === 5,
+      })
+    )
+    render(<RunwayStrip orgSlug="acme" runway={many} />)
+    expect(screen.getByText('Runs short at Job 5 · Sep 6')).toBeInTheDocument()
+    // and the row itself is NOT rendered, so this is genuinely new information
+    expect(screen.queryByRole('button', { name: /job 5/i })).not.toBeInTheDocument()
+  })
+
+  it('counts the unbilled jobs across the whole horizon as the action they are', () => {
+    const many: RunwayJob[] = [
+      job({ eventId: 'a', title: 'A', billing: 'outstanding' }),
+      job({ eventId: 'b', title: 'B', billing: 'uninvoiced', inflowBefore: 0, dueAfter: 0 }),
+      job({ eventId: 'c', title: 'C', billing: 'draft', inflowBefore: 0, dueAfter: 0 }),
+      job({ eventId: 'd', title: 'D', billing: 'collected', inflowBefore: 0, dueAfter: 0 }),
+    ]
+    render(<RunwayStrip orgSlug="acme" runway={many} />)
+    expect(screen.getByText('2 jobs still to bill')).toBeInTheDocument()
+  })
+
+  it('says nothing about billing when every job is billed', () => {
+    render(<RunwayStrip orgSlug="acme" runway={jobs} />)
+    expect(screen.queryByText(/still to bill/i)).not.toBeInTheDocument()
   })
 
   // ── Showing its work ───────────────────────────────────────────────────────

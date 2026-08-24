@@ -425,13 +425,25 @@ describe('CalendarLeftRail — the standing answer', () => {
     )
   })
 
+  /**
+   * The key is STILL always on — no disclosure, no tooltip. The rail's
+   * composition pass moved it out of the next-open block and into the rail's
+   * one Key footer, beside the kind legend it shares a grammar with: two
+   * legends in two different places was two boxes doing one job.
+   */
   it('carries the key for the mark grammar, so the glyphs need no memorising', () => {
     railWith(CLEAR())
-    const block = document.querySelector('[data-slot="rail-bookability"]') as HTMLElement
-    expect(within(block).getByText(/Tight — capacity is spoken for/)).toBeInTheDocument()
-    expect(within(block).getByText(/Closed — something blocks it/)).toBeInTheDocument()
+    const key = document.querySelector('[data-rail-section="key"]') as HTMLElement
+    expect(key).not.toBeNull()
+    expect(within(key).getByText(/Tight — capacity is spoken for/)).toBeInTheDocument()
+    expect(within(key).getByText(/Closed — something blocks it/)).toBeInTheDocument()
     // "no mark" is itself a value in this grammar, so it is spelled out too.
-    expect(within(block).getByText(/No mark — open to book/)).toBeInTheDocument()
+    expect(within(key).getByText(/No mark — open to book/)).toBeInTheDocument()
+    // …and it is not behind any disclosure: nothing in the footer is collapsed.
+    const collapsed = within(key).queryAllByRole('button', { expanded: false })
+    expect(collapsed.every((b) => !b.textContent?.match(/tight|closed|no mark/i))).toBe(true)
+    // the kind legend it now sits with is present in the SAME footer
+    expect(within(key).getByText('Key')).toBeInTheDocument()
   })
 
   it('hides the whole block when there is no context', () => {

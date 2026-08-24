@@ -6,7 +6,8 @@ import { cn } from '@/lib/utils'
 import { unscheduledReason, type UnscheduledRow, type UnscheduledUrgency } from '@/lib/calendar-unscheduled'
 
 /**
- * THE WORK THAT HAS NO DATE.
+ * THE WORK THAT HAS NO DATE — and, since the rail's composition pass, the rail's
+ * ONE FOCAL ELEMENT.
  *
  * `buildCalendarFeed` guards its event loop on `event_start` and its lead loop
  * on `event_date`, so an opportunity nobody has scheduled — and a job that was
@@ -17,31 +18,29 @@ import { unscheduledReason, type UnscheduledRow, type UnscheduledUrgency } from 
  * Job (one sentence): *which sold-or-chased job still has no day on it, and
  * which one do I have to put on the calendar first?*
  *
- * Deciding value: **days left to the book-by date** (the promised event date
- * minus the org's prep lead days), with estimated value as the fallback when no
- * date was ever promised. That sentence is the only non-muted text on a row, and
- * it is why the rows are in the order they are in.
+ * WHY THIS ONE IS FOCAL. Everything else in the rail is either navigation (the
+ * scope filter, the mini-month, the next-open chips) or reporting (this week's
+ * numbers, the cash runway, the marks key, the ICS link). This is the only zone
+ * that is WORK — a queue the operator empties — and it is the only thing on the
+ * whole calendar module that is invisible everywhere else. It is also the drag
+ * source a later increment drags onto the grid beside it. So it gets what a
+ * focal element gets and nothing else in the rail may have:
  *
- * WHERE IT SITS, and what got quieter. Directly under the mini-month and ABOVE
- * the this-week KPIs and the cash runway. The rail's top half is orientation
- * (scope filter, legend, mini-month) and its bottom half is reporting (KPIs,
- * runway, ICS) — this is neither: it is a QUEUE the operator acts on, and a
- * queue belongs next to the surface it acts into. It is also the drag source for
- * drag-to-schedule, and a drag source at the bottom of a scrolling 280px rail is
- * unusable. So the KPI band gave up the first slot below the mini-month. Two
- * further concessions keep the rail from growing louder rather than longer:
+ *  • a DECIDING NUMBER at 26px — how many jobs have no day on them — with the
+ *    aggregate that says how bad that is ("2 already sold — on no calendar").
+ *  • a real 13px heading in the operator's words ("Needs a date"), not the
+ *    11px/600/uppercase eyebrow every other section shares.
+ *  • the rail's ONLY full border. Every other zone is separated by a hairline
+ *    rule or by whitespace. Delete this border and the focal element stops
+ *    being distinguishable from its neighbours — which is exactly the defect
+ *    the composition review found.
  *
- *  • The header reuses the rail's EXISTING eyebrow grammar exactly (11px, 600,
- *    uppercase, .06em, muted) — a fourth section, but no fourth hierarchy level.
- *  • MAX_ROWS is 4, one tighter than the runway's 5, because this list sits
- *    above the runway and two five-row stacks would push the runway (the
- *    category-defining pane) off the fold on a ~900px rail.
- *
- * It is also the only collapsible section in the rail, and it remembers being
- * collapsed: an operator with a clean book pays one 36px row for it, forever.
+ * The count is inside the disclosure button, so collapsing the rows never hides
+ * the deciding number: an operator with a clean book pays one row for it, and
+ * an operator with four sold-and-undated jobs cannot collapse the alarm away.
  */
 
-/** Miller, and the fold. One tighter than <RunwayStrip/> on purpose — see above. */
+/** Miller, and the fold. One tighter than <RunwayStrip/> on purpose. */
 const MAX_ROWS = 4
 
 /** Default OPEN. Undated work is the thing you are meant to see; only an
@@ -113,6 +112,39 @@ const TONE: Record<UnscheduledUrgency, string> = {
   later: 'text-muted-foreground',
 }
 
+/**
+ * The focal element's "so what" line — the interpretation the bare count cannot
+ * carry (3 undated chases and 3 undated *sold jobs* are the same number and
+ * opposite emergencies).
+ *
+ * Deliberately an AGGREGATE, never a copy of row one: a summary that restates
+ * the first row's own sentence renders the same value twice and teaches the eye
+ * to skip the headline.
+ */
+function summaryOf(
+  rows: UnscheduledRow[],
+  today: string
+): { level: UnscheduledUrgency; text: string } {
+  const sold = rows.reduce((n, r) => (r.committed ? n + 1 : n), 0)
+  if (sold > 0) {
+    // A sold job with no day is a promise already broken on every calendar the
+    // crew and the customer can see. It outranks any countdown.
+    return { level: 'now', text: `${sold} already sold — on no calendar` }
+  }
+  // With nothing sold, the urgency levels are purely the book-by arithmetic
+  // (the `committed` floor cannot be in play), so they can be counted honestly.
+  const levels = rows.map((r) => unscheduledReason(r, today).level)
+  const late = levels.reduce((n, l) => (l === 'now' ? n + 1 : n), 0)
+  if (late > 0) {
+    return { level: 'now', text: `${late} past ${late === 1 ? 'its' : 'their'} book-by date` }
+  }
+  const soon = levels.reduce((n, l) => (l === 'soon' ? n + 1 : n), 0)
+  if (soon > 0) {
+    return { level: 'soon', text: `${soon} inside the prep window` }
+  }
+  return { level: 'later', text: 'None past their book-by date yet' }
+}
+
 export function UnscheduledSection({ orgSlug, rows, today }: UnscheduledSectionProps) {
   const listId = useId()
   const open = useSyncExternalStore(subscribeToStoredOpen, readStoredOpen, serverStoredOpen)
@@ -120,14 +152,23 @@ export function UnscheduledSection({ orgSlug, rows, today }: UnscheduledSectionP
 
   const shown = rows.slice(0, MAX_ROWS)
   const hidden = rows.length - shown.length
+  const summary = rows.length > 0 ? summaryOf(rows, today) : null
 
   return (
-    <section aria-label="Unscheduled work" className="border-b border-sidebar-border px-4 py-2">
+    <section
+      aria-label="Unscheduled work"
+      // The rail's ONE focal element, and its ONE full border. `mx-3 my-3`
+      // rather than a flush hairline: whitespace isolation is half of what
+      // makes it read as the figure and the rest of the rail as ground.
+      data-rail-section="unscheduled"
+      data-rail-focal="true"
+      className="mx-3 my-3 rounded-lg border border-sidebar-border bg-card px-2.5 py-2 shadow-xs"
+    >
       {/*
-        Native <button> disclosure. The caret is decorative — the button's
-        accessible name is its own visible text plus the count, so the state
-        reaches assistive tech through `aria-expanded` rather than a rotation
-        nobody can hear.
+        Native <button> disclosure, and the whole summary is the target — the
+        heading, the deciding number and its interpretation all sit inside it,
+        so the tap area is ~72px tall (Fitts) and collapsing the rows never
+        hides the number that made the section focal.
       */}
       <h3>
         <button
@@ -135,21 +176,35 @@ export function UnscheduledSection({ orgSlug, rows, today }: UnscheduledSectionP
           onClick={toggle}
           aria-expanded={open}
           aria-controls={listId}
-          className="flex min-h-11 w-full items-center gap-1.5 rounded-md px-1 text-left transition-colors hover:bg-sidebar-hover focus-visible:bg-sidebar-hover motion-reduce:transition-none"
+          className="flex min-h-11 w-full flex-col items-start gap-1 rounded-md px-1 py-1 text-left transition-colors hover:bg-sidebar-hover focus-visible:bg-sidebar-hover motion-reduce:transition-none"
         >
-          <span
-            aria-hidden
-            className={cn('inline-block text-[10px] text-muted-foreground transition-transform motion-reduce:transition-none', open && 'rotate-90')}
-          >
-            &#9654;
-          </span>
-          <span className="text-[11px] font-semibold uppercase tracking-[.06em] text-muted-foreground">
-            Unscheduled
-          </span>
-          {rows.length > 0 ? (
-            <span className="ml-auto rounded-full bg-muted px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-foreground">
-              {rows.length}
+          <span className="flex w-full items-center gap-1.5">
+            <span
+              aria-hidden
+              className={cn('inline-block text-[10px] text-muted-foreground transition-transform motion-reduce:transition-none', open && 'rotate-90')}
+            >
+              &#9654;
             </span>
+            <span className="text-[13px] font-semibold text-sidebar-foreground">Needs a date</span>
+          </span>
+
+          {summary ? (
+            <>
+              <span className="flex items-baseline gap-1.5">
+                <span
+                  data-slot="rail-focal-value"
+                  className="text-[26px] font-semibold leading-none tracking-[-.02em] tabular-nums text-sidebar-foreground"
+                >
+                  {rows.length}
+                </span>
+                <span className="text-[11px] leading-tight text-muted-foreground">
+                  {rows.length === 1 ? 'job with no day on it' : 'jobs with no day on them'}
+                </span>
+              </span>
+              <span className={cn('text-[11px] leading-tight', TONE[summary.level])}>
+                {summary.text}
+              </span>
+            </>
           ) : null}
         </button>
       </h3>
@@ -164,12 +219,12 @@ export function UnscheduledSection({ orgSlug, rows, today }: UnscheduledSectionP
           rows.length === 0 ? (
             // No CTA. "Everything is scheduled" is a finished state, not a funnel
             // — the calendar is already the place you would go next.
-            <p className="px-1 pb-2 pt-0.5 text-[11px] text-muted-foreground">
+            <p className="px-1 pb-1 pt-0.5 text-[11px] text-muted-foreground">
               Everything is scheduled.
             </p>
           ) : (
             <>
-              <ul role="list" aria-label="Work with no date" className="pb-1">
+              <ul role="list" aria-label="Work with no date" className="mt-1 border-t border-sidebar-border pt-0.5">
                 {shown.map((row) => (
                   <UnscheduledRowLink key={`${row.kind}:${row.id}`} row={row} today={today} />
                 ))}
@@ -177,7 +232,7 @@ export function UnscheduledSection({ orgSlug, rows, today }: UnscheduledSectionP
               {hidden > 0 ? (
                 <Link
                   href={`/${orgSlug}/leads`}
-                  className="mb-1 flex min-h-11 items-center rounded-md px-1 text-[11px] font-medium text-muted-foreground underline underline-offset-2 transition-colors hover:bg-sidebar-hover hover:text-foreground focus-visible:bg-sidebar-hover motion-reduce:transition-none"
+                  className="flex min-h-11 items-center rounded-md px-1 text-[11px] font-medium text-muted-foreground underline underline-offset-2 transition-colors hover:bg-sidebar-hover hover:text-foreground focus-visible:bg-sidebar-hover motion-reduce:transition-none"
                 >
                   +{hidden} more with no date — open the pipeline &rarr;
                 </Link>

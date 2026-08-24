@@ -4,6 +4,7 @@ import type { WeekRollup } from '@/lib/calendar-week'
 import type { RunwayJob } from '@/lib/calendar-cashflow'
 import { CALENDAR_KINDS, CALENDAR_KIND_LABELS } from '@/lib/calendar'
 import type { UnscheduledRow } from '@/lib/calendar-unscheduled'
+import type { BookabilityCtx } from '@/lib/calendar-bookability'
 
 // The rail preserves ?view/?kinds by reading them client-side (a server layout
 // can't take searchParams). Selected day comes from the /calendar/[ymd] path.
@@ -41,6 +42,15 @@ const runway: RunwayJob[] = [
 ]
 
 const baseProps = { orgSlug: 'acme', today: '2026-08-18' }
+
+/** Enough context for the rail to draw the next-open line and the bookability
+ *  key. The verdict maths itself is covered in bookability-render.test.tsx. */
+const bookCtx: BookabilityCtx = {
+  today: '2026-08-18',
+  prepLeadDays: 14,
+  orgSlug: 'acme',
+  radar: { mode: 'degraded', conflictDates: [] },
+}
 
 // Same list the rail traps Tab against.
 const FOCUSABLE =
@@ -87,8 +97,12 @@ describe('CalendarLeftRail', () => {
 
   it('surfaces the Booked-$ KPI from rollup.bookedValue', () => {
     render(<CalendarLeftRail {...baseProps} rollup={rollup({ bookedValue: 12400 })} runway={runway} />)
-    expect(screen.getByText('Booked')).toBeInTheDocument()
+    // The five tiles are one tap away now (see the composition block below);
+    // the value itself is never hidden — it rides the collapsed summary too.
     expect(screen.getByText('$12,400')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /this week/i }))
+    expect(screen.getByText('Booked')).toBeInTheDocument()
+    expect(screen.getAllByText('$12,400').length).toBeGreaterThan(0)
   })
 
   it('renders the runway strip fed by buildRunway output', () => {
@@ -287,17 +301,16 @@ describe('CalendarLeftRail', () => {
       const section = screen.getByRole('region', { name: /unscheduled work/i })
       expect(within(section).getByText('Payette barn dance')).toBeInTheDocument()
       expect(within(section).getByText('Kuna market day')).toBeInTheDocument()
-      expect(within(screen.getByRole('button', { name: /unscheduled/i })).getByText('2')).toBeInTheDocument()
+      expect(within(screen.getByRole('button', { name: /needs a date/i })).getByText('2')).toBeInTheDocument()
     })
 
     /**
-     * COMPOSITION, and it is the whole reason this went where it did. The rail's
-     * top half is orientation (scope filter, legend, mini-month) and its bottom
-     * half is reporting (week KPIs, cash runway, ICS). This is neither — it is a
-     * queue the operator acts on, and the drag source a later increment drags
-     * onto the grid beside it. A drag source parked under two reporting panes on
-     * a scrolling 280px rail is unreachable, so the KPI band gave up the first
-     * slot below the mini-month.
+     * COMPOSITION, and it is the whole reason this went where it did. Zone 1 is
+     * "which day" (scope filter + mini-month + next-open); zones 3–5 are
+     * reporting and reference. This is neither — it is a queue the operator
+     * acts on, and the drag source a later increment drags onto the grid beside
+     * it. A drag source parked under three reporting panes on a scrolling 280px
+     * rail is unreachable, so it sits second, directly under the date zone.
      */
     it('sits below the mini-month and ABOVE the week KPIs', () => {
       render(<CalendarLeftRail {...baseProps} rollup={rollup()} runway={runway} unscheduled={unscheduled} />)
@@ -337,8 +350,240 @@ describe('CalendarLeftRail', () => {
       expect(Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE))).toContain(rowLink)
       // …and collapsing it takes those stops back OUT of the trap rather than
       // leaving focusable anchors behind a display:none subtree.
-      fireEvent.click(within(panel).getByRole('button', { name: /unscheduled/i }))
+      fireEvent.click(within(panel).getByRole('button', { name: /needs a date/i }))
       expect(within(panel).queryByText('Payette barn dance')).not.toBeInTheDocument()
+    })
+  })
+
+  /**
+   * ───────────────────────────────────────────────────────────────────────────
+   * COMPOSITION — the rail's focal element.
+   *
+   * The whole-branch design review found seven sections in one scroll, each
+   * wearing the identical 11px/600/uppercase eyebrow "so it adds no fourth
+   * hierarchy level", and the sum with no hierarchy at all. These assert the
+   * fix STRUCTURALLY — which zones exist, in what order, which one is dominant,
+   * and that nothing which used to be visible became unreachable.
+   * ───────────────────────────────────────────────────────────────────────────
+   */
+  describe('composition', () => {
+    const unscheduled: UnscheduledRow[] = [
+      {
+        id: 'e1', title: 'Payette barn dance', kind: 'event', href: '/acme/payette/dashboard',
+        createdAt: '2026-08-01T00:00:00.000Z', committed: true, leadId: 'L1', value: 8000,
+        bookByDate: '2026-08-30',
+      },
+    ]
+    const loudRollup = rollup({
+      eventCount: 3, guestCount: 1650, bookedValue: 12400, dueAmount: 4200, blockerCount: 1,
+    })
+    const full = (
+      <CalendarLeftRail
+        {...baseProps}
+        rollup={loudRollup}
+        runway={runway}
+        unscheduled={unscheduled}
+        subscribeUrl="https://app.example/ics/acme/tok123"
+      />
+    )
+
+    const zones = () =>
+      Array.from(document.querySelectorAll<HTMLElement>('[data-rail-section]')).map((el) =>
+        el.getAttribute('data-rail-section')
+      )
+
+    it('is five zones, in the order the operator decides in', () => {
+      render(full)
+      // which day → what needs a day → this week → the money → the key.
+      // NOT the seven co-equal sections the review found.
+      expect(zones()).toEqual(['dates', 'unscheduled', 'week', 'runway', 'key'])
+    })
+
+    it('has exactly ONE focal element, and it is the queue', () => {
+      render(full)
+      const focal = document.querySelectorAll('[data-rail-focal]')
+      expect(focal).toHaveLength(1)
+      expect(focal[0].getAttribute('data-rail-section')).toBe('unscheduled')
+    })
+
+    it('makes the focal element the largest thing in the rail — tiles expanded and all', () => {
+      render(full)
+      fireEvent.click(screen.getByRole('button', { name: /this week/i }))
+      const panel = panelOf()
+      const value = panel.querySelector('[data-slot="rail-focal-value"]') as HTMLElement
+      expect(value).not.toBeNull()
+      // getAttribute, not .className — SVG nodes carry an SVGAnimatedString.
+      const sizes = Array.from(panel.querySelectorAll<Element>('[class]'))
+        .filter((el) => el !== value)
+        .flatMap((el) => Array.from((el.getAttribute('class') ?? '').matchAll(/text-\[(\d+)px\]/g)))
+        .map((m) => Number(m[1]))
+      // StatTile's own 20px value is the nearest rival, and it loses.
+      expect(Math.max(...sizes)).toBeLessThan(26)
+      expect(value.className).toMatch(/text-\[26px\]/)
+    })
+
+    it('gives the focal element the rail’s only bordered container', () => {
+      render(full)
+      const all = Array.from(document.querySelectorAll<HTMLElement>('[data-rail-section]'))
+      const boxed = all.filter((el) => /(^|\s)border(\s|$)/.test(el.className))
+      expect(boxed).toHaveLength(1)
+      expect(boxed[0].getAttribute('data-rail-section')).toBe('unscheduled')
+      // every other zone groups with a hairline rule or with whitespace
+      for (const el of all) {
+        if (el.getAttribute('data-rail-section') === 'unscheduled') continue
+        expect(el.className).not.toMatch(/(^|\s)border(\s|$)/)
+      }
+    })
+
+    // ── nothing became unreachable ───────────────────────────────────────────
+
+    it('keeps the scope filter, mini-month and next-open chips in the ONE date zone', () => {
+      render(<CalendarLeftRail {...baseProps} rollup={rollup()} runway={runway} bookability={bookCtx} />)
+      const dates = document.querySelector('[data-rail-section="dates"]') as HTMLElement
+      expect(within(dates).getByRole('link', { name: /everything/i })).toBeInTheDocument()
+      expect(within(dates).getByRole('link', { name: /pipeline only/i })).toBeInTheDocument()
+      expect(within(dates).getByRole('grid', { name: /mini calendar/i })).toBeInTheDocument()
+      expect(dates.querySelector('[data-slot="rail-bookability"]')).not.toBeNull()
+      expect(within(dates).getByText(/next open/i)).toBeInTheDocument()
+    })
+
+    it('collapses the week tiles by default but never hides a week number', () => {
+      render(full)
+      // the five StatTiles are NOT painted…
+      expect(document.querySelectorAll('[data-slot="stat-tile"]')).toHaveLength(0)
+      // …yet every value is still on screen, in the summary line
+      const summary = document.querySelector('[data-slot="week-summary"]') as HTMLElement
+      expect(summary).toHaveTextContent('3 events')
+      expect(summary).toHaveTextContent('1,650 guests')
+      expect(summary).toHaveTextContent('$12,400 booked')
+      expect(summary).toHaveTextContent('$4,200 due')
+      expect(summary).toHaveTextContent('1 blocker')
+    })
+
+    it('escalates the two week ALARMS in the summary, so no alert hides behind a disclosure', () => {
+      render(
+        <CalendarLeftRail
+          {...baseProps}
+          rollup={rollup({ eventCount: 1, dueAmount: 4200, overdueDueAmount: 1500, blockerCount: 2 })}
+          runway={runway}
+        />
+      )
+      const summary = document.querySelector('[data-slot="week-summary"]') as HTMLElement
+      const overdue = within(summary).getByText('overdue', { exact: false, selector: 'span.font-semibold' })
+      expect(overdue.className).toMatch(/var\(--danger-fg\)/)
+      const blockers = within(summary).getByText('blockers', { exact: false, selector: 'span.font-semibold' })
+      expect(blockers.className).toMatch(/var\(--danger-fg\)/)
+      expect(summary).toHaveTextContent('$1,500 overdue')
+      expect(summary).toHaveTextContent('2 blockers')
+    })
+
+    it('reads "nothing booked" rather than four zeroes on a quiet week', () => {
+      render(<CalendarLeftRail {...baseProps} rollup={rollup()} runway={runway} />)
+      expect(screen.getByText('Nothing booked this week.')).toBeInTheDocument()
+    })
+
+    it('puts the five tiles one tap away, with their data intact', () => {
+      render(full)
+      const toggle = screen.getByRole('button', { name: /this week/i })
+      expect(toggle).toHaveAttribute('aria-expanded', 'false')
+      const panelId = toggle.getAttribute('aria-controls') as string
+      expect(document.getElementById(panelId)).not.toBeNull()
+      fireEvent.click(toggle)
+      expect(toggle).toHaveAttribute('aria-expanded', 'true')
+      expect(document.querySelectorAll('[data-slot="stat-tile"]')).toHaveLength(5)
+      for (const label of ['Events', 'Guests', 'Booked', 'Due this week', 'Blockers']) {
+        expect(screen.getByText(label)).toBeInTheDocument()
+      }
+    })
+
+    it('keeps BOTH mark legends always-on in the Key footer — no disclosure', () => {
+      render(<CalendarLeftRail {...baseProps} rollup={rollup()} runway={runway} bookability={bookCtx} />)
+      const key = document.querySelector('[data-rail-section="key"]') as HTMLElement
+      expect(within(key).getByText('Key')).toBeInTheDocument()
+      for (const kind of CALENDAR_KINDS) {
+        expect(within(key).getByText(CALENDAR_KIND_LABELS[kind])).toBeInTheDocument()
+      }
+      expect(within(key).getByText(/Tight — capacity is spoken for/)).toBeInTheDocument()
+      expect(within(key).getByText(/No mark — open to book/)).toBeInTheDocument()
+      // the shapes are still the accessible channel, not the colours
+      const shapes = Array.from(key.querySelectorAll('[data-slot="kind-dot"]')).map((n) =>
+        n.getAttribute('data-shape')
+      )
+      expect(new Set(shapes).size).toBe(CALENDAR_KINDS.length)
+    })
+
+    it('demotes ICS subscribe to a footer link that still reveals the feed URL', () => {
+      render(full)
+      const key = document.querySelector('[data-rail-section="key"]') as HTMLElement
+      const btn = within(key).getByRole('button', { name: /subscribe/i })
+      // …and it names the panel it controls, which the shipped version did not
+      const panelId = btn.getAttribute('aria-controls') as string
+      expect(document.getElementById(panelId)).not.toBeNull()
+      expect(btn).toHaveAttribute('aria-expanded', 'false')
+      fireEvent.click(btn)
+      expect(btn).toHaveAttribute('aria-expanded', 'true')
+      expect(screen.getByText('https://app.example/ics/acme/tok123')).toBeInTheDocument()
+    })
+  })
+
+  // ── the 280px drawer ───────────────────────────────────────────────────────
+  describe('the 280px mobile drawer', () => {
+    beforeEach(() => {
+      belowMd = true
+    })
+
+    it('gives the drawer a visible way OUT, pinned so a scroll cannot lose it', () => {
+      render(<CalendarLeftRail {...baseProps} rollup={rollup()} runway={runway} />)
+      fireEvent.click(screen.getByRole('button', { name: /open calendar panel/i }))
+      const close = screen.getByRole('button', { name: /close calendar panel/i })
+      // Escape needs a keyboard and the scrim scrolls away; this is the only
+      // affordance a thumb 600px down the drawer can actually reach.
+      expect(close.closest('.sticky')).not.toBeNull()
+      expect(close.className).toMatch(/size-11/)
+    })
+
+    it('closes on that button and hands focus back to the opener', () => {
+      render(<CalendarLeftRail {...baseProps} rollup={rollup()} runway={runway} />)
+      const trigger = screen.getByRole('button', { name: /open calendar panel/i })
+      fireEvent.click(trigger)
+      fireEvent.click(screen.getByRole('button', { name: /close calendar panel/i }))
+      expect(panelOf()).toHaveAttribute('inert')
+      expect(document.activeElement).toBe(trigger)
+    })
+
+    it('is materially shorter: no tile stack, no card stack, three runway rows', () => {
+      const many: RunwayJob[] = Array.from({ length: 8 }, (_, i) => ({
+        ...runway[0], eventId: `e${i}`, title: `Job ${i}`, date: `2026-09-0${i + 1}`,
+      }))
+      render(
+        <CalendarLeftRail {...baseProps} rollup={rollup({ eventCount: 2, bookedValue: 900 })} runway={many} />
+      )
+      // the two blocks that owned ~500px of the old rail
+      expect(document.querySelectorAll('[data-slot="stat-tile"]')).toHaveLength(0)
+      const list = screen.getByRole('list', { name: /runway/i })
+      expect(within(list).getAllByRole('listitem')).toHaveLength(3)
+      // …and the runway rows are no longer five bordered cards
+      for (const li of within(list).getAllByRole('listitem')) {
+        expect(li.className).not.toMatch(/\bborder\b/)
+      }
+    })
+
+    it('still traps Tab, still restores focus, with the new header in the panel', () => {
+      render(
+        <CalendarLeftRail
+          {...baseProps}
+          rollup={rollup()}
+          runway={runway}
+          subscribeUrl="https://app.example/ics/acme/tok123"
+        />
+      )
+      fireEvent.click(screen.getByRole('button', { name: /open calendar panel/i }))
+      const panel = panelOf()
+      const stops = Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE))
+      // the close button is the drawer's FIRST stop — the way out comes first
+      expect(stops[0]).toBe(screen.getByRole('button', { name: /close calendar panel/i }))
+      fireEvent.keyDown(panel, { key: 'Tab', shiftKey: true })
+      expect(document.activeElement).toBe(stops[stops.length - 1])
     })
   })
 

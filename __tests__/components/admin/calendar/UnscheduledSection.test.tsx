@@ -37,7 +37,14 @@ function rowEls(): HTMLElement[] {
 }
 
 function disclosure(): HTMLElement {
-  return screen.getByRole('button', { name: /unscheduled/i })
+  return screen.getByRole('button', { name: /needs a date/i })
+}
+
+/** The rail's focal element is asserted structurally, never eyeballed: the
+ *  deciding number lives on its own slot so a later refactor cannot quietly
+ *  demote it back into the 11px eyebrow every other section wears. */
+function focalValue(): HTMLElement | null {
+  return document.querySelector('[data-slot="rail-focal-value"]')
 }
 
 describe('UnscheduledSection', () => {
@@ -78,6 +85,66 @@ describe('UnscheduledSection', () => {
     expect(within(disclosure()).getByText('6')).toBeInTheDocument()
   })
 
+  // ── the focal element ──────────────────────────────────────────────────────
+  // The rail's composition review found seven sections sharing one 11px
+  // eyebrow: navigation, a queue and three reports all reading as siblings.
+  // This section is the one that got promoted, and these assert the promotion
+  // structurally rather than by looking at it.
+
+  it('renders the count as the DECIDING NUMBER, not a badge beside a label', () => {
+    render(<UnscheduledSection orgSlug="acme" rows={RANKED} today={TODAY} />)
+    const value = focalValue()
+    expect(value).not.toBeNull()
+    expect(value).toHaveTextContent('6')
+    // …at a size nothing else in the section comes near.
+    expect(value?.className).toMatch(/text-\[26px\]/)
+    const others = Array.from(
+      document.querySelectorAll<HTMLElement>('[data-rail-section] *:not([data-slot="rail-focal-value"])')
+    )
+    const sizes = others
+      .flatMap((el) => Array.from(el.className.matchAll(/text-\[(\d+)px\]/g)))
+      .map((m) => Number(m[1]))
+    expect(Math.max(0, ...sizes)).toBeLessThan(26)
+  })
+
+  it('marks itself as the rail focal element, carrying the rail’s one full border', () => {
+    render(<UnscheduledSection orgSlug="acme" rows={RANKED} today={TODAY} />)
+    const section = screen.getByRole('region', { name: /unscheduled work/i })
+    expect(section).toHaveAttribute('data-rail-focal', 'true')
+    // Not a hairline like every other zone — a real container. Delete this and
+    // the focal element stops being distinguishable from its neighbours.
+    expect(section.className).toMatch(/\bborder\b/)
+    expect(section.className).toMatch(/rounded-lg/)
+  })
+
+  it('interprets the count instead of leaving it bare', () => {
+    render(<UnscheduledSection orgSlug="acme" rows={RANKED} today={TODAY} />)
+    // nothing in RANKED is committed and nothing is inside the prep window
+    // except the past-due one, so the summary reports the deadline breach.
+    expect(within(disclosure()).getByText('1 past its book-by date')).toBeInTheDocument()
+  })
+
+  it('escalates to the sold-but-undated count, which outranks any countdown', () => {
+    const sold = row({ id: 's1', title: 'Alder wedding', kind: 'event', committed: true, bookByDate: '2026-12-01' })
+    render(<UnscheduledSection orgSlug="acme" rows={[sold, RANKED[0]]} today={TODAY} />)
+    expect(within(disclosure()).getByText('1 already sold — on no calendar')).toBeInTheDocument()
+    // …and NOT the deadline line it replaces
+    expect(within(disclosure()).queryByText(/past .* book-by date/)).not.toBeInTheDocument()
+  })
+
+  it('says so when nothing has slipped yet, rather than showing a bare number', () => {
+    render(<UnscheduledSection orgSlug="acme" rows={[RANKED[2]]} today={TODAY} />)
+    expect(within(disclosure()).getByText('None past their book-by date yet')).toBeInTheDocument()
+  })
+
+  it('keeps the deciding number visible while the rows are collapsed', () => {
+    render(<UnscheduledSection orgSlug="acme" rows={RANKED} today={TODAY} />)
+    fireEvent.click(disclosure())
+    expect(rowEls()).toHaveLength(0)
+    expect(focalValue()).toHaveTextContent('6')
+    expect(within(disclosure()).getByText('1 past its book-by date')).toBeInTheDocument()
+  })
+
   // ── the cap ────────────────────────────────────────────────────────────────
   it('caps the visible rows and offers a truthful "+N more" that goes somewhere real', () => {
     render(<UnscheduledSection orgSlug="acme" rows={RANKED} today={TODAY} />)
@@ -107,6 +174,7 @@ describe('UnscheduledSection', () => {
   it('does not badge a zero — an empty queue has no count to shout', () => {
     render(<UnscheduledSection orgSlug="acme" rows={[]} today={TODAY} />)
     expect(within(disclosure()).queryByText('0')).not.toBeInTheDocument()
+    expect(focalValue()).toBeNull()
   })
 
   // ── disclosure a11y ────────────────────────────────────────────────────────

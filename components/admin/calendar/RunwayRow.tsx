@@ -116,7 +116,7 @@ function Contributions({ job }: { job: RunwayJob }) {
           ) : null}
           <Link
             href={c.href}
-            className="flex min-h-11 flex-col justify-center rounded-md px-1.5 py-1 transition-colors hover:bg-muted focus-visible:bg-muted motion-reduce:transition-none"
+            className="flex min-h-11 flex-col justify-center rounded-md px-1.5 py-1 transition-colors hover:bg-sidebar-hover focus-visible:bg-sidebar-hover motion-reduce:transition-none"
           >
             <span className="flex items-baseline justify-between gap-2">
               <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-foreground">
@@ -172,7 +172,7 @@ function Ledger({ job }: { job: RunwayJob }) {
           </dd>
         </div>
       ) : null}
-      <div className="flex items-baseline justify-between gap-2 border-t border-border pt-1">
+      <div className="flex items-baseline justify-between gap-2 border-t border-sidebar-border pt-1">
         <dt className="font-semibold text-foreground">Running</dt>
         <dd
           className={cn(
@@ -200,9 +200,15 @@ export function RunwayRow({ job, orgSlug, dayHref }: RunwayRowProps) {
   const short = job.cumulative < 0
 
   return (
-    <li className="rounded-md border border-border bg-card">
+    // NOT a card. This used to be `rounded-md border border-border bg-card`, one
+    // of five identical boxes in a `space-y-1` column — the uniform card stack
+    // the composition rules forbid, and five borders competing with the single
+    // border that now marks the rail's focal element. <RunwayStrip/> divides the
+    // rows with hairlines instead; the shared left edge and the rules do the
+    // grouping Gestalt needs at a fraction of the ink.
+    <li className="py-1">
       {/* The title goes to the job's day; the money below goes to the money. */}
-      <div className="flex items-baseline justify-between gap-2 px-2.5 pt-2">
+      <div className="flex items-baseline justify-between gap-2 px-1 pt-0.5">
         <Link
           href={dayHref}
           className="min-w-0 flex-1 truncate rounded-sm text-[13px] font-medium text-foreground hover:underline focus-visible:underline"
@@ -221,7 +227,7 @@ export function RunwayRow({ job, orgSlug, dayHref }: RunwayRowProps) {
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
         aria-controls={panelId}
-        className="flex min-h-11 w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left transition-colors hover:bg-muted focus-visible:bg-muted motion-reduce:transition-none"
+        className="flex min-h-11 w-full items-center gap-2 rounded-md px-1 py-1 text-left transition-colors hover:bg-sidebar-hover focus-visible:bg-sidebar-hover motion-reduce:transition-none"
       >
         <span className="min-w-0 flex-1">
           <span className="sr-only">{job.title}: </span>
@@ -253,14 +259,14 @@ export function RunwayRow({ job, orgSlug, dayHref }: RunwayRowProps) {
       {(job.billing === 'uninvoiced' || job.billing === 'draft') && job.leadId ? (
         <Link
           href={`/${orgSlug}/leads/${job.leadId}/invoices`}
-          className="mx-2.5 mb-1.5 flex min-h-11 items-center rounded-md border border-[var(--warn-border)] bg-[var(--warn-bg)] px-2 text-[11px] font-semibold text-[var(--warn-fg)] transition-colors hover:brightness-95 motion-reduce:transition-none"
+          className="mx-1 mb-1 flex min-h-11 items-center rounded-md border border-[var(--warn-border)] bg-[var(--warn-bg)] px-2 text-[11px] font-semibold text-[var(--warn-fg)] transition-colors hover:brightness-95 motion-reduce:transition-none"
         >
           {job.billing === 'draft' ? 'Send the invoice' : 'Bill this job'} &rarr;
         </Link>
       ) : null}
 
       {open ? (
-        <div id={panelId} className="space-y-2 border-t border-border px-2.5 py-2">
+        <div id={panelId} className="space-y-2 border-t border-sidebar-border px-1 py-2">
           {job.contributions.length > 0 ? (
             <div>
               <p className="px-1 pb-1 text-[10px] font-semibold uppercase tracking-[.05em] text-muted-foreground">

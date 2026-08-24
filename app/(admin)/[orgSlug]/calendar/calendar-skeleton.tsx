@@ -122,9 +122,19 @@ export function SpineSkeleton() {
 }
 
 /**
- * Mirrors <CalendarLeftRail/>: the mobile bar below md, then the 280px column —
- * filter tabs + legend, mini-month, unscheduled work, this-week KPIs, runway,
- * subscribe.
+ * Mirrors <CalendarLeftRail/> after its composition pass: the mobile bar below
+ * md, then the 280px column in its FIVE zones —
+ *
+ *   1. which day   — filter tabs + mini-month + next-open, one box
+ *   2. needs a date — the focal card: the rail's only bordered container, and
+ *      the only placeholder here that draws a border and a big number
+ *   3. this week   — one collapsed summary line, not five tiles
+ *   4. cash runway — hairline-divided rows, not bordered cards
+ *   5. key & setup — the two mark legends + the ICS link, in the footer
+ *
+ * The zone heights and the focal card's weight are the point: a skeleton that
+ * paints five equal grey slabs would promise the shape the rail no longer has,
+ * and the layout would jump when the real rail arrives.
  */
 export function RailSkeleton() {
   return (
@@ -137,43 +147,52 @@ export function RailSkeleton() {
         className="flex h-full w-[280px] shrink-0 flex-col overflow-hidden bg-sidebar max-md:hidden md:border-r md:border-sidebar-border"
         data-slot="rail-skeleton"
       >
-        <div className="space-y-3 border-b border-sidebar-border px-4 py-3">
-          <Skeleton className="h-7 w-full rounded-lg" />
-          <div className="grid grid-cols-2 gap-x-2 gap-y-1">
-            {[0, 1, 2, 3, 4, 5, 6].map((k) => (
-              <Skeleton key={k} className="h-3 w-full" />
-            ))}
-          </div>
-        </div>
+        {/* 1 · which day: filter tabs, month header, the 7-wide grid, next-open. */}
         <div className="space-y-2 border-b border-sidebar-border px-4 py-3">
+          <Skeleton className="h-7 w-full rounded-lg" />
           <Skeleton className="h-3.5 w-28" />
           <div className="grid grid-cols-7 gap-0.5">
             {Array.from({ length: 35 }, (_, i) => (
               <Skeleton key={i} className="h-6 rounded-md" />
             ))}
           </div>
-        </div>
-        {/* Unscheduled: eyebrow + count, then up to MAX_ROWS two-line rows. */}
-        <div className="space-y-1.5 border-b border-sidebar-border px-4 py-3">
-          <div className="flex items-center justify-between">
-            <Skeleton className="h-2.5 w-24" />
-            <Skeleton className="h-3.5 w-5 rounded-full" />
+          <div className="flex items-center gap-1.5">
+            <Skeleton className="h-3 w-20" />
+            <Skeleton className="h-5 w-9 rounded-md" />
+            <Skeleton className="h-5 w-9 rounded-md" />
           </div>
+        </div>
+        {/* 2 · the focal card: heading, the 26px count, its summary, four rows. */}
+        <div className="mx-3 my-3 space-y-1.5 rounded-lg border border-sidebar-border bg-card px-2.5 py-2 shadow-xs">
+          <Skeleton className="h-3.5 w-24" />
+          <Skeleton className="h-6 w-32" />
+          <Skeleton className="h-3 w-36" />
           {[0, 1, 2].map((r) => (
             <Skeleton key={r} className="h-9 w-full rounded-md" />
           ))}
         </div>
-        <div className="space-y-2 border-b border-sidebar-border px-5 py-3">
+        {/* 3 · this week: eyebrow + one summary line, collapsed. */}
+        <div className="space-y-1.5 border-b border-sidebar-border px-5 py-2.5">
           <Skeleton className="h-2.5 w-20" />
+          <Skeleton className="h-3 w-full" />
+        </div>
+        {/* 4 · cash runway: eyebrow + verdict, then hairline rows. */}
+        <div className="space-y-1.5 px-4 py-3">
+          <Skeleton className="h-2.5 w-24" />
+          <Skeleton className="h-3 w-40" />
           {[0, 1, 2].map((r) => (
-            <Skeleton key={r} className="h-4 w-full" />
+            <Skeleton key={r} className="h-9 w-full" />
           ))}
         </div>
-        <div className="space-y-2 px-5 py-3">
-          <Skeleton className="h-2.5 w-24" />
-          {[0, 1].map((r) => (
-            <Skeleton key={r} className="h-8 w-full rounded-md" />
-          ))}
+        {/* 5 · key & setup. */}
+        <div className="mt-auto space-y-1.5 border-t border-sidebar-border px-4 py-3">
+          <Skeleton className="h-2.5 w-8" />
+          <div className="grid grid-cols-2 gap-x-2 gap-y-1">
+            {[0, 1, 2, 3, 4, 5, 6].map((k) => (
+              <Skeleton key={k} className="h-3 w-full" />
+            ))}
+          </div>
+          <Skeleton className="h-3 w-40" />
         </div>
       </div>
     </>
