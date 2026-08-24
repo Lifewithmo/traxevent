@@ -145,6 +145,32 @@ EventTrax pivot (neutralization, multi-brand, ops core). Detailed designs live i
   drop↔market pickup linkage → registration retirement R2. Manual browser
   walkthrough of the occasion flows still owed.
 
+- **Pipeline Capacity — Finish (resource-capacity increment 4, final)** (PR
+  #130, merged 2026-08-24, live) — closes the track with the four deferred
+  pieces, all additive and backstopped. **Per-event-type resource profiles**
+  are the horizontality win: an operator declares which kinds an `event_type`
+  consumes (0/1 each) in Settings → Resources & capacity, so a "Photo package"
+  needs no cart or room and drops off the forecast/schedule, while an "On-site
+  tasting" needs both. The keystone is one pure `leadRequirement(lead, org) →
+  { mobile, venue }` that **every** capacity engine now routes through
+  (`computeCapacity`/`computeClashes`/`rowOwnsClash`, `forecast`, `schedule`,
+  `unitAnnotations`); it defaults to the prior rule (mobile always, venue when
+  on-site), so **with no profiles configured the whole system is byte-for-byte
+  its Inc 1–3 behavior**, pinned by regression tests. `event_type_profiles`
+  (`{name, needsMobile, needsVenue}[]`) name-matches the free-text `event_type`
+  (trim + case-insensitive, no picklist migration). Also: a **server-side
+  capacity guard** on `setLeadStage` — modeled as a **return value**
+  (`StageChangeResult`), not a thrown error (Next sanitizes those across the
+  client boundary) — that blocks a transition *into* `closed_won` for a business
+  org with units unless overridden, replacing the Inc-2 client pre-confirm in
+  all four callers (the board was previously unguarded); a one-click **auto-
+  suggest a free unit** on the opportunity detail; and **click-to-assign from
+  the schedule**'s Unassigned lane. Verified: build clean, full suite green,
+  guard held (a session-resume had stranded the shell on the contended primary
+  checkout — untouched, every commit on-branch). Known pre-existing (tracked):
+  the schedule Unassigned lane's single-cell-per-date hides a *second* same-date
+  booking. Spec/plan: `superpowers/{specs,plans}/2026-08-19-pipeline-capacity-finish*`.
+
 - **Pipeline Capacity Outlook — resource-capacity increment 3** (PR #124,
   merged 2026-08-19, live) — the hero planning surface. A **serviceable-days
   calendar** (`Org.serviceable_days`: weekly pattern + full-year holiday/closure
