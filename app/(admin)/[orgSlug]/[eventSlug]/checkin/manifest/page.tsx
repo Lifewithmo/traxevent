@@ -38,9 +38,20 @@ export default async function CheckinManifestPage({
 
   const byMember = new Map<string, CustodyCheckinRecord>(checkins.map((c) => [c.member_id, c]))
 
+  // Server-rendered paper: the runtime's timezone is meaningless to whoever
+  // holds this sheet, and an unlabeled server clock face reads as local while
+  // being wrong for every non-UTC desk. Same story as the brief's confirm
+  // stamp (lib/event-spine.formatConfirmStamp): pin UTC and SAY so — the
+  // In/Out column headers carry the label. The on-screen check-in page shows
+  // the same records viewer-local, honestly, because it formats in the
+  // browser; the two clock faces differ without either one lying.
   function fmtTime(iso?: string): string {
     if (!iso) return ''
-    return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+    return new Date(iso).toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZone: 'UTC',
+    })
   }
 
   return (
@@ -67,7 +78,16 @@ export default async function CheckinManifestPage({
       `}</style>
 
       <h1>{event.name} — Attendance Manifest</h1>
-      <p className="meta">{activeDate} · {members.length} registered · printed {new Date().toLocaleDateString()}</p>
+      <p className="meta">
+        {activeDate} · {members.length} registered · printed{' '}
+        {new Date().toLocaleDateString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric',
+          timeZone: 'UTC',
+        })}{' '}
+        · check-in/out times in UTC
+      </p>
 
       <table>
         <thead>
@@ -77,8 +97,8 @@ export default async function CheckinManifestPage({
             <th>Allergies / medical</th>
             <th>Emergency contact</th>
             <th>Status</th>
-            <th>In</th>
-            <th>Out</th>
+            <th>In (UTC)</th>
+            <th>Out (UTC)</th>
             <th>Picked up by</th>
           </tr>
         </thead>
