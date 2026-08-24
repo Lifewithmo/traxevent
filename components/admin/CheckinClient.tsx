@@ -10,7 +10,7 @@
 // an ~8s undo the server verifies (still the latest action?) and reverses from
 // its own history — the client only ever sends an operation reference.
 
-import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -99,7 +99,12 @@ function undoChangesOf(records: CustodyCheckinRecord[]): CheckinUndoChange[] {
   })
 }
 
-function fmtTime(iso?: string): string {
+const emptySubscribe = () => () => {}
+
+/** Viewer-local clock face for an ISO instant ('8:38 AM'). Only true when the
+ *  formatting happens in the BROWSER — this component SSRs too, so every
+ *  render site gates it behind the `hydrated` flag below. Exported for tests. */
+export function fmtTime(iso?: string): string {
   if (!iso) return ''
   return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
 }
@@ -135,6 +140,22 @@ export function CheckinClient({
   const [guardianName, setGuardianName] = useState('')
   const [guardianPick, setGuardianPick] = useState<string | null>(null)
   const [includeSiblings, setIncludeSiblings] = useState(false)
+
+  // Hydration gate for the in/out time chips: true only once React runs in
+  // the browser. fmtTime formats an ISO instant into the VIEWER's timezone,
+  // which only the browser knows — server-rendering it baked the SERVER's
+  // clock face into the HTML ('2:38 PM' UTC vs the viewer's '8:38 AM'), the
+  // hydration pass produced different text, and React aborted with error
+  // #418, leaving every button on the page dead. Same null-server-snapshot
+  // pattern as RunSheetClient: server pass and hydration pass both render the
+  // placeholder, then the first client render swaps in the local time — no
+  // mismatch, so no suppressHydrationWarning (which would KEEP the stale SSR
+  // text, not fix it — see RunSheetClient's confirmStamp note).
+  const hydrated = useSyncExternalStore(
+    emptySubscribe,
+    () => true,
+    () => false
+  )
 
   // Keeps the dialog copy stable while the close animation plays.
   const lastIntent = useRef(checkoutIntent)
@@ -454,11 +475,11 @@ export function CheckinClient({
               </StatusPill>
             )}
             {status === 'in' && (
-              <StatusPill tone="confirmed">In {fmtTime(record?.checked_in_at)}</StatusPill>
+              <StatusPill tone="confirmed">In {hydrated ? fmtTime(record?.checked_in_at) : '…'}</StatusPill>
             )}
             {status === 'out' && (
               <StatusPill tone="neutral">
-                Out {fmtTime(record?.checked_out_at)}
+                Out {hydrated ? fmtTime(record?.checked_out_at) : '…'}
                 {record?.guardian_pickup_name ? ` · ${record.guardian_pickup_name}` : ''}
               </StatusPill>
             )}
@@ -526,6 +547,7 @@ export function CheckinClient({
         <Button
           variant="ghost"
           size="sm"
+          nativeButton={false}
           render={
             <a
               href={`/${orgSlug}/${eventSlug}/checkin/manifest?date=${date}`}
