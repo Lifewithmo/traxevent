@@ -42,9 +42,9 @@ const BUILT_IN_BRANDS: Brand[] = [
     industryPackId: 'coffee-cart',
     theme: { accent: '#78350f' },
     marketing: {
-      headline: 'Run your coffee cart like a pro.',
+      headline: 'Your store. Your customers. Every dollar.',
       subhead:
-        'Booking, menus, shopping lists, and event-day checklists for mobile beverage businesses.',
+        'Sell your weekly drops online with zero per-order fees — and run the whole business from one place.',
       cta: 'Start free',
     },
   },
