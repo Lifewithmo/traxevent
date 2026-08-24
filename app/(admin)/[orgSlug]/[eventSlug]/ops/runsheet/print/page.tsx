@@ -14,14 +14,26 @@ export const dynamic = 'force-dynamic'
 // layout's [data-event-main] div) — no pass-through layout needed.
 
 import { headers } from 'next/headers'
+import { adminDb } from '@/lib/firebase-admin'
 import { requireEventPage } from '@/lib/auth/guards'
 import { getOpsPlan } from '@/actions/event-ops'
 import { listItineraryCore } from '@/lib/itinerary-data'
 import { formatTime, groupItineraryByDay } from '@/lib/itinerary'
 import { formatEventDateRange, parseDay } from '@/lib/event-ui'
 import { PrintButton } from '@/components/admin/ops/PrintButton'
-import { resolveAnchorTime, backPlanFromAnchor, BUFFER_ASSUMPTION_LABEL, RUN_SHEET_CHECKLIST_PHASES } from '../anchor'
-import type { OpsListItem } from '@/lib/types'
+import { encodeQr, qrSvgPath, qrViewBox, type QrCode } from '@/lib/qr'
+import { resolveAnchorTime, backPlanFromAnchor, bufferAssumptionLabel, RUN_SHEET_CHECKLIST_PHASES } from '../anchor'
+import type { OpsListItem, Org } from '@/lib/types'
+
+/** Printed→live bridge (inc-2 S4.1): null when the URL exceeds the vendored
+ *  encoder's range — the plain URL beside it is the fallback, never a broken code. */
+function tryEncodeQr(url: string): QrCode | null {
+  try {
+    return encodeQr(url)
+  } catch {
+    return null
+  }
+}
 
 function listSummary(name: string, items: OpsListItem[]): string {
   const checked = items.filter((i) => i.checked).length
@@ -35,10 +47,15 @@ export default async function RunSheetPrintPage({
 }) {
   const { orgSlug, eventSlug } = await params
   const { orgId, eventId, event } = await requireEventPage(orgSlug, eventSlug, 'ops')
-  const [plan, itineraryItems, headerList] = await Promise.all([
+  const [plan, itineraryItems, headerList, buffers] = await Promise.all([
     getOpsPlan(orgId, eventId),
     listItineraryCore(orgId, eventId),
     headers(),
+    // Org back-plan buffers (inc-2 S4.3); soft-failing — constants remain the fallback.
+    adminDb.collection('orgs').doc(orgId).get().then(
+      (snap) => (snap.data() as Org | undefined)?.ops_buffers,
+      () => undefined,
+    ),
   ])
 
   const itinerary = groupItineraryByDay(itineraryItems)
@@ -47,7 +64,7 @@ export default async function RunSheetPrintPage({
     hoursStart: event.hours?.start,
     itinerary,
   })
-  const backPlan = anchor ? backPlanFromAnchor(anchor.hhmm) : null
+  const backPlan = anchor ? backPlanFromAnchor(anchor.hhmm, buffers) : null
 
   const startDay = parseDay(event.event_start)
   const singleDay = !event.event_end || event.event_end === event.event_start
@@ -69,6 +86,8 @@ export default async function RunSheetPrintPage({
   const proto = headerList.get('x-forwarded-proto') ?? 'https'
   const livePath = `/${orgSlug}/${eventSlug}/ops/runsheet`
   const liveUrl = host ? `${proto}://${host}${livePath}` : livePath
+  // QR only for a full URL — a bare path scans into nothing useful.
+  const qr = host ? tryEncodeQr(liveUrl) : null
 
   return (
     <>
@@ -102,7 +121,7 @@ export default async function RunSheetPrintPage({
           <p className="mt-1 text-sm">
             Pack by <span className="font-semibold">{backPlan.packBy}</span> · Leave by{' '}
             <span className="font-semibold">{backPlan.leaveBy}</span>{' '}
-            <span className="text-neutral-600">({BUFFER_ASSUMPTION_LABEL})</span>
+            <span className="text-neutral-600">({bufferAssumptionLabel(buffers)})</span>
           </p>
         )}
         {event.location && (
@@ -201,9 +220,17 @@ export default async function RunSheetPrintPage({
           )}
         </section>
 
-        <p className="mt-8 border-t border-neutral-200 pt-3 text-xs text-neutral-600">
-          Live sheet (this paper goes stale): <span className="font-medium">{liveUrl}</span>
-        </p>
+        <div className="mt-8 flex items-start gap-3 border-t border-neutral-200 pt-3">
+          {qr && (
+            // Explicit white/black (paper rule) — the QR must scan on any screen theme.
+            <svg viewBox={qrViewBox(qr)} className="size-20 shrink-0 bg-white" role="img" aria-label={`QR code for ${liveUrl}`} shapeRendering="crispEdges">
+              <path d={qrSvgPath(qr)} fill="#000" />
+            </svg>
+          )}
+          <p className="text-xs text-neutral-600">
+            Live sheet (this paper goes stale): <span className="font-medium">{liveUrl}</span>
+          </p>
+        </div>
       </div>
     </>
   )

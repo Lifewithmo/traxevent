@@ -1,12 +1,25 @@
 'use server'
 
+import { adminDb } from '@/lib/firebase-admin'
 import { assertEventPage, assertOrgAdmin } from '@/lib/auth/assert'
 import {
   getOpsPlanCore, instantiateOpsPlanCore, updateOpsRequirementsCore,
   toggleListItemCore, bulkSetListCheckedCore, recomputeOpsListsCore,
   completeChecklistStepCore, toggleDeadlineCore, acknowledgeReviewCore,
+  confirmReadyCore,
   type InstantiateOpsPlanInput,
 } from '@/lib/ops/event-ops'
+import { listItineraryCore } from '@/lib/itinerary-data'
+import { formatTime, groupItineraryByDay } from '@/lib/itinerary'
+import { formatEventDateRange } from '@/lib/event-ui'
+import {
+  resolveAnchorTime,
+  backPlanFromAnchor,
+  RUN_SHEET_CHECKLIST_PHASES,
+} from '@/app/(admin)/[orgSlug]/[eventSlug]/ops/runsheet/anchor'
+import { sendRunSheetEmail } from '@/lib/email'
+import { getVerifiedSendingDomain } from '@/actions/domains'
+import type { Event, Org } from '@/lib/types'
 import { createIssueCore, resolveIssueCore, listIssuesCore } from '@/lib/ops/issues'
 import {
   getCloseoutCore, saveActualsCore, closeoutSummaryCore, completeCloseoutCore,
@@ -96,6 +109,89 @@ export async function toggleDeadline(orgId: string, eventId: string, deadlineId:
 export async function acknowledgeReview(orgId: string, eventId: string): Promise<void> {
   const member = await assertEventPage(orgId, eventId, 'ops')
   return acknowledgeReviewCore(orgId, eventId, member.uid)
+}
+
+/** Operator attestation "this job is ready" (inc-2 P2). Returns the stamp so
+ *  the client can render the confirmed state without a re-read. */
+export async function confirmReady(orgId: string, eventId: string): Promise<{ at: string; by: string }> {
+  const member = await assertEventPage(orgId, eventId, 'ops')
+  return confirmReadyCore(orgId, eventId, member.uid)
+}
+
+/**
+ * Self-send v1 of the run sheet (inc-2 S3.3) — dead-zone insurance beyond the
+ * open tab. Recipient is ALWAYS the caller's own member email (no recipient UX
+ * yet; staff fan-out is a named deferral). The content is fully INLINE —
+ * timeline, contacts, site needs, load status, anchor + back-plan — because a
+ * link back to the admin surface hits the auth wall from a phone mail client;
+ * the live-sheet link is included but the email must stand alone.
+ *
+ * Sending IS the action (nudge.ts precedent): a rejected send throws to the
+ * operator — nothing here may report "sent" for mail that never left.
+ */
+export async function sendRunSheet(orgId: string, eventId: string): Promise<{ to: string }> {
+  const member = await assertEventPage(orgId, eventId, 'ops')
+  if (!member.email) throw new Error('Your member profile has no email address')
+
+  const [eventSnap, orgSnap, plan, itineraryItems] = await Promise.all([
+    adminDb.collection('orgs').doc(orgId).collection('events').doc(eventId).get(),
+    adminDb.collection('orgs').doc(orgId).get(),
+    getOpsPlanCore(orgId, eventId),
+    listItineraryCore(orgId, eventId),
+  ])
+  if (!eventSnap.exists) throw new Error('Event not found')
+  const event = eventSnap.data() as Event
+  const org = orgSnap.data() as Org | undefined
+
+  let fromDomain: string | undefined
+  try {
+    fromDomain = await getVerifiedSendingDomain(orgId)
+  } catch {
+    // domain lookup failure must not block the send — fall back to the default
+  }
+
+  const itinerary = groupItineraryByDay(itineraryItems)
+  const anchor = resolveAnchorTime({
+    serviceStart: plan?.requirements.service_start,
+    hoursStart: event.hours?.start,
+    itinerary,
+  })
+  const buffers = org?.ops_buffers
+  const loadoutItems = plan ? [...plan.shopping_list, ...plan.packing_list] : []
+  const checklists = (plan?.checklists ?? [])
+    .filter((c) => (RUN_SHEET_CHECKLIST_PHASES as readonly string[]).includes(c.phase))
+
+  await sendRunSheetEmail({
+    to: member.email,
+    eventName: event.name,
+    dateLabel: formatEventDateRange(event.event_start, event.event_end),
+    anchor: anchor ? { label: anchor.label, display: anchor.display } : null,
+    backPlan: anchor ? backPlanFromAnchor(anchor.hhmm, buffers) : null,
+    buffers,
+    venue: event.location ?? null,
+    contacts: event.key_contacts ?? [],
+    siteNeeds: plan?.requirements.site_needs ?? [],
+    // Pre-formatted for the email body (the email module renders, never derives).
+    itinerary: itinerary.map((day) => ({
+      day: formatEventDateRange(day.day),
+      items: day.items.map((i) => ({
+        start_time: formatTime(i.start_time),
+        title: i.title,
+        ...(i.location ? { location: i.location } : {}),
+      })),
+    })),
+    checklists: checklists.map((c) => ({
+      name: c.name,
+      done: c.steps.filter((s) => s.done).length,
+      total: c.steps.length,
+    })),
+    loadout: plan ? { checked: loadoutItems.filter((i) => i.checked).length, total: loadoutItems.length } : null,
+    orgSlug: org?.slug ?? '',
+    eventSlug: event.slug,
+    fromDisplayName: org?.branding?.display_name ?? org?.name,
+    fromDomain,
+  })
+  return { to: member.email }
 }
 
 export async function listIssues(orgId: string, eventId: string): Promise<OpsIssue[]> {

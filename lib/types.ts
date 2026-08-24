@@ -46,6 +46,12 @@ export interface Org {
   // matched trimmed + case-insensitive against the free-text `lead.event_type`
   // (an overlay, not a picklist migration). See lib/capacity/requirement.ts.
   event_type_profiles?: Array<{ name: string; needsMobile: boolean; needsVenue: boolean }>
+  // Org-default pack/drive buffers behind the back-planned "Pack by / Leave by"
+  // chips. Absent (either field) ⇒ the lib/event-ui constants. Migration-free.
+  ops_buffers?: {
+    pack_minutes?: number
+    drive_minutes?: number
+  }
   created_at: string
 }
 
@@ -130,6 +136,9 @@ export interface Event {
   year: number
   status: 'draft' | 'active' | 'archived'
   registration_type?: EventRegistrationType   // optional since occasions R1; roster paths fall back to 'individual'
+  // Guardian who-collected email on checkout. Absent ⇒ ON for guardian-mode
+  // (child-registration) events, OFF otherwise; explicit boolean overrides.
+  notify_family_on_pickup?: boolean
   event_type_id: string              // drives terminology + UI config
   features?: {                                // optional since occasions R1; never written on create anymore (zero readers)
     accommodations: boolean
@@ -1076,6 +1085,10 @@ export interface OpsPlan {
   packing_list: OpsListItem[]
   checklists: OpsChecklist[]
   needs_review: boolean      // set when a change re-derived artifacts; cleared by acknowledge
+  // Operator attestation "this job is ready" (evening-before ritual). CLEARED by any
+  // logged requirements change, any list recompute, and event date/hours edits —
+  // inherits needs_review's known package-edit staleness hole (documented there).
+  ready_confirmed?: { at: string; by: string }
   change_log: OpsChangeEntry[]
   industry_pack_id?: string  // pack the plan was derived under (for re-derivation)
   created_at: string
@@ -1086,8 +1099,11 @@ export interface CloseoutSummary {
   planned_consumable_cost: number
   actual_consumable_cost: number
   revenue: number            // package prices + recorded sales
-  planned_margin: number     // revenue - planned cost
-  actual_margin: number      // revenue - actual cost
+  planned_margin: number     // revenue - planned cost - fees
+  actual_margin: number      // revenue - actual cost - fees
+  // Fixed event fees subtracted from BOTH margins (known at plan time). This
+  // increment: booth_fee only; POS inc-2's counter extras are additive here.
+  fees?: number
   cost_gaps?: string[]  // resource names omitted from planned cost: cost known but no conversion path to its unit (spec §4.3)
 }
 

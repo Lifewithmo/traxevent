@@ -2,9 +2,11 @@ import { describe, it, expect } from 'vitest'
 import {
   resolveAnchorTime,
   backPlanFromAnchor,
+  bufferAssumptionLabel,
   PACK_MINUTES,
   DRIVE_MINUTES,
 } from '@/app/(admin)/[orgSlug]/[eventSlug]/ops/runsheet/anchor'
+import { bufferAssumptionLabel as uiBufferAssumptionLabel } from '@/lib/event-ui'
 import type { ItineraryDay } from '@/lib/itinerary'
 
 const itinerary: ItineraryDay[] = [
@@ -109,5 +111,24 @@ describe('backPlanFromAnchor', () => {
 
   it('rejects malformed input', () => {
     expect(backPlanFromAnchor('3pm')).toBeNull()
+  })
+
+  // ── Org buffers (inc-2 S4.3): parameterized math, constants as fallback ────
+
+  it('back-plans from the org buffers when provided', () => {
+    // 3:00 PM − 20m drive = 2:40 PM leave; − 50m pack = 1:50 PM pack.
+    expect(backPlanFromAnchor('15:00', { pack_minutes: 50, drive_minutes: 20 }))
+      .toEqual({ packBy: '1:50 PM', leaveBy: '2:40 PM' })
+  })
+
+  it('keeps the constants for absent or non-positive buffer fields', () => {
+    expect(backPlanFromAnchor('15:00', {})).toEqual(backPlanFromAnchor('15:00'))
+    expect(backPlanFromAnchor('15:00', { pack_minutes: 0 })).toEqual(backPlanFromAnchor('15:00'))
+  })
+
+  it('re-exports the CANONICAL label so chips and caption cannot disagree', () => {
+    expect(bufferAssumptionLabel).toBe(uiBufferAssumptionLabel)
+    expect(bufferAssumptionLabel()).toBe(`assumes ${PACK_MINUTES}m pack · ${DRIVE_MINUTES}m drive`)
+    expect(bufferAssumptionLabel({ pack_minutes: 50, drive_minutes: 20 })).toBe('assumes 50m pack · 20m drive')
   })
 })

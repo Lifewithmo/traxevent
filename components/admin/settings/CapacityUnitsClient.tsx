@@ -1,6 +1,6 @@
 'use client'
 
-import { useId, useState } from 'react'
+import { useId, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -17,7 +17,9 @@ import {
   updateResourceLabels,
   updateEventTypeProfiles,
 } from '@/actions/capacity-config'
+import { updateOpsBuffers } from '@/actions/ops-buffers'
 import { kindLabel } from '@/lib/capacity/labels'
+import { PACK_MINUTES, DRIVE_MINUTES, MAX_BUFFER_MINUTES } from '@/lib/event-ui'
 import type { CapacityBlockout, CapacityUnit, CapacityUnitKind, Org } from '@/lib/types'
 
 interface CapacityUnitsClientProps {
@@ -29,6 +31,8 @@ interface CapacityUnitsClientProps {
   initialResourceLabels?: Org['resource_labels']
   /** The org's saved per-event-type resource profiles; absent ⇒ the default rule. */
   initialEventTypeProfiles?: Org['event_type_profiles']
+  /** The org's saved pack/drive buffers; absent per-field ⇒ the 45m/30m constants. */
+  initialOpsBuffers?: Org['ops_buffers']
   /** True for orgs below the business tier — render the upsell, not the editor. */
   locked?: boolean
 }
@@ -115,6 +119,7 @@ export function CapacityUnitsClient({
   initialServiceableDays,
   initialResourceLabels,
   initialEventTypeProfiles,
+  initialOpsBuffers,
   locked = false,
 }: CapacityUnitsClientProps) {
   const [units, setUnits] = useState<CapacityUnit[]>(initialUnits)
@@ -138,7 +143,16 @@ export function CapacityUnitsClient({
   const [pendingDelete, setPendingDelete] = useState<CapacityUnit | null>(null)
   const openHeadingId = useId()
 
-  if (locked) return <LockedPanel />
+  // Pack/drive buffers are org-level day-of timing (job briefs + run sheets),
+  // NOT part of the business-tier multi-resource feature — so the section stays
+  // reachable on the locked upsell page and in the no-units-yet state alike.
+  if (locked) {
+    return (
+      <LockedPanel>
+        <OpsBuffersSection orgId={orgId} initialBuffers={initialOpsBuffers} />
+      </LockedPanel>
+    )
+  }
 
   const mobileCount = units.filter((u) => u.kind === 'mobile' && u.active).length
   const venueCount = units.filter((u) => u.kind === 'venue' && u.active).length
@@ -594,6 +608,8 @@ export function CapacityUnitsClient({
         </>
       )}
 
+      <OpsBuffersSection orgId={orgId} initialBuffers={initialOpsBuffers} />
+
       <ConfirmDialog
         open={pendingDelete !== null}
         onOpenChange={(open) => { if (!open) setPendingDelete(null) }}
@@ -608,6 +624,149 @@ export function CapacityUnitsClient({
         }}
       />
     </div>
+  )
+}
+
+// --- Day-of timing (org-default pack/drive buffers) ---------------------------
+
+/** '' ⇒ cleared (fall back to the constant); else a whole 1..MAX_BUFFER_MINUTES minutes.
+ *  The ceiling is the SHARED lib/event-ui constant the server action enforces —
+ *  never a local literal, so the pre-flight check cannot drift from the action. */
+function parseBufferField(raw: string): { ok: true; value?: number } | { ok: false } {
+  const trimmed = raw.trim()
+  if (!trimmed) return { ok: true }
+  const n = Number(trimmed)
+  if (!Number.isInteger(n) || n <= 0 || n > MAX_BUFFER_MINUTES) return { ok: false }
+  return { ok: true, value: n }
+}
+
+/**
+ * The two org-level buffer inputs behind the back-planned "Pack by / Leave by"
+ * chips. Self-contained (own saving/error state) so it renders identically on
+ * the locked upsell page, the empty state, and the full editor. Commits on
+ * blur/Enter like the unit-name inputs; Escape reverts. The action replaces
+ * the whole `ops_buffers` scalar, so both fields are always sent together and
+ * a blank field clears its key (⇒ the 45m/30m constants).
+ */
+function OpsBuffersSection({
+  orgId,
+  initialBuffers,
+}: {
+  orgId: string
+  initialBuffers?: Org['ops_buffers']
+}) {
+  const [savedBuffers, setSavedBuffers] = useState<NonNullable<Org['ops_buffers']>>({
+    ...(initialBuffers?.pack_minutes !== undefined ? { pack_minutes: initialBuffers.pack_minutes } : {}),
+    ...(initialBuffers?.drive_minutes !== undefined ? { drive_minutes: initialBuffers.drive_minutes } : {}),
+  })
+  const [pack, setPack] = useState(
+    initialBuffers?.pack_minutes !== undefined ? String(initialBuffers.pack_minutes) : '',
+  )
+  const [drive, setDrive] = useState(
+    initialBuffers?.drive_minutes !== undefined ? String(initialBuffers.drive_minutes) : '',
+  )
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const uid = useId()
+
+  function revert() {
+    setPack(savedBuffers.pack_minutes !== undefined ? String(savedBuffers.pack_minutes) : '')
+    setDrive(savedBuffers.drive_minutes !== undefined ? String(savedBuffers.drive_minutes) : '')
+    setError(null)
+  }
+
+  async function commit() {
+    const packParsed = parseBufferField(pack)
+    const driveParsed = parseBufferField(drive)
+    if (!packParsed.ok || !driveParsed.ok) {
+      setError(`Minutes must be a whole number between 1 and ${MAX_BUFFER_MINUTES} — or blank for the default.`)
+      return
+    }
+    const next: NonNullable<Org['ops_buffers']> = {
+      ...(packParsed.value !== undefined ? { pack_minutes: packParsed.value } : {}),
+      ...(driveParsed.value !== undefined ? { drive_minutes: driveParsed.value } : {}),
+    }
+    if (
+      next.pack_minutes === savedBuffers.pack_minutes &&
+      next.drive_minutes === savedBuffers.drive_minutes
+    ) {
+      setError(null)
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      await updateOpsBuffers(orgId, next)
+      setSavedBuffers(next)
+    } catch (err: unknown) {
+      revert()
+      setError(err instanceof Error ? err.message : 'Something went wrong. Try again.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const fieldKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') { e.preventDefault(); (e.target as HTMLInputElement).blur() }
+    if (e.key === 'Escape') { e.preventDefault(); revert() }
+  }
+
+  return (
+    <section className="space-y-3" aria-labelledby={`${uid}-heading`}>
+      <div className="space-y-1">
+        <h2
+          id={`${uid}-heading`}
+          className="text-sm font-semibold uppercase tracking-[.04em] text-muted-foreground"
+        >
+          Day-of timing
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          Behind &quot;Pack by / Leave by&quot; on job briefs and run sheets — leave blank for the{' '}
+          {PACK_MINUTES}m/{DRIVE_MINUTES}m defaults.
+        </p>
+      </div>
+
+      <div className="flex flex-wrap items-end gap-2">
+        <div className="space-y-1">
+          <Label htmlFor={`${uid}-pack`} className="text-xs">Pack time (minutes)</Label>
+          <Input
+            id={`${uid}-pack`}
+            type="number"
+            inputMode="numeric"
+            min={1}
+            max={MAX_BUFFER_MINUTES}
+            value={pack}
+            placeholder={String(PACK_MINUTES)}
+            disabled={saving}
+            className="max-w-40"
+            onChange={(e) => setPack(e.target.value)}
+            onBlur={() => void commit()}
+            onKeyDown={fieldKeyDown}
+          />
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor={`${uid}-drive`} className="text-xs">Drive time (minutes)</Label>
+          <Input
+            id={`${uid}-drive`}
+            type="number"
+            inputMode="numeric"
+            min={1}
+            max={MAX_BUFFER_MINUTES}
+            value={drive}
+            placeholder={String(DRIVE_MINUTES)}
+            disabled={saving}
+            className="max-w-40"
+            onChange={(e) => setDrive(e.target.value)}
+            onBlur={() => void commit()}
+            onKeyDown={fieldKeyDown}
+          />
+        </div>
+      </div>
+
+      <div aria-live="polite" aria-atomic="true">
+        {error && <p className="text-xs text-destructive">{error}</p>}
+      </div>
+    </section>
   )
 }
 
@@ -1120,7 +1279,7 @@ function BlockoutForm({
   )
 }
 
-function LockedPanel() {
+function LockedPanel({ children }: { children?: ReactNode }) {
   return (
     <div className="max-w-2xl space-y-6 p-6">
       <header className="space-y-1">
@@ -1151,6 +1310,8 @@ function LockedPanel() {
           </ul>
         </CardContent>
       </Card>
+
+      {children}
     </div>
   )
 }

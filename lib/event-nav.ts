@@ -15,10 +15,11 @@ export interface EventNavItem {
 const ROSTER_KEYS = new Set(['families', 'assignments', 'checkin'])
 
 // Market days get an explicit, minimal nav — none of the client-job pages
-// (Ops, roster, etc.) apply. Register + Closeout join this list with the
-// counter-register increment.
+// (Ops, roster, etc.) apply. Register joins this list with the
+// counter-register increment (POS spec).
 const MARKET_DAY_NAV: EventNavItem[] = [
   { key: 'dashboard', label: 'Overview' },
+  { key: 'closeout', label: 'Closeout' },
   { key: 'settings', label: 'Settings' },
 ]
 
@@ -27,6 +28,11 @@ export interface BuildEventNavInput {
   terminology: Terminology
   allowedPages?: EventPage[]
   enabledModules?: ModuleId[]
+  /** Viewer is owner/admin. Gates ONLY the market-day Closeout row — closing
+   *  out the day is an owner/admin task and the page bounces everyone else,
+   *  so staff never see a tab that can only dead-end. Dashboard and settings
+   *  stay unfiltered, and page grants stay ignored for market days. */
+  isAdmin?: boolean
 }
 
 /**
@@ -37,8 +43,10 @@ export interface BuildEventNavInput {
  * 'attendee-roster' module; labels driven by terminology.
  * Teams and Budget are deliberately absent — no routes exist for them.
  */
-export function buildEventNav({ kind, terminology, allowedPages, enabledModules }: BuildEventNavInput): EventNavItem[] {
-  if (kind === 'market_day') return MARKET_DAY_NAV
+export function buildEventNav({ kind, terminology, allowedPages, enabledModules, isAdmin }: BuildEventNavInput): EventNavItem[] {
+  // Market days still bypass page grants; only the Closeout row is role-gated
+  // (the page's own owner/admin guard stays — deep URLs still bounce).
+  if (kind === 'market_day') return MARKET_DAY_NAV.filter((n) => n.key !== 'closeout' || isAdmin)
 
   const has = (m: ModuleId) => !enabledModules || enabledModules.includes(m)
 

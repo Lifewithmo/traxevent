@@ -72,7 +72,9 @@ export function ReadinessHorizonRail({
                 </div>
                 <div className="mt-1.5 flex flex-wrap gap-1.5">
                   {row.signals.map((s) => (
-                    <StatusPill key={s.text} tone={s.tone}>
+                    // 'ok' (inc-2 confirm-ready) renders in the green
+                    // confirmed pill skin; alert/pending map 1:1.
+                    <StatusPill key={s.text} tone={s.tone === 'ok' ? 'confirmed' : s.tone}>
                       {s.text}
                     </StatusPill>
                   ))}

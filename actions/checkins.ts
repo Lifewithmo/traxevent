@@ -2,8 +2,10 @@
 
 import { randomUUID } from 'crypto'
 import { adminDb } from '@/lib/firebase-admin'
-import type { CheckinRecord, EventFormAssignment, EventMember, Family, FamilyMember } from '@/lib/types'
+import type { CheckinRecord, Event, EventFormAssignment, EventMember, Family, FamilyMember, Org } from '@/lib/types'
 import { assertEventPage } from '@/lib/auth/assert'
+import { sendGuardianPickupNotice } from '@/lib/email'
+import { getVerifiedSendingDomain } from '@/actions/domains'
 
 function eventRef(orgId: string, eventId: string) {
   return adminDb.collection('orgs').doc(orgId).collection('events').doc(eventId)
@@ -256,6 +258,88 @@ export interface CheckOutOptions {
   unlistedGuardian?: boolean
 }
 
+/**
+ * Guardian who-collected email (inc-2 P3). Called POST-transaction and
+ * best-effort ONLY — NEVER inside the retrying transaction: Firestore retries
+ * the transaction closure on contention, and a send inside it would email a
+ * family two or three times for one pickup. A failed send never fails the
+ * checkout either — the custody record is already committed, and reporting
+ * failure for a checkout that exists would invite a duplicate retry.
+ *
+ * ONE email per family per checkout action: family batch checkouts pass every
+ * sibling's post-checkout record in a single call and the copy lists them all.
+ *
+ * Gate (P3): the explicit per-event toggle wins; absent, the default is ON
+ * only for guardian-mode (child-registration) events.
+ *
+ * Content contract (P3): child(ren) + who + when only — no medical flags, no
+ * balance. An unlisted guardian STILL sends, with distinct copy. No
+ * communication_log entry v1: that schema is blast-shaped (campaign sends),
+ * so a per-pickup 1:1 entry would pollute it — a named decision, not an
+ * oversight.
+ */
+async function notifyFamilyOfPickup(
+  orgId: string,
+  eventId: string,
+  records: CustodyCheckinRecord[],
+): Promise<void> {
+  if (records.length === 0) return
+
+  // Custody guard: ONE family per batch, ASSERTED — never assumed. The
+  // recipient below is records[0]'s family, so a batch spanning families
+  // (a buggy client, or a crafted server-action call passing mixed recordIds)
+  // would email family A a notice naming family B's children — a cross-family
+  // child-name disclosure in the product's highest-trust send. The custody
+  // records are already committed at this point (this runs post-transaction),
+  // so on a mixed batch we skip the send ENTIRELY and log; the checkout
+  // itself is unaffected. The log carries family ids only — no child names.
+  const familyId = records[0].family_id
+  if (records.some((r) => r.family_id !== familyId)) {
+    console.error('notifyFamilyOfPickup: batch spans multiple families — pickup notice skipped', {
+      orgId,
+      eventId,
+      familyIds: [...new Set(records.map((r) => r.family_id))],
+    })
+    return
+  }
+
+  const eventSnap = await eventRef(orgId, eventId).get()
+  if (!eventSnap.exists) return
+  const event = eventSnap.data() as Event
+  const enabled = event.notify_family_on_pickup ?? (event.registration_type === 'child')
+  if (!enabled) return
+
+  const familySnap = await eventRef(orgId, eventId).collection('families').doc(familyId).get()
+  if (!familySnap.exists) return
+  const family = familySnap.data() as Family
+  if (!family.email) return
+
+  const orgSnap = await adminDb.collection('orgs').doc(orgId).get()
+  const org = orgSnap.data() as Org | undefined
+  let fromDomain: string | undefined
+  try {
+    fromDomain = await getVerifiedSendingDomain(orgId)
+  } catch {
+    // domain lookup failure must not block the notice — platform default from
+  }
+
+  // The event's verified from/reply pattern (registration-email precedent):
+  // reply_to_email is the correction path the copy names.
+  await sendGuardianPickupNotice({
+    to: family.email,
+    familyFirstName: family.first_name || family.last_name || 'there',
+    childNames: records.map((r) => r.member_name),
+    ...(records[0].guardian_pickup_name ? { guardianName: records[0].guardian_pickup_name } : {}),
+    ...(records[0].guardian_flag === 'unlisted_guardian' ? { unlistedGuardian: true } : {}),
+    checkedOutAt: records[0].checked_out_at ?? new Date().toISOString(),
+    eventName: event.name,
+    orgName: org?.branding?.display_name ?? org?.name ?? 'the organizer',
+    ...(event.from_display_name ? { fromDisplayName: event.from_display_name } : {}),
+    ...(event.reply_to_email ? { replyTo: event.reply_to_email } : {}),
+    ...(fromDomain ? { fromDomain } : {}),
+  })
+}
+
 export async function checkOutMember(
   orgId: string,
   eventId: string,
@@ -266,14 +350,23 @@ export async function checkOutMember(
   await assertEventPage(orgId, eventId, 'checkin')
   const ref = checkinsRef(orgId, eventId).doc(recordId)
   const now = new Date().toISOString()
-  return adminDb.runTransaction(async (tx) => {
+  const record = await adminDb.runTransaction(async (tx) => {
     const snap = await tx.get(ref)
     if (!snap.exists) throw new Error('Check-in record not found')
     const prior = snap.data() as CustodyCheckinRecord
     const update = buildCheckOutUpdate(prior, now, guardianPickupName, options)
     tx.update(ref, update)
-    return { ...prior, ...update }
+    return { ...prior, ...update } as CustodyCheckinRecord
   })
+  // POST-transaction by contract (P3): the transaction above retries on
+  // contention — a send inside it would double-email one pickup. Best-effort:
+  // a failed send never fails the committed checkout.
+  try {
+    await notifyFamilyOfPickup(orgId, eventId, [record])
+  } catch (err) {
+    console.error('sendGuardianPickupNotice failed', { orgId, eventId, recordId }, err)
+  }
+  return record
 }
 
 function buildCheckOutUpdate(
@@ -354,7 +447,7 @@ export async function checkOutFamily(
   await assertEventPage(orgId, eventId, 'checkin')
   const now = new Date().toISOString()
   const refs = input.recordIds.map((id) => checkinsRef(orgId, eventId).doc(id))
-  return adminDb.runTransaction(async (tx) => {
+  const records = await adminDb.runTransaction(async (tx) => {
     const snaps = await Promise.all(refs.map((r) => tx.get(r)))
     const missing = snaps.findIndex((s) => !s.exists)
     if (missing >= 0) throw new Error('Check-in record not found')
@@ -368,6 +461,14 @@ export async function checkOutFamily(
       return { ...prior, ...update } as CustodyCheckinRecord
     })
   })
+  // POST-transaction by contract (P3), and ONE email for the whole family
+  // batch — every sibling in a single notice, never N sends.
+  try {
+    await notifyFamilyOfPickup(orgId, eventId, records)
+  } catch (err) {
+    console.error('sendGuardianPickupNotice failed', { orgId, eventId, recordIds: input.recordIds }, err)
+  }
+  return records
 }
 
 export interface CheckinUndoChange {

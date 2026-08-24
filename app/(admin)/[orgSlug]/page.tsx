@@ -9,9 +9,10 @@ import {
   selectReadinessHorizon,
   type HorizonPlanEntry,
 } from '@/lib/ops/readiness-horizon'
+import { RUN_DAYS, shoppingRunStats, type ShoppingRunPair } from '@/lib/ops/shopping-run'
 import { kindOf } from '@/lib/occasions/kind'
 import { EVENT_STATUS_TONE, EVENT_STATUS_LABEL, formatEventDateRange } from '@/lib/event-ui'
-import { todayYmd } from '@/lib/opportunity-detail'
+import { addDays, todayYmd } from '@/lib/opportunity-detail'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { KpiBand } from '@/components/ui/kpi-band'
@@ -85,6 +86,20 @@ export default async function OrgHomePage({
     ...horizonScope(events, opsVisible, today),
     unchecked: horizonPlans.filter((p) => p === 'unknown').length,
   }
+  // ── Shopping-run chip (S2) — zero extra reads: pure math over the horizon
+  // plans already fetched above, pinned to the run's default window. Parity
+  // contract (documented on selectShoppingRunWindow): the horizon's capped
+  // window restricted to ≤ RUN_DAYS is exactly the run page's default window
+  // for this member, and shoppingRunStats counts merge-independent list
+  // items — so this chip's number equals the run page's first render.
+  const runWindowEnd = addDays(today, RUN_DAYS)
+  const runStats = shoppingRunStats(
+    horizonEvents.flatMap((e, i): ShoppingRunPair[] => {
+      const p = horizonPlans[i]
+      if (e.event_start.slice(0, 10) > runWindowEnd || p === 'unknown' || p === null) return []
+      return [{ event: e, plan: p }]
+    })
+  )
   const upcoming = events.filter((e) => e.status !== 'archived' && e.event_start >= today)
   const nextStart = upcoming.length > 0
     ? upcoming.reduce((min, e) => (e.event_start < min ? e.event_start : min), upcoming[0].event_start)
@@ -111,10 +126,19 @@ export default async function OrgHomePage({
           href={`/${orgSlug}/${event.slug}/dashboard`}
           className="flex min-w-0 flex-1 items-center gap-3 after:absolute after:inset-0"
         >
-          <span className="min-w-0 flex-1 truncate text-sm font-medium">{event.name}</span>
+          {/* Phone-first flex priorities: the NAME is the row's identity, so
+              it owns the flexible slot but may never crush below a readable
+              stub — min-w-[8ch] (not min-w-0: at 375px the nowrap pill + meta
+              + year chip squeezed names to 'V…'/'Oa…'). Below sm the meta and
+              year chip yield entirely; a phone row reads name → pill → menu. */}
+          <span className="min-w-[8ch] flex-1 truncate text-sm font-medium">{event.name}</span>
           <StatusPill tone={EVENT_STATUS_TONE[event.status]}>{EVENT_STATUS_LABEL[event.status]}</StatusPill>
-          <span className="whitespace-nowrap text-xs text-muted-foreground">{meta}</span>
-          {showYear && <Badge variant="outline">{event.year}</Badge>}
+          <span className="text-xs whitespace-nowrap text-muted-foreground max-sm:hidden">{meta}</span>
+          {showYear && (
+            <Badge variant="outline" className="max-sm:hidden">
+              {event.year}
+            </Badge>
+          )}
         </Link>
         <DuplicateEventMenu orgId={orgId} orgSlug={orgSlug} sourceEventId={event.id} sourceName={event.name} />
       </div>
@@ -161,14 +185,29 @@ export default async function OrgHomePage({
       ) : (
         <>
           <div className="px-5 pt-4">
+            {/* The 'Client jobs' / 'Market days' census tiles are RETIRED
+                (spec 2026-08-23 P1): they repeated the header caption above
+                verbatim, and adding the run chip without subtracting would
+                fail the no-value-twice gate. KpiBand's grid is a fixed 4-up
+                (2-up below 1000px), so the band keeps exactly 4 tiles — the
+                freed slots go to status facts nothing else on the page
+                renders as counts. */}
             <KpiBand>
               <StatTile
                 label="Upcoming"
                 value={String(upcoming.length)}
                 note={nextStart ? formatEventDateRange(nextStart) : undefined}
               />
-              <StatTile label="Client jobs" value={String(clientJobs.length)} />
-              <StatTile label="Market days" value={String(marketDays.length)} />
+              <StatTile
+                label="Active"
+                value={String(events.filter((e) => e.status === 'active').length)}
+                note="confirmed on the books"
+              />
+              <StatTile
+                label="Drafts"
+                value={String(events.filter((e) => e.status === 'draft').length)}
+                note="not yet confirmed"
+              />
               <StatTile
                 label="Guests expected"
                 value={String(guestsExpected)}
@@ -183,7 +222,26 @@ export default async function OrgHomePage({
               (lg:grid-cols-[minmax(0,1fr)_320px], explicit col/row starts keep
               the DOM-first rail out of the 1fr column). */}
           <div className="grid items-start gap-x-6 gap-y-6 px-5 py-5 lg:grid-cols-[minmax(0,1fr)_320px]">
-            <aside className="lg:col-start-2 lg:row-start-1">
+            <aside className="space-y-3 lg:col-start-2 lg:row-start-1">
+              {/* Run chip — ADJACENT to the rail, not inside it (the rail
+                  component belongs to a concurrent task). Rendered only when
+                  the window holds jobs with shopping items: a run with
+                  nothing in it has nothing to open. */}
+              {runStats.jobs > 0 && (
+                <Link
+                  href={`/${orgSlug}/shopping-run`}
+                  className="block rounded-xl border border-border bg-card px-3 py-2.5 shadow-xs hover:bg-muted/50"
+                >
+                  <p className="text-sm font-medium">
+                    Shopping run:{' '}
+                    {runStats.unchecked > 0
+                      ? `${runStats.unchecked} item${runStats.unchecked === 1 ? '' : 's'} across ${runStats.jobs} job${runStats.jobs === 1 ? '' : 's'}`
+                      : `all ${runStats.total} item${runStats.total === 1 ? '' : 's'} bought`}
+                    {' →'}
+                  </p>
+                  <p className="text-xs text-muted-foreground">next {RUN_DAYS} days · one store trip</p>
+                </Link>
+              )}
               <ReadinessHorizonRail orgSlug={orgSlug} rows={horizon} scope={horizonRailScope} />
             </aside>
 

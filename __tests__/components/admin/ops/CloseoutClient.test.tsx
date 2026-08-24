@@ -172,3 +172,37 @@ describe('CloseoutClient delta chips', () => {
     expect(screen.queryByText('$1025.25')).not.toBeInTheDocument()
   })
 })
+
+// ——— Booth fee (spec 2026-08-23 S1.1, additive) ————————————————————————————
+// Saved-summary figures with a $35 booth fee joined server-side.
+const feeSummary = {
+  planned_consumable_cost: 20.625, actual_consumable_cost: 0,
+  revenue: 1050, planned_margin: 994.375, actual_margin: 1015, fees: 35,
+}
+
+describe('CloseoutClient booth fee', () => {
+  it('renders the fees line and the fee-adjusted margin tiles from the saved summary', () => {
+    render(<CloseoutClient {...base} summary={feeSummary} boothFee={35} />)
+    expect(screen.getByText('$35.00')).toBeInTheDocument()
+    expect(screen.getByText(/booth fee — subtracted from both margins/)).toBeInTheDocument()
+    expect(screen.getByText('$1015.00')).toBeInTheDocument() // actual margin already nets the fee
+    expect(screen.getByText('$994.38')).toBeInTheDocument()  // planned margin too
+  })
+
+  it('renders no fees line when the summary carries none (zero/absent fee unchanged)', () => {
+    render(<CloseoutClient {...base} />)
+    expect(screen.queryByText(/booth fee/)).not.toBeInTheDocument()
+  })
+
+  it('threads boothFee through the live recompute so live and saved figures agree', () => {
+    render(<CloseoutClient {...base} packages={packages} resources={resources} summary={feeSummary} boothFee={35} />)
+    fireEvent.change(screen.getByLabelText('Tips & on-site sales ($)'), { target: { value: '150' } })
+    fireEvent.change(screen.getByLabelText('Actual Espresso beans used'), { target: { value: '30' } })
+    // Live: revenue 1050+150 = 1200; actual cost 30 × $0.55 = $16.50, planned
+    // $20.625; fee $35 → actual margin $1148.50, planned margin $1144.38 —
+    // BOTH nets the fee.
+    expect(screen.getByText('$1148.50')).toBeInTheDocument()
+    expect(screen.getByText('$1144.38')).toBeInTheDocument()
+    expect(screen.getByText('$35.00')).toBeInTheDocument() // fees line stays on the live path
+  })
+})

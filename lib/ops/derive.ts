@@ -187,6 +187,10 @@ export interface CloseoutSummaryInput {
   guests: number
   actual_consumables: { resource_id: string; qty_used: number }[]
   sales: number
+  /** Fixed event fee known at plan time (booth fee) — subtracts from BOTH
+   *  planned and actual margin (spec 2026-08-23 S1; POS-spec §5 semantics).
+   *  Zero/absent leaves the summary byte-identical to the pre-fees shape. */
+  booth_fee?: number
 }
 
 /** Planned vs actual consumable cost and margins (spec §3.5). Labor cost is out of scope in v1.
@@ -219,12 +223,40 @@ export function computeCloseoutSummary(input: CloseoutSummaryInput): CloseoutSum
     actual += a.qty_used * (byId.get(a.resource_id)?.unit_cost ?? 0)
   }
   const revenue = input.packages.reduce((sum, p) => sum + p.price, 0) + input.sales
+  const fees = input.booth_fee ?? 0
   return {
     planned_consumable_cost: planned,
     actual_consumable_cost: actual,
     revenue,
-    planned_margin: revenue - planned,
-    actual_margin: revenue - actual,
+    planned_margin: revenue - planned - fees,
+    actual_margin: revenue - actual - fees,
+    ...(fees > 0 ? { fees } : {}),
     ...(gaps.size > 0 ? { cost_gaps: [...gaps] } : {}),
   }
+}
+
+export interface MarketDayCloseoutInput {
+  resources: OpsResource[]
+  actual_consumables: { resource_id: string; qty_used: number }[]
+  sales: number
+  booth_fee: number
+}
+
+/**
+ * Closeout-lite: the plan-less market-day branch (spec 2026-08-23 S1.2).
+ * Packages = [], so planned cost is zero, consumable cost comes from actuals
+ * only, revenue = sales, fees = booth_fee. The lite screen's live recompute,
+ * closeoutSummaryCore's market-day branch, the overview money tile, and the
+ * season strip ALL route through this one function so their figures cannot
+ * disagree. POS inc-2's counter_revenue slots in here later.
+ */
+export function marketDayCloseoutSummary(input: MarketDayCloseoutInput): CloseoutSummary {
+  return computeCloseoutSummary({
+    packages: [],
+    resources: input.resources,
+    guests: 0,
+    actual_consumables: input.actual_consumables,
+    sales: input.sales,
+    booth_fee: input.booth_fee,
+  })
 }

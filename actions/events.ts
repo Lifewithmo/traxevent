@@ -7,7 +7,7 @@ import { FieldValue } from 'firebase-admin/firestore'
 import type { Event, EventRegistrationType, EventLocation, EventHours } from '@/lib/types'
 import type { Terminology } from '@/lib/event-types'
 import { createEventCore, listEventsCore, listEventsByLeadCore, resolveUniqueEventSlug } from '@/lib/events'
-import { getOpsPlanCore, recomputeOpsListsCore } from '@/lib/ops/event-ops'
+import { getOpsPlanCore, recomputeOpsListsCore, clearReadyConfirmedCore } from '@/lib/ops/event-ops'
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/
 
@@ -74,6 +74,7 @@ export async function updateEvent(
     | 'location'
     | 'hours'
     | 'booth_fee'
+    | 'notify_family_on_pickup'
   >>, 'location' | 'hours' | 'booth_fee'> & {
     event_type_terminology?: Terminology | null
     // location/hours/booth_fee: null explicitly clears (FieldValue.delete()), see convention below.
@@ -98,6 +99,17 @@ export async function updateEvent(
   // Note: this only strips `undefined` at the top level. `key_contacts` is an array —
   // Firestore also rejects `undefined` nested inside array elements (e.g. a contact
   // whose optional `phone`/`email` was cleared), so normalize those below.
+  //
+  // SECURITY NOTE (PRE-EXISTING, documented in the 2026-08-23 inc-2 review —
+  // deliberately NOT changed in that fix wave): the Pick<> in the signature is
+  // a COMPILE-TIME allowlist only. This loop copies EVERY top-level key the
+  // wire payload carries into the Firestore update, so a caller invoking the
+  // server action directly (bypassing TypeScript) can write arbitrary Event
+  // fields — `slug`, `kind`, `series_id`, `id`, `created_at`, …. Blast radius
+  // is bounded to org admins by assertOrgAdmin above. Fix shape when picked
+  // up: enforce the allowlist at RUNTIME — iterate a const array of permitted
+  // field names and reject unknown keys (the REQUIREMENT_FIELDS pattern in
+  // lib/ops/event-ops.ts updateOpsRequirementsCore).
   const cleaned: Record<string, unknown> = {}
   for (const [k, v] of Object.entries(updates)) {
     if (v === undefined) continue
@@ -125,14 +137,45 @@ export async function updateEvent(
   // headcount is saved, this throws visibly, and the load-out divergence
   // warning is the recovery path. Non-positive headcounts are skipped: lists
   // can't be derived for 0 guests, so the divergence warning covers that too.
-  if (
+  const wantsRederive =
     updates.headcount !== undefined &&
     updates.headcount !== prev.headcount &&
     Number.isFinite(updates.headcount) &&
     updates.headcount > 0
-  ) {
+
+  // Confirm-ready clearing path (c) (inc-2 P2): a moved date or shifted hours
+  // invalidates the operator's "ready" attestation — the settings form always
+  // sends these fields, so compare against the previous doc and only a REAL
+  // change clears. The re-derive above already clears (path b), so the direct
+  // clear only runs when no recompute will.
+  //
+  // Hours compare FIELD-WISE, never by serialization: production Firestore
+  // returns map keys sorted ({end, start}) while the form sends {start, end},
+  // so JSON.stringify of IDENTICAL hours is unequal and every settings save
+  // (a rename, a contact edit) would spuriously clear the attestation. The
+  // emulator preserves insertion order, so only a field-wise compare is safe
+  // on both.
+  const prevHours = prev.hours ?? null
+  const nextHours = updates.hours ?? null
+  const hoursChanged =
+    updates.hours !== undefined &&
+    ((nextHours?.start ?? null) !== (prevHours?.start ?? null) ||
+      (nextHours?.end ?? null) !== (prevHours?.end ?? null))
+  const dateOrHoursChanged =
+    (updates.event_start !== undefined && updates.event_start !== prev.event_start) ||
+    (updates.event_end !== undefined && updates.event_end !== prev.event_end) ||
+    hoursChanged
+
+  if (wantsRederive || dateOrHoursChanged) {
     const plan = await getOpsPlanCore(orgId, eventId)
-    if (plan) await recomputeOpsListsCore(orgId, eventId, member.uid, { guests: updates.headcount })
+    if (plan) {
+      if (wantsRederive) {
+        // recomputeOpsListsCore clears ready_confirmed itself (clearing path b).
+        await recomputeOpsListsCore(orgId, eventId, member.uid, { guests: updates.headcount as number })
+      } else if (plan.ready_confirmed) {
+        await clearReadyConfirmedCore(orgId, eventId, member.uid)
+      }
+    }
   }
 }
 
