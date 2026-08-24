@@ -108,7 +108,10 @@ Clients: **remove** the Inc-2 `window.confirm` pre-check in `PipelineListClient.
 **Interfaces — Consumes:** `updateEventTypeProfiles` (T2); `kindLabel`.
 **Behavior:** a new "Event types" block on the Resources & capacity page — a list of profile rows (name input + a **needs-{mobileLabel}** toggle + a **needs-{venueLabel}** toggle) with add/remove, saved via `updateEventTypeProfiles` (optimistic + rollback). A hint line: "Types not listed use the default — a {mobileLabel} always, a {venueLabel} when on-site." Kind words via `kindLabel`.
 
-**Design direction:** run **design-ambition** first (baked block added before build).
+**Design direction (design-ambition pass, done 2026-08-19 — build to this):**
+- Match the established Resources & capacity idiom (same card/row feel as the units + serviceable-days editors). Each profile is a row: a name `Input` + two toggle pills — "needs {mobileLabel}" / "needs {venueLabel}" (`aria-pressed`, AA status tokens like the weekday pills) — + a remove control. "Add event type" per the section.
+- **Make the default legible:** the hint line above is REQUIRED, not optional — an operator must understand that an unlisted type falls back to the default rule (so an empty list = today's behavior, stated).
+- Empty state: no rows → just the hint (no scary void). Optimistic save + rollback; keyboard-operable; `prefers-reduced-motion`.
 
 **Steps:**
 - [ ] design-ambition; failing test: rows render name + two toggles; add/remove + toggle call `updateEventTypeProfiles`; the hint uses `kindLabel`.
@@ -124,7 +127,9 @@ Clients: **remove** the Inc-2 `window.confirm` pre-check in `PipelineListClient.
 **Interfaces — Consumes:** the `annotations` (free/taken/blocked, already loaded); `updateLead`.
 **Behavior:** when a kind's selection is Unassigned AND ≥1 unit of that kind is free on the lead's date (per `annotations`), show a one-click **"Use a free {kindLabel}"** that assigns the first free unit (optimistic, same merge as the picker). Hidden when none free or already assigned. Still fully optional.
 
-**Design direction:** run **design-ambition** first (baked block added before build).
+**Design direction (design-ambition pass, done 2026-08-19 — build to this):**
+- The anticipation move (Tesler): an unobtrusive one-click that **names the exact unit it will assign** — e.g. `Use Kart 2 (free)` — rendered as a quiet text-button below the Unassigned select, NOT a loud CTA (the operator's own pick and Unassigned both stay first-class). Shown only when the kind is Unassigned AND a free unit exists on the lead's date.
+- A real `<button>` (keyboard-operable, AA focus ring); optimistic assign with the same merge/rollback as the picker. No new query — read the free unit from the existing `annotations`.
 
 **Steps:**
 - [ ] design-ambition; failing test: with a free unit, the suggest control renders and assigns the first free one via `updateLead`; hidden when all taken/blocked; hidden when already assigned.
@@ -140,7 +145,9 @@ Clients: **remove** the Inc-2 `window.confirm` pre-check in `PipelineListClient.
 **Interfaces — Consumes:** `updateLead`; the schedule's `unassigned` lane (booking leadId/title); org units.
 **Behavior:** each Unassigned-lane booking becomes a control → a small popover/menu of the org's units for that booking's need (or a "assign a free unit" shortcut) → `updateLead({ assigned_units })`, optimistic; on success the booking moves to the chosen unit's lane (router.refresh). Rest of the schedule stays read-only. Click-to-assign, keyboard-operable — NOT drag.
 
-**Design direction:** run **design-ambition** first (baked block added before build).
+**Design direction (design-ambition pass, done 2026-08-19 — build to this):**
+- The Unassigned lane is a **to-do list** ("these bookings still need a unit"). Make each of its bookings the ONE interactive element in an otherwise read-only grid — render it as a clear button/chip with an affordance cue (distinct from the static booked cells, so what's actionable reads at a glance). Complete the loop: click → assign → the booking moves to the chosen unit's lane.
+- The picker menu lists the org's units for the booking's need, each annotated free/taken (reuse the same annotation data), plus a "free unit" shortcut. `<button>` + menu, keyboard-operable, AA — never drag. Optimistic `updateLead` + `router.refresh`; booked cells stay non-interactive.
 
 **Steps:**
 - [ ] design-ambition; failing test: an Unassigned booking exposes an assign control; choosing a unit calls `updateLead` with the merged `assigned_units`; keyboard-operable; other lanes remain non-interactive.
