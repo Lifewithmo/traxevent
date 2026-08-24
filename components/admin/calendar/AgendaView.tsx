@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Button, buttonVariants } from '@/components/ui/button'
@@ -10,6 +10,7 @@ import { addDays, todayYmd } from '@/lib/opportunity-detail'
 import { cn } from '@/lib/utils'
 import { type CalendarItem, type CalendarKind } from '@/lib/calendar'
 import { KindDot } from '@/components/admin/calendar/KindDot'
+import { useDismissLayer } from '@/components/admin/calendar/dismiss-stack'
 import { bulkRescheduleAgenda, type AgendaMove } from '@/actions/calendar-bulk'
 
 /**
@@ -202,23 +203,23 @@ export function AgendaView({ orgSlug, items, today: todayProp, selectedDay }: Ag
    *  operator's own value wins, otherwise the computed default fills the field. */
   const target = selected.size === 0 ? '' : targetInput ?? selectedDay ?? nextOpenDay
 
-  function clearSelection() {
+  const clearSelection = useCallback(() => {
     setSelected(new Set())
     setTargetInput(null)
-  }
+  }, [])
 
-  // Escape clears the selection — the standard way out of a bulk mode.
-  useEffect(() => {
-    if (selected.size === 0) return
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') {
-        setSelected(new Set())
-        setTargetInput(null)
-      }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [selected.size])
+  /**
+   * Escape clears the selection — the standard way out of a bulk mode — but
+   * ONLY when the selection is the topmost thing Escape could mean.
+   *
+   * This used to be a bare `window` keydown listener that knew about nothing
+   * else on the page. It therefore also fired for the Escape that closed the
+   * cockpit's ⌘K palette, the `?` sheet, the item peek and the mobile rail
+   * drawer: one keypress, two dismissals, and a multi-select silently gone.
+   * The shared stack (dismiss-stack.ts) is the single owner of the key now, and
+   * it only ever calls the layer on top.
+   */
+  useDismissLayer(selected.size > 0, clearSelection)
 
   /**
    * Pre-flight the target day. A horizontal calendar will happily stack five
@@ -450,6 +451,13 @@ export function AgendaView({ orgSlug, items, today: todayProp, selectedDay }: Ag
                   <div className="min-w-0 flex-1 py-2.5 pl-1.5">
                     <Link
                       href={item.href}
+                      // The peek contract (see CalendarCanvas). Inside the
+                      // cockpit this row opens IN PLACE instead of navigating —
+                      // the agenda is the surface where losing your scroll
+                      // position costs the most, since the window is paged. The
+                      // href stays real, so a middle-click, a ⌘-click and the
+                      // agenda rendered outside the cockpit all still navigate.
+                      data-item-key={key}
                       className={cn('text-sm hover:underline', item.kind === 'event' && 'font-semibold')}
                     >
                       {item.title}

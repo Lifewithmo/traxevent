@@ -15,6 +15,8 @@ import { WeekGrid } from '@/components/admin/calendar/WeekGrid'
 import { MonthGrid } from '@/components/admin/calendar/MonthGrid'
 import { DayView } from '@/components/admin/calendar/DayView'
 import { AgendaView } from '@/components/admin/calendar/AgendaView'
+import { ItemPeek } from '@/components/admin/calendar/ItemPeek'
+import { useTopDismissLayer } from '@/components/admin/calendar/dismiss-stack'
 
 export type CanvasView = 'month' | 'week' | 'day' | 'agenda'
 const VIEWS: CanvasView[] = ['month', 'week', 'day', 'agenda']
@@ -50,6 +52,19 @@ function stepAnchor(view: CanvasView, anchor: string, delta: number): string {
   // week (and agenda, though it ignores stepping) move by the week
   return addDays(anchor, delta * 7)
 }
+
+/**
+ * The width at which `/calendar/[ymd]` puts the day spine BESIDE the canvas
+ * rather than stacked under it — `lg:w-[360px] lg:border-l` on that page's
+ * wrapper. Read in JS because the peek has to make a decision, not a style.
+ */
+const SPINE_BESIDE_QUERY = '(min-width: 1024px)'
+
+/** The one DOM contract the peek keys off. `reschedule-drag` already stamps it
+ *  on every chip it makes draggable, which is exactly the booked jobs and holds
+ *  (see RESCHEDULABLE); the agenda stamps it on its rows too. Anything without
+ *  it keeps the behaviour it always had — the link navigates. */
+const PEEK_KEY_ATTR = 'data-item-key'
 
 function rangeLabel(view: CanvasView, anchor: string): string {
   const utc = (ymd: string) => new Date(`${ymd}T00:00:00.000Z`)
@@ -103,6 +118,19 @@ export function CalendarCanvas({ orgSlug, items, today, view, anchor, kinds, sel
 
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
+  const [peek, setPeek] = useState<CalendarItem | null>(null)
+
+  /**
+   * Escape must dismiss exactly ONE thing.
+   *
+   * Every overlay here closes itself (Base UI), so it registers as a TOP layer:
+   * while one is open, the agenda's bulk selection underneath it — which also
+   * answers to Escape — stays put. The peek registers its own layer inside
+   * ItemPeek. See dismiss-stack.ts for why the rule lives in a stack rather
+   * than in each surface.
+   */
+  useTopDismissLayer(paletteOpen)
+  useTopDismissLayer(shortcutsOpen)
 
   /**
    * Where to put focus back when an overlay closes.
@@ -133,6 +161,98 @@ export function CalendarCanvas({ orgSlug, items, today, view, anchor, kinds, sel
     rememberFocus()
     setShortcutsOpen(true)
   }, [rememberFocus])
+
+  // ── the peek (open an item in place, never lose the grid) ──────────────────
+
+  const byKey = useMemo(() => {
+    const map = new Map<string, CalendarItem>()
+    for (const i of items) map.set(`${i.kind}:${i.id}`, i)
+    return map
+  }, [items])
+
+  /** Whether the day spine is currently rendered BESIDE the grid rather than
+   *  stacked below it. Client-only and default false, so the server render and
+   *  the first client render agree. */
+  const [spineBeside, setSpineBeside] = useState(false)
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return
+    const mq = window.matchMedia(SPINE_BESIDE_QUERY)
+    const sync = () => setSpineBeside(mq.matches)
+    sync()
+    mq.addEventListener?.('change', sync)
+    return () => mq.removeEventListener?.('change', sync)
+  }, [])
+
+  /**
+   * The one case where a peek would be a step BACKWARDS: the item's day is the
+   * day the spine already has open, and the spine is on screen next to the
+   * grid. The spine says strictly more about that job than a peek can — the
+   * address, the contact, the paperwork — and it says it without a backdrop.
+   * So the chip keeps its original behaviour there and goes to the record.
+   */
+  const spineWouldDuplicate = useCallback(
+    (item: CalendarItem) => spineBeside && !!selectedDay && item.date.slice(0, 10) === selectedDay,
+    [spineBeside, selectedDay]
+  )
+
+  /** Resolve a pointer/key event to the chip it happened on, or null. */
+  const peekTarget = useCallback(
+    (target: EventTarget | null): { item: CalendarItem; el: HTMLElement } | null => {
+      if (!(target instanceof Element)) return null
+      const el = target.closest<HTMLElement>(`[${PEEK_KEY_ATTR}]`)
+      // The edge-resize strips carry the same key but are not the chip; they are
+      // aria-hidden grips, and a click on one means "resize", not "look at".
+      if (!el || el.getAttribute('data-slot') === 'grid-resize') return null
+      const item = byKey.get(el.getAttribute(PEEK_KEY_ATTR) ?? '')
+      if (!item || spineWouldDuplicate(item)) return null
+      return { item, el }
+    },
+    [byKey, spineWouldDuplicate]
+  )
+
+  const openPeek = useCallback((el: HTMLElement, item: CalendarItem) => {
+    returnFocus.current = el
+    setPeek(item)
+  }, [])
+
+  /**
+   * Click → peek, DRAG → no peek.
+   *
+   * Bubble phase, deliberately. `reschedule-drag` already suppresses the click
+   * that terminates a real drag, and it does it in a CAPTURE handler on the chip
+   * with `stopPropagation()` — so a dragged chip's click never reaches this
+   * listener at all. A capture listener here would run first and would fire on
+   * every completed drag. The press-and-hold/drift rules for touch therefore
+   * need no duplication here: if the gesture armed, there is no click to see.
+   */
+  function onPaneClick(e: React.MouseEvent) {
+    // A modified click belongs to the browser ("open in a new tab"), and a
+    // middle click is not an activation. Leave both to the link.
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return
+    const hit = peekTarget(e.target)
+    if (!hit) return
+    e.preventDefault()
+    openPeek(hit.el, hit.item)
+  }
+
+  /**
+   * Enter / Space on a focused chip — the chip's NATIVE activation keys, so
+   * WCAG 2.1.4 does not apply and nothing new has to be published. They are
+   * handled explicitly rather than left to the browser's synthetic click so an
+   * `<a>` chip and the month's `<button>` handle behave identically.
+   *
+   * The reschedule bindings (`[ ] { } , . < >`) are untouched: they are bound on
+   * the chip itself and call `stopPropagation()`, so they never arrive here —
+   * and none of them is Enter or Space.
+   */
+  function onPaneKeyDown(e: React.KeyboardEvent) {
+    if (e.key !== 'Enter' && e.key !== ' ') return
+    if (e.metaKey || e.ctrlKey || e.altKey || e.repeat || isTypingTarget(e.target)) return
+    const hit = peekTarget(e.target)
+    if (!hit) return
+    e.preventDefault()
+    openPeek(hit.el, hit.item)
+  }
 
   // ⌘K stays on the window: it is a MODIFIER combo, which WCAG 2.1.4 does not
   // cover, and a command menu that only opens once you have tabbed into the
@@ -168,7 +288,7 @@ export function CalendarCanvas({ orgSlug, items, today, view, anchor, kinds, sel
    */
   function onCockpitKeyDown(e: React.KeyboardEvent) {
     if (e.repeat) return
-    if (paletteOpen || shortcutsOpen) return
+    if (paletteOpen || shortcutsOpen || peek) return
     if (e.metaKey || e.ctrlKey || e.altKey || isTypingTarget(e.target)) return
     switch (e.key) {
       case 'm': router.push(link({ view: 'month' })); break
@@ -265,6 +385,13 @@ export function CalendarCanvas({ orgSlug, items, today, view, anchor, kinds, sel
       <div
         key={`${view}:${anchor}:${selectedDay ?? ''}`}
         data-slot="canvas-pane"
+        // The peek is delegated from HERE rather than wired into each grid: the
+        // three grids and the agenda are owned by other work in flight, and a
+        // single bubble-phase listener over the whole pane is both the smaller
+        // change and the one that cooperates with the drag engine's click
+        // suppression for free. See onPaneClick.
+        onClick={onPaneClick}
+        onKeyDown={onPaneKeyDown}
         className="min-w-0 flex-1 overflow-y-auto motion-safe:animate-in motion-safe:fade-in-0 motion-reduce:animate-none"
       >
         {view === 'month' ? (
@@ -297,6 +424,19 @@ export function CalendarCanvas({ orgSlug, items, today, view, anchor, kinds, sel
       />
 
       <ShortcutsSheet open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} finalFocus={returnFocus} />
+
+      {/* The grid behind this is NOT unmounted and NOT re-keyed: the peek is a
+          portalled overlay, not a route change, so the month the operator was
+          reading — and its scroll position — is still there when it closes. */}
+      <ItemPeek
+        item={peek}
+        orgSlug={orgSlug}
+        today={today}
+        view={view}
+        kinds={kindsParam}
+        onClose={() => setPeek(null)}
+        finalFocus={returnFocus}
+      />
     </div>
   )
 }
