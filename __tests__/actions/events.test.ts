@@ -284,6 +284,43 @@ describe('updateEvent — date/hours confirm-ready clearing hook (inc-2 P2)', ()
     expect(clearReadyConfirmedCore).not.toHaveBeenCalled()
   })
 
+  it('does NOT clear when identical hours read back in Firestore key order ({end, start}) — the compare is field-wise, never serialized', async () => {
+    // Production Firestore returns map keys SORTED, so the previous doc yields
+    // { end, start } while the form always sends { start, end }. A
+    // JSON.stringify compare of these IDENTICAL hours is unequal — the exact
+    // bug that spuriously cleared the attestation on every settings save.
+    // (The emulator preserves insertion order, so only this test catches it.)
+    eventDocGetSpy.mockResolvedValue({
+      exists: true,
+      data: () => ({ ...PREV, hours: { end: '20:00', start: '14:00' } }),
+    })
+    await updateEvent('org-1', 'camp-1', {
+      name: 'Renamed',
+      event_start: '2026-09-12',
+      event_end: '2026-09-12',
+      hours: { start: '14:00', end: '20:00' },
+    })
+    expect(getOpsPlanCore).not.toHaveBeenCalled()
+    expect(clearReadyConfirmedCore).not.toHaveBeenCalled()
+  })
+
+  it('still clears on a REAL hours change even when the previous doc reads back in sorted key order', async () => {
+    eventDocGetSpy.mockResolvedValue({
+      exists: true,
+      data: () => ({ ...PREV, hours: { end: '20:00', start: '14:00' } }),
+    })
+    await updateEvent('org-1', 'camp-1', { hours: { start: '15:00', end: '20:00' } })
+    expect(clearReadyConfirmedCore).toHaveBeenCalledWith('org-1', 'camp-1', 'admin-1')
+  })
+
+  it('does NOT clear when clearing hours that were never set (null vs absent is no change)', async () => {
+    const { hours: _h, ...prevNoHours } = PREV
+    void _h
+    eventDocGetSpy.mockResolvedValue({ exists: true, data: () => prevNoHours })
+    await updateEvent('org-1', 'camp-1', { hours: null })
+    expect(clearReadyConfirmedCore).not.toHaveBeenCalled()
+  })
+
   it('does NOT clear when the plan carries no attestation', async () => {
     vi.mocked(getOpsPlanCore).mockResolvedValue({ package_ids: ['wp1'] } as never)
     await updateEvent('org-1', 'camp-1', { event_start: '2026-09-14' })

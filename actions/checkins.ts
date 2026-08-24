@@ -284,13 +284,31 @@ async function notifyFamilyOfPickup(
   records: CustodyCheckinRecord[],
 ): Promise<void> {
   if (records.length === 0) return
+
+  // Custody guard: ONE family per batch, ASSERTED — never assumed. The
+  // recipient below is records[0]'s family, so a batch spanning families
+  // (a buggy client, or a crafted server-action call passing mixed recordIds)
+  // would email family A a notice naming family B's children — a cross-family
+  // child-name disclosure in the product's highest-trust send. The custody
+  // records are already committed at this point (this runs post-transaction),
+  // so on a mixed batch we skip the send ENTIRELY and log; the checkout
+  // itself is unaffected. The log carries family ids only — no child names.
+  const familyId = records[0].family_id
+  if (records.some((r) => r.family_id !== familyId)) {
+    console.error('notifyFamilyOfPickup: batch spans multiple families — pickup notice skipped', {
+      orgId,
+      eventId,
+      familyIds: [...new Set(records.map((r) => r.family_id))],
+    })
+    return
+  }
+
   const eventSnap = await eventRef(orgId, eventId).get()
   if (!eventSnap.exists) return
   const event = eventSnap.data() as Event
   const enabled = event.notify_family_on_pickup ?? (event.registration_type === 'child')
   if (!enabled) return
 
-  const familyId = records[0].family_id
   const familySnap = await eventRef(orgId, eventId).collection('families').doc(familyId).get()
   if (!familySnap.exists) return
   const family = familySnap.data() as Family

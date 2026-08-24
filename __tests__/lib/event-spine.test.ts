@@ -623,14 +623,18 @@ describe('computeEventVerdict', () => {
     })).toEqual({ label: `Confirmed ready — ${stamp}`, tone: 'ok' })
   })
 
-  it('DEMOTES the confirm to a secondary fact line when blockers arrived since — never suppresses either', () => {
+  it('DEMOTES the confirm to a secondary fact line when blockers are open — never suppresses either', () => {
+    // HONEST copy: no blocker snapshot is stored at confirm time, so the note
+    // says "N open blockers" — it never claims they arrived "since" the
+    // confirm (a deposit can be overdue BEFORE the operator taps Confirm on
+    // the runsheet, which has no blocker gate).
     expect(computeEventVerdict({
       phase: 'upcoming', ops: confirmedOps,
       readiness: { days_until: 1, done: 4, total: 5, pct: 80, overdue: 1 },
       closeout: null, blockers: [alertBlocker, infoBlocker],
     })).toEqual({
       label: 'Not ready', tone: 'alert',
-      confirmedNote: `Confirmed ${stamp} — 2 new blockers since`,
+      confirmedNote: `Confirmed ${stamp} · 2 open blockers`,
     })
     // Info-only blockers demote too (singular copy).
     expect(computeEventVerdict({
@@ -639,8 +643,14 @@ describe('computeEventVerdict', () => {
       closeout: null, blockers: [infoBlocker],
     })).toEqual({
       label: 'On track', tone: 'pending',
-      confirmedNote: `Confirmed ${stamp} — 1 new blocker since`,
+      confirmedNote: `Confirmed ${stamp} · 1 open blocker`,
     })
+    // The demote line never uses the temporal claim the data cannot support.
+    const note = computeEventVerdict({
+      phase: 'upcoming', ops: confirmedOps,
+      readiness: null, closeout: null, blockers: [infoBlocker],
+    })?.confirmedNote
+    expect(note).not.toMatch(/new|since/i)
   })
 
   it('ignores the attestation once the job is wrapped — the confirm is a prep fact', () => {
@@ -650,9 +660,13 @@ describe('computeEventVerdict', () => {
     })).toEqual({ label: 'Wrapped — closed out', tone: 'ok' })
   })
 
-  it('formats the confirm stamp defensively', () => {
+  it('formats the confirm stamp defensively, in EXPLICIT labeled UTC (server-rendered story)', () => {
     expect(formatConfirmStamp('garbage')).toBe('')
-    expect(formatConfirmStamp(AT)).toBe(new Date(AT).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }))
+    // Deterministic in every runtime TZ: the server-rendered stamp is UTC and
+    // SAYS so (guardian-email fine-print precedent) — never an unlabeled
+    // server-local time that reads as viewer-local. The runsheet's client
+    // stamp stays viewer-local; the label here is what keeps the two honest.
+    expect(formatConfirmStamp(AT)).toBe('9:14 PM UTC')
   })
 })
 

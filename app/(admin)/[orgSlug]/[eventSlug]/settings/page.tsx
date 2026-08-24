@@ -35,7 +35,13 @@ export default function EventSettingsPage() {
   const [eventEnd, setEventEnd] = useState('')
   const [registrationOpen, setRegistrationOpen] = useState('')
   const [registrationClose, setRegistrationClose] = useState('')
-  const [notifyOnPickup, setNotifyOnPickup] = useState(false)
+  // TRI-STATE (inc-2 P3): null = the user hasn't set the toggle — the
+  // EFFECTIVE default renders and the save payload OMITS the field, so the
+  // registration-type default keeps applying (including after a switch to a
+  // child-registration type — persisting the untouched box's old-type default
+  // would silently turn guardian pickup emails off forever). A stored explicit
+  // boolean loads as non-null and round-trips.
+  const [notifyOnPickup, setNotifyOnPickup] = useState<boolean | null>(null)
   const [capacity, setCapacity] = useState<string>('')
   const [paymentAmount, setPaymentAmount] = useState<string>('')
   const [fromDisplayName, setFromDisplayName] = useState<string>('')
@@ -76,9 +82,10 @@ export default function EventSettingsPage() {
       setEventEnd(c.event_end)
       setRegistrationOpen(c.registration_open ?? '')
       setRegistrationClose(c.registration_close ?? '')
-      // Effective default (inc-2 P3): explicit toggle wins; absent → ON only
-      // for guardian-mode (child-registration) events.
-      setNotifyOnPickup(c.notify_family_on_pickup ?? c.registration_type === 'child')
+      // Explicit stored toggle only; absent stays null (untouched) so the
+      // checkbox renders the LIVE effective default (see notifyChecked) and
+      // the save payload leaves the field out.
+      setNotifyOnPickup(c.notify_family_on_pickup ?? null)
       setCapacity(c.capacity != null ? String(c.capacity) : '')
       setPaymentAmount(c.payment_amount != null ? String(c.payment_amount) : '')
       setFromDisplayName(c.from_display_name ?? '')
@@ -90,6 +97,13 @@ export default function EventSettingsPage() {
   }, [orgSlug, eventSlug])
 
   const showHeadcountSection = !enabledModules.includes('attendee-roster')
+  // Effective default for the pickup notice (P3): follows the CURRENTLY
+  // selected type's registration unit — so switching the event to a
+  // child-registration type flips an untouched checkbox to the default-ON it
+  // will actually get, instead of freezing the load-time type's default.
+  const selectedTypeRegistrationUnit =
+    eventTypes.find((t) => t.id === eventTypeId)?.registrationUnit ?? event?.registration_type
+  const notifyChecked = notifyOnPickup ?? selectedTypeRegistrationUnit === 'child'
   const rosterEnabled = enabledModules.includes('attendee-roster')
   const isMarketDay = event ? kindOf(event) === 'market_day' : false
   // B8: key-contact editing is NOT gated on the roster module — every client
@@ -152,9 +166,14 @@ export default function EventSettingsPage() {
         event_end: eventEnd,
         registration_open: registrationOpen || undefined,
         registration_close: registrationClose || undefined,
-        // Saved as an explicit boolean once the Registration card rendered —
-        // explicit overrides the registration-type default from then on.
-        ...(rosterEnabled && !isMarketDay ? { notify_family_on_pickup: notifyOnPickup } : {}),
+        // Saved as an explicit boolean ONLY once the user has actually set the
+        // toggle (explicit overrides the registration-type default from then
+        // on). An untouched toggle keeps the field ABSENT — undefined is
+        // dropped by updateEvent — so P3's default-ON keeps applying, even
+        // when this same save switches the event to a child-registration type.
+        ...(rosterEnabled && !isMarketDay && notifyOnPickup !== null
+          ? { notify_family_on_pickup: notifyOnPickup }
+          : {}),
         capacity: capacity ? Number(capacity) : undefined,
         payment_amount: paymentAmount ? Number(paymentAmount) : undefined,
         from_display_name: fromDisplayName || undefined,
@@ -476,7 +495,7 @@ export default function EventSettingsPage() {
                     <input
                       type="checkbox"
                       className="size-4 accent-[var(--primary)]"
-                      checked={notifyOnPickup}
+                      checked={notifyChecked}
                       onChange={(e) => { setNotifyOnPickup(e.target.checked); setSaved(false) }}
                     />
                     Email the family when their child is picked up

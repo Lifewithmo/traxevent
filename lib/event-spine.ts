@@ -467,22 +467,32 @@ export function eventPhaseOf(countdownValue: string): EventPhase {
 export interface EventVerdict {
   label: string
   tone: 'ok' | 'pending' | 'alert'
-  /** P2 precedence: blockers arriving AFTER a confirm demote the attestation to
-   *  this secondary fact line ('Confirmed 9:14 PM — 2 new blockers since') —
-   *  rendered under the computed verdict, never suppressed and never focal. */
+  /** P2 precedence: open blockers demote the attestation to this secondary
+   *  fact line ('Confirmed 9:14 PM UTC · 2 open blockers') — rendered under
+   *  the computed verdict, never suppressed and never focal. The blocker set
+   *  at confirm time is NOT stored, so the copy states only what is knowable
+   *  (blockers open NOW) and never claims they arrived "since" the confirm. */
   confirmedNote?: string
 }
 
 /**
- * '2026-08-23T21:14:00.000Z' → '9:14 PM' in the runtime's timezone — the same
- * server-side toLocaleTimeString formatting the check-in manifest ships
- * (app/…/checkin/manifest/page.tsx); the repo-wide no-timezone-field caveat
- * applies here exactly as it does there.
+ * '2026-08-23T21:14:00.000Z' → '9:14 PM UTC'.
+ *
+ * ONE deliberate story for the confirm stamp (2026-08-23 review), commented at
+ * both render ends: SERVER-rendered stamps (the brief's verdict line and
+ * confirmedNote, both built here) format in EXPLICIT UTC with a visible label —
+ * the guardian pickup email's fine-print precedent (lib/email.ts) — because the
+ * server runtime's timezone is meaningless to the operator, and an unlabeled
+ * server-local time reads as viewer-local while being wrong for every non-UTC
+ * operator. CLIENT-rendered stamps (RunSheetClient's `confirmStamp`) stay
+ * viewer-local: the same field, honestly local because it formats in the
+ * viewer's browser. The UTC label here is what lets the two surfaces show
+ * different clock faces without either one lying.
  */
 export function formatConfirmStamp(iso: string): string {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return ''
-  return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+  return `${d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'UTC' })} UTC`
 }
 
 /**
@@ -491,11 +501,13 @@ export function formatConfirmStamp(iso: string): string {
  * guessed verdict; the brief degrades to the job strip + visible blockers.
  *
  * Confirm-ready precedence (inc-2 P2): while the attestation stands AND no
- * blockers have surfaced since, the verdict IS the attestation ('Confirmed
- * ready — 9:14 PM'). Blockers arriving after the confirm (a deadline slipping
- * past, a deposit going overdue — facts that change without a plan write, so
- * they cannot clear it) DEMOTE the confirm to `confirmedNote` under the
- * computed verdict: never suppress the blockers, never erase the attestation.
+ * blockers are open, the verdict IS the attestation ('Confirmed ready —
+ * 9:14 PM UTC'). Open blockers (a deadline slipping past, a deposit going
+ * overdue — facts that change without a plan write, so they cannot clear the
+ * attestation; and equally blockers that already stood when the operator
+ * confirmed, since the runsheet's Confirm button has no blocker gate) DEMOTE
+ * the confirm to `confirmedNote` under the computed verdict: never suppress
+ * the blockers, never erase the attestation.
  */
 export function computeEventVerdict(input: {
   phase: EventPhase
@@ -518,9 +530,15 @@ export function computeEventVerdict(input: {
   if (confirmed && blockers.length === 0) {
     return { label: `Confirmed ready — ${formatConfirmStamp(confirmed.at)}`, tone: 'ok' }
   }
+  // HONEST copy: `ready_confirmed` stores only {at, by} — no blocker snapshot —
+  // so "N NEW blockers SINCE the confirm" is structurally unknowable (a deposit
+  // may have been overdue BEFORE the operator tapped Confirm on the runsheet,
+  // which renders no money/forms blockers and has no blocker gate). The fact
+  // line therefore states only what IS known: the attestation stands, and N
+  // blockers are open right now. Demotion semantics unchanged (P2).
   const confirmedNote = confirmed
     ? {
-        confirmedNote: `Confirmed ${formatConfirmStamp(confirmed.at)} — ${blockers.length} new blocker${blockers.length === 1 ? '' : 's'} since`,
+        confirmedNote: `Confirmed ${formatConfirmStamp(confirmed.at)} · ${blockers.length} open blocker${blockers.length === 1 ? '' : 's'}`,
       }
     : {}
 

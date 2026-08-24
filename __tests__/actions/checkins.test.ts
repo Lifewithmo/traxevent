@@ -635,6 +635,49 @@ describe('guardian who-collected email', () => {
     expect(callOrder).toEqual(['tx-committed', 'send'])
   })
 
+  it('a batch spanning families NEVER sends — no email can name another family’s children', async () => {
+    // Defense-in-depth: today's UI passes one family's records, but a buggy
+    // client or a crafted server-action call could pass mixed recordIds. The
+    // recipient would be records[0]'s family while childNames listed every
+    // record — a cross-family child-name disclosure. The guard skips the send
+    // entirely (and logs), before any family read; the committed checkout is
+    // unaffected.
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    getCheckinDocSpy
+      .mockResolvedValueOnce({ exists: true, data: () => PRIOR })
+      .mockResolvedValueOnce({
+        exists: true,
+        data: () => ({
+          ...PRIOR,
+          id: '2026-07-10_m-9',
+          member_id: 'm-9',
+          member_name: 'Zed Jones',
+          family_id: 'fam-2',
+        }),
+      })
+
+    const records = await checkOutFamily('org-1', 'camp-1', {
+      recordIds: ['2026-07-10_m-1', '2026-07-10_m-9'],
+      guardianPickupName: 'Jane Smith (mother)',
+    })
+
+    expect(sendPickupSpy).not.toHaveBeenCalled()
+    // The skip fires before ANY notify-path read — no family doc is touched.
+    expect(getFamilyDocSpy).not.toHaveBeenCalled()
+    // The custody commit itself is unaffected by the skipped notice.
+    expect(records).toHaveLength(2)
+    expect(records.every((r) => r.status === 'out')).toBe(true)
+    // The log names family ids only — never a child's name.
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('spans multiple families'),
+      expect.objectContaining({ familyIds: ['fam-1', 'fam-2'] }),
+    )
+    for (const call of errorSpy.mock.calls) {
+      expect(JSON.stringify(call)).not.toMatch(/Ann Smith|Zed Jones/)
+    }
+    errorSpy.mockRestore()
+  })
+
   // Gating matrix (P3): explicit toggle wins; absent → ON only for child-registration.
   it('gating: default-ON for child registration, default-OFF otherwise, explicit boolean overrides both', async () => {
     // child + absent toggle → sends (covered above); family + absent → silent.

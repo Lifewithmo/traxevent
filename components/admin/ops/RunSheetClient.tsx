@@ -78,7 +78,12 @@ function dayHeading(day: string): string {
 }
 
 /** Viewer-local confirm stamp: '9:14 PM' same-day, 'Fri 9:14 PM' otherwise —
- *  the evening-before ritual read the next morning still shows its true day. */
+ *  the evening-before ritual read the next morning still shows its true day.
+ *  One deliberate story for this stamp (see lib/event-spine.formatConfirmStamp):
+ *  client-rendered stamps like this one are viewer-local (honest — they format
+ *  in the viewer's browser); the brief's SERVER-rendered stamp is explicit
+ *  UTC-labeled instead. The label there is what keeps the two surfaces honest
+ *  when their clock faces differ. */
 function confirmStamp(iso: string): string {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return ''

@@ -15,7 +15,7 @@ import {
 import { updateServiceableDays, updateResourceLabels } from '@/actions/capacity-config'
 import { updateOpsBuffers } from '@/actions/ops-buffers'
 import { kindLabel } from '@/lib/capacity/labels'
-import { PACK_MINUTES, DRIVE_MINUTES } from '@/lib/event-ui'
+import { PACK_MINUTES, DRIVE_MINUTES, MAX_BUFFER_MINUTES } from '@/lib/event-ui'
 import type { CapacityBlockout, CapacityUnit, CapacityUnitKind, Org } from '@/lib/types'
 
 interface CapacityUnitsClientProps {
@@ -517,12 +517,14 @@ export function CapacityUnitsClient({
 
 // --- Day-of timing (org-default pack/drive buffers) ---------------------------
 
-/** '' ⇒ cleared (fall back to the constant); else a whole 1..480 minutes. */
+/** '' ⇒ cleared (fall back to the constant); else a whole 1..MAX_BUFFER_MINUTES minutes.
+ *  The ceiling is the SHARED lib/event-ui constant the server action enforces —
+ *  never a local literal, so the pre-flight check cannot drift from the action. */
 function parseBufferField(raw: string): { ok: true; value?: number } | { ok: false } {
   const trimmed = raw.trim()
   if (!trimmed) return { ok: true }
   const n = Number(trimmed)
-  if (!Number.isInteger(n) || n <= 0 || n > 480) return { ok: false }
+  if (!Number.isInteger(n) || n <= 0 || n > MAX_BUFFER_MINUTES) return { ok: false }
   return { ok: true, value: n }
 }
 
@@ -565,7 +567,7 @@ function OpsBuffersSection({
     const packParsed = parseBufferField(pack)
     const driveParsed = parseBufferField(drive)
     if (!packParsed.ok || !driveParsed.ok) {
-      setError('Minutes must be a whole number between 1 and 480 — or blank for the default.')
+      setError(`Minutes must be a whole number between 1 and ${MAX_BUFFER_MINUTES} — or blank for the default.`)
       return
     }
     const next: NonNullable<Org['ops_buffers']> = {
@@ -620,7 +622,7 @@ function OpsBuffersSection({
             type="number"
             inputMode="numeric"
             min={1}
-            max={480}
+            max={MAX_BUFFER_MINUTES}
             value={pack}
             placeholder={String(PACK_MINUTES)}
             disabled={saving}
@@ -637,7 +639,7 @@ function OpsBuffersSection({
             type="number"
             inputMode="numeric"
             min={1}
-            max={480}
+            max={MAX_BUFFER_MINUTES}
             value={drive}
             placeholder={String(DRIVE_MINUTES)}
             disabled={saving}

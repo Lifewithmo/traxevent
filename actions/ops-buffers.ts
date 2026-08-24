@@ -2,15 +2,15 @@
 
 import { adminDb } from '@/lib/firebase-admin'
 import { assertOrgAdmin } from '@/lib/auth/assert'
+import { MAX_BUFFER_MINUTES } from '@/lib/event-ui'
 import type { Org } from '@/lib/types'
 
 // NOTE: this is a 'use server' module — every export must be an async function.
 // Types (Org) are imported from '@/lib/types', never re-exported here:
 // re-exporting a type from a 'use server' module breaks `next build` (the RSC
-// compiler). See actions/capacity-config.ts for the same note.
-
-/** Sanity ceiling: nobody packs or drives for more than 8 hours before a job. */
-const MAX_BUFFER_MINUTES = 480
+// compiler). See actions/capacity-config.ts for the same note. That constraint
+// is also why MAX_BUFFER_MINUTES lives in lib/event-ui (shared with the
+// settings client) instead of being exported from here.
 
 const BUFFER_KEYS = ['pack_minutes', 'drive_minutes'] as const
 

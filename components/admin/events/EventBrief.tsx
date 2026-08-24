@@ -220,8 +220,10 @@ export function EventBrief({ orgSlug, eventSlug, event, kpis, today, isAdmin, al
                 {verdict.label}
               </p>
             )}
-            {/* P2 precedence: blockers since the confirm DEMOTE the attestation
-                to this secondary fact line — never suppressed, never focal. */}
+            {/* P2 precedence: open blockers DEMOTE the attestation to this
+                secondary fact line ('Confirmed 9:14 PM UTC · N open blockers')
+                — never suppressed, never focal. The copy says "open", not
+                "new since": no blocker snapshot is stored at confirm time. */}
             {verdict?.confirmedNote && (
               <p className="mt-1 text-sm text-muted-foreground">{verdict.confirmedNote}</p>
             )}

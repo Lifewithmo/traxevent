@@ -1,4 +1,5 @@
 import { getResend, buildFromAddress } from '@/lib/resend'
+import { bufferAssumptionLabel } from '@/lib/event-ui'
 
 const PUBLIC_BASE_URL = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://traxevent.com'
 
@@ -474,11 +475,12 @@ export async function sendRunSheetEmail(params: RunSheetEmailParams): Promise<vo
   const from = buildFromAddress({ displayName: params.fromDisplayName, domain: params.fromDomain })
   const liveUrl = `${PUBLIC_BASE_URL}/${params.orgSlug}/${params.eventSlug}/ops/runsheet`
 
-  const bufferLabel = (() => {
-    const pack = params.buffers?.pack_minutes && params.buffers.pack_minutes > 0 ? params.buffers.pack_minutes : 45
-    const drive = params.buffers?.drive_minutes && params.buffers.drive_minutes > 0 ? params.buffers.drive_minutes : 30
-    return `assumes ${pack}m pack · ${drive}m drive`
-  })()
+  // SHARED label (lib/event-ui): the caption must come from the same
+  // resolveBuffers math that produced the caller's backPlan — never a local
+  // re-derivation whose fallbacks/semantics could silently drift from the
+  // emailed Pack-by/Leave-by times ("the label can never disagree with the
+  // math", lib/ops/anchor.ts).
+  const bufferLabel = bufferAssumptionLabel(params.buffers)
 
   const section = (title: string, body: string) => `
     <h2 style="color:#64748B;font-size:12px;text-transform:uppercase;letter-spacing:.05em;margin:20px 0 4px">${title}</h2>

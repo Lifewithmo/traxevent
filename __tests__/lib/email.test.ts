@@ -26,6 +26,7 @@ import {
   buildDropAnnouncementEmail,
   escapeHtml,
 } from '@/lib/email'
+import { bufferAssumptionLabel } from '@/lib/event-ui'
 
 const baseParams = {
   to: 'jane@example.com',
@@ -383,6 +384,18 @@ describe('sendRunSheetEmail', () => {
   it('falls back to the constants label when no org buffers exist', async () => {
     await sendRunSheetEmail({ ...base, buffers: undefined, backPlan: { packBy: '1:45 PM', leaveBy: '2:30 PM' } })
     expect(emailsSendSpy.mock.calls[0][0].html).toContain('assumes 45m pack · 30m drive')
+  })
+
+  it('captions the back-plan with the SHARED bufferAssumptionLabel for custom buffers — never a local re-derivation', async () => {
+    // The emailed caption must be the same function output the on-screen chips
+    // use (lib/event-ui): if resolveBuffers' fallbacks or semantics ever
+    // change, the email tracks them instead of silently diverging from the
+    // emailed Pack-by/Leave-by math.
+    const buffers = { pack_minutes: 75, drive_minutes: 15 }
+    await sendRunSheetEmail({ ...base, buffers })
+    const html = emailsSendSpy.mock.calls[0][0].html as string
+    expect(html).toContain(bufferAssumptionLabel(buffers))
+    expect(html).toContain('assumes 75m pack · 15m drive')
   })
 
   it('escapes operator-entered content', async () => {

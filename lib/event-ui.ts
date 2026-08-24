@@ -130,6 +130,15 @@ export function resolveJobTime(input: {
 export const PACK_MINUTES = 45
 export const DRIVE_MINUTES = 30
 
+/**
+ * Sanity ceiling for the org pack/drive buffers: nobody packs or drives for
+ * more than 8 hours before a job. SINGLE source — actions/ops-buffers.ts
+ * enforces it server-side and CapacityUnitsClient mirrors it in the inputs'
+ * `max`, the pre-flight parse, and the error copy. It lives here (not in the
+ * action) because a 'use server' module may only export async functions.
+ */
+export const MAX_BUFFER_MINUTES = 480
+
 /** Org-default pack/drive buffers (Org.ops_buffers shape); absent fields fall back to the constants. */
 export interface OpsBuffers {
   pack_minutes?: number

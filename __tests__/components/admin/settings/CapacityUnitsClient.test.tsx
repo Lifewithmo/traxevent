@@ -25,6 +25,7 @@ vi.mock('@/actions/ops-buffers', () => ({
 }))
 
 import { CapacityUnitsClient } from '@/components/admin/settings/CapacityUnitsClient'
+import { MAX_BUFFER_MINUTES } from '@/lib/event-ui'
 import type { CapacityUnit } from '@/lib/types'
 
 beforeEach(() => vi.clearAllMocks())
@@ -438,16 +439,31 @@ describe('CapacityUnitsClient', () => {
       expect('pack_minutes' in payload).toBe(false)
     })
 
-    it('rejects an out-of-range value inline and does NOT save', async () => {
+    it('rejects an out-of-range value inline and does NOT save — ceiling and copy come from the SHARED constant', async () => {
       render(<CapacityUnitsClient {...base} initialUnits={[]} />)
 
       const packInput = screen.getByLabelText('Pack time (minutes)')
-      fireEvent.change(packInput, { target: { value: '900' } })
+      fireEvent.change(packInput, { target: { value: String(MAX_BUFFER_MINUTES + 1) } })
       fireEvent.blur(packInput)
+      // The error copy interpolates lib/event-ui's MAX_BUFFER_MINUTES — the
+      // same bound the server action enforces — so raising the ceiling
+      // server-side can never leave the client asserting a stale one.
       expect(
-        await screen.findByText(/whole number between 1 and 480/i),
+        await screen.findByText(new RegExp(`whole number between 1 and ${MAX_BUFFER_MINUTES}`, 'i')),
       ).toBeInTheDocument()
       expect(updateOpsBuffers).not.toHaveBeenCalled()
+      // The boundary itself is accepted client-side (matches the action's 1..MAX).
+      fireEvent.change(packInput, { target: { value: String(MAX_BUFFER_MINUTES) } })
+      fireEvent.blur(packInput)
+      await waitFor(() =>
+        expect(updateOpsBuffers).toHaveBeenCalledWith('o1', { pack_minutes: MAX_BUFFER_MINUTES }),
+      )
+    })
+
+    it('both inputs carry the shared ceiling as their max attribute', () => {
+      render(<CapacityUnitsClient {...base} initialUnits={[]} />)
+      expect(screen.getByLabelText('Pack time (minutes)')).toHaveAttribute('max', String(MAX_BUFFER_MINUTES))
+      expect(screen.getByLabelText('Drive time (minutes)')).toHaveAttribute('max', String(MAX_BUFFER_MINUTES))
     })
 
     it('reverts the fields and surfaces the error when the action fails', async () => {

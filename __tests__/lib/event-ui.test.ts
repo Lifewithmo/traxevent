@@ -3,6 +3,7 @@ import {
   EVENT_STATUS_TONE,
   FAMILY_LABEL,
   FAMILY_TONE,
+  MAX_BUFFER_MINUTES,
   backPlanChips,
   bufferAssumptionLabel,
   eventCountdown,
@@ -141,5 +142,12 @@ describe('buffers (inc 2)', () => {
 
   it('still suppresses cross-midnight back-plans with custom buffers', () => {
     expect(backPlanChips('00:40', { pack_minutes: 30, drive_minutes: 20 })).toBeNull()
+  })
+
+  it('exports the ONE buffer ceiling shared by the server action and the settings client (8h)', () => {
+    // actions/ops-buffers.ts enforces it; CapacityUnitsClient mirrors it in
+    // max=/parse/error copy — both import THIS constant, so the ceiling
+    // cannot drift between the pre-flight check and the server rejection.
+    expect(MAX_BUFFER_MINUTES).toBe(480)
   })
 })
