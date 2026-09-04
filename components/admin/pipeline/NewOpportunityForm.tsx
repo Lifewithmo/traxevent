@@ -32,7 +32,7 @@ export function NewOpportunityForm({ orgId, open, onClose, customer, customers, 
 
   const [title, setTitle] = useState('')
   const [name, setName] = useState('')
-  const [organization, setOrganization] = useState('')
+  const [organization, setOrganization] = useState(customer?.company ?? '')
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
   const [eventType, setEventType] = useState('')
@@ -58,7 +58,7 @@ export function NewOpportunityForm({ orgId, open, onClose, customer, customers, 
       const parsedGuests = guestCount.trim() === '' ? undefined : Number(guestCount)
       await createLead(orgId, {
         ...(linked
-          ? { customer_id: linked.id }
+          ? { customer_id: linked.id, organization }
           : {
               name: name.trim(),
               organization: organization.trim() || undefined,
@@ -99,12 +99,27 @@ export function NewOpportunityForm({ orgId, open, onClose, customer, customers, 
           </p>
         )}
         {!customer && customers && customers.length > 0 && (
-          <CustomerPicker customers={customers} value={picked} onChange={setPicked} />
+          <CustomerPicker
+            customers={customers}
+            value={picked}
+            onChange={(c) => { setPicked(c); setOrganization(c?.company ?? '') }}
+          />
         )}
         <div className="space-y-1">
           <Label htmlFor="leadTitle">Title</Label>
           <Input id="leadTitle" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Riverside gala" />
         </div>
+        {linked && (
+          <div className="space-y-1">
+            <Label htmlFor="leadEventOrg">Organization (for this event)</Label>
+            <Input
+              id="leadEventOrg"
+              value={organization}
+              onChange={(e) => setOrganization(e.target.value)}
+              placeholder="Company / organization"
+            />
+          </div>
+        )}
         {!linked && (
           <>
             <div className="space-y-1">

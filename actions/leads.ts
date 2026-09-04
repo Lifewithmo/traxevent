@@ -67,12 +67,16 @@ export async function createLead(orgId: string, input: CreateLeadInput): Promise
   }
 
   // Linked mode snapshots contact fields from the customer record; unlinked keeps the typed values.
+  // Organization is per-event: an explicit input.organization (even blank) overrides the snapshot
+  // on the lead without touching the customer record.
+  const linkedOrganization =
+    input.organization !== undefined ? input.organization.trim() : customer.company
   const contact = input.customer_id
     ? {
         name: customer.name,
         ...(customer.email ? { email: customer.email } : {}),
         ...(customer.phone ? { phone: customer.phone } : {}),
-        ...(customer.company ? { organization: customer.company } : {}),
+        ...(linkedOrganization ? { organization: linkedOrganization } : {}),
       }
     : {
         name: input.name!.trim(),
