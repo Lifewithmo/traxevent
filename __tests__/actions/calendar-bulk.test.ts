@@ -50,10 +50,18 @@ vi.mock('@/lib/auth/assert', () => ({
 }))
 vi.mock('@/lib/calendar-fetch', () => ({ orgIdBySlug: vi.fn().mockResolvedValue('org-1') }))
 vi.mock('@/lib/activity', () => ({ logActivity: vi.fn().mockResolvedValue(undefined) }))
+// Confirm-ready clearing path (c) collaborators — mocked exactly like the
+// updateEvent hook suite (events.test.ts): the contract under test is WHEN the
+// move calls them, not what they write.
+vi.mock('@/lib/ops/event-ops', () => ({
+  getOpsPlanCore: vi.fn().mockResolvedValue(null),
+  clearReadyConfirmedCore: vi.fn().mockResolvedValue(undefined),
+}))
 
 import { assertOrgAdmin } from '@/lib/auth/assert'
 import { orgIdBySlug } from '@/lib/calendar-fetch'
 import { logActivity } from '@/lib/activity'
+import { getOpsPlanCore, clearReadyConfirmedCore } from '@/lib/ops/event-ops'
 import { bulkRescheduleAgenda, rescheduleCalendarItem } from '@/actions/calendar-bulk'
 
 const EVENT = 'orgs/org-1/events/e1'
@@ -65,6 +73,8 @@ beforeEach(() => {
   vi.clearAllMocks()
   vi.mocked(orgIdBySlug).mockResolvedValue('org-1')
   vi.mocked(assertOrgAdmin).mockResolvedValue({ uid: 'u1', role: 'admin', event_access: {} } as never)
+  vi.mocked(getOpsPlanCore).mockResolvedValue(null)
+  vi.mocked(clearReadyConfirmedCore).mockResolvedValue(undefined)
   store.docs.clear()
   store.updates.length = 0
   store.txCount = 0
@@ -344,5 +354,130 @@ describe('rescheduleCalendarItem — the time-of-day write (drag-to-retime, edge
       ).rejects.toThrow()
     }
     expect(store.updates).toHaveLength(0)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Confirm-ready clearing path (c) ACROSS WRITE PATHS — inc-2 P2.
+//
+// `OpsPlan.ready_confirmed` is an operator attestation, and the contract
+// (spec 2026-08-23 §P2) is that ANY event date/hours change clears it.
+// moveBookedJob is the repo's SECOND event date/hours writer (the first is
+// updateEvent in actions/events.ts, whose hook these tests mirror) — without
+// the clear, rescheduling a booked job from the calendar leaves "Confirmed
+// ready — 9:14 PM" standing for a date that moved.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('bulkRescheduleAgenda — confirm-ready clearing (inc-2 P2)', () => {
+  const CONFIRMED_PLAN = { package_ids: ['wp1'], ready_confirmed: { at: 't0', by: 'u9' } }
+
+  beforeEach(() => {
+    vi.mocked(getOpsPlanCore).mockResolvedValue(CONFIRMED_PLAN as never)
+  })
+
+  it('clears on a move that changes the day, as the acting admin', async () => {
+    const res = await bulkRescheduleAgenda('acme', [{ kind: 'event', id: 'e1', date: '2026-09-05' }])
+    expect(res).toEqual({ moved: 1, failures: [] })
+    expect(getOpsPlanCore).toHaveBeenCalledWith('org-1', 'e1')
+    expect(clearReadyConfirmedCore).toHaveBeenCalledWith('org-1', 'e1', 'u1')
+  })
+
+  it('clears AFTER the move transaction commits (post-write, updateEvent-hook parity)', async () => {
+    let eventStartWhenCleared: unknown = null
+    vi.mocked(clearReadyConfirmedCore).mockImplementation(async () => {
+      eventStartWhenCleared = (store.docs.get(EVENT) as Record<string, unknown>).event_start
+    })
+    await bulkRescheduleAgenda('acme', [{ kind: 'event', id: 'e1', date: '2026-09-05' }])
+    // The business write must already be on the record when the clear fires.
+    expect(eventStartWhenCleared).toBe('2026-09-05')
+  })
+
+  it('clears on an hours-only retime (same day, new window)', async () => {
+    store.docs.set(EVENT, { id: 'e1', lead_id: 'l1', event_start: '2026-08-19', event_end: '2026-08-19', hours: { start: '16:00', end: '20:00' } })
+    await bulkRescheduleAgenda('acme', [
+      { kind: 'event', id: 'e1', date: '2026-08-19', hours: { start: '09:00', end: '12:00' } },
+    ])
+    expect(clearReadyConfirmedCore).toHaveBeenCalledWith('org-1', 'e1', 'u1')
+  })
+
+  it('clears when a window is SET on a job that had none (absent → present is a change)', async () => {
+    await bulkRescheduleAgenda('acme', [
+      { kind: 'event', id: 'e1', date: '2026-08-19', hours: { start: '09:00', end: '12:00' } },
+    ])
+    expect(clearReadyConfirmedCore).toHaveBeenCalled()
+  })
+
+  it('does NOT clear on a move to the SAME day (the move applies, the attestation stands)', async () => {
+    const res = await bulkRescheduleAgenda('acme', [{ kind: 'event', id: 'e1', date: '2026-08-19' }])
+    expect(res).toEqual({ moved: 1, failures: [] })
+    // Guarded like the updateEvent hook: no real change → not even the cheap plan read.
+    expect(getOpsPlanCore).not.toHaveBeenCalled()
+    expect(clearReadyConfirmedCore).not.toHaveBeenCalled()
+  })
+
+  it('does NOT clear on a same-day move with a time-of-day suffix on the stored window', async () => {
+    store.docs.set(EVENT, {
+      id: 'e1', lead_id: 'l1',
+      event_start: '2026-08-19T14:00:00.000Z',
+      event_end: '2026-08-19T20:30:00.000Z',
+    })
+    await bulkRescheduleAgenda('acme', [{ kind: 'event', id: 'e1', date: '2026-08-19' }])
+    expect(clearReadyConfirmedCore).not.toHaveBeenCalled()
+  })
+
+  it('does NOT clear when identical hours read back in Firestore key order ({end, start}) — field-wise compare, never serialized', async () => {
+    // Production Firestore returns map keys SORTED, the caller sends
+    // {start, end} — JSON.stringify of IDENTICAL hours is unequal, the exact
+    // bug the updateEvent hook documents. The emulator preserves insertion
+    // order, so only this test catches a serialized compare.
+    store.docs.set(EVENT, { id: 'e1', lead_id: 'l1', event_start: '2026-08-19', event_end: '2026-08-19', hours: { end: '20:00', start: '16:00' } })
+    await bulkRescheduleAgenda('acme', [
+      { kind: 'event', id: 'e1', date: '2026-08-19', hours: { start: '16:00', end: '20:00' } },
+    ])
+    expect(getOpsPlanCore).not.toHaveBeenCalled()
+    expect(clearReadyConfirmedCore).not.toHaveBeenCalled()
+  })
+
+  it('still clears on a REAL hours change when the stored window reads back in sorted key order', async () => {
+    store.docs.set(EVENT, { id: 'e1', lead_id: 'l1', event_start: '2026-08-19', event_end: '2026-08-19', hours: { end: '20:00', start: '16:00' } })
+    await bulkRescheduleAgenda('acme', [
+      { kind: 'event', id: 'e1', date: '2026-08-19', hours: { start: '15:00', end: '20:00' } },
+    ])
+    expect(clearReadyConfirmedCore).toHaveBeenCalledWith('org-1', 'e1', 'u1')
+  })
+
+  it('does NOT invoke the clearing transaction when the job has no ops plan', async () => {
+    vi.mocked(getOpsPlanCore).mockResolvedValue(null)
+    const res = await bulkRescheduleAgenda('acme', [{ kind: 'event', id: 'e1', date: '2026-09-05' }])
+    expect(res).toEqual({ moved: 1, failures: [] })
+    expect(getOpsPlanCore).toHaveBeenCalledWith('org-1', 'e1')
+    expect(clearReadyConfirmedCore).not.toHaveBeenCalled()
+  })
+
+  it('does NOT invoke the clearing transaction when the plan carries no attestation', async () => {
+    vi.mocked(getOpsPlanCore).mockResolvedValue({ package_ids: ['wp1'] } as never)
+    await bulkRescheduleAgenda('acme', [{ kind: 'event', id: 'e1', date: '2026-09-05' }])
+    expect(clearReadyConfirmedCore).not.toHaveBeenCalled()
+  })
+
+  it('hold moves never touch the attestation machinery — a hold has no Event, so no ops plan', async () => {
+    await bulkRescheduleAgenda('acme', [{ kind: 'lead', id: 'l1', date: '2026-10-01' }])
+    expect(getOpsPlanCore).not.toHaveBeenCalled()
+    expect(clearReadyConfirmedCore).not.toHaveBeenCalled()
+  })
+
+  it('the drag path (rescheduleCalendarItem) inherits the clearing unchanged', async () => {
+    await rescheduleCalendarItem('acme', { kind: 'event', id: 'e1', date: '2026-09-05' })
+    expect(clearReadyConfirmedCore).toHaveBeenCalledWith('org-1', 'e1', 'u1')
+  })
+
+  it('a failed clear surfaces as the row\'s failure while the move stays applied (updateEvent-hook parity)', async () => {
+    vi.mocked(clearReadyConfirmedCore).mockRejectedValue(new Error('clear failed'))
+    const res = await bulkRescheduleAgenda('acme', [{ kind: 'event', id: 'e1', date: '2026-09-05' }])
+    // The business transaction committed first — the reschedule is real…
+    expect((store.docs.get(EVENT) as Record<string, unknown>).event_start).toBe('2026-09-05')
+    expect((store.docs.get(LEAD) as Record<string, unknown>).event_date).toBe('2026-09-05')
+    // …and the error is reported, not swallowed, so the stale stamp is not silent.
+    expect(res.moved).toBe(0)
+    expect(res.failures).toEqual([{ kind: 'event', id: 'e1', message: 'clear failed' }])
   })
 })
