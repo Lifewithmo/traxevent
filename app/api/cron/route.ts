@@ -1,14 +1,24 @@
 import { NextResponse } from 'next/server'
 import { runEveningSend } from '@/lib/ops/evening-send'
 
-// Hourly cron tick (vercel.json `crons` — Vercel invokes this in UTC; org-local
+// Cron tick (vercel.json `crons` — Vercel invokes this in UTC; org-local
 // scheduling happens inside each consumer via Org.timezone). One route, many
 // consumers over time: evening-before run sheets today; the invoice-overdue
 // sweep and re-book digests are the named next tenants (inc-3 S1.3).
 //
-// PRE-MERGE HUMAN GATES (inc-3 B2, carried in the PR body): the Vercel plan
-// must accept hourly cron schedules (a non-Pro plan FAILS DEPLOYMENT on
-// vercel.json's crons block), and CRON_SECRET must be set in the dashboard.
+// SCHEDULE (Hobby-plan constraint, proven by a failed preview deploy on
+// #137): Hobby rejects any cron more frequent than daily, ON EVERY DEPLOY —
+// so vercel.json carries two once-daily ticks, 01:00 + 03:00 UTC, which both
+// land inside the 18:00–21:59 org-local catch-up window for every zone from
+// UTC-4 (US Eastern) through UTC-9 (Alaska), year-round across DST. The
+// consumer's date-stamped idempotency makes the overlap tick a no-op. Orgs
+// outside that zone band (Hawaii, Europe) silently never hit the window —
+// the settings liveness line is what makes that visible. On a Pro plan,
+// flip vercel.json to a single hourly `0 * * * *` for full-zone coverage;
+// no code changes needed (the window logic is schedule-agnostic by design).
+//
+// PRE-MERGE HUMAN GATE (inc-3 B2, carried in the PR body): CRON_SECRET must
+// be set in the Vercel dashboard (this route fails closed until it is).
 
 export const dynamic = 'force-dynamic'
 

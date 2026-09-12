@@ -4,7 +4,7 @@ import { getOpsPlanCore, opsPlanRef, sendRunSheetCore } from '@/lib/ops/event-op
 import type { Event, OpsPlan, Org } from '@/lib/types'
 
 // Evening-before run-sheet send — the scheduling substrate's first consumer
-// (inc-3 S1.3 + B1). The hourly cron route (app/api/cron/route.ts) calls
+// (inc-3 S1.3 + B1). The cron route (app/api/cron/route.ts) calls
 // runEveningSend; everything date/window-shaped is a pure exported helper so
 // the math is testable without Firestore.
 //
@@ -13,8 +13,10 @@ import type { Event, OpsPlan, Org } from '@/lib/types'
 //     documented behavior, not an error (Vercel cron is always UTC; the org tz
 //     field is what makes "18:00 local" computable at all).
 //   - Send window is org-local hour ∈ [18, 21] — a CATCH-UP window, because
-//     missed hourly ticks are documented Vercel behavior. Idempotency comes
-//     from the date stamp below, NEVER from trusting the wall clock.
+//     missed or delayed ticks are documented Vercel behavior (and the window
+//     is also what lets a small set of fixed daily UTC ticks serve a band of
+//     timezones — see the schedule note in app/api/cron/route.ts). Idempotency
+//     comes from the date stamp below, NEVER from trusting the wall clock.
 //   - Idempotency: `plan.evening_sent_for` is the covered DATE (event_start
 //     sliced to YYYY-MM-DD — never a timestamp), and every compare slices
 //     BOTH sides, because event_start is a mixed-format field in live data
