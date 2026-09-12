@@ -60,12 +60,16 @@ export interface Org {
   // Evening-before run-sheet send (inc-3 scheduling substrate). Absent ⇒ ON
   // when a timezone is set. last_evening_run_at powers the settings liveness
   // line ("Last evening send: Fri 6:04 PM MDT — 1 run sheet");
-  // last_evening_sent_count is the run-sheet count of that same run (written
-  // together, may be 0 — a healthy quiet night is a real, distinguishable state).
+  // last_evening_sent_count is the run-sheet count for the evening named by
+  // last_evening_for — it ACCUMULATES across the 18–21h catch-up ticks
+  // covering that same evening and resets on a new one (may be 0 — a healthy
+  // quiet night is a real, distinguishable state). last_evening_for is the
+  // org-local "tomorrow" date the run covered (YYYY-MM-DD). Migration-free.
   ops_notifications?: {
     evening_run_sheet_opt_out?: boolean
     last_evening_run_at?: string
     last_evening_sent_count?: number
+    last_evening_for?: string
   }
   created_at: string
 }
@@ -1126,8 +1130,11 @@ export interface OpsPlan {
   ready_confirmed?: { at: string; by: string }
   // The event_start date (YYYY-MM-DD) the evening-before email covered.
   // Date-stamped (not a bare timestamp) so a rescheduled event self-heals:
-  // the cron compares against the CURRENT event_start — no clearing hooks
-  // needed in updateEvent or calendar moves. Idempotent per event×date.
+  // the cron compares against the CURRENT event_start's date — no clearing
+  // hooks needed in updateEvent or calendar moves. Idempotent per event×date.
+  // event_start is a mixed-format field in live data, so every compare
+  // normalizes BOTH sides to the date (.slice(0, 10)); pre-fix stamps may be
+  // full-ISO and still count as covering their date.
   evening_sent_for?: string
   change_log: OpsChangeEntry[]
   industry_pack_id?: string  // pack the plan was derived under (for re-derivation)

@@ -15,13 +15,24 @@ import type { Event, OpsPlan, Org } from '@/lib/types'
 //   - Send window is org-local hour ∈ [18, 21] — a CATCH-UP window, because
 //     missed hourly ticks are documented Vercel behavior. Idempotency comes
 //     from the date stamp below, NEVER from trusting the wall clock.
-//   - Idempotency: `plan.evening_sent_for = event.event_start` (the covered
-//     DATE, not a timestamp). A rescheduled event self-heals with zero
-//     clearing hooks — the stamp simply stops matching the new event_start.
+//   - Idempotency: `plan.evening_sent_for` is the covered DATE (event_start
+//     sliced to YYYY-MM-DD — never a timestamp), and every compare slices
+//     BOTH sides, because event_start is a mixed-format field in live data
+//     (see listEventsStartingOn). Same date in any format → already sent; a
+//     rescheduled event self-heals with zero clearing hooks — the stamp
+//     simply stops matching the new event_start's date.
+//   - Archived events never participate: archiving is the app's cancel path
+//     and it leaves the ops plan intact — a cancelled job must not get
+//     Pack-by/Leave-by instructions. Same post-fetch convention as
+//     readiness-horizon/shopping-run/calendar (drafts DO participate there,
+//     so they participate here too).
 //   - Observability: the run returns {orgs_scanned, sent, skipped, errors},
 //     and every participating org gets `ops_notifications.last_evening_run_at`
-//     (+ that run's sent count) so the settings liveness line can distinguish
-//     a healthy quiet night from a broken cron.
+//     plus a sent count that ACCUMULATES across ticks covering the same
+//     evening (`last_evening_for`) — later in-window catch-up ticks, which
+//     send nothing thanks to idempotency, must not overwrite a real count
+//     with 0. The settings liveness line can still distinguish a healthy
+//     quiet night (first tick stamps 0) from a broken cron (no stamp).
 
 export const EVENING_WINDOW_START_HOUR = 18
 export const EVENING_WINDOW_END_HOUR = 21
@@ -90,7 +101,10 @@ export interface EveningSendDeps {
   getOwnerEmail(orgId: string): Promise<string | undefined>
   sendRunSheet(orgId: string, eventId: string, email: string): Promise<void>
   markEveningSent(orgId: string, eventId: string, eventStart: string): Promise<void>
-  markOrgRun(orgId: string, at: string, sentCount: number): Promise<void>
+  /** `forDate` is the org-local "tomorrow" (YYYY-MM-DD) this run covered —
+   *  the accumulation key: same evening adds to the stored count, a new
+   *  evening resets it. */
+  markOrgRun(orgId: string, at: string, sentCount: number, forDate: string): Promise<void>
 }
 
 export function defaultEveningSendDeps(): EveningSendDeps {
@@ -100,14 +114,21 @@ export function defaultEveningSendDeps(): EveningSendDeps {
       return snap.docs.map((d) => ({ id: d.id, org: d.data() as Org }))
     },
     async listEventsStartingOn(orgId, day) {
-      // Single-field equality — served by Firestore's AUTOMATIC single-field
-      // index. No firestore.indexes.json entry needed for this shape (the
-      // existing composite events entry there is event_start+event_end, for a
-      // different query).
+      // RANGE on the day, not equality: event_start is a MIXED-FORMAT field
+      // in live data — usually 'YYYY-MM-DD', sometimes a full ISO timestamp
+      // (actions/calendar-bulk.ts documents this; the old demo seeder wrote
+      // full-ISO values, and shiftEventWindow preserves any suffix on
+      // reschedule). '==' would silently skip every suffixed job — no error,
+      // just a run sheet that never arrives. [day, nextDay) catches both
+      // forms by string order. Still a single-field query, served by
+      // Firestore's AUTOMATIC single-field index — no firestore.indexes.json
+      // entry needed (the existing composite events entry there is
+      // event_start+event_end, for a different query).
       const snap = await adminDb
         .collection('orgs').doc(orgId)
         .collection('events')
-        .where('event_start', '==', day)
+        .where('event_start', '>=', day)
+        .where('event_start', '<', nextDay(day))
         .get()
       return snap.docs.map((d) => ({ id: d.id, event: d.data() as Event }))
     },
@@ -131,25 +152,46 @@ export function defaultEveningSendDeps(): EveningSendDeps {
     },
     async markEveningSent(orgId, eventId, eventStart) {
       // Transaction-guarded, only-if-not-already-covering-this-date: a
-      // concurrent tick that already stamped THIS event_start wins and we
-      // leave the doc alone; a stale stamp from a PREVIOUS date is overwritten
-      // (that is the reschedule self-heal). No updated_at bump — this is
+      // concurrent tick that already stamped THIS date wins and we leave the
+      // doc alone; a stale stamp from a PREVIOUS date is overwritten (that is
+      // the reschedule self-heal). What is WRITTEN is always the sliced
+      // YYYY-MM-DD (the field is documented date-stamped), and the same-date
+      // guard slices the STORED value too — a pre-fix full-ISO stamp for the
+      // same date still counts as covered. No updated_at bump — this is
       // bookkeeping, not an operator change, and must not re-freshen the
       // print pages' "List updated" line.
+      const forDate = eventStart.slice(0, 10)
       const ref = opsPlanRef(orgId, eventId)
       await adminDb.runTransaction(async (tx) => {
         const snap = await tx.get(ref)
         if (!snap.exists) return
         const plan = snap.data() as OpsPlan
-        if (plan.evening_sent_for === eventStart) return
-        tx.update(ref, { evening_sent_for: eventStart })
+        if (plan.evening_sent_for?.slice(0, 10) === forDate) return
+        tx.update(ref, { evening_sent_for: forDate })
       })
     },
-    async markOrgRun(orgId, at, sentCount) {
-      // Dot-path update so the opt-out flag under ops_notifications survives.
-      await adminDb.collection('orgs').doc(orgId).update({
-        'ops_notifications.last_evening_run_at': at,
-        'ops_notifications.last_evening_sent_count': sentCount,
+    async markOrgRun(orgId, at, sentCount, forDate) {
+      // Read-modify-write under a transaction (same idiom as markEveningSent):
+      // the count ACCUMULATES while `last_evening_for` matches this run's
+      // covered evening, and resets on a new evening. Without this, the
+      // 19/20/21h catch-up ticks — which send nothing thanks to idempotency —
+      // would overwrite a real count with 0 on virtually every night that DID
+      // send. Dot-path updates so the opt-out flag under ops_notifications
+      // survives.
+      const ref = adminDb.collection('orgs').doc(orgId)
+      await adminDb.runTransaction(async (tx) => {
+        const snap = await tx.get(ref)
+        if (!snap.exists) return
+        const prev = (snap.data() as Org).ops_notifications
+        const count =
+          prev?.last_evening_for === forDate
+            ? (prev.last_evening_sent_count ?? 0) + sentCount
+            : sentCount
+        tx.update(ref, {
+          'ops_notifications.last_evening_run_at': at,
+          'ops_notifications.last_evening_sent_count': count,
+          'ops_notifications.last_evening_for': forDate,
+        })
       })
     },
   }
@@ -207,19 +249,29 @@ export async function runEveningSend(
       let sentForOrg = 0
       for (const { id: eventId, event } of events) {
         try {
+          // Archiving is the app's cancel path and it leaves the ops plan
+          // intact — a cancelled job must never get Pack-by/Leave-by
+          // instructions. Post-fetch skip, matching the repo convention
+          // (readiness-horizon.ts, shopping-run.ts, calendar.ts all filter
+          // status !== 'archived' — and none exclude drafts, so neither do we).
+          if (event.status === 'archived') continue
           if (kindOf(event) !== 'client_job') continue
           const plan = await deps.getPlan(orgId, eventId)
           if (!plan) continue
-          // Date-stamped idempotency: already covered THIS event_start → done.
-          // A stamp for a different date means the event was rescheduled after
-          // a send — it no longer matches, so the new date sends again.
-          if (plan.evening_sent_for === event.event_start) continue
+          // Date-stamped idempotency, normalized on BOTH sides: event_start
+          // may carry an ISO time suffix (mixed-format field — see
+          // listEventsStartingOn) and a pre-fix stamp may too, but the
+          // contract is the covered DATE. Same date in any format → already
+          // sent; a stamp for a different date means the event was
+          // rescheduled after a send, so the new date sends again.
+          const coveredDate = event.event_start.slice(0, 10)
+          if (plan.evening_sent_for?.slice(0, 10) === coveredDate) continue
 
           const email = await ownerEmail()
           if (!email) throw new Error('Org has no owner email on file')
 
           await deps.sendRunSheet(orgId, eventId, email)
-          await deps.markEveningSent(orgId, eventId, event.event_start)
+          await deps.markEveningSent(orgId, eventId, coveredDate)
           sentForOrg++
           summary.sent++
         } catch (err) {
@@ -230,8 +282,10 @@ export async function runEveningSend(
 
       // Liveness stamp for EVERY processed (in-window, participating) org —
       // a 0-count run is a healthy quiet night, and must look different from
-      // a cron that never ran.
-      await deps.markOrgRun(orgId, now.toISOString(), sentForOrg)
+      // a cron that never ran. `tomorrow` keys the accumulation: catch-up
+      // ticks covering the same evening ADD to the count (usually +0) instead
+      // of overwriting the 18h tick's real count with 0.
+      await deps.markOrgRun(orgId, now.toISOString(), sentForOrg, tomorrow)
     } catch (err) {
       summary.errors++
       console.error(`[evening-send] org ${orgId} failed`, err)

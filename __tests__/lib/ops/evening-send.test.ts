@@ -2,27 +2,37 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // Evening-before run-sheet consumer (inc-3 S1.3 + B1): window math (incl. the
 // catch-up hours and DST-transition days via fixed zones), org-local
-// tomorrow-boundary math, date-stamped idempotency (incl. the reschedule
-// self-heal), opt-out, tz-less skip, and per-org failure isolation.
+// tomorrow-boundary math, date-stamped idempotency normalized across the
+// mixed-format event_start field (incl. the reschedule self-heal), the
+// archived skip (cancel path), opt-out, tz-less skip, per-org failure
+// isolation, and the per-evening ACCUMULATING liveness count (catch-up ticks
+// must not overwrite a real count with 0).
 
-// The default-deps describe at the bottom exercises the transaction-guarded
-// stamp + the dot-path liveness write against this firestore stub.
+// The default-deps describes at the bottom exercise the range query, the
+// transaction-guarded stamp, and the transaction-guarded accumulating
+// liveness write against this firestore stub.
 const planGetSpy = vi.hoisted(() => vi.fn())
 const planUpdateSpy = vi.hoisted(() => vi.fn())
+const orgGetSpy = vi.hoisted(() => vi.fn())
 const orgUpdateSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
+const eventsWhereSpy = vi.hoisted(() => vi.fn())
+const eventsGetSpy = vi.hoisted(() => vi.fn().mockResolvedValue({ docs: [] }))
 vi.mock('@/lib/firebase-admin', () => {
   const planDoc = { get: planGetSpy, update: planUpdateSpy }
   const opsColl = { doc: () => planDoc }
   const eventDoc = { collection: () => opsColl }
-  const eventsColl = { doc: () => eventDoc }
-  const orgDoc = { collection: () => eventsColl, update: orgUpdateSpy }
+  // .where() chains (the range query calls it twice) and ends in .get().
+  eventsWhereSpy.mockReturnValue({ where: eventsWhereSpy, get: eventsGetSpy })
+  const eventsColl = { doc: () => eventDoc, where: eventsWhereSpy }
+  const orgDoc = { collection: () => eventsColl, get: orgGetSpy, update: orgUpdateSpy }
+  type StubDoc = { get: () => Promise<unknown>; update: (p: unknown) => unknown }
   return {
     adminDb: {
       collection: () => ({ doc: () => orgDoc }),
       runTransaction: async (
         fn: (tx: {
-          get: (ref: typeof planDoc) => Promise<unknown>
-          update: (ref: typeof planDoc, p: unknown) => unknown
+          get: (ref: StubDoc) => Promise<unknown>
+          update: (ref: StubDoc, p: unknown) => unknown
         }) => unknown,
       ) => fn({ get: (ref) => ref.get(), update: (ref, p) => ref.update(p) }),
     },
@@ -135,7 +145,7 @@ describe('runEveningSend', () => {
     expect(deps.listEventsStartingOn).toHaveBeenCalledWith('org-1', '2026-09-12')
     expect(deps.sendRunSheet).toHaveBeenCalledWith('org-1', 'e1', 'owner@demo.co')
     expect(deps.markEveningSent).toHaveBeenCalledWith('org-1', 'e1', '2026-09-12')
-    expect(deps.markOrgRun).toHaveBeenCalledWith('org-1', NOW.toISOString(), 1)
+    expect(deps.markOrgRun).toHaveBeenCalledWith('org-1', NOW.toISOString(), 1, '2026-09-12')
     expect(summary).toEqual({ orgs_scanned: 1, sent: 1, skipped: 0, errors: 0 })
   })
 
@@ -147,8 +157,33 @@ describe('runEveningSend', () => {
     expect(deps.sendRunSheet).not.toHaveBeenCalled()
     expect(deps.markEveningSent).not.toHaveBeenCalled()
     // A quiet covered night is still a PROCESSED night — liveness stamps with 0.
-    expect(deps.markOrgRun).toHaveBeenCalledWith('org-1', NOW.toISOString(), 0)
+    expect(deps.markOrgRun).toHaveBeenCalledWith('org-1', NOW.toISOString(), 0, '2026-09-12')
     expect(summary).toEqual({ orgs_scanned: 1, sent: 0, skipped: 0, errors: 0 })
+  })
+
+  it('NORMALIZED idempotency: a pre-fix full-ISO stamp for the SAME date still counts as sent', async () => {
+    const deps = makeDeps({
+      listEventsStartingOn: vi.fn().mockResolvedValue([
+        { id: 'e1', event: clientJob({ event_start: '2026-09-12T14:00:00.000Z' }) },
+      ]),
+      getPlan: vi.fn().mockResolvedValue(plan({ evening_sent_for: '2026-09-12T14:00:00.000Z' })),
+    })
+    const summary = await runEveningSend(NOW, deps)
+    expect(deps.sendRunSheet).not.toHaveBeenCalled()
+    expect(deps.markEveningSent).not.toHaveBeenCalled()
+    expect(summary.sent).toBe(0)
+  })
+
+  it('an ISO-suffixed event_start sends and stamps the SLICED date (mixed-format field)', async () => {
+    const deps = makeDeps({
+      listEventsStartingOn: vi.fn().mockResolvedValue([
+        { id: 'e1', event: clientJob({ event_start: '2026-09-12T14:00:00.000Z' }) },
+      ]),
+    })
+    const summary = await runEveningSend(NOW, deps)
+    expect(deps.sendRunSheet).toHaveBeenCalledWith('org-1', 'e1', 'owner@demo.co')
+    expect(deps.markEveningSent).toHaveBeenCalledWith('org-1', 'e1', '2026-09-12')
+    expect(summary.sent).toBe(1)
   })
 
   it('RESCHEDULE SELF-HEAL: a stamp for a previous date no longer matches, so the new date sends again', async () => {
@@ -158,6 +193,41 @@ describe('runEveningSend', () => {
     const summary = await runEveningSend(NOW, deps)
     expect(deps.sendRunSheet).toHaveBeenCalledWith('org-1', 'e1', 'owner@demo.co')
     expect(deps.markEveningSent).toHaveBeenCalledWith('org-1', 'e1', '2026-09-12')
+    expect(summary.sent).toBe(1)
+  })
+
+  it('reschedule self-heal holds ACROSS FORMATS: a full-ISO stamp for a different date resends', async () => {
+    const deps = makeDeps({
+      getPlan: vi.fn().mockResolvedValue(plan({ evening_sent_for: '2026-09-05T14:00:00.000Z' })),
+    })
+    const summary = await runEveningSend(NOW, deps)
+    expect(deps.sendRunSheet).toHaveBeenCalledWith('org-1', 'e1', 'owner@demo.co')
+    expect(deps.markEveningSent).toHaveBeenCalledWith('org-1', 'e1', '2026-09-12')
+    expect(summary.sent).toBe(1)
+  })
+
+  it('ARCHIVED events never get the evening send — the cancel path leaves the plan intact', async () => {
+    const deps = makeDeps({
+      listEventsStartingOn: vi.fn().mockResolvedValue([
+        { id: 'a1', event: clientJob({ status: 'archived' }) },
+      ]),
+    })
+    const summary = await runEveningSend(NOW, deps)
+    expect(deps.getPlan).not.toHaveBeenCalled()
+    expect(deps.sendRunSheet).not.toHaveBeenCalled()
+    // A skipped-archived event must NOT get evening_sent_for stamped either.
+    expect(deps.markEveningSent).not.toHaveBeenCalled()
+    expect(summary).toEqual({ orgs_scanned: 1, sent: 0, skipped: 0, errors: 0 })
+  })
+
+  it('DRAFT events still participate — siblings (horizon/run/calendar) only exclude archived', async () => {
+    const deps = makeDeps({
+      listEventsStartingOn: vi.fn().mockResolvedValue([
+        { id: 'd1', event: clientJob({ status: 'draft' }) },
+      ]),
+    })
+    const summary = await runEveningSend(NOW, deps)
+    expect(deps.sendRunSheet).toHaveBeenCalledWith('org-1', 'd1', 'owner@demo.co')
     expect(summary.sent).toBe(1)
   })
 
@@ -231,7 +301,7 @@ describe('runEveningSend', () => {
     const summary = await runEveningSend(NOW, deps)
     consoleSpy.mockRestore()
     expect(deps.sendRunSheet).toHaveBeenCalledWith('good-org', 'e1', 'owner@demo.co')
-    expect(deps.markOrgRun).toHaveBeenCalledWith('good-org', NOW.toISOString(), 1)
+    expect(deps.markOrgRun).toHaveBeenCalledWith('good-org', NOW.toISOString(), 1, '2026-09-12')
     expect(summary).toEqual({ orgs_scanned: 2, sent: 1, skipped: 0, errors: 1 })
   })
 
@@ -241,7 +311,7 @@ describe('runEveningSend', () => {
     const summary = await runEveningSend(NOW, deps)
     consoleSpy.mockRestore()
     expect(deps.markEveningSent).not.toHaveBeenCalled()
-    expect(deps.markOrgRun).toHaveBeenCalledWith('org-1', NOW.toISOString(), 0)
+    expect(deps.markOrgRun).toHaveBeenCalledWith('org-1', NOW.toISOString(), 0, '2026-09-12')
     expect(summary).toEqual({ orgs_scanned: 1, sent: 0, skipped: 0, errors: 1 })
   })
 
@@ -274,11 +344,134 @@ describe('runEveningSend', () => {
     const summary = await runEveningSend(NOW, deps)
     expect(deps.getOwnerEmail).toHaveBeenCalledTimes(1)
     expect(summary.sent).toBe(2)
-    expect(deps.markOrgRun).toHaveBeenCalledWith('org-1', NOW.toISOString(), 2)
+    expect(deps.markOrgRun).toHaveBeenCalledWith('org-1', NOW.toISOString(), 2, '2026-09-12')
   })
 })
 
-// ── Default Firestore deps: the transaction-guarded stamp + liveness write ───
+// ── Tick sequences (D3): the liveness count must survive catch-up ticks ──────
+//
+// These run the REAL default-deps markEveningSent + markOrgRun against
+// stateful stubs, so the idempotency stamp and the accumulating count interact
+// exactly as they do in production across a whole evening of hourly ticks.
+
+function statefulStores() {
+  let planState = plan()
+  planGetSpy.mockImplementation(async () => ({ exists: true, data: () => planState }))
+  planUpdateSpy.mockImplementation((p: Partial<OpsPlan>) => {
+    planState = { ...planState, ...p }
+  })
+  let orgState = org()
+  orgGetSpy.mockImplementation(async () => ({ exists: true, data: () => orgState }))
+  orgUpdateSpy.mockImplementation((p: Record<string, unknown>) => {
+    orgState = {
+      ...orgState,
+      ops_notifications: {
+        ...orgState.ops_notifications,
+        last_evening_run_at: p['ops_notifications.last_evening_run_at'] as string,
+        last_evening_sent_count: p['ops_notifications.last_evening_sent_count'] as number,
+        last_evening_for: p['ops_notifications.last_evening_for'] as string,
+      },
+    }
+  })
+  return {
+    notifications: () => orgState.ops_notifications,
+    getPlan: async () => planState,
+  }
+}
+
+describe('tick sequences (accumulating liveness count)', () => {
+  // Denver evening of Sep 11: 18:05 / 19:05 / 20:05 / 21:05 local.
+  const TICKS = [
+    '2026-09-12T00:05:00Z',
+    '2026-09-12T01:05:00Z',
+    '2026-09-12T02:05:00Z',
+    '2026-09-12T03:05:00Z',
+  ]
+
+  it('4 in-window ticks, send on tick 1, quiet catch-ups → final count 1 with the LATEST timestamp', async () => {
+    const store = statefulStores()
+    const dd = defaultEveningSendDeps()
+    const deps = makeDeps({
+      getPlan: store.getPlan,
+      markEveningSent: dd.markEveningSent,
+      markOrgRun: dd.markOrgRun,
+    })
+    for (const t of TICKS) await runEveningSend(new Date(t), deps)
+    expect(deps.sendRunSheet).toHaveBeenCalledTimes(1)
+    // Pre-fix behavior stamped 0 here (ticks 2–4 each overwrote the count).
+    expect(store.notifications()).toEqual({
+      last_evening_run_at: '2026-09-12T03:05:00.000Z',
+      last_evening_sent_count: 1,
+      last_evening_for: '2026-09-12',
+    })
+  })
+
+  it('a NEW evening resets the count instead of accumulating across nights', async () => {
+    const store = statefulStores()
+    const dd = defaultEveningSendDeps()
+    const deps = makeDeps({
+      getPlan: store.getPlan,
+      markEveningSent: dd.markEveningSent,
+      markOrgRun: dd.markOrgRun,
+    })
+    for (const t of TICKS) await runEveningSend(new Date(t), deps)
+    expect(store.notifications()?.last_evening_sent_count).toBe(1)
+    // Next evening (Sep 12, 18:05 Denver): the only candidate is already
+    // stamped for its own date, so nothing sends — the count must reset to 0
+    // for the NEW evening, not carry yesterday's 1.
+    await runEveningSend(new Date('2026-09-13T00:05:00Z'), deps)
+    expect(store.notifications()).toEqual({
+      last_evening_run_at: '2026-09-13T00:05:00.000Z',
+      last_evening_sent_count: 0,
+      last_evening_for: '2026-09-13',
+    })
+  })
+
+  it('two sends across two ticks (second event booked between ticks) ACCUMULATE to 2', async () => {
+    const store = statefulStores()
+    // Per-event stamp map — the shared plan-doc stub can't distinguish two
+    // events, and per-event stamping is covered by the default-deps describe.
+    const stamps: Record<string, string> = {}
+    const deps = makeDeps({
+      listEventsStartingOn: vi
+        .fn()
+        .mockResolvedValueOnce([{ id: 'e1', event: clientJob() }])
+        .mockResolvedValueOnce([
+          { id: 'e1', event: clientJob() },
+          { id: 'e2', event: clientJob({ name: 'Booked Tonight' }) },
+        ]),
+      getPlan: async (_orgId: string, eventId: string) =>
+        plan(stamps[eventId] ? { evening_sent_for: stamps[eventId] } : {}),
+      markEveningSent: async (_orgId: string, eventId: string, d: string) => {
+        stamps[eventId] = d
+      },
+      markOrgRun: defaultEveningSendDeps().markOrgRun,
+    })
+    await runEveningSend(new Date(TICKS[0]), deps)
+    await runEveningSend(new Date(TICKS[1]), deps)
+    expect(deps.sendRunSheet).toHaveBeenCalledTimes(2)
+    expect(store.notifications()?.last_evening_sent_count).toBe(2)
+    expect(store.notifications()?.last_evening_for).toBe('2026-09-12')
+  })
+})
+
+// ── Default Firestore deps: query shape, transaction-guarded stamp, liveness ─
+
+describe('defaultEveningSendDeps.listEventsStartingOn (range, not equality — mixed-format event_start)', () => {
+  it('queries [day, nextDay) so an ISO-suffixed event_start is matched', async () => {
+    eventsGetSpy.mockResolvedValueOnce({
+      docs: [{ id: 'e1', data: () => clientJob({ event_start: '2026-09-12T14:00:00.000Z' }) }],
+    })
+    const rows = await defaultEveningSendDeps().listEventsStartingOn('o1', '2026-09-12')
+    // Equality ('==') would silently miss '2026-09-12T14:00:00.000Z' — the
+    // range brackets the whole day by string order on the SAME single field.
+    expect(eventsWhereSpy).toHaveBeenNthCalledWith(1, 'event_start', '>=', '2026-09-12')
+    expect(eventsWhereSpy).toHaveBeenNthCalledWith(2, 'event_start', '<', '2026-09-13')
+    expect(rows).toEqual([
+      { id: 'e1', event: expect.objectContaining({ event_start: '2026-09-12T14:00:00.000Z' }) },
+    ])
+  })
+})
 
 describe('defaultEveningSendDeps.markEveningSent (transaction-guarded, only-if-not-covering-this-date)', () => {
   it('stamps an unstamped plan with the covered event_start', async () => {
@@ -299,6 +492,21 @@ describe('defaultEveningSendDeps.markEveningSent (transaction-guarded, only-if-n
     expect(planUpdateSpy).toHaveBeenCalledWith({ evening_sent_for: '2026-09-12' })
   })
 
+  it('a PRE-FIX full-ISO stamp for the same date still counts as covered (stored side sliced too)', async () => {
+    planGetSpy.mockResolvedValue({
+      exists: true,
+      data: () => plan({ evening_sent_for: '2026-09-12T14:00:00.000Z' }),
+    })
+    await defaultEveningSendDeps().markEveningSent('o1', 'e1', '2026-09-12')
+    expect(planUpdateSpy).not.toHaveBeenCalled()
+  })
+
+  it('writes the SLICED date even when handed a suffixed event_start (the field is date-stamped)', async () => {
+    planGetSpy.mockResolvedValue({ exists: true, data: () => plan() })
+    await defaultEveningSendDeps().markEveningSent('o1', 'e1', '2026-09-12T18:30:00.000Z')
+    expect(planUpdateSpy).toHaveBeenCalledWith({ evening_sent_for: '2026-09-12' })
+  })
+
   it('no-ops when the plan vanished', async () => {
     planGetSpy.mockResolvedValue({ exists: false })
     await defaultEveningSendDeps().markEveningSent('o1', 'e1', '2026-09-12')
@@ -306,12 +514,75 @@ describe('defaultEveningSendDeps.markEveningSent (transaction-guarded, only-if-n
   })
 })
 
-describe('defaultEveningSendDeps.markOrgRun', () => {
-  it('dot-path updates so the opt-out flag survives the liveness write', async () => {
-    await defaultEveningSendDeps().markOrgRun('o1', '2026-09-12T00:00:00.000Z', 1)
+describe('defaultEveningSendDeps.markOrgRun (transaction, per-evening accumulating count)', () => {
+  it('first stamp of an evening writes the run count + covered evening, dot-path (opt-out survives)', async () => {
+    orgGetSpy.mockResolvedValue({ exists: true, data: () => org() })
+    await defaultEveningSendDeps().markOrgRun('o1', '2026-09-12T00:10:00.000Z', 1, '2026-09-12')
     expect(orgUpdateSpy).toHaveBeenCalledWith({
-      'ops_notifications.last_evening_run_at': '2026-09-12T00:00:00.000Z',
+      'ops_notifications.last_evening_run_at': '2026-09-12T00:10:00.000Z',
       'ops_notifications.last_evening_sent_count': 1,
+      'ops_notifications.last_evening_for': '2026-09-12',
     })
+  })
+
+  it('a later tick covering the SAME evening accumulates (here +0) — never overwrites a real count', async () => {
+    orgGetSpy.mockResolvedValue({
+      exists: true,
+      data: () =>
+        org({
+          ops_notifications: {
+            last_evening_run_at: '2026-09-12T00:10:00.000Z',
+            last_evening_sent_count: 1,
+            last_evening_for: '2026-09-12',
+          },
+        }),
+    })
+    await defaultEveningSendDeps().markOrgRun('o1', '2026-09-12T01:10:00.000Z', 0, '2026-09-12')
+    expect(orgUpdateSpy).toHaveBeenCalledWith({
+      'ops_notifications.last_evening_run_at': '2026-09-12T01:10:00.000Z',
+      'ops_notifications.last_evening_sent_count': 1,
+      'ops_notifications.last_evening_for': '2026-09-12',
+    })
+  })
+
+  it('a NEW evening resets the count to this run\'s own sends', async () => {
+    orgGetSpy.mockResolvedValue({
+      exists: true,
+      data: () =>
+        org({
+          ops_notifications: { last_evening_sent_count: 5, last_evening_for: '2026-09-11' },
+        }),
+    })
+    await defaultEveningSendDeps().markOrgRun('o1', '2026-09-12T00:10:00.000Z', 0, '2026-09-12')
+    expect(orgUpdateSpy).toHaveBeenCalledWith({
+      'ops_notifications.last_evening_run_at': '2026-09-12T00:10:00.000Z',
+      'ops_notifications.last_evening_sent_count': 0,
+      'ops_notifications.last_evening_for': '2026-09-12',
+    })
+  })
+
+  it('a legacy org doc with no last_evening_for treats the run as a fresh evening', async () => {
+    orgGetSpy.mockResolvedValue({
+      exists: true,
+      data: () =>
+        org({
+          ops_notifications: {
+            last_evening_run_at: '2026-09-11T00:10:00.000Z',
+            last_evening_sent_count: 3,
+          },
+        }),
+    })
+    await defaultEveningSendDeps().markOrgRun('o1', '2026-09-12T00:10:00.000Z', 1, '2026-09-12')
+    expect(orgUpdateSpy).toHaveBeenCalledWith({
+      'ops_notifications.last_evening_run_at': '2026-09-12T00:10:00.000Z',
+      'ops_notifications.last_evening_sent_count': 1,
+      'ops_notifications.last_evening_for': '2026-09-12',
+    })
+  })
+
+  it('no-ops when the org doc vanished', async () => {
+    orgGetSpy.mockResolvedValue({ exists: false })
+    await defaultEveningSendDeps().markOrgRun('o1', '2026-09-12T00:10:00.000Z', 1, '2026-09-12')
+    expect(orgUpdateSpy).not.toHaveBeenCalled()
   })
 })
