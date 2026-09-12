@@ -255,7 +255,11 @@ export interface ZonedStampParts {
  * STILL normalize U+202F → ' ' defensively in case a part value ever carries
  * one. The zone abbreviation is Intl's, which is stable across current Node +
  * browser ICU for named zones; client renders of these stamps should still
- * post-gate or suppressHydrationWarning where a mismatch would warn.
+ * post-mount gate (deterministic placeholder on the server and hydration
+ * passes, real stamp on the first client render) where a mismatch would warn.
+ * NEVER suppressHydrationWarning — it is banned in this codebase because
+ * React then KEEPS the stale SSR text instead of patching it (see
+ * RunSheetClient's confirmStamp note for the precedent).
  */
 export function zonedStampParts(iso: string, timeZone: string): ZonedStampParts | null {
   const d = new Date(iso)

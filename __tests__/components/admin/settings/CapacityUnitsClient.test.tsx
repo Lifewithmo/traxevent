@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, within, fireEvent, waitFor } from '@testing-library/react'
+import { renderToString } from 'react-dom/server'
 import userEvent from '@testing-library/user-event'
 
 const createCapacityUnit = vi.hoisted(() => vi.fn())
@@ -692,7 +693,7 @@ describe('CapacityUnitsClient', () => {
       expect(screen.getByText(/paused — no evening-before emails/i)).toBeInTheDocument()
     })
 
-    it('renders the liveness line ORG-LOCAL with the zone abbreviated and the run-sheet count (B1)', () => {
+    it('renders the liveness line ORG-LOCAL with weekday, DATE, zone abbreviation, and count (B1/D10)', () => {
       render(
         <CapacityUnitsClient
           {...base}
@@ -705,7 +706,12 @@ describe('CapacityUnitsClient', () => {
           }}
         />,
       )
-      expect(screen.getByText(/last evening send: Fri 6:00 PM MDT — 1 run sheet$/i)).toBeInTheDocument()
+      // The month+day is REQUIRED, not tolerated: a weekday+time-only stamp
+      // ("Fri 6:00 PM MDT") let a cron dead for exactly 7/14/21 days render
+      // as a healthy recent run.
+      expect(
+        screen.getByText(/last evening send: Fri, Sep 11, 6:00 PM MDT — 1 run sheet$/i),
+      ).toBeInTheDocument()
     })
 
     it('pluralizes the count and keeps a 0-count night distinguishable from "never ran"', () => {
@@ -720,7 +726,58 @@ describe('CapacityUnitsClient', () => {
           }}
         />,
       )
-      expect(screen.getByText(/last evening send: Fri 6:00 PM MDT — 0 run sheets$/i)).toBeInTheDocument()
+      expect(
+        screen.getByText(/last evening send: Fri, Sep 11, 6:00 PM MDT — 0 run sheets$/i),
+      ).toBeInTheDocument()
+    })
+
+    // D9: the liveness stamp is zone-dependent (Intl zone abbreviations can
+    // drift across ICU builds), so it must be post-mount gated — never
+    // suppressHydrationWarning, which makes React KEEP the stale SSR text
+    // (RunSheetClient confirmStamp precedent).
+    const livenessProps = {
+      ...base,
+      initialUnits: [],
+      initialTimezone: 'America/Denver',
+      initialOpsNotifications: {
+        last_evening_run_at: '2026-09-12T00:00:00.000Z',
+        last_evening_sent_count: 1,
+      },
+    }
+
+    it('SSR bakes NO zone-dependent stamp into the liveness line — stable label + count clause only (D9)', () => {
+      const html = renderToString(<CapacityUnitsClient {...livenessProps} />)
+      // Deterministic placeholder in the SSR payload: the label and the
+      // count clause (both props-derived) — the Intl-derived clock face must
+      // NOT be there. If it is, the gate was removed and a drifted zone
+      // abbreviation could once again be frozen into the HTML.
+      expect(html).toContain('Last evening send:')
+      expect(html).toContain('1 run sheet')
+      expect(html).not.toContain('6:00 PM')
+      expect(html).not.toContain('MDT')
+      expect(html).not.toContain('Sep 11')
+    })
+
+    it('hydrates the SSR HTML without a mismatch, then swaps in the org-local stamp (D9/D10)', () => {
+      const container = document.createElement('div')
+      document.body.appendChild(container)
+      container.innerHTML = renderToString(<CapacityUnitsClient {...livenessProps} />)
+
+      // No suppressHydrationWarning remains on the stamp, so a server/client
+      // divergence would surface right here as a console.error from React.
+      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+      try {
+        render(<CapacityUnitsClient {...livenessProps} />, { container, hydrate: true })
+        expect(consoleError).not.toHaveBeenCalled()
+      } finally {
+        consoleError.mockRestore()
+      }
+
+      // Post-hydration: the full org-local stamp, date included.
+      expect(
+        screen.getByText(/last evening send: Fri, Sep 11, 6:00 PM MDT — 1 run sheet$/i),
+      ).toBeInTheDocument()
+      container.remove()
     })
 
     it('designed empty state before the first run', () => {

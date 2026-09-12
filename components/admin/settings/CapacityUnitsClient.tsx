@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useId, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { useEffect, useId, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -649,6 +649,19 @@ export function CapacityUnitsClient({
 
 // --- Time zone + evening-before send (inc-3 S1.1/S1.3/B1) ---------------------
 
+const emptySubscribe = () => () => {}
+
+/** '2026-09-11' (zonedStampParts' zone-local date) → 'Sep 11'. Static English
+ *  month names — deliberately NOT another Intl formatter (the shared parts
+ *  formatter stays the only one) and immune to ICU drift. The date matters:
+ *  a weekday+time-only stamp let a cron dead for exactly 7/14/21 days pass as
+ *  a healthy recent run. */
+const STAMP_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+function stampMonthDay(date: string): string {
+  const [, mm, dd] = date.split('-')
+  return `${STAMP_MONTHS[Number(mm) - 1] ?? mm} ${Number(dd)}`
+}
+
 /**
  * Org timezone select + the evening-before run-sheet controls. Self-contained
  * (own saving/error state, OpsBuffersSection precedent) so it renders
@@ -679,6 +692,21 @@ function SchedulingSection({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const uid = useId()
+
+  // Hydration gate for the liveness stamp: true only once React runs in the
+  // browser. zonedStampParts assembles from Intl PARTS (U+202F-normalized),
+  // but zone ABBREVIATIONS can still drift across ICU builds (Node's vs the
+  // browser's) — and suppressHydrationWarning is BANNED here: React KEEPS the
+  // stale SSR text instead of patching it (see RunSheetClient's confirmStamp
+  // note). Same null-server-snapshot idiom as RunSheetClient/CheckinClient:
+  // server pass and hydration pass both render the deterministic placeholder,
+  // then the first client render swaps in the org-local stamp — no mismatch,
+  // nothing suppressed.
+  const hydrated = useSyncExternalStore(
+    emptySubscribe,
+    () => true,
+    () => false
+  )
 
   useEffect(() => {
     // Post-mount only (see the component comment). DropEditorClient precedent
@@ -731,13 +759,17 @@ function SchedulingSection({
   const lastAt = initialOpsNotifications?.last_evening_run_at
   const lastCount = initialOpsNotifications?.last_evening_sent_count
   // Org-local liveness stamp; a saved zone the browser can't resolve falls
-  // back to a labeled-UTC render — never a blank or a lying local time.
+  // back to a labeled-UTC render — never a blank or a lying local time. The
+  // month+day is part of the stamp on purpose: "Fri 6:04 PM MDT" alone let a
+  // cron dead for exactly 7/14/21 days read as a healthy recent run.
   const zoned = lastAt && savedTz ? zonedStampParts(lastAt, savedTz) : null
   const livenessStamp = lastAt
     ? zoned
-      ? `${zoned.weekday} ${zoned.time} ${zoned.zone}`
+      ? `${zoned.weekday}, ${stampMonthDay(zoned.date)}, ${zoned.time} ${zoned.zone}`
       : `${lastAt.slice(0, 10)} ${lastAt.slice(11, 16)} UTC`
     : null
+  const countClause =
+    typeof lastCount === 'number' ? `${lastCount} run sheet${lastCount === 1 ? '' : 's'}` : null
 
   return (
     <section className="space-y-3" aria-labelledby={`${uid}-heading`}>
@@ -802,15 +834,19 @@ function SchedulingSection({
           // Liveness line (B1): a healthy quiet night must be distinguishable
           // from a broken cron — so a run with zero sends still stamps, and the
           // empty state is only for "the cron has never run for this org".
-          // suppressHydrationWarning: the stamp is assembled from Intl PARTS
-          // (U+202F-normalized), but zone ABBREVIATIONS could still drift
-          // across ICU builds — a cosmetic mismatch must not warn.
-          <p className="text-xs text-muted-foreground" suppressHydrationWarning>
+          // The zone-dependent stamp renders only after the `hydrated` gate
+          // above; SSR and the hydration pass show the count clause (or an
+          // em-dash) under the SAME stable label, so nothing mismatches and
+          // nothing needs suppressing.
+          <p className="text-xs text-muted-foreground">
             {livenessStamp ? (
               <>
-                Last evening send: {livenessStamp}
-                {typeof lastCount === 'number' &&
-                  ` — ${lastCount} run sheet${lastCount === 1 ? '' : 's'}`}
+                {'Last evening send: '}
+                {hydrated
+                  ? countClause
+                    ? `${livenessStamp} — ${countClause}`
+                    : livenessStamp
+                  : (countClause ?? '—')}
               </>
             ) : (
               <>No sends yet — first one goes out the evening before your next job.</>
