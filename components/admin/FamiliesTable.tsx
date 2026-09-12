@@ -16,6 +16,15 @@ const STATUS_FILTERS = [
   { key: 'cancelled', label: 'Cancelled' },
 ]
 
+// Mirrors CheckinClient's money-pill formatter — ONE mobile money language for
+// Casey. Whole-dollar balances drop cents; fractional balances keep them.
+function fmtMoney(n: number): string {
+  return n.toLocaleString('en-US', {
+    minimumFractionDigits: n % 1 === 0 ? 0 : 2,
+    maximumFractionDigits: 2,
+  })
+}
+
 interface FamiliesTableProps {
   families: Family[]
   search: string
@@ -121,21 +130,43 @@ export function FamiliesTable({
         onClear={onClearSelection}
       />
 
-      {/* Table */}
+      {/*
+        List — SINGLE DOM tree, two responsive skins (jsdom/text tests match once):
+        - Base (<sm, phones): card rows mirroring CheckinClient's shipped
+          line-pressure idiom — name (primary) + StatusPill + balance money-pill
+          ONLY when balance > 0 (no dash noise), plus a visible ≥24px checkbox so
+          bulk survives on the phone. No min-width → no horizontal pan.
+        - ≥sm: the original 5-column grid, unchanged.
+        Phone budget: find (search) → tap (card → slide-over) → decide → next
+        (slide-over Prev/Next, shipped) ≤ 5 touches, no pan.
+      */}
       <div className="flex-1 overflow-y-auto overflow-x-auto">
-        <div className="min-w-[560px]">
-          {/* Header */}
-          <div className="grid grid-cols-[28px_1fr_110px_90px_60px] gap-2 px-4 py-2 bg-muted/50 border-b border-border text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+        <div className="sm:min-w-[560px]">
+          {/*
+            Header — ≥sm: the column-label grid (unchanged). Below sm the dead
+            label row becomes a base-width "Select all (n)" line, so
+            registration-season bulk-confirm at 375px stays a 2-tap flow
+            (Select all → Confirm). ONE select-all checkbox serves both modes.
+          */}
+          <div className="flex items-center gap-3 px-4 py-2 bg-muted/50 border-b border-border text-xs font-semibold text-muted-foreground uppercase tracking-wide sm:grid sm:grid-cols-[28px_1fr_110px_90px_60px] sm:gap-2">
             <input
+              id="families-select-all"
               type="checkbox"
               checked={allFilteredSelected}
               onChange={handleToggleAll}
-              className="accent-primary"
+              aria-label={`Select all (${filtered.length})`}
+              className="accent-primary size-6 sm:size-auto" /* ≥24px target below sm */
             />
-            <span>Family</span>
-            <span>Status</span>
-            <span>Balance</span>
-            <span />
+            <label
+              htmlFor="families-select-all"
+              className="sm:hidden cursor-pointer select-none"
+            >
+              Select all ({filtered.length})
+            </label>
+            <span className="hidden sm:block">Family</span>
+            <span className="hidden sm:block">Status</span>
+            <span className="hidden sm:block">Balance</span>
+            <span className="hidden sm:block" />
           </div>
 
           {filtered.length === 0 && (
@@ -152,10 +183,16 @@ export function FamiliesTable({
           {filtered.map(f => {
             const balance = (f.amount_due ?? 0) - (f.amount_paid ?? 0)
             return (
+              /*
+                Row — base (<sm): 2-col card grid (checkbox | name+email over a
+                wrapped pills line). ≥sm: the original 5-col row. Row tap opens
+                the slide-over; the checkbox is a separate ≥24px target that only
+                toggles selection (stopPropagation below).
+              */
               <div
                 key={f.id}
                 onClick={() => onSelectFamily(f.id)}
-                className={`grid grid-cols-[28px_1fr_110px_90px_60px] gap-2 px-4 py-2.5 border-b border-border/60 text-sm items-center cursor-pointer transition-colors ${
+                className={`grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 px-4 py-3 sm:grid-cols-[28px_1fr_110px_90px_60px] sm:gap-2 sm:py-2.5 sm:items-center border-b border-border/60 text-sm cursor-pointer transition-colors ${
                   selectedFamilyId === f.id ? 'bg-primary/5' : 'hover:bg-muted/50'
                 }`}
               >
@@ -167,25 +204,38 @@ export function FamiliesTable({
                     onToggleRow(f.id)
                   }}
                   onClick={e => e.stopPropagation()}
-                  className="accent-primary"
+                  aria-label={`Select ${f.last_name}, ${f.first_name}`}
+                  className="accent-primary size-6 self-center row-span-2 sm:size-auto sm:row-span-1" /* ≥24px target below sm; spans name+pills rows */
                 />
-                <div>
+                <div className="min-w-0">
                   <div className="font-semibold text-foreground">
                     {f.last_name}, {f.first_name}
                   </div>
-                  <div className="text-xs text-muted-foreground">{f.email}</div>
+                  <div className="text-xs text-muted-foreground truncate">{f.email}</div>
                 </div>
-                <div>
-                  <StatusPill tone={FAMILY_TONE[f.registration_status]}>{FAMILY_LABEL[f.registration_status]}</StatusPill>
+                {/*
+                  Below sm this wrapper is the card's wrapped pills line
+                  (CheckinClient's line-pressure idiom); at ≥sm `contents`
+                  dissolves it so Status/Balance stay their own grid columns —
+                  desktop grid unchanged, one DOM tree.
+                */}
+                <div className="col-start-2 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 sm:contents">
+                  <div>
+                    <StatusPill tone={FAMILY_TONE[f.registration_status]}>{FAMILY_LABEL[f.registration_status]}</StatusPill>
+                  </div>
+                  {/*
+                    Balance — check-in's money-pill idiom: a chip ONLY when
+                    balance > 0. No dash noise (the old '—' is gone in both
+                    modes). Zero-balance cell hides below sm (no phantom flex
+                    gap) but keeps its ≥sm grid slot so View stays in column 5.
+                  */}
+                  <div className={balance > 0 ? undefined : 'hidden sm:block'}>
+                    {balance > 0 && (
+                      <StatusPill tone="alert">${fmtMoney(balance)} due</StatusPill>
+                    )}
+                  </div>
                 </div>
-                <div
-                  className={`font-semibold text-sm ${
-                    balance > 0 ? 'text-destructive' : 'text-foreground'
-                  }`}
-                >
-                  {balance > 0 ? `$${balance.toFixed(0)}` : '—'}
-                </div>
-                <div className="text-xs font-semibold text-primary">View</div>
+                <div className="hidden sm:block text-xs font-semibold text-primary">View</div>
               </div>
             )
           })}

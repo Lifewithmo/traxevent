@@ -143,3 +143,117 @@ describe('FamiliesTable', () => {
     expect(onSelectFamily).toHaveBeenCalledWith('fam-1')
   })
 })
+
+/*
+ * Phone card reflow (inc-3 S4) — STRUCTURAL assertions only. jsdom ignores
+ * responsive visibility classes, so these tests pin the single-DOM discipline
+ * the reflow depends on: one tree serves both the <sm card skin and the ≥sm
+ * grid skin. Phone budget: find (search) → tap (card → slide-over) → decide →
+ * next (slide-over Prev/Next, shipped) ≤ 5 touches, no horizontal pan.
+ */
+describe('FamiliesTable — phone card reflow (single DOM)', () => {
+  const noopProps = {
+    search: '',
+    onSearchChange: vi.fn(),
+    statusFilter: 'all',
+    onStatusFilterChange: vi.fn(),
+    selectedIds: new Set<string>(),
+    onToggleRow: vi.fn(),
+    onToggleAll: vi.fn(),
+    onClearSelection: vi.fn(),
+    selectedFamilyId: null,
+    onSelectFamily: vi.fn(),
+    onBulkStatusChange: vi.fn(),
+    onExport: vi.fn(),
+  }
+
+  it('renders each family name in exactly ONE DOM node (no duplicated hidden/shown trees)', () => {
+    render(<Wrapper />)
+    expect(screen.getAllByText('Chen, Lisa')).toHaveLength(1)
+    expect(screen.getAllByText('Smith, Bob')).toHaveLength(1)
+    expect(screen.getAllByText('Garcia, Maria')).toHaveLength(1)
+  })
+
+  it('renders exactly one checkbox per family plus ONE shared select-all (bulk survives on phone)', () => {
+    render(<Wrapper />)
+    // 1 select-all + 3 rows; a duplicated card/grid tree would double this.
+    expect(screen.getAllByRole('checkbox')).toHaveLength(families.length + 1)
+    // The select-all is labeled for the base-width phone line.
+    expect(
+      screen.getByRole('checkbox', { name: 'Select all (3)' })
+    ).toBeInTheDocument()
+  })
+
+  it('replaces the dead column-header row with a "Select all (n)" line that keeps bulk-confirm a 2-tap flow', async () => {
+    render(<Wrapper />)
+    // Tap 1: select all…
+    await userEvent.click(screen.getByText('Select all (3)'))
+    expect(screen.getByText(/3 selected/i)).toBeInTheDocument()
+    // …tap 2: Confirm is right there in the toolbar, full label intact.
+    expect(screen.getByRole('button', { name: 'Confirm' })).toBeInTheDocument()
+  })
+
+  it('"Select all (n)" tracks the filtered count', async () => {
+    render(<Wrapper />)
+    await userEvent.type(screen.getByPlaceholderText(/search/i), 'chen')
+    expect(screen.getByText('Select all (1)')).toBeInTheDocument()
+  })
+
+  it('shows the balance money-pill ONLY for positive balances — no dash noise, no Campers cell', () => {
+    render(
+      <FamiliesTable
+        {...noopProps}
+        families={[
+          makeFam({ id: 'fam-owes', first_name: 'Owen', last_name: 'Zheng', amount_due: 120, amount_paid: 50 }),
+          makeFam({ id: 'fam-paid', first_name: 'Paula', last_name: 'Iverson', amount_due: 80, amount_paid: 80 }),
+          makeFam({ id: 'fam-none', first_name: 'Nia', last_name: 'Okafor' }),
+        ]}
+      />
+    )
+    // Check-in's money-pill idiom, once, for the family that owes.
+    expect(screen.getAllByText('$70 due')).toHaveLength(1)
+    // Settled / no-amount families get NO chip and NO '—' placeholder…
+    expect(screen.queryByText('—')).not.toBeInTheDocument()
+    expect(screen.queryByText(/\$0/)).not.toBeInTheDocument()
+    // …and the refuted Campers column stays dead.
+    expect(screen.queryByText(/campers/i)).not.toBeInTheDocument()
+  })
+
+  it('keeps fractional balances honest in the pill (check-in fmtMoney parity)', () => {
+    render(
+      <FamiliesTable
+        {...noopProps}
+        families={[
+          makeFam({ id: 'fam-frac', first_name: 'Faye', last_name: 'Quinn', amount_due: 1243.5, amount_paid: 0 }),
+        ]}
+      />
+    )
+    expect(screen.getByText('$1,243.50 due')).toBeInTheDocument()
+  })
+
+  it('row checkbox toggles selection without opening the slide-over; row tap still opens it (separate targets)', async () => {
+    const onSelectFamily = vi.fn()
+    const onToggleRow = vi.fn()
+    render(
+      <FamiliesTable
+        {...noopProps}
+        families={families}
+        onSelectFamily={onSelectFamily}
+        onToggleRow={onToggleRow}
+      />
+    )
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Select Chen, Lisa' }))
+    expect(onToggleRow).toHaveBeenCalledWith('fam-1')
+    expect(onSelectFamily).not.toHaveBeenCalled()
+    await userEvent.click(screen.getByText('Chen, Lisa'))
+    expect(onSelectFamily).toHaveBeenCalledWith('fam-1')
+  })
+
+  it('BulkToolbar keeps every action label when selection is active (wraps at 375, never truncates)', async () => {
+    render(<Wrapper />)
+    await userEvent.click(screen.getByText('Select all (3)'))
+    for (const label of ['Confirm', 'Waitlist', 'Cancel', 'Export selected', 'Clear selection']) {
+      expect(screen.getByRole('button', { name: label })).toBeInTheDocument()
+    }
+  })
+})

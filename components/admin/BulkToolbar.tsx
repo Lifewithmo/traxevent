@@ -17,7 +17,12 @@ export function BulkToolbar({
   if (selectedCount === 0) return null
 
   return (
-    <div className="flex items-center gap-2 px-4 py-2 bg-muted/50 border-b border-border text-sm">
+    /*
+      Wraps cleanly at 375px (flex-wrap + row gap): buttons keep their full
+      labels and their ≥24px targets (Button size xs = h-6 = 24px) instead of
+      overflowing or truncating. Desktop (one line) is visually unchanged.
+    */
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-2 px-4 py-2 bg-muted/50 border-b border-border text-sm">
       <span className="font-semibold text-foreground">{selectedCount} selected</span>
       <Button variant="outline" size="xs" onClick={() => onStatusChange('confirmed')}>
         Confirm
