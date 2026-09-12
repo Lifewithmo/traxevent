@@ -43,7 +43,7 @@ export function NewOpportunityForm({ orgId, open, onClose, customer, customers, 
   const [deliveryMode, setDeliveryMode] = useState<DeliveryMode>('offsite')
 
   function resetForm() {
-    setTitle(''); setName(''); setOrganization(''); setEmail(''); setPhone('')
+    setTitle(''); setName(''); setOrganization(customer?.company ?? ''); setEmail(''); setPhone('')
     setEventType(''); setEventDate(''); setGuestCount(''); setEstimatedValue(''); setNotes('')
     setDeliveryMode('offsite')
     setPicked(null)

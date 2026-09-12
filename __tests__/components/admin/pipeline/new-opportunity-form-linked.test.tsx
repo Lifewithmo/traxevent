@@ -60,6 +60,22 @@ describe('NewOpportunityForm linked mode', () => {
     expect(screen.getByLabelText('Organization (for this event)')).toHaveValue('Riverside')
   })
 
+  /*
+    resetForm() runs on both Save and Cancel, and the Clients cockpit keeps this
+    form permanently MOUNTED (toggling only `open`) — so a blanked organization
+    survives into the next open. Since linked mode always submits the field, a
+    lost prefill writes a lead with no organization at all, not just an empty box.
+  */
+  it('keeps the per-event organization prefilled after a cancel/reopen cycle', () => {
+    const { rerender } = render(
+      <NewOpportunityForm orgId="o1" open onClose={() => {}} customer={customer} />
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    rerender(<NewOpportunityForm orgId="o1" open={false} onClose={() => {}} customer={customer} />)
+    rerender(<NewOpportunityForm orgId="o1" open onClose={() => {}} customer={customer} />)
+    expect(screen.getByLabelText('Organization (for this event)')).toHaveValue('Riverside')
+  })
+
   it('still requires a name in standalone mode', () => {
     render(<NewOpportunityForm orgId="o1" open onClose={() => {}} />)
     expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
