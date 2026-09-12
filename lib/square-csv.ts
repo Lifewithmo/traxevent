@@ -32,6 +32,12 @@ export type SquareCsvError =
   /** A row ON the event date has a money cell we can't read — a partial sum
    *  would be a guessed sum, so the whole prefill is refused. */
   | 'unreadable_money'
+  /** The day's signed sum is NEGATIVE — refunds exceed sales. The closeout
+   *  screen can never save a negative sales figure (client-validated AND
+   *  server-rejected), so prefilling one would show the operator a number
+   *  that silently drops. A designed refusal instead: check refunds in
+   *  Square, enter the figure manually. */
+  | 'negative_total'
 
 export interface SquareCsvPrefill {
   ok: true
@@ -228,9 +234,14 @@ export function parseSquareTransactionsCsv(text: string, eventDate: string): Squ
     if (parsed.warning) warnings.add(parsed.warning)
   }
 
+  const totalRounded = Math.round(total * 100) / 100
+  // A negative day (refunds > sales) is a figure the closeout can never save
+  // — designed failure, never a prefill the screen would silently drop.
+  if (totalRounded < 0) return { ok: false, error: 'negative_total' }
+
   return {
     ok: true,
-    total: Math.round(total * 100) / 100,
+    total: totalRounded,
     rowCount: matchedCells.length,
     refundCount,
     dateMatched: wanted,

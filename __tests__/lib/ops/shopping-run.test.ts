@@ -3,7 +3,7 @@ import {
   RUN_CAP, RUN_DAYS,
   buildShoppingRunCsv, carryExcludedIds, computeShoppingRun, constituentKey, parseRunDays,
   selectShoppingRunWindow, shoppingRunCsvFilename, shoppingRunStats,
-  type ShoppingRunPair,
+  type ShoppingRunPair, type ShoppingRunRow,
 } from '@/lib/ops/shopping-run'
 import { selectHorizonWindow } from '@/lib/ops/readiness-horizon'
 import type { Event, OpsListItem, OpsPlan, OpsResource } from '@/lib/types'
@@ -342,6 +342,71 @@ describe('buildShoppingRunCsv (inc-3 S3.2 — pure, client-side blob source)', (
     expect(csv.split('\n')[1]).toContain('"crushed only"')
     expect(csv).not.toContain('Solo Job: crushed only')
     expect(buildShoppingRunCsv([])).toBe('Item,Qty,Unit,Canonical Qty,Canonical Unit,Bought,Jobs,Notes')
+  })
+})
+
+describe('buildShoppingRunCsv — formula-injection hardening (D7)', () => {
+  // Hand-made rows: buildShoppingRunCsv is pure over ShoppingRunRow, so the
+  // dangerous free-text shapes can be pinned directly.
+  const row = (over: Partial<ShoppingRunRow>): ShoppingRunRow => ({
+    key: 'r|', resource_id: 'r', name: 'Ice', qty: 1, unit: 'bag',
+    checked: 'none', constituents: [], ...over,
+  })
+  const constituent = (over: Partial<ShoppingRunRow['constituents'][number]>) => ({
+    event_id: 'a', event_name: 'Smith Wedding', event_slug: 'a', event_start: '2026-08-12',
+    resource_id: 'r', qty: 1, unit: 'bag', checked: false, ...over,
+  })
+
+  it.each([
+    ['=', '=HYPERLINK("http://evil","x")'],
+    ['+', '+SUM(A1:A9)'],
+    ['-', '-2+3+cmd|\' /C calc\'!A0'],
+    ['@', '@SUM(A1)'],
+    ['tab', '\tX'],
+    ['CR', '\rX'],
+  ])('neutralizes a leading %s in the item NAME with a quote prefix', (_label, name) => {
+    const line = buildShoppingRunCsv([row({ name })]).split('\n')[1]
+    expect(line.startsWith(`"'${name.replace(/"/g, '""')}"`)).toBe(true)
+  })
+
+  it('neutralizes free-text UNIT and NOTE fields the same way', () => {
+    const csv = buildShoppingRunCsv([
+      row({ unit: '=1+1', constituents: [constituent({ note: '@import' })] }),
+    ])
+    expect(csv).toContain('"\'=1+1"')
+    expect(csv).toContain('"\'@import"')
+  })
+
+  it('neutralizes a job attribution whose event name leads with a formula char', () => {
+    const csv = buildShoppingRunCsv([
+      row({ constituents: [constituent({ event_name: '=Evil Corp Gala' })] }),
+    ])
+    expect(csv).toContain('"\'=Evil Corp Gala"')
+  })
+
+  it('leaves a mid-string = untouched — only the LEADING character is the attack surface', () => {
+    const csv = buildShoppingRunCsv([
+      row({ name: 'Brine 5=5 mix', constituents: [constituent({ note: 'ratio a=b' })] }),
+    ])
+    expect(csv).toContain('"Brine 5=5 mix"')
+    expect(csv).toContain('"ratio a=b"')
+    expect(csv).not.toContain("'Brine")
+    expect(csv).not.toContain("'ratio")
+  })
+
+  it('never prefixes NUMERIC columns — a negative qty is a legitimate number, safe by construction', () => {
+    const line = buildShoppingRunCsv([
+      row({ qty: -2, canonical: { qty: -350, unit: 'ml' } }),
+    ]).split('\n')[1]
+    const cells = line.split(',')
+    expect(cells[1]).toBe('"-2"')    // Qty: no apostrophe
+    expect(cells[3]).toBe('"-350"')  // Canonical Qty: no apostrophe
+  })
+
+  it('keeps the existing quote/comma/newline escaping ON TOP of neutralization', () => {
+    const csv = buildShoppingRunCsv([row({ name: '=HYPERLINK("http://evil")' })])
+    // Quote-doubling still applies to the neutralized value.
+    expect(csv).toContain('"\'=HYPERLINK(""http://evil"")"')
   })
 })
 

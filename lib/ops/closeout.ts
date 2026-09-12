@@ -37,9 +37,14 @@ export async function saveActualsCore(orgId: string, eventId: string, actuals: O
   if (actuals.hours_worked !== undefined) cleaned.hours_worked = actuals.hours_worked
   if (actuals.sales !== undefined) cleaned.sales = actuals.sales
   // Provenance of `sales` (inc-3 B3): persisted so imported money stays
-  // labeled at every render, post-reload included. Written by the client
-  // alongside every sales write ('manual' overwrites a stale import label).
+  // labeled at every render, post-reload included. INVARIANT OF THE WRITE
+  // PATH, not client courtesy: a sales write that names no source IS a manual
+  // write — without the default, a caller writing sales alone (the full
+  // CloseoutClient does exactly this) would merge-keep a stale 'square_csv'
+  // label on a hand-retyped figure. A write WITHOUT sales never touches the
+  // stored source.
   if (actuals.sales_source !== undefined) cleaned.sales_source = actuals.sales_source
+  else if (actuals.sales !== undefined) cleaned.sales_source = 'manual'
   if (actuals.waste_notes !== undefined) cleaned.waste_notes = actuals.waste_notes
   await opsCloseoutRef(orgId, eventId).set(
     {

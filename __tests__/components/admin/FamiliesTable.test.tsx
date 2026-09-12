@@ -249,6 +249,34 @@ describe('FamiliesTable — phone card reflow (single DOM)', () => {
     expect(onSelectFamily).toHaveBeenCalledWith('fam-1')
   })
 
+  // D8 (inc-1 44px hard gate): the ~24px checkbox beside a row-tap was a
+  // mis-tap hazard — the wrong action (slide-over vs select) on a thumb miss.
+  it('wraps the row checkbox in a 44px hit area (kit size-11) that toggles selection and never navigates', async () => {
+    const onSelectFamily = vi.fn()
+    const onToggleRow = vi.fn()
+    render(
+      <FamiliesTable
+        {...noopProps}
+        families={families}
+        onSelectFamily={onSelectFamily}
+        onToggleRow={onToggleRow}
+      />
+    )
+    const checkbox = screen.getByRole('checkbox', { name: 'Select Chen, Lisa' })
+    const hitArea = checkbox.closest('label')
+    expect(hitArea).not.toBeNull()
+    // The kit's touch square (Button "icon-touch" parity): 44px both
+    // dimensions below sm; `sm:contents` dissolves it so the desktop grid
+    // sees the checkbox itself — unchanged.
+    expect(hitArea!.className).toMatch(/\bsize-11\b/)
+    expect(hitArea!.className).toMatch(/\bsm:contents\b/)
+    // A hit-area tap toggles selection only — it must never fall through to
+    // the row navigation.
+    await userEvent.click(hitArea!)
+    expect(onToggleRow).toHaveBeenCalledWith('fam-1')
+    expect(onSelectFamily).not.toHaveBeenCalled()
+  })
+
   it('BulkToolbar keeps every action label when selection is active (wraps at 375, never truncates)', async () => {
     render(<Wrapper />)
     await userEvent.click(screen.getByText('Select all (3)'))

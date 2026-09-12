@@ -112,14 +112,29 @@ describe('refunds (documented decision: refunds SUBTRACT)', () => {
   })
 
   it('reads parenthesized and U+2212 negatives', () => {
+    // Net-positive day on purpose: a day netting negative is the designed
+    // 'negative_total' failure (D6, below) — this test pins the two negative
+    // NOTATIONS, both parsed and both counted as refunds.
     const r = parseSquareTransactionsCsv(
       csv(
-        '8/22/2026,09:00:00,MDT,$50.00,$0,$50.00,$0,$0,"($5.00)",Card',
+        '8/22/2026,08:00:00,MDT,$50.00,$0,$50.00,$0,$0,$50.00,Card',
+        '8/22/2026,09:00:00,MDT,$0,$0,$0,$0,$0,"($5.00)",Card',
         '8/22/2026,10:00:00,MDT,$0,$0,$0,$0,$0,−$2.50,Card',
       ),
       '2026-08-22',
     )
-    expect(r).toMatchObject({ ok: true, total: -7.5, rowCount: 2, refundCount: 2 })
+    expect(r).toMatchObject({ ok: true, total: 42.5, rowCount: 3, refundCount: 2 })
+  })
+
+  it('a day refunded down to exactly $0 still prefills — only a NEGATIVE day is refused', () => {
+    const r = parseSquareTransactionsCsv(
+      csv(
+        '8/22/2026,09:00:00,MDT,$5.00,$0,$5.00,$0,$0,$5.00,Card',
+        '8/22/2026,10:00:00,MDT,-$5.00,$0,-$5.00,$0,$0,-$5.00,Card',
+      ),
+      '2026-08-22',
+    )
+    expect(r).toMatchObject({ ok: true, total: 0, rowCount: 2, refundCount: 1 })
   })
 })
 
@@ -152,6 +167,20 @@ describe('designed failures — never a guessed sum (B4)', () => {
       '2026-08-22',
     )
     expect(okOrFail(r)).toBe('unreadable_money')
+  })
+
+  it('a day netting NEGATIVE (refunds exceed sales) is a typed designed failure, never a prefill (D6)', () => {
+    // The closeout screen can never save a negative sales figure (client
+    // validation AND the server's non-negative guard), so prefilling one
+    // would show a number that silently drops on save.
+    const r = parseSquareTransactionsCsv(
+      csv(
+        '8/22/2026,09:00:00,MDT,$10.00,$0,$10.00,$0,$0,$10.00,Card',
+        '8/22/2026,10:00:00,MDT,-$25.00,$0,-$25.00,$0,$0,-$25.00,Card',
+      ),
+      '2026-08-22',
+    )
+    expect(r).toEqual({ ok: false, error: 'negative_total' })
   })
 
   it('an ambiguous comma pattern is unreadable, not guessable', () => {

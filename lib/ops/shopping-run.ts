@@ -287,9 +287,24 @@ export function computeShoppingRun(pairs: ShoppingRunPair[], resources: OpsResou
 // ── Run CSV export (inc-3 S3.2) ──────────────────────────────────────────────
 
 /** RFC-4180-ish cell escape — the lib/csv.ts / ReportsClient convention:
- *  every cell quoted, embedded quotes doubled. */
+ *  every cell quoted, embedded quotes doubled. NUMERIC columns only: values
+ *  this builder formats from numbers are formula-safe by construction (a
+ *  leading '-' there is a legitimate negative, never a payload), so they must
+ *  NOT get the text-cell apostrophe. */
 function csvCell(v: string | number | undefined): string {
   return `"${String(v ?? '').replace(/"/g, '""')}"`
+}
+
+/** Free-text cell: quote-escaped like csvCell, PLUS spreadsheet formula-
+ *  injection neutralization — a field starting with =, +, -, @, TAB, or CR
+ *  (an item name/note like `=HYPERLINK(...)`) gets a leading apostrophe so
+ *  Excel/Sheets treat it as text, never a formula. Applied to every string-
+ *  valued column (name/unit/jobs/notes — operator- and intake-entered text);
+ *  builder-constant strings ('yes'/'ml'/…) never start with those characters,
+ *  so the rule stays uniform: strings → csvTextCell, numbers → csvCell. */
+function csvTextCell(v: string | undefined): string {
+  const s = v ?? ''
+  return csvCell(/^[=+\-@\t\r]/.test(s) ? `'${s}` : s)
 }
 
 /**
@@ -307,14 +322,14 @@ export function buildShoppingRunCsv(rows: ShoppingRunRow[]): string {
       .map((c) => (row.constituents.length > 1 ? `${c.event_name}: ${c.note}` : c.note!))
       .join('; ')
     return [
-      csvCell(row.name),
+      csvTextCell(row.name),
       csvCell(row.qty),
-      csvCell(row.unit),
+      csvTextCell(row.unit),
       csvCell(row.canonical?.qty),
-      csvCell(row.canonical?.unit),
-      csvCell(row.checked === 'all' ? 'yes' : row.checked === 'partial' ? 'partly' : 'no'),
-      csvCell(row.constituents.map((c) => c.event_name).join('; ')),
-      csvCell(notes),
+      csvTextCell(row.canonical?.unit),
+      csvTextCell(row.checked === 'all' ? 'yes' : row.checked === 'partial' ? 'partly' : 'no'),
+      csvTextCell(row.constituents.map((c) => c.event_name).join('; ')),
+      csvTextCell(notes),
     ].join(',')
   })
   return [HEADER, ...lines].join('\n')

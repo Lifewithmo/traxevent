@@ -21,7 +21,7 @@ import type { Event, OpsResource } from '@/lib/types'
  */
 async function loadPriorDayHint(
   orgId: string, event: Event, eventId: string,
-): Promise<{ date: string; sales: number } | null> {
+): Promise<{ date: string; sales: number; imported: boolean } | null> {
   if (!event.series_id) return null
   try {
     const days = await listSeriesDaysCore(orgId, event.series_id) // ascending
@@ -33,7 +33,14 @@ async function loadPriorDayHint(
     const sales = closeout?.actuals?.sales
     // Counting rule (inc-2): ANY saved sales counts — Mark-complete optional.
     if (sales === undefined) return null
-    return { date: prior.event_start.slice(0, 10), sales }
+    return {
+      date: prior.event_start.slice(0, 10),
+      sales,
+      // B3 hard gate: imported money is labeled as imported at EVERY render —
+      // the hint included. Dropping sales_source here would show a Square
+      // figure as if it were typed.
+      imported: closeout?.actuals?.sales_source === 'square_csv',
+    }
   } catch {
     return null
   }

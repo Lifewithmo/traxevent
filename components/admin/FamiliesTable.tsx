@@ -196,17 +196,37 @@ export function FamiliesTable({
                   selectedFamilyId === f.id ? 'bg-primary/5' : 'hover:bg-muted/50'
                 }`}
               >
-                <input
-                  type="checkbox"
-                  checked={selectedIds.has(f.id)}
-                  onChange={e => {
-                    e.stopPropagation()
-                    onToggleRow(f.id)
-                  }}
+                {/*
+                  44px hit area (inc-1 hard gate): the checkbox stays a 24px
+                  visual but rides the kit's touch square — size-11, the same
+                  44px sizing CheckinClient's day-of targets use (Button
+                  size="touch"/"icon-touch") — so a thumb aiming at the box
+                  can't fall through to the row-tap slide-over. stopPropagation
+                  on the LABEL: a hit-area tap only toggles selection. ≥sm the
+                  wrapper dissolves (`contents`) and the grid sees the checkbox
+                  itself — desktop unchanged, still one DOM tree.
+                */}
+                <label
                   onClick={e => e.stopPropagation()}
-                  aria-label={`Select ${f.last_name}, ${f.first_name}`}
-                  className="accent-primary size-6 self-center row-span-2 sm:size-auto sm:row-span-1" /* ≥24px target below sm; spans name+pills rows */
-                />
+                  /* -m-2.5 exactly offsets the size-6→size-11 growth (44 −
+                     2·10 = 24px margin box), so the column width and the
+                     checkbox's visual position are byte-identical to the old
+                     24px target — the extra 10px of hit area overhangs into
+                     the row padding and the gap-x-3, which are dead space. */
+                  className="row-span-2 -m-2.5 flex size-11 cursor-pointer items-center justify-center self-center sm:contents"
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.has(f.id)}
+                    onChange={e => {
+                      e.stopPropagation()
+                      onToggleRow(f.id)
+                    }}
+                    onClick={e => e.stopPropagation()}
+                    aria-label={`Select ${f.last_name}, ${f.first_name}`}
+                    className="accent-primary size-6 sm:size-auto sm:self-center" /* 24px visual below sm; ≥sm the grid child */
+                  />
+                </label>
                 <div className="min-w-0">
                   <div className="font-semibold text-foreground">
                     {f.last_name}, {f.first_name}

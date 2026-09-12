@@ -153,6 +153,22 @@ describe('Square CSV prefill (inc-3 S2, BINDING B4)', () => {
     expect(screen.queryByText(/Total Collected \(gross\)/)).not.toBeInTheDocument()
   })
 
+  it('a day netting negative fails DESIGNED — field untouched, refund-check copy, no caption (D6)', async () => {
+    render(<MarketDayCloseoutClient {...base} />)
+    fireEvent.change(screen.getByLabelText(/today.s sales/i), { target: { value: '176' } })
+    attachCsv([
+      'Date,Total Collected',
+      '8/22/2026,$10.00',
+      '8/22/2026,-$25.00',
+    ].join('\n'))
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'This export nets negative for that date — check refunds in Square; enter the figure manually.'))
+    // Never a prefill the screen can't save: the typed figure survives.
+    expect(screen.getByLabelText(/today.s sales/i)).toHaveValue(176)
+    expect(screen.queryByText(/Total Collected \(gross\)/)).not.toBeInTheDocument()
+  })
+
   it('names the missing day when the export covers other dates', async () => {
     render(<MarketDayCloseoutClient {...base} />)
     attachCsv([
@@ -219,6 +235,33 @@ describe('ghost hint (B4: series prior day, when in reach)', () => {
   it('uses the dated form when the prior day is further back', () => {
     render(<MarketDayCloseoutClient {...base} priorDay={{ date: '2026-08-08', sales: 180 }} />)
     expect(screen.getByText('Last market day (Aug 8): $180')).toBeInTheDocument()
+  })
+
+  // D4 (B3 hard gate): imported money is labeled as imported at EVERY render
+  // — the ghost hint included. Same idiom as SeriesClient's importedMark:
+  // fine-print " · Square" with the title naming the source.
+  it('marks an imported prior-day figure with the season strip’s Square idiom', () => {
+    render(
+      <MarketDayCloseoutClient
+        {...base}
+        priorDay={{ date: '2026-08-15', sales: 180, imported: true }}
+      />
+    )
+    const hint = screen.getByText(/Last Saturday: \$180/)
+    expect(hint).toHaveTextContent('Last Saturday: $180 · Square')
+    expect(screen.getByTitle('Sales imported from a Square export')).toHaveTextContent('· Square')
+  })
+
+  it('a manually-recorded prior day carries NO imported mark', () => {
+    render(
+      <MarketDayCloseoutClient
+        {...base}
+        priorDay={{ date: '2026-08-15', sales: 180, imported: false }}
+      />
+    )
+    expect(screen.getByText('Last Saturday: $180')).toBeInTheDocument()
+    expect(screen.queryByText(/· Square/)).not.toBeInTheDocument()
+    expect(screen.queryByTitle('Sales imported from a Square export')).not.toBeInTheDocument()
   })
 
   it('is absent without prior-day data, and yields to the evidence caption after a prefill', async () => {

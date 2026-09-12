@@ -74,6 +74,10 @@ function importErrorCopy(error: SquareCsvError, eventDate: string): string {
     case 'unrecognized_layout':
     case 'unreadable_money':
       return 'Couldn’t read this export — choose the Transactions CSV from Square’s dashboard.'
+    case 'negative_total':
+      // Refunds exceed the day's sales: a negative figure the screen can
+      // never save. Designed refusal — never a prefill that silently drops.
+      return 'This export nets negative for that date — check refunds in Square; enter the figure manually.'
   }
 }
 
@@ -100,8 +104,11 @@ export interface MarketDayCloseoutClientProps {
   /** The series' prior day with saved sales — the ghost hint under the sales
    *  input ("Last Saturday: $180"). Absent/null when the day isn't
    *  series-generated, no prior day holds sales, or the soft-failing lookup
-   *  failed (B4: rendered only when the data is in reach, omitted otherwise). */
-  priorDay?: { date: string; sales: number } | null
+   *  failed (B4: rendered only when the data is in reach, omitted otherwise).
+   *  `imported` (B3): that figure's sales_source was 'square_csv' — the hint
+   *  must carry the same fine-print provenance mark the season strip renders
+   *  (SeriesClient's importedMark), or imported money shows unlabeled here. */
+  priorDay?: { date: string; sales: number; imported?: boolean } | null
 }
 
 export function MarketDayCloseoutClient(props: MarketDayCloseoutClientProps) {
@@ -266,6 +273,11 @@ export function MarketDayCloseoutClient(props: MarketDayCloseoutClientProps) {
           // the number about to be typed, never a value that self-enters.
           <p className="mt-1 text-xs text-muted-foreground">
             {ghostHintLabel(props.priorDay.date, eventDate)}: {money(props.priorDay.sales)}
+            {/* B3: imported money is labeled at every render — SAME idiom
+                (vocabulary + title) as SeriesClient's importedMark. */}
+            {props.priorDay.imported && (
+              <span className="text-xs" title="Sales imported from a Square export"> · Square</span>
+            )}
           </p>
         ) : null}
         {evidence && evidence.currencyWarnings.length > 0 && (

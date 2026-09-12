@@ -77,6 +77,20 @@ describe('saveActualsCore', () => {
     expect(closeoutSetSpy.mock.calls[0][0].actuals.sales_source).toBe('square_csv')
   })
 
+  // D5: provenance is an invariant of the WRITE PATH, not client courtesy —
+  // a caller that writes sales alone (the full CloseoutClient does exactly
+  // this) must not merge-keep a stale import label on a hand-retyped figure.
+  it("a sales write that names NO source defaults to 'manual' — flipping a stored 'square_csv'", async () => {
+    closeoutGetSpy.mockResolvedValue({
+      exists: true,
+      data: () => ({ actuals: { sales: 1248.27, sales_source: 'square_csv' }, completed: false, created_at: 't' }),
+    })
+    await saveActualsCore('o1', 'e1', { sales: 1300 })
+    const merged = closeoutSetSpy.mock.calls[0][0].actuals
+    expect(merged.sales).toBe(1300)
+    expect(merged.sales_source).toBe('manual')
+  })
+
   it("a later manual save overwrites a stale 'square_csv' provenance", async () => {
     closeoutGetSpy.mockResolvedValue({
       exists: true,
