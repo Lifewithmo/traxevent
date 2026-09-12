@@ -64,12 +64,26 @@ export function OpportunityActionsMenu({ orgId, orgSlug, lead, onWon, onDone }: 
   // operators end up believing a deal moved when it did not.
   async function move(stage: LeadStage) {
     setBusy(true); setError(null)
-    try {
-      await setLeadStage(orgId, lead.id, stage)
+    const settle = () => {
       setOpen(false)
       if (stage === 'closed_won') onWon()
       onDone()
       router.refresh()
+    }
+    try {
+      // SERVER CAPACITY GUARD (increment 4): a would-be over/clash win RETURNS
+      // { ok: false, guard } (it is never thrown — a thrown guard could not
+      // survive Next's production RSC error redaction; see lib/capacity/guard.ts).
+      // Confirm (advisory) and, on accept, re-call with { override: true }. A
+      // decline leaves the deal where it was, no error. A genuine failure throws.
+      const result = await setLeadStage(orgId, lead.id, stage)
+      if (!result.ok) {
+        if (!window.confirm(result.guard)) return
+        const override = await setLeadStage(orgId, lead.id, stage, { override: true })
+        if (override.ok) settle()
+        return
+      }
+      settle()
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Action failed')
     } finally {

@@ -48,3 +48,38 @@ export function money0(n: number): string {
 export function money2(n: number): string {
   return `${n < 0 ? '−' : ''}$${Math.abs(n).toFixed(2)}`
 }
+
+/**
+ * The calendar-date face of an ISO instant pinned to UTC — `'Aug 13, 2026'`,
+ * identical no matter which machine formats it.
+ *
+ * For the PUBLIC invoice (a server-rendered customer document), the Sent stamp
+ * must have one true rendering: the old ambient-zone `toLocaleDateString()`
+ * made the customer-visible date depend on the deploy region's clock AND
+ * locale (an evening send was already "tomorrow" on a UTC server). A document
+ * can't hydration-gate its way to the viewer's zone the way the operator
+ * screens do — InvoiceViewClient has no client runtime at all — so the honest
+ * fix is a pinned, labeled zone: render sites append "(UTC)", the check-in
+ * manifest precedent, so a near-midnight date that disagrees with the reader's
+ * calendar reads as a fixed record rather than an error.
+ */
+export function invoiceDateUTC(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-US', {
+    timeZone: 'UTC', month: 'short', day: 'numeric', year: 'numeric',
+  })
+}
+
+/**
+ * Viewer-local calendar-date face of an ISO instant — `'Aug 12, 2026'` in the
+ * zone of whatever runtime formats it. That ambient zone is the point — and
+ * exactly why every render site MUST gate this behind a hydration flag
+ * (CheckinClient's fmtTime contract): 'use client' components still SSR, and
+ * baking the SERVER's date face into HTML that the browser's hydration pass
+ * re-formats in the viewer's zone is the React #418 mismatch that bricked
+ * /checkin. Locale is pinned so only the zone varies, and only client-side.
+ */
+export function invoiceDateLocal(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric',
+  })
+}

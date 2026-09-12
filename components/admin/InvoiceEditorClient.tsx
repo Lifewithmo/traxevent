@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useRef, useState, useSyncExternalStore } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { MoreHorizontal, Receipt, Trash2, Wallet } from 'lucide-react'
@@ -20,8 +20,8 @@ import {
   lineItemSubtotal, linesSubtotal, amountPaid,
   invoiceDiscountAmount, invoiceTaxAmount, invoiceAmountDue,
 } from '@/lib/invoices'
-import { invoicePill } from '@/lib/invoice-presentation'
-import { derivePaymentStatus, deriveAging, resolveTipsEnabled } from '@/lib/invoice-status'
+import { invoiceDateLocal, invoicePill } from '@/lib/invoice-presentation'
+import { derivePaymentStatus, deriveAging, daysOverdue, resolveTipsEnabled } from '@/lib/invoice-status'
 import type {
   NormalizedInvoice, InvoiceLineItem, InvoiceDiscount, InvoiceSourceRef, OrgBranding,
 } from '@/lib/types'
@@ -69,12 +69,7 @@ function cleanDiscount(discount?: InvoiceDiscount): InvoiceDiscount | undefined 
 
 const DELIVERY_FAILED_WARNING = 'Invoice sent — email delivery failed. Use Send update to retry.'
 
-// Whole days past the due date; negative when still ahead of it.
-function daysPastDue(dueDate: string, now: Date): number {
-  const due = new Date(`${dueDate}T00:00:00`)
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  return Math.round((today.getTime() - due.getTime()) / 86_400_000)
-}
+const emptySubscribe = () => () => {}
 
 // The one interpretation line under the balance — a bare figure is decoration,
 // this is what turns it into a decision. Mirrors the four states an operator
@@ -94,7 +89,12 @@ function balanceNote(input: {
   if (balance <= 0 && total > 0) return { text: 'Paid in full', destructive: false }
   if (isDraft) return { text: 'Not sent yet', destructive: false }
   if (dueDate) {
-    const d = daysPastDue(dueDate, new Date())
+    // daysOverdue is UTC-pinned day math — the same convention the status
+    // pill's aging bucket uses, so the note can never contradict the pill.
+    // An ambient-zone local here diverged between the UTC server render and
+    // a US-evening viewer's hydration pass: SSR text ≠ client text is the
+    // React #418 hydration abort that leaves every button on the page dead.
+    const d = daysOverdue(dueDate, new Date())
     if (d > 0) return { text: `${d} day${d === 1 ? '' : 's'} overdue`, destructive: true }
   }
   if (paid > 0) return { text: `${money(paid)} of ${money(total)} paid`, destructive: false }
@@ -105,6 +105,23 @@ export function InvoiceEditorClient({
   orgId, orgSlug, leadId, invoice, orgTipsEnabled, customerName, customerEmail, branding,
 }: InvoiceEditorClientProps) {
   const router = useRouter()
+
+  // Hydration gate for the Sent / payment-date stamps. 'use client' does not
+  // mean client-only — this editor SSRs, and invoiceDateLocal formats an ISO
+  // instant (sent_at / recorded_at) in the runtime's own zone. Rendering it
+  // during SSR baked the SERVER's date face into the HTML (an evening send is
+  // already TOMORROW in UTC) while the browser's hydration pass formatted the
+  // viewer's zone — React aborts on that mismatch with minified error #418,
+  // the crash that left every button on /checkin dead. Null-server-snapshot
+  // pattern (CheckinClient / RunSheetClient precedent): server pass and
+  // hydration pass both render the placeholder, then the first client render
+  // swaps in the viewer-local date. No suppressHydrationWarning — that would
+  // KEEP the stale server face rather than fix it.
+  const hydrated = useSyncExternalStore(
+    emptySubscribe,
+    () => true,
+    () => false
+  )
 
   const [title, setTitle] = useState(invoice.title ?? '')
   const [dueDate, setDueDate] = useState(invoice.due_date ?? '')
@@ -453,7 +470,7 @@ export function InvoiceEditorClient({
               </div>
               {invoice.sent_at && (
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Sent {new Date(invoice.sent_at).toLocaleDateString()}
+                  Sent {hydrated ? invoiceDateLocal(invoice.sent_at) : '…'}
                 </p>
               )}
             </div>
@@ -751,7 +768,7 @@ export function InvoiceEditorClient({
                     )}
                   </span>
                   <span className="shrink-0 text-xs text-muted-foreground">
-                    {new Date(p.recorded_at).toLocaleDateString()}
+                    {hydrated ? invoiceDateLocal(p.recorded_at) : '…'}
                   </span>
                 </li>
               ))}
@@ -795,7 +812,7 @@ export function InvoiceEditorClient({
             <ul className="mt-2 space-y-1.5">
               {versions.map((v, i) => (
                 <li key={i} data-testid="history-entry" className="text-xs text-muted-foreground">
-                  Sent {new Date(v.sent_at).toLocaleDateString()} — {v.line_items.length} item
+                  Sent {hydrated ? invoiceDateLocal(v.sent_at) : '…'} — {v.line_items.length} item
                   {v.line_items.length === 1 ? '' : 's'}, {money(invoiceAmountDue(v))}
                 </li>
               ))}

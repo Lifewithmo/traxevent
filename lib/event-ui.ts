@@ -80,3 +80,109 @@ export function eventCountdown(start: string, end: string | undefined, today: st
   if (diff <= 0) return { value: 'Today', note: 'Event in progress' }
   return { value: `${diff}d`, note: `Starts ${formatEventDate(start)}` }
 }
+
+// ── Job time + back-planning helpers (B7 + accepted ratchet) ─────────────────
+// CANONICAL home for the time vocabulary shared by the dashboard brief
+// (lib/event-spine.ts re-exports these) and the run sheet's anchor logic —
+// one implementation, so "Pack by / Leave by" can never disagree between the
+// brief and the run sheet for the same event.
+
+/** 'HH:mm' / 'H:mm' (24h) → '3:00 PM'. null for malformed input. */
+export function formatClockTime(hhmm: string): string | null {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm)
+  if (!m) return null
+  const h = Number(m[1])
+  if (h > 23 || Number(m[2]) > 59) return null
+  const h12 = h % 12 === 0 ? 12 : h % 12
+  return `${h12}:${m[2]} ${h >= 12 ? 'PM' : 'AM'}`
+}
+
+export interface JobStripTime {
+  /** HONEST about its source (B7): 'Service 3:00 PM' | 'Starts 2:00 PM' | 'First item 1:30 PM'. */
+  label: string
+  /** The resolved 24h 'HH:mm' backing the back-planned chips. */
+  hhmm: string
+  source: 'service' | 'hours' | 'itinerary'
+}
+
+/** B7 precedence: ops service_start → event.hours.start → first itinerary item → null ("Time TBD"). */
+export function resolveJobTime(input: {
+  serviceStart?: string
+  hoursStart?: string
+  firstItineraryTime?: string | null
+}): JobStripTime | null {
+  const service = input.serviceStart?.slice(11, 16)
+  if (service) {
+    const t = formatClockTime(service)
+    if (t) return { label: `Service ${t}`, hhmm: service, source: 'service' }
+  }
+  if (input.hoursStart) {
+    const t = formatClockTime(input.hoursStart)
+    if (t) return { label: `Starts ${t}`, hhmm: input.hoursStart, source: 'hours' }
+  }
+  if (input.firstItineraryTime) {
+    const t = formatClockTime(input.firstItineraryTime)
+    if (t) return { label: `First item ${t}`, hhmm: input.firstItineraryTime, source: 'itinerary' }
+  }
+  return null
+}
+
+export const PACK_MINUTES = 45
+export const DRIVE_MINUTES = 30
+
+/**
+ * Sanity ceiling for the org pack/drive buffers: nobody packs or drives for
+ * more than 8 hours before a job. SINGLE source — actions/ops-buffers.ts
+ * enforces it server-side and CapacityUnitsClient mirrors it in the inputs'
+ * `max`, the pre-flight parse, and the error copy. It lives here (not in the
+ * action) because a 'use server' module may only export async functions.
+ */
+export const MAX_BUFFER_MINUTES = 480
+
+/**
+ * Read-cost cap on the series season rollup (newest days ≤ today win the
+ * budget). Lives here (client-safe) so SeriesClient's copy can interpolate the
+ * same number the server slices by; lib/ops/closeout.ts re-exports it.
+ */
+export const SERIES_ROLLUP_CAP = 30
+
+/** Org-default pack/drive buffers (Org.ops_buffers shape); absent fields fall back to the constants. */
+export interface OpsBuffers {
+  pack_minutes?: number
+  drive_minutes?: number
+}
+
+/** Effective buffer minutes after fallback — single source for chips and labels. */
+export function resolveBuffers(buffers?: OpsBuffers): { pack: number; drive: number } {
+  return {
+    pack: buffers?.pack_minutes && buffers.pack_minutes > 0 ? buffers.pack_minutes : PACK_MINUTES,
+    drive: buffers?.drive_minutes && buffers.drive_minutes > 0 ? buffers.drive_minutes : DRIVE_MINUTES,
+  }
+}
+
+/** The assumption caption rendered wherever the chips render, e.g. "assumes 50m pack · 20m drive". */
+export function bufferAssumptionLabel(buffers?: OpsBuffers): string {
+  const { pack, drive } = resolveBuffers(buffers)
+  return `assumes ${pack}m pack · ${drive}m drive`
+}
+
+/**
+ * Back-planned 'Pack by / Leave by' from the resolved job time minus the org's
+ * buffers (fixed 45m/30m defaults when unset) — always labeled as an assumption
+ * via bufferAssumptionLabel. null when the time is malformed or back-planning
+ * crosses midnight.
+ */
+export function backPlanChips(hhmm: string, buffers?: OpsBuffers): { packBy: string; leaveBy: string } | null {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm)
+  if (!m) return null
+  const { pack: packMin, drive: driveMin } = resolveBuffers(buffers)
+  const start = Number(m[1]) * 60 + Number(m[2])
+  const leave = start - driveMin
+  const pack = leave - packMin
+  if (pack < 0) return null
+  const fmt = (mins: number) =>
+    formatClockTime(`${String(Math.floor(mins / 60)).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}`)
+  const packBy = fmt(pack)
+  const leaveBy = fmt(leave)
+  return packBy && leaveBy ? { packBy, leaveBy } : null
+}

@@ -75,6 +75,13 @@ describe('SeriesClient', () => {
     expect(screen.getByLabelText(/booth fee/i)).toBeInTheDocument()
   })
 
+  it('renders no money artifacts at all without the money prop (non-admin path)', () => {
+    render(<SeriesClient orgId="org-1" orgSlug="acme" series={SERIES} days={DAYS} isAdmin={false} />)
+    expect(screen.queryByText(/net/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/not closed out/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/no days closed out yet/i)).not.toBeInTheDocument()
+  })
+
   it('extends and ends the season', async () => {
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
     render(<SeriesClient orgId="org-1" orgSlug="acme" series={SERIES} days={DAYS} isAdmin />)
@@ -85,5 +92,158 @@ describe('SeriesClient', () => {
     fireEvent.click(screen.getByRole('button', { name: /end season/i }))
     await waitFor(() => expect(endSeriesSpy).toHaveBeenCalledWith('org-1', 's1'))
     confirmSpy.mockRestore()
+  })
+})
+
+// ——— Season money strip (spec 2026-08-23 S1.5, additive) ————————————————————
+describe('SeriesClient season money', () => {
+  const THREE_DAYS = [
+    ...DAYS,
+    { id: 'd3', name: 'Boise Farmers Market', slug: 'bfm-3', year: 2026, status: 'active' as const, event_type_id: 'event', event_start: '2099-01-02', event_end: '2099-01-02', created_at: 'x', kind: 'market_day' as const, series_id: 's1' },
+  ]
+
+  it('renders sales − fee = net per closed day and the season verdict in the header', () => {
+    render(
+      <SeriesClient
+        orgId="org-1" orgSlug="acme" series={SERIES} days={THREE_DAYS} isAdmin
+        today="2026-08-23"
+        money={{
+          d1: { state: 'closed', sales: 180, fee: 45, net: 135 },
+          d2: { state: 'none' },
+          d3: { state: 'none' },
+        }}
+      />
+    )
+    expect(screen.getByTestId('day-d1')).toHaveTextContent('$180 − $45 = $135')
+    // Verdict: closed days only, counted honestly.
+    expect(screen.getByText('+$135 net')).toBeInTheDocument()
+    expect(screen.getByText(/over 1 day · 1 of 1 day positive/)).toBeInTheDocument()
+  })
+
+  it('nudges past unclosed days, leaves future days quiet, never fakes $0 on a failed read', () => {
+    const days = [
+      { ...THREE_DAYS[0] },                                     // d1 past, active
+      { ...THREE_DAYS[2] },                                     // d3 future, active
+    ]
+    render(
+      <SeriesClient
+        orgId="org-1" orgSlug="acme" series={SERIES} days={days} isAdmin
+        today="2026-08-23"
+        money={{ d1: { state: 'unknown' }, d3: { state: 'none' } }}
+      />
+    )
+    const failed = screen.getByTestId('day-d1')
+    expect(failed).toHaveTextContent('—')                       // unknown, not $0
+    expect(failed.textContent).not.toMatch(/\$0/)
+    expect(screen.getByTestId('day-d3').textContent).not.toMatch(/not closed out/)
+  })
+
+  it('shows "not closed out" on a past day that has none, and the designed empty season line', () => {
+    render(
+      <SeriesClient
+        orgId="org-1" orgSlug="acme" series={SERIES} days={THREE_DAYS} isAdmin
+        today="2026-08-23"
+        money={{ d1: { state: 'none' }, d2: { state: 'none' }, d3: { state: 'none' } }}
+      />
+    )
+    expect(screen.getByTestId('day-d1')).toHaveTextContent('not closed out')
+    expect(screen.getByText(/no days closed out yet/i)).toBeInTheDocument()
+  })
+
+  it('a day with recorded consumable actuals renders a TRUE equation — the costs term joins it', () => {
+    // net = sales − fee − consumables; "sales − fee = net" alone would be false.
+    render(
+      <SeriesClient
+        orgId="org-1" orgSlug="acme" series={SERIES} days={DAYS} isAdmin
+        today="2026-08-23"
+        money={{
+          d1: { state: 'closed', sales: 500, fee: 35, net: 440, consumables: 25 },
+          d2: { state: 'none' },
+        }}
+      />
+    )
+    const cell = screen.getByTestId('day-d1')
+    expect(cell).toHaveTextContent('$500 − $35 − $25 = $440')
+    expect(cell.textContent).not.toMatch(/\$500 − \$35 = /)
+    // Season verdict still sums honest nets.
+    expect(screen.getByText('+$440 net')).toBeInTheDocument()
+  })
+
+  it('a fee-less day with consumables drops to the net form — never a false two-term equation', () => {
+    render(
+      <SeriesClient
+        orgId="org-1" orgSlug="acme" series={SERIES} days={[DAYS[0]]} isAdmin
+        today="2026-08-23"
+        money={{ d1: { state: 'closed', sales: 100, fee: 0, net: 90, consumables: 10 } }}
+      />
+    )
+    const cell = screen.getByTestId('day-d1')
+    expect(cell).toHaveTextContent('net $90')
+    expect(cell.textContent).not.toMatch(/=/)
+    // The breakdown survives in the title so the number stays explainable.
+    expect(within(cell).getByTitle('$100 sales − $10 recorded consumables')).toBeInTheDocument()
+  })
+
+  it('a beyond-cap past day says so — distinct from the failed-read cell — and future beyond-cap days stay quiet', () => {
+    const days = [
+      { ...DAYS[0] },                                            // d1 past, active
+      { id: 'd3', name: 'Boise Farmers Market', slug: 'bfm-3', year: 2026, status: 'active' as const, event_type_id: 'event', event_start: '2099-01-02', event_end: '2099-01-02', created_at: 'x', kind: 'market_day' as const, series_id: 's1' },
+    ]
+    render(
+      <SeriesClient
+        orgId="org-1" orgSlug="acme" series={SERIES} days={days} isAdmin
+        today="2026-08-23"
+        money={{ d1: { state: 'beyond_cap' }, d3: { state: 'beyond_cap' } }}
+      />
+    )
+    const past = screen.getByTestId('day-d1')
+    expect(past).toHaveTextContent('beyond the 30-day rollup')
+    // Never the failed-read cell or copy.
+    expect(past.textContent).not.toMatch(/—/)
+    expect(within(past).queryByTitle(/Couldn’t load/)).not.toBeInTheDocument()
+    // A future beyond-cap day has nothing to report — no nag.
+    expect(screen.getByTestId('day-d3').textContent).not.toMatch(/rollup/)
+  })
+
+  it('the season header discloses the truncation when past days sit beyond the rollup', () => {
+    render(
+      <SeriesClient
+        orgId="org-1" orgSlug="acme" series={SERIES} days={DAYS} isAdmin
+        today="2026-08-23"
+        money={{
+          d1: { state: 'closed', sales: 180, fee: 45, net: 135 },
+          d2: { state: 'beyond_cap' },
+        }}
+      />
+    )
+    expect(screen.getByText(/most recent 30 days — 1 earlier day not counted/)).toBeInTheDocument()
+    // The verdict itself still renders alongside the disclosure.
+    expect(screen.getByText('+$135 net')).toBeInTheDocument()
+  })
+
+  it('no truncation note when every day made it into the rollup', () => {
+    render(
+      <SeriesClient
+        orgId="org-1" orgSlug="acme" series={SERIES} days={DAYS} isAdmin
+        today="2026-08-23"
+        money={{ d1: { state: 'closed', sales: 180, fee: 45, net: 135 }, d2: { state: 'none' } }}
+      />
+    )
+    expect(screen.queryByText(/most recent 30 days/)).not.toBeInTheDocument()
+  })
+
+  it('a losing season reads as a loss', () => {
+    render(
+      <SeriesClient
+        orgId="org-1" orgSlug="acme" series={SERIES} days={DAYS} isAdmin
+        today="2026-08-23"
+        money={{
+          d1: { state: 'closed', sales: 20, fee: 45, net: -25 },
+          d2: { state: 'closed', sales: 40, fee: 45, net: -5 },
+        }}
+      />
+    )
+    expect(screen.getByText('−$30 net')).toBeInTheDocument()
+    expect(screen.getByText(/over 2 days · 0 of 2 days positive/)).toBeInTheDocument()
   })
 })

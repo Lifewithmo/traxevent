@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
-import { act, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
+import { renderToString } from 'react-dom/server'
 import userEvent from '@testing-library/user-event'
 import { InvoiceEditorClient } from '@/components/admin/InvoiceEditorClient'
 import type { NormalizedInvoice, InvoiceVersion } from '@/lib/types'
@@ -680,5 +681,108 @@ describe('InvoiceEditorClient — failure and in-flight paths', () => {
     expect(screen.getByText('BrewTrax')).toBeInTheDocument()
     expect(screen.getByText(/12 Main St/)).toBeInTheDocument()
     expect(container.querySelector('img')).toHaveAttribute('src', 'https://cdn.test/logo.png')
+  })
+})
+
+// --- zone-safe date stamps (the /checkin SSR hydration crash class, PR #134) ---
+
+describe('InvoiceEditorClient — date stamps are viewer-local without a hydration crash', () => {
+  // Instants that straddle a UTC date boundary for any US viewer: a UTC server
+  // and a stateside browser disagree on the calendar date of both.
+  const SENT_AT = '2026-08-13T02:30:00.000Z'
+  const RECORDED_AT = '2026-08-20T03:15:00.000Z'
+  // Computed through the same Intl surface in the test env's own zone —
+  // whatever TZ this run has, the stamps must agree with it after hydration.
+  const localDate = (iso: string) =>
+    new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+
+  const hydInvoice = () =>
+    inv({
+      lifecycle: 'sent', number: 'BRW-1042', sent_at: SENT_AT,
+      line_items: [{ description: 'Coffee bar', quantity: 1, unit_price: 650 }],
+      payments: [{ amount: 100, method: 'card', recorded_at: RECORDED_AT }],
+      versions: [{ sent_at: SENT_AT, line_items: [{ description: 'Coffee bar', quantity: 1, unit_price: 650 }] }],
+    })
+
+  it('SSR bakes NO date face into the Sent/payment/history stamps — placeholder until hydration', () => {
+    const html = renderToString(
+      <InvoiceEditorClient orgId="org1" orgSlug="s" leadId="l" invoice={hydInvoice()} />,
+    )
+    // The defect class: the server's formatted dates landed in the HTML, the
+    // browser's hydration pass formatted the viewer's own zone instead, and
+    // React aborted with minified error #418 — every button dead. The server
+    // pass must emit only the placeholder; in this test the "server" and the
+    // viewer share a zone, so ANY date face in the SSR payload means it was
+    // formatted server-side again.
+    const text = html.replace(/<!-- -->/g, '')
+    expect(text).toContain('Sent …')
+    expect(html).not.toContain(localDate(SENT_AT))
+    expect(html).not.toContain(localDate(RECORDED_AT))
+    expect(html).not.toMatch(/\d{1,2}\/\d{1,2}\/\d{4}/) // the old default face
+    // Zone-independent document content still SSRs.
+    expect(text).toContain('BRW-1042')
+    expect(text).toContain('$650.00')
+  })
+
+  it('hydrates the SSR HTML with zero console.error, then swaps in the viewer-local dates', () => {
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    container.innerHTML = renderToString(
+      <InvoiceEditorClient orgId="org1" orgSlug="s" leadId="l" invoice={hydInvoice()} />,
+    )
+
+    // No suppressHydrationWarning anywhere on the stamps, so a server/client
+    // divergence would surface right here as a console.error from React.
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      render(
+        <InvoiceEditorClient orgId="org1" orgSlug="s" leadId="l" invoice={hydInvoice()} />,
+        { container, hydrate: true },
+      )
+      expect(consoleError).not.toHaveBeenCalled()
+    } finally {
+      consoleError.mockRestore()
+    }
+
+    // Post-hydration: the genuine viewer-local faces.
+    expect(screen.getByText(`Sent ${localDate(SENT_AT)}`)).toBeInTheDocument()
+    expect(screen.getByText(localDate(RECORDED_AT))).toBeInTheDocument()
+    expect(screen.getByTestId('history-entry')).toHaveTextContent(`Sent ${localDate(SENT_AT)}`)
+
+    // And the handlers are ALIVE — the production symptom of this class was an
+    // inert page (hydration aborted, nothing attached). Unlocking the sent
+    // invoice must actually flip the CTA.
+    fireEvent.click(screen.getByRole('button', { name: /edit invoice/i }))
+    expect(screen.getByRole('button', { name: /send update/i })).toBeInTheDocument()
+
+    container.remove()
+  })
+
+  // The balance note's overdue judgment is also SSR text: it must run on UTC
+  // day math (lib/invoice-status.daysOverdue — the pill's aging convention),
+  // never ambient-zone locals. A UTC server and a US-evening browser disagree
+  // on "today" every evening, and the resulting SSR/client text mismatch is
+  // this same #418 crash — plus the note contradicting the pill.
+  it('judges overdue on UTC day math, not the render machine\'s zone', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-08-13T02:30:00.000Z'))
+    const prevTZ = process.env.TZ
+    process.env.TZ = 'America/Denver'
+    try {
+      // 02:30 UTC on Aug 13 is 20:30 Aug 12 in Denver: ambient-zone math said
+      // "Awaiting payment" (not overdue yet) while UTC day math says 1 day.
+      render(
+        <InvoiceEditorClient orgId="org1" orgSlug="s" leadId="l"
+          invoice={sentInvoice({
+            line_items: [{ description: 'x', quantity: 1, unit_price: 100 }],
+            due_date: '2026-08-12',
+          })} />,
+      )
+      expect(screen.getByTestId('balance-note')).toHaveTextContent('1 day overdue')
+    } finally {
+      if (prevTZ === undefined) delete process.env.TZ
+      else process.env.TZ = prevTZ
+      vi.useRealTimers()
+    }
   })
 })

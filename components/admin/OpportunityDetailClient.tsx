@@ -257,6 +257,32 @@ function unitOptionLabel(name: string, ann: UnitAnnotation | undefined): string 
 }
 
 /**
+ * The quiet anticipation affordance under an Unassigned select: a text-button
+ * that NAMES the exact free unit it will assign (`Use ‹name› (free)`), not a loud
+ * CTA — the operator's own pick and Unassigned both stay first-class. A real
+ * `<button>` (keyboard-operable, AA focus ring); the click runs the same
+ * optimistic merge/rollback as the picker.
+ */
+function FreeUnitSuggestion({
+  name, disabled, onUse,
+}: {
+  name: string
+  disabled: boolean
+  onUse: () => void
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onUse}
+      className="rounded-sm text-left text-xs font-medium text-primary underline-offset-2 hover:underline outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50"
+    >
+      Use {name} (free)
+    </button>
+  )
+}
+
+/**
  * Optional per-unit assignment beside DeliveryModeControl — pin this booking to
  * a specific serving unit (and, on-site, a room). Business-tier + has-units +
  * dated only (`showAssignment`, gated on the server).
@@ -330,6 +356,19 @@ function UnitAssignmentControl({
   const mobileAlert = currentAlert(mobileValue)
   const venueAlert = showRoom ? currentAlert(venueValue) : null
 
+  // The anticipation move (Tesler): the first unit of a kind that is free on the
+  // lead's date — neither blocked nor taken by another same-date booking. Read
+  // from the annotations already loaded; absent = free. Surfaced ONLY when the
+  // kind is still Unassigned, so it never overrides the operator's own pick.
+  function firstFree(kindUnits: CapacityUnit[]): CapacityUnit | undefined {
+    return kindUnits.find((u) => {
+      const ann = annotations[u.id]
+      return !ann?.blocked && !ann?.takenBy
+    })
+  }
+  const mobileSuggest = mobileValue ? undefined : firstFree(mobileUnits)
+  const venueSuggest = showRoom && !venueValue ? firstFree(venueUnits) : undefined
+
   const mobileId = `assign-mobile-${lead.id}`
   const venueId = `assign-venue-${lead.id}`
 
@@ -353,6 +392,13 @@ function UnitAssignmentControl({
           {mobileAlert && (
             <p role="alert" className="max-w-full text-sm whitespace-normal text-destructive">{mobileAlert}</p>
           )}
+          {mobileSuggest && (
+            <FreeUnitSuggestion
+              name={mobileSuggest.name}
+              disabled={saving}
+              onUse={() => change('mobile', mobileSuggest.id)}
+            />
+          )}
         </div>
 
         {showRoom && (
@@ -372,6 +418,13 @@ function UnitAssignmentControl({
             </select>
             {venueAlert && (
               <p role="alert" className="max-w-full text-sm whitespace-normal text-destructive">{venueAlert}</p>
+            )}
+            {venueSuggest && (
+              <FreeUnitSuggestion
+                name={venueSuggest.name}
+                disabled={saving}
+                onUse={() => change('venue', venueSuggest.id)}
+              />
             )}
           </div>
         )}

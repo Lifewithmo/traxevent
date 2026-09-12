@@ -1,6 +1,6 @@
 import { getOrgBySlug } from '@/actions/orgs'
 import { getEventBySlug } from '@/actions/events'
-import { listItinerary } from '@/actions/itinerary'
+import { listItineraryCore } from '@/lib/itinerary-data'
 import { groupItineraryByDay, formatTime } from '@/lib/itinerary'
 import { notFound } from 'next/navigation'
 
@@ -30,7 +30,7 @@ export default async function RegistrantItineraryPage({
     )
   }
 
-  const items = await listItinerary(org.id, event.id)
+  const items = await listItineraryCore(org.id, event.id)
   const days = groupItineraryByDay(items)
 
   return (

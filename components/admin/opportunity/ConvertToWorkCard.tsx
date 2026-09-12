@@ -61,6 +61,13 @@ export function ConvertToWorkCard({ orgId, orgSlug, lead, job, eventTypes, open:
   const [kind, setKind] = useState<EventKind>('client_job')
   const [eventTypeId, setEventTypeId] = useState<string>(DEFAULT_EVENT_TYPE_ID)
   const [headcount, setHeadcount] = useState(lead.guest_count != null ? String(lead.guest_count) : '')
+  // Booking time, captured at the one moment the client just told us when.
+  // Always seeded EMPTY — the Lead has no time-of-day field, so any prefill
+  // here would be a fabricated claim (B7). A start/end pair because
+  // Event.hours is a pair everywhere it is read; both-or-neither, like the
+  // settings and new-event forms.
+  const [hoursStart, setHoursStart] = useState('')
+  const [hoursEnd, setHoursEnd] = useState('')
   const [saving, setSaving] = useState(false)
   const [winning, setWinning] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -80,6 +87,8 @@ export function ConvertToWorkCard({ orgId, orgSlug, lead, job, eventTypes, open:
     setName(opportunityTitle(lead))
     setDate(lead.event_date ?? '')
     setHeadcount(lead.guest_count != null ? String(lead.guest_count) : '')
+    setHoursStart('')
+    setHoursEnd('')
     setError(null)
     setOpen(true)
   }
@@ -131,16 +140,27 @@ export function ConvertToWorkCard({ orgId, orgSlug, lead, job, eventTypes, open:
   async function handleMarkWon() {
     if (winning) return
     setWinning(true); setError(null)
+    // Latch the form open, seeded from the lead as it stands right now (winning
+    // changes the stage, not the title/date/guest count). The card keeps
+    // rendering this blocked branch until the refreshed `lead` arrives with
+    // `closed_won` — at which point the scheduler is already open, so the
+    // operator lands one click from a scheduled job rather than back on "Won,
+    // but not on the calendar".
+    const settle = () => { openForm(); router.refresh() }
     try {
-      await setLeadStage(orgId, lead.id, 'closed_won')
-      // Latch the form open, seeded from the lead as it stands right now
-      // (winning changes the stage, not the title/date/guest count). The card
-      // keeps rendering this blocked branch until the refreshed `lead` arrives
-      // with `closed_won` — at which point the scheduler is already open, so
-      // the operator lands one click from a scheduled job rather than back on
-      // "Won, but not on the calendar".
-      openForm()
-      router.refresh()
+      // SERVER CAPACITY GUARD (increment 4): a would-be over/clash win RETURNS
+      // { ok: false, guard } (never thrown — a thrown guard could not survive
+      // Next's production RSC error redaction; see lib/capacity/guard.ts).
+      // Confirm (advisory) and, on accept, re-call with { override: true }. A
+      // decline leaves the deal un-won, no error. A genuine failure throws.
+      const result = await setLeadStage(orgId, lead.id, 'closed_won')
+      if (!result.ok) {
+        if (!window.confirm(result.guard)) return
+        const override = await setLeadStage(orgId, lead.id, 'closed_won', { override: true })
+        if (override.ok) settle()
+        return
+      }
+      settle()
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Could not mark this won')
     } finally {
@@ -196,6 +216,16 @@ export function ConvertToWorkCard({ orgId, orgSlug, lead, job, eventTypes, open:
   async function handleConvert() {
     const type = eventTypes.find((t) => t.id === eventTypeId)
     if (!type) { setError('Select an event type'); return }
+    // Same both-or-neither rule as settings/new-event: a one-sided range would
+    // be silently dropped, and end <= start renders flagged on the calendar.
+    if (Boolean(hoursStart) !== Boolean(hoursEnd)) {
+      setError('Enter both a start and end time, or leave both blank.')
+      return
+    }
+    if (hoursStart && hoursEnd && hoursEnd <= hoursStart) {
+      setError('End time must be after the start time.')
+      return
+    }
     setSaving(true); setError(null)
     try {
       const event = await convertOpportunityToWork(orgId, lead.id, {
@@ -203,6 +233,7 @@ export function ConvertToWorkCard({ orgId, orgSlug, lead, job, eventTypes, open:
         date,
         ...eventCreateFieldsFromType(type),
         ...(headcount.trim() ? { headcount: Number(headcount) } : {}),
+        ...(hoursStart && hoursEnd ? { hours: { start: hoursStart, end: hoursEnd } } : {}),
         ...(kind === 'market_day' ? { kind } : {}),
       })
       router.push(`/${orgSlug}/${event.slug}/${kind === 'market_day' ? 'dashboard' : 'ops'}`)
@@ -264,6 +295,14 @@ export function ConvertToWorkCard({ orgId, orgSlug, lead, job, eventTypes, open:
           <div className="space-y-1">
             <Label htmlFor="cw-headcount">Headcount</Label>
             <Input id="cw-headcount" type="number" value={headcount} onChange={(e) => setHeadcount(e.target.value)} placeholder="Optional" />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="cw-hours-start">Start time (optional)</Label>
+            <Input id="cw-hours-start" type="time" value={hoursStart} onChange={(e) => setHoursStart(e.target.value)} />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="cw-hours-end">End time (optional)</Label>
+            <Input id="cw-hours-end" type="time" value={hoursEnd} onChange={(e) => setHoursEnd(e.target.value)} />
           </div>
         </div>
         <p className="text-sm text-muted-foreground">

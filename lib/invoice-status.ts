@@ -12,8 +12,16 @@ export const INVOICE_TYPE_LABELS: Record<InvoiceType, string> = {
   quick: 'Quick', deposit: 'Deposit', progress: 'Progress', final: 'Final',
 }
 
-// Whole days from `due` to `now` (positive = overdue).
-function daysOverdue(dueDate: string, now: Date): number {
+// Whole days from `due` to `now` (positive = overdue). Pinned to the UTC
+// calendar on BOTH sides deliberately: `now` is reduced to its UTC date and
+// the date-only due date is anchored at UTC midnight, so the count is a pure
+// function of the instant — a UTC server rendering SSR HTML and a browser in
+// any zone hydrating it agree exactly. Components must use THIS for overdue /
+// due-in day math, never ambient-zone `new Date(due + 'T00:00:00')` locals:
+// that variant diverges between server and viewer every US evening, and in a
+// hydrated client component the resulting SSR/client text mismatch is the
+// React #418 crash that bricked /checkin (PR #134).
+export function daysOverdue(dueDate: string, now: Date): number {
   const due = new Date(dueDate + 'T00:00:00Z').getTime()
   const today = new Date(now.toISOString().slice(0, 10) + 'T00:00:00Z').getTime()
   return Math.round((today - due) / 86_400_000)

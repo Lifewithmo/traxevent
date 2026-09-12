@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
+import { renderToString } from 'react-dom/server'
 
 vi.mock('@/components/storefront/DropCheckout', () => ({
   DropCheckout: () => <div data-testid="checkout" />,
@@ -11,7 +12,7 @@ vi.mock('@/components/storefront/DropCheckout', () => ({
 // rendering, not the action's behavior.
 vi.mock('@/actions/storefront-public', () => ({ subscribeToDrops: vi.fn().mockResolvedValue({ ok: true }) }))
 
-import { DropStorefront } from '@/components/storefront/DropStorefront'
+import { DropStorefront, formatOpensAt } from '@/components/storefront/DropStorefront'
 
 const DROP = {
   id: 'd1', title: 'Weekend Drop', note: 'Thanks for the love!', phase: 'open' as const,
@@ -88,5 +89,95 @@ describe('DropStorefront', () => {
     expect(screen.queryByRole('button', { name: /add vanilla latte/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /remove vanilla latte/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '20%' })).not.toBeInTheDocument()
+  })
+})
+
+// ── SSR zone safety ────────────────────────────────────────────────────────
+// The "Orders open …" clock face is pinned to the DROP's own timezone:
+// pickup happens at a physical place, and a pinned zone is byte-identical
+// between the server pass and hydration. The ambient-zone version was the
+// /checkin crash class (React #418 → hydration abort → inert page — on THIS
+// surface, customers cannot order).
+
+// 05:30 UTC is 11:30 PM the PREVIOUS day in Boise — if the zone pin is ever
+// dropped, the rendered DATE itself flips, not just the hour.
+const NEAR_MIDNIGHT = '2026-08-22T05:30:00.000Z'
+const BOISE_FACE = 'Aug 21, 2026, 11:30 PM MDT'
+const UPCOMING_BOISE = {
+  ...DROP,
+  phase: 'upcoming' as const,
+  opens_at: NEAR_MIDNIGHT,
+  timezone: 'America/Boise',
+}
+
+// Node re-reads TZ per Intl call on POSIX, so a per-assertion zone swap
+// simulates "server in zone A, viewer in zone B" inside one process.
+function withProcessTZ<T>(tz: string, fn: () => T): T {
+  const prev = process.env.TZ
+  process.env.TZ = tz
+  try {
+    return fn()
+  } finally {
+    if (prev === undefined) delete process.env.TZ
+    else process.env.TZ = prev
+  }
+}
+
+describe('formatOpensAt — pinned to the drop timezone', () => {
+  it('renders the drop-zone clock face, zone-labeled (near-midnight: the date differs from UTC)', () => {
+    expect(formatOpensAt(NEAR_MIDNIGHT, 'America/Boise')).toBe(BOISE_FACE)
+  })
+
+  it('is identical under different process timezones — the SSR/client stability property', () => {
+    const utc = withProcessTZ('UTC', () => formatOpensAt(NEAR_MIDNIGHT, 'America/Boise'))
+    const nz = withProcessTZ('Pacific/Auckland', () => formatOpensAt(NEAR_MIDNIGHT, 'America/Boise'))
+    expect(utc).toBe(BOISE_FACE)
+    expect(nz).toBe(BOISE_FACE)
+  })
+
+  it('degrades a malformed stored zone to a LABELED UTC face — never the ambient zone', () => {
+    expect(formatOpensAt(NEAR_MIDNIGHT, 'Not/AZone')).toBe('Aug 22, 2026, 5:30 AM UTC')
+  })
+})
+
+describe('DropStorefront (upcoming) — SSR payload zone-deterministic, hydration clean', () => {
+  it('bakes the SAME drop-zone face into the HTML whatever zone the server runs in', () => {
+    const utcHtml = withProcessTZ('UTC', () => renderToString(<DropStorefront drop={UPCOMING_BOISE} />))
+    const nzHtml = withProcessTZ('Pacific/Auckland', () => renderToString(<DropStorefront drop={UPCOMING_BOISE} />))
+    // The crash mechanics: an ambient-zone face differs between a UTC server
+    // and the viewer's browser. Payload equality across server zones is the
+    // property that makes hydration safe for EVERY viewer.
+    expect(utcHtml).toBe(nzHtml)
+    expect(utcHtml).toContain(BOISE_FACE)
+    // The faces the unpinned version would have baked in:
+    expect(utcHtml).not.toContain('Aug 22, 2026, 5:30 AM') // a UTC server's face
+    expect(nzHtml).not.toContain('5:30 PM') // an Auckland server's face
+  })
+
+  it('hydrates UTC-server HTML in a non-UTC "browser" with zero console.error and live handlers', () => {
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    // Server pass in one zone…
+    container.innerHTML = withProcessTZ('UTC', () => renderToString(<DropStorefront drop={UPCOMING_BOISE} />))
+
+    // …hydrated in another — the production shape (UTC server, local viewer).
+    // No suppressHydrationWarning anywhere, so any divergence surfaces as a
+    // React console.error right here.
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      withProcessTZ('Pacific/Auckland', () => {
+        render(<DropStorefront drop={UPCOMING_BOISE} />, { container, hydrate: true })
+      })
+      expect(consoleError).not.toHaveBeenCalled()
+    } finally {
+      consoleError.mockRestore()
+    }
+    expect(screen.getByText(/Orders open Aug 21, 2026, 11:30 PM MDT\./)).toBeInTheDocument()
+
+    // Handlers ALIVE — the production symptom of this crash class is an inert
+    // page. The subscribe form must accept input after hydration.
+    fireEvent.change(screen.getByLabelText(/^email$/i), { target: { value: 'jane@example.com' } })
+    expect(screen.getByLabelText(/^email$/i)).toHaveValue('jane@example.com')
+    container.remove()
   })
 })

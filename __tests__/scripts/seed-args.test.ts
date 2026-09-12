@@ -2,9 +2,10 @@ import { describe, it, expect } from 'vitest'
 import { parseSeedArgs, DEFAULT_ORG_ID, DEFAULT_EMAIL, DEFAULT_PASSWORD } from '@/scripts/seed/args'
 
 describe('parseSeedArgs', () => {
-  it('defaults to the demo org, demo login, and no reset', () => {
+  it('defaults to the demo org, demo login, no reset, and no addition flags', () => {
     expect(parseSeedArgs([])).toEqual({
       orgId: DEFAULT_ORG_ID, email: DEFAULT_EMAIL, password: DEFAULT_PASSWORD, reset: false,
+      withMarketDays: false, withRosterOrg: false, dryRun: false,
     })
   })
 
@@ -40,6 +41,29 @@ describe('parseSeedArgs', () => {
 
   it('rejects unknown flags rather than ignoring them', () => {
     expect(() => parseSeedArgs(['--force'])).toThrow(/Unknown flag: --force/)
+  })
+
+  it('accepts the addition flags, alone or together', () => {
+    expect(parseSeedArgs(['--with-market-days']).withMarketDays).toBe(true)
+    expect(parseSeedArgs(['--with-roster-org']).withRosterOrg).toBe(true)
+    const both = parseSeedArgs(['--with-market-days', '--with-roster-org'])
+    expect(both.withMarketDays).toBe(true)
+    expect(both.withRosterOrg).toBe(true)
+  })
+
+  it('accepts --dry-run only alongside an addition flag', () => {
+    expect(parseSeedArgs(['--with-market-days', '--dry-run']).dryRun).toBe(true)
+    expect(() => parseSeedArgs(['--dry-run'])).toThrow(/addition flags only/)
+  })
+
+  it('rejects combining --reset with the addition flags', () => {
+    expect(() => parseSeedArgs(['--reset', '--with-market-days'])).toThrow(/--reset cannot be combined/)
+    expect(() => parseSeedArgs(['--reset', '--with-roster-org'])).toThrow(/--reset cannot be combined/)
+  })
+
+  it('applies the demo- guard to --claims-org too', () => {
+    expect(parseSeedArgs(['--claims-org=demo-pinecrest-day-camp']).claimsOrg).toBe('demo-pinecrest-day-camp')
+    expect(() => parseSeedArgs(['--claims-org=acme-corp'])).toThrow(/must start with "demo-"/)
   })
 
   it('rejects an empty password', () => {

@@ -261,6 +261,14 @@ describe('AdminSidebar — Option C IA', () => {
     expect(within(events).getByRole('link', { name: 'Settings' })).toHaveAttribute('href', '/acme/boise-farmers-market-2026/settings')
     expect(screen.queryByRole('link', { name: 'Event Ops' })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Teams' })).not.toBeInTheDocument()
+    // Role-gated: without isAdmin the Closeout row would only bounce — hidden.
+    expect(screen.queryByRole('link', { name: 'Closeout' })).not.toBeInTheDocument()
+  })
+
+  it('market-day job nav adds Closeout for owner/admin viewers', () => {
+    nav.pathname = '/acme/boise-farmers-market-2026/dashboard'
+    render(<AdminSidebar orgSlug="acme" eventSlug="boise-farmers-market-2026" eventKind="market_day" isAdmin />)
+    expect(screen.getByRole('link', { name: 'Closeout' })).toHaveAttribute('href', '/acme/boise-farmers-market-2026/closeout')
   })
 
   it('client-job nav is unchanged when eventKind is client_job or absent', () => {

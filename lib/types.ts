@@ -29,6 +29,30 @@ export interface Org {
   default_proposal_terms?: string    // seeded into new proposals' `terms` (snapshot, not a live reference)
   prep_lead_days?: number             // days of prep an event needs before the date; drives the pipeline book-by deadline (default 14)
   business_hours?: BusinessHours      // the org's working window; shades out-of-hours rows on the calendar time grid (default 08:00–18:00)
+  // Which days the business actually works — powers the capacity outlook forecast.
+  // Absent ⇒ all 7 weekdays, no closures (every day serviceable). Migration-free.
+  serviceable_days?: {
+    weekdays?: number[]              // 0=Sun … 6=Sat the business serves; absent ⇒ all 7; [] ⇒ none
+    closures?: CapacityBlockout[]    // closed date ranges (holidays, off-season); reuses the Inc-1 shape
+  }
+  // Operator vocabulary for the two capacity kinds (de-siloing from BrewTrax's "cart"/"room").
+  // Absent per-kind ⇒ neutral defaults ('serving unit(s)' / 'room(s)'). See lib/capacity/labels.ts.
+  resource_labels?: {
+    mobile?: { one: string; many: string }
+    venue?: { one: string; many: string }
+  }
+  // Optional per-event-type resource profiles: declare which capacity kinds an
+  // event_type consumes (0/1 each). Absent ⇒ leadRequirement's default rule
+  // (a mobile unit always, a room when on-site) — migration-free. `name` is
+  // matched trimmed + case-insensitive against the free-text `lead.event_type`
+  // (an overlay, not a picklist migration). See lib/capacity/requirement.ts.
+  event_type_profiles?: Array<{ name: string; needsMobile: boolean; needsVenue: boolean }>
+  // Org-default pack/drive buffers behind the back-planned "Pack by / Leave by"
+  // chips. Absent (either field) ⇒ the lib/event-ui constants. Migration-free.
+  ops_buffers?: {
+    pack_minutes?: number
+    drive_minutes?: number
+  }
   created_at: string
 }
 
@@ -121,6 +145,9 @@ export interface Event {
   year: number
   status: 'draft' | 'active' | 'archived'
   registration_type?: EventRegistrationType   // optional since occasions R1; roster paths fall back to 'individual'
+  // Guardian who-collected email on checkout. Absent ⇒ ON for guardian-mode
+  // (child-registration) events, OFF otherwise; explicit boolean overrides.
+  notify_family_on_pickup?: boolean
   event_type_id: string              // drives terminology + UI config
   features?: {                                // optional since occasions R1; never written on create anymore (zero readers)
     accommodations: boolean
@@ -1067,6 +1094,10 @@ export interface OpsPlan {
   packing_list: OpsListItem[]
   checklists: OpsChecklist[]
   needs_review: boolean      // set when a change re-derived artifacts; cleared by acknowledge
+  // Operator attestation "this job is ready" (evening-before ritual). CLEARED by any
+  // logged requirements change, any list recompute, and event date/hours edits —
+  // inherits needs_review's known package-edit staleness hole (documented there).
+  ready_confirmed?: { at: string; by: string }
   change_log: OpsChangeEntry[]
   industry_pack_id?: string  // pack the plan was derived under (for re-derivation)
   created_at: string
@@ -1077,8 +1108,11 @@ export interface CloseoutSummary {
   planned_consumable_cost: number
   actual_consumable_cost: number
   revenue: number            // package prices + recorded sales
-  planned_margin: number     // revenue - planned cost
-  actual_margin: number      // revenue - actual cost
+  planned_margin: number     // revenue - planned cost - fees
+  actual_margin: number      // revenue - actual cost - fees
+  // Fixed event fees subtracted from BOTH margins (known at plan time). This
+  // increment: booth_fee only; POS inc-2's counter extras are additive here.
+  fees?: number
   cost_gaps?: string[]  // resource names omitted from planned cost: cost known but no conversion path to its unit (spec §4.3)
 }
 

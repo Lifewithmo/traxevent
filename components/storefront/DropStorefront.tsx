@@ -17,6 +17,32 @@ function windowLabel(w: PublicDrop['pickup']['windows'][number]): string {
   return `${w.day} · ${w.start}–${w.end}`
 }
 
+// SSR-SAFE BY CONSTRUCTION: this public page server-renders, so any clock
+// face must be byte-identical between the server pass and hydration — an
+// ambient-zone toLocale* here bakes the SERVER's face into the HTML, the
+// browser re-formats in the viewer's zone, and React aborts hydration
+// (minified #418), leaving every button dead: customers cannot order. That
+// is the /checkin crash class (PR #134). Pickup happens at a physical place,
+// so the honest zone is the DROP's own (Drop.timezone, IANA, captured from
+// the seller's browser at creation) — which is also zone-stable everywhere:
+// no hydration gate, no placeholder flicker. Locale is pinned too ('en-US'):
+// the server's ICU default need not match the viewer's, and a locale drift
+// is the same crash. timeZoneName labels the face ('… 10:00 AM MDT') so an
+// out-of-town viewer isn't misled by a pinned zone. Exported for tests.
+const OPENS_AT_OPTS = {
+  month: 'short', day: 'numeric', year: 'numeric',
+  hour: 'numeric', minute: '2-digit', timeZoneName: 'short',
+} as const
+export function formatOpensAt(iso: string, timeZone: string): string {
+  try {
+    return new Date(iso).toLocaleString('en-US', { ...OPENS_AT_OPTS, timeZone })
+  } catch {
+    // A malformed stored zone degrades to a LABELED UTC face — never to the
+    // ambient zone, which would resurrect the hydration crash.
+    return new Date(iso).toLocaleString('en-US', { ...OPENS_AT_OPTS, timeZone: 'UTC' })
+  }
+}
+
 function slotOptions(w: PublicDrop['pickup']['windows'][number]): string[] {
   if (!w.slot_minutes) return []
   const out: string[] = []
@@ -79,7 +105,7 @@ export function DropStorefront({ drop }: { drop: PublicDrop }) {
       {drop.phase === 'upcoming' && (
         <div className="space-y-4">
           <div className="rounded-xl border p-4 text-sm">
-            Orders open {new Date(drop.opens_at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}.
+            Orders open {formatOpensAt(drop.opens_at, drop.timezone)}.
           </div>
           <SubscribeCard handle={drop.org.handle} source="drop_page" />
         </div>

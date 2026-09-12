@@ -83,7 +83,8 @@ export default async function AssignmentsPrintPage({
     <>
       <style>{`
         .print-root * { box-sizing: border-box; }
-        .print-root { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 12px; color: #000; margin: 0; padding: 16px; }
+        /* Paper never inverts: background forced alongside the ink (dark-mode screen parity). */
+        .print-root { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 12px; color: #000; background: #fff; min-height: 100vh; margin: 0; padding: 16px; }
         .print-root h1 { font-size: 18px; margin: 0 0 4px; }
         .print-root .meta { color: #666; font-size: 11px; margin-bottom: 24px; }
         .print-root .slot { break-inside: avoid; margin-bottom: 24px; border: 1px solid #ddd; border-radius: 6px; padding: 12px; }
@@ -96,7 +97,7 @@ export default async function AssignmentsPrintPage({
         .print-root .empty { color: #aaa; font-style: italic; font-size: 11px; }
         @media print {
           aside { display: none !important; }
-          main { padding: 0 !important; background: none !important; overflow: visible !important; }
+          main, [data-event-main] { padding: 0 !important; background: none !important; overflow: visible !important; }
           .print-root { display: block; }
           @page { margin: 1.5cm; }
         }

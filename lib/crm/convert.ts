@@ -1,6 +1,6 @@
 import { createEventCore, listEventsByLeadCore } from '@/lib/events'
 import { leadsRef } from '@/lib/crm/leads'
-import type { Event, EventRegistrationType, EventKind, Lead } from '@/lib/types'
+import type { Event, EventRegistrationType, EventHours, EventKeyContact, EventKind, Lead } from '@/lib/types'
 import type { Terminology } from '@/lib/event-types'
 
 export interface ConvertToWorkInput {
@@ -11,9 +11,15 @@ export interface ConvertToWorkInput {
   event_type_terminology?: Terminology
   kind?: EventKind
   headcount?: number
+  // Optional booking time captured at conversion ('HH:mm' pair). A pair, not a
+  // lone start: Event.hours is start+end everywhere it is read (calendar grid,
+  // day spine, settings both-or-neither rule). NEVER derived from the Lead —
+  // it has no time-of-day field (B7: time-source honesty).
+  hours?: EventHours
 }
 
 const DATE_FORMAT = /^\d{4}-\d{2}-\d{2}$/
+const TIME_FORMAT = /^\d{2}:\d{2}$/
 
 /**
  * Turn a won opportunity into a scheduled job.
@@ -52,6 +58,14 @@ export async function convertOpportunityToWorkCore(
   if (input.headcount !== undefined && (!Number.isFinite(input.headcount) || input.headcount <= 0)) {
     throw new Error('Headcount must be a positive number')
   }
+  if (input.hours) {
+    if (!TIME_FORMAT.test(input.hours.start) || !TIME_FORMAT.test(input.hours.end)) {
+      throw new Error('Times must be in HH:mm format')
+    }
+    if (input.hours.end <= input.hours.start) {
+      throw new Error('End time must be after the start time')
+    }
+  }
 
   const snap = await leadsRef(orgId).doc(leadId).get()
   if (!snap.exists) throw new Error('Opportunity not found')
@@ -60,6 +74,19 @@ export async function convertOpportunityToWorkCore(
 
   const existing = await listEventsByLeadCore(orgId, leadId)
   if (existing.length > 0) throw new Error('This opportunity is already scheduled')
+
+  // Seed the job's key contacts from the person the deal was won with — the
+  // run sheet's tap-to-call chips are empty otherwise, and this is the one
+  // moment the CRM record and the job are guaranteed to be in the same hand.
+  // Name only, never a time: the Lead has no time-of-day field (B7).
+  const clientContact: EventKeyContact | null = lead.name?.trim()
+    ? {
+        name: lead.name.trim(),
+        role: 'Client',
+        ...(lead.phone?.trim() ? { phone: lead.phone.trim() } : {}),
+        ...(lead.email?.trim() ? { email: lead.email.trim() } : {}),
+      }
+    : null
 
   const date = input.date.trim()
   return createEventCore(orgId, {
@@ -72,6 +99,8 @@ export async function convertOpportunityToWorkCore(
     event_start: date,
     event_end: date,
     ...(input.headcount !== undefined ? { headcount: input.headcount } : {}),
+    ...(input.hours ? { hours: input.hours } : {}),
+    ...(clientContact ? { key_contacts: [clientContact] } : {}),
     lead_id: leadId,
   })
 }

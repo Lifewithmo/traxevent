@@ -137,7 +137,7 @@ export function TemplateBuilderClient({
         ))}
       </div>
 
-      <main className="flex-1 overflow-y-auto bg-muted px-6 py-8">
+      <div className="flex-1 overflow-y-auto bg-muted px-6 py-8">
         {/* The paper is the customer's document, so it stays white in dark mode —
             --warm-0 is the literal white token. Do NOT use bg-card, which inverts. */}
         {/* The ink is pinned for the same reason as the sheet: ProposalTheme sets
@@ -176,7 +176,7 @@ export function TemplateBuilderClient({
         <div className="sticky bottom-0 mx-auto mt-6 max-w-3xl rounded-t-lg border bg-card/95 px-6 py-3 backdrop-blur">
           <p className="text-sm font-semibold">Client would see: {rangeLabel}</p>
         </div>
-      </main>
+      </div>
     </div>
   )
 }

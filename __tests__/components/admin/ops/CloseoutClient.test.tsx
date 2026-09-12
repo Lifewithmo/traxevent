@@ -105,3 +105,104 @@ describe('CloseoutClient', () => {
     expect(screen.getByLabelText('Bill to')).toBeInTheDocument()
   })
 })
+
+// ——— Delta-chip honesty + save-race regressions (additive) ———————————————————
+// Live-recompute fixture matching the saved-summary figures above:
+// 0.75 oz/guest × 50 guests = 37.5 oz planned @ $0.55/oz = $20.625 planned cost.
+const packages = [{
+  id: 'p1', name: 'Espresso bar', price: 1050,
+  lines: [{ kind: 'consumable' as const, resource_id: 'r1', qty_per_guest: 0.75 }],
+  created_at: 'x',
+}]
+const resources = [
+  { id: 'r1', name: 'Espresso beans', kind: 'consumable' as const, unit: 'oz', unit_cost: 0.55, created_at: 'x' },
+]
+// What closeoutSummaryCore returns before anything has been saved: zero actuals
+// against a costed plan, so actual_margin === revenue.
+const zeroActualSummary = {
+  planned_consumable_cost: 20.625, actual_consumable_cost: 0,
+  revenue: 1050, planned_margin: 1029.375, actual_margin: 1050,
+}
+
+describe('CloseoutClient delta chips', () => {
+  it('shows the saved summary with no delta chips on a pristine zero-actuals load', () => {
+    render(<CloseoutClient {...base} packages={packages} resources={resources} summary={zeroActualSummary} />)
+    // Tiles still render from the saved summary…
+    expect(screen.getByText('$1029.38')).toBeInTheDocument() // planned margin
+    // …but no chip claims the plan was beaten (or matched) before any actuals exist.
+    expect(screen.queryByText(/[+−]\$.* vs plan/)).not.toBeInTheDocument()
+    expect(screen.queryByText('on plan')).not.toBeInTheDocument()
+  })
+
+  it('reveals delta chips on the first edit, interpreted against the live recompute', () => {
+    render(<CloseoutClient {...base} packages={packages} resources={resources} summary={zeroActualSummary} />)
+    fireEvent.change(screen.getByLabelText('Actual Espresso beans used'), { target: { value: '30' } })
+    expect(screen.getByText('+$4.13 vs plan')).toBeInTheDocument() // margin: 30oz × $0.55 = $16.50 spent vs $20.625 planned
+    expect(screen.getByText('−$4.13 vs plan')).toBeInTheDocument() // consumables under plan
+  })
+
+  it('keeps delta chips on load when actuals were already saved', () => {
+    render(<CloseoutClient {...base} closeout={{ actuals: { hours_worked: 6 }, completed: false, created_at: 'x' }} />)
+    expect(screen.getByText('−$4.13 vs plan')).toBeInTheDocument() // margin under plan, from the saved summary
+    expect(screen.getByText('+$4.13 vs plan')).toBeInTheDocument() // consumables over plan
+  })
+
+  it('does not echo the sales input back as a revenue delta chip', () => {
+    render(<CloseoutClient {...base} packages={packages} resources={resources} summary={zeroActualSummary} />)
+    fireEvent.change(screen.getByLabelText('Tips & on-site sales ($)'), { target: { value: '150' } })
+    expect(screen.getByText('$1200.00')).toBeInTheDocument() // revenue tile already includes the sales
+    expect(screen.queryByText('+$150.00 vs plan')).not.toBeInTheDocument()
+    expect(screen.getByText('on plan')).toBeInTheDocument()  // margin chip stays the interpreted figure
+  })
+
+  it('keeps showing the live recompute for edits typed during an in-flight save', async () => {
+    let resolveSave!: () => void
+    vi.mocked(saveActuals).mockReturnValueOnce(new Promise<void>((res) => { resolveSave = res }))
+    render(<CloseoutClient {...base} packages={packages} resources={resources} summary={zeroActualSummary} />)
+
+    fireEvent.change(screen.getByLabelText('Actual Espresso beans used'), { target: { value: '41' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save actuals' })) // payload captures qty 41
+    fireEvent.change(screen.getByLabelText('Actual Espresso beans used'), { target: { value: '30' } }) // mid-flight edit
+    resolveSave()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Save actuals' })).toBeEnabled())
+
+    // The margin card must reflect the newer qty-30 live recompute ($1050 − $16.50),
+    // not the just-fetched saved summary (actual margin $1025.25).
+    expect(screen.getByText('$1033.50')).toBeInTheDocument()
+    expect(screen.queryByText('$1025.25')).not.toBeInTheDocument()
+  })
+})
+
+// ——— Booth fee (spec 2026-08-23 S1.1, additive) ————————————————————————————
+// Saved-summary figures with a $35 booth fee joined server-side.
+const feeSummary = {
+  planned_consumable_cost: 20.625, actual_consumable_cost: 0,
+  revenue: 1050, planned_margin: 994.375, actual_margin: 1015, fees: 35,
+}
+
+describe('CloseoutClient booth fee', () => {
+  it('renders the fees line and the fee-adjusted margin tiles from the saved summary', () => {
+    render(<CloseoutClient {...base} summary={feeSummary} boothFee={35} />)
+    expect(screen.getByText('$35.00')).toBeInTheDocument()
+    expect(screen.getByText(/booth fee — subtracted from both margins/)).toBeInTheDocument()
+    expect(screen.getByText('$1015.00')).toBeInTheDocument() // actual margin already nets the fee
+    expect(screen.getByText('$994.38')).toBeInTheDocument()  // planned margin too
+  })
+
+  it('renders no fees line when the summary carries none (zero/absent fee unchanged)', () => {
+    render(<CloseoutClient {...base} />)
+    expect(screen.queryByText(/booth fee/)).not.toBeInTheDocument()
+  })
+
+  it('threads boothFee through the live recompute so live and saved figures agree', () => {
+    render(<CloseoutClient {...base} packages={packages} resources={resources} summary={feeSummary} boothFee={35} />)
+    fireEvent.change(screen.getByLabelText('Tips & on-site sales ($)'), { target: { value: '150' } })
+    fireEvent.change(screen.getByLabelText('Actual Espresso beans used'), { target: { value: '30' } })
+    // Live: revenue 1050+150 = 1200; actual cost 30 × $0.55 = $16.50, planned
+    // $20.625; fee $35 → actual margin $1148.50, planned margin $1144.38 —
+    // BOTH nets the fee.
+    expect(screen.getByText('$1148.50')).toBeInTheDocument()
+    expect(screen.getByText('$1144.38')).toBeInTheDocument()
+    expect(screen.getByText('$35.00')).toBeInTheDocument() // fees line stays on the live path
+  })
+})

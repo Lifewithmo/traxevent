@@ -18,7 +18,7 @@ const data: TodayData = {
 }
 
 const agenda: Agenda = {
-  today: [{ eventId: 'e1', slug: 'gala', name: 'Gala', date: '2026-08-05', multiDay: false }],
+  today: [{ eventId: 'e1', slug: 'gala', name: 'Gala', date: '2026-08-05', daysUntil: 0, multiDay: false }],
   upcoming: [],
   windowDays: ['2026-08-06', '2026-08-07', '2026-08-08', '2026-08-09', '2026-08-10', '2026-08-11', '2026-08-12'],
 }
@@ -31,11 +31,24 @@ describe('TodayClient', () => {
     expect(screen.getByText(/1 event today/)).toBeInTheDocument()
   })
 
-  it('mounts the queue and the agenda rail', () => {
+  it('mounts the queue and the agenda rail with the pinned next job', () => {
     render(<TodayClient orgId="o1" orgSlug="acme" data={data} agenda={agenda} />)
     expect(screen.getByText('Due today · 1')).toBeInTheDocument()
-    expect(screen.getByText('On the cart today')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Gala' })).toBeInTheDocument()
+    expect(screen.getByText('Next job')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Gala/ })).toHaveAttribute('href', '/acme/gala/dashboard')
+  })
+
+  it('puts the queue (h1) before the rail in DOM — the rail floats on top below md via order-first', () => {
+    const { container } = render(<TodayClient orgId="o1" orgSlug="acme" data={data} agenda={agenda} />)
+    const aside = container.querySelector('aside')
+    const h1 = screen.getByRole('heading', { level: 1 })
+    expect(aside).not.toBeNull()
+    // The h1 precedes the rail (and thus its h2s) in the DOM: a valid heading
+    // outline, and desktop tab/reading order that matches the visual layout.
+    expect(h1.compareDocumentPosition(aside!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    // Below md the rail still DISPLAYS first — a visual-only reorder.
+    expect(aside!.className).toContain('order-first')
+    expect(aside!.className).toContain('md:order-none')
   })
 
   it('renders the KPI band', () => {

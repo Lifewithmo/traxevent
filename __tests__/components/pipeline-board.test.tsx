@@ -42,7 +42,9 @@ describe('PipelineBoardView', () => {
   })
 
   it('refreshes after a successful non-won stage move, to reconcile stale health/statusLine', async () => {
-    vi.mocked(setLeadStage).mockResolvedValue(undefined as never)
+    // setLeadStage returns { ok: true } on a completed write (increment 4 —
+    // a discriminated return value, not a thrown error).
+    vi.mocked(setLeadStage).mockResolvedValue({ ok: true })
     render(<PipelineBoardView {...base} groups={{
       needs_attention: [{ lead: lead({ id: 'l1' }),
         health: 'needs_attention', statusLine: 'stale sentence', quickAction: 'set_next_step' }],

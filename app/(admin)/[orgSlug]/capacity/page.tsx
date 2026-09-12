@@ -15,5 +15,15 @@ export default async function CapacityPage({
   const unlocked = hasMultiResourceCapacity(org)
   const units = unlocked ? await listCapacityUnitsCore(orgId) : []
 
-  return <CapacityUnitsClient orgId={orgId} initialUnits={units} locked={!unlocked} />
+  return (
+    <CapacityUnitsClient
+      orgId={orgId}
+      initialUnits={units}
+      initialServiceableDays={org.serviceable_days}
+      initialResourceLabels={org.resource_labels}
+      initialEventTypeProfiles={org.event_type_profiles}
+      initialOpsBuffers={org.ops_buffers}
+      locked={!unlocked}
+    />
+  )
 }

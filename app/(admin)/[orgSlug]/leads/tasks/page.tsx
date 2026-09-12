@@ -4,8 +4,10 @@ import { notFound } from 'next/navigation'
 import { adminDb } from '@/lib/firebase-admin'
 import { listLeads } from '@/actions/leads'
 import { listTasks } from '@/actions/tasks'
+import type { BillingPlan } from '@/lib/types'
 import { OPEN_STAGES } from '@/lib/leads'
 import { todayYmd } from '@/lib/opportunity-detail'
+import { hasMultiResourceCapacity, listCapacityUnitsCore } from '@/lib/capacity/units'
 import { KpiBand } from '@/components/ui/kpi-band'
 import { PipelineStatTile } from '@/components/admin/pipeline/PipelineStatTile'
 import { PipelineSubNav } from '@/components/admin/pipeline/PipelineSubNav'
@@ -16,6 +18,12 @@ export default async function PipelineTasksPage({ params }: { params: Promise<{ 
   const orgSnap = await adminDb.collection('orgs').where('slug', '==', orgSlug).limit(1).get()
   if (orgSnap.empty) notFound()
   const orgId = orgSnap.docs[0].id
+  const org = { plan: orgSnap.docs[0].data().plan as BillingPlan | undefined }
+
+  // The Capacity Outlook tab must persist across the whole Pipeline section, not
+  // just the Opportunities page. Same gate as leads/page.tsx — business tier
+  // with ≥1 configured unit; no unit read for base/solo orgs.
+  const capacityUnits = hasMultiResourceCapacity(org) ? await listCapacityUnitsCore(orgId) : []
 
   const today = todayYmd()
   const leads = await listLeads(orgId)
@@ -36,7 +44,7 @@ export default async function PipelineTasksPage({ params }: { params: Promise<{ 
 
   return (
     <div>
-      <PipelineSubNav orgSlug={orgSlug} active="tasks" openCount={open.length} dueTodayCount={dueToday} />
+      <PipelineSubNav orgSlug={orgSlug} active="tasks" openCount={open.length} dueTodayCount={dueToday} showCapacity={capacityUnits.length > 0} />
       {/* The Pipeline section's one frame, identical to leads/page.tsx. Without
           it, clicking Opportunities → Tasks under the SAME sub-nav jumped the
           content's left edge by ~380px at 1920. The band's rule is capped WITH

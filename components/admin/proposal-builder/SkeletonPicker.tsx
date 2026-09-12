@@ -97,7 +97,7 @@ export function SkeletonPicker({
   }
 
   return (
-    <main className="mx-auto max-w-4xl px-6 py-10">
+    <div className="mx-auto max-w-4xl px-6 py-10">
       <h1 className="mb-1 text-2xl font-bold">New proposal</h1>
       <p className="mb-6 text-sm text-muted-foreground">
         Start from a skeleton — placeholder sections guide the writing and the AI can fill them from your notes.
@@ -168,6 +168,6 @@ export function SkeletonPicker({
         </a>
         .
       </p>
-    </main>
+    </div>
   )
 }

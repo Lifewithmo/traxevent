@@ -13,10 +13,13 @@ function itineraryRef(orgId: string, eventId: string) {
   return eventRef(orgId, eventId).collection('itinerary')
 }
 
-export async function listItinerary(orgId: string, eventId: string): Promise<ItineraryItem[]> {
-  const snap = await itineraryRef(orgId, eventId).get()
-  return snap.docs.map((d) => d.data() as ItineraryItem)
-}
+// Reads deliberately do NOT live in this module: an exported 'use server'
+// function is a public POST endpoint, and the itinerary read serves callers
+// with different gates (admin pages via requireEventPage, the public
+// registrant schedule via itinerary_published). The guard-free read is
+// lib/itinerary-data.ts listItineraryCore, called only from server pages
+// that have already gated. Mutations below all assertEventPage(...,
+// 'itinerary').
 
 export interface CreateItineraryItemInput {
   day: string

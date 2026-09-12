@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useSyncExternalStore } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -30,6 +30,8 @@ const FILTER_LABELS: Record<string, string> = {
 
 const SELECT_CLASS = 'h-8 w-full rounded-lg border border-input bg-transparent px-2 text-sm'
 
+const emptySubscribe = () => () => {}
+
 export function CommunicateClient({
   orgId,
   eventId,
@@ -47,6 +49,17 @@ export function CommunicateClient({
   const [error, setError] = useState<string | null>(null)
   const [recentLog, setRecentLog] = useState<CommunicationLogEntry[]>(log)
   const [senderUid, setSenderUid] = useState('')
+
+  // Hydration gate for the sent-log dates: `toLocaleDateString` on an ISO
+  // instant is zone-dependent (an evening send is already TOMORROW in UTC),
+  // so server-rendering it and re-formatting on hydration diverge — the exact
+  // React #418 crash that left the check-in page inert (see CheckinClient).
+  // Null-server-snapshot pattern: placeholder until the browser formats it.
+  const hydrated = useSyncExternalStore(
+    emptySubscribe,
+    () => true,
+    () => false
+  )
 
   const staffOptions = verifiedDomain
     ? members
@@ -199,7 +212,7 @@ export function CommunicateClient({
                       <StatusPill tone="neutral">{FILTER_LABELS[entry.filter] ?? entry.filter}</StatusPill>
                       <span className="text-xs text-muted-foreground">
                         {entry.recipient_count} recipient{entry.recipient_count !== 1 ? 's' : ''} ·{' '}
-                        {new Date(entry.sent_at).toLocaleDateString()}
+                        {hydrated ? new Date(entry.sent_at).toLocaleDateString() : '…'}
                       </span>
                     </div>
                   </li>

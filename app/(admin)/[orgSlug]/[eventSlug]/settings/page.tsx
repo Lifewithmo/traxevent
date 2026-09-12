@@ -35,6 +35,13 @@ export default function EventSettingsPage() {
   const [eventEnd, setEventEnd] = useState('')
   const [registrationOpen, setRegistrationOpen] = useState('')
   const [registrationClose, setRegistrationClose] = useState('')
+  // TRI-STATE (inc-2 P3): null = the user hasn't set the toggle — the
+  // EFFECTIVE default renders and the save payload OMITS the field, so the
+  // registration-type default keeps applying (including after a switch to a
+  // child-registration type — persisting the untouched box's old-type default
+  // would silently turn guardian pickup emails off forever). A stored explicit
+  // boolean loads as non-null and round-trips.
+  const [notifyOnPickup, setNotifyOnPickup] = useState<boolean | null>(null)
   const [capacity, setCapacity] = useState<string>('')
   const [paymentAmount, setPaymentAmount] = useState<string>('')
   const [fromDisplayName, setFromDisplayName] = useState<string>('')
@@ -75,6 +82,10 @@ export default function EventSettingsPage() {
       setEventEnd(c.event_end)
       setRegistrationOpen(c.registration_open ?? '')
       setRegistrationClose(c.registration_close ?? '')
+      // Explicit stored toggle only; absent stays null (untouched) so the
+      // checkbox renders the LIVE effective default (see notifyChecked) and
+      // the save payload leaves the field out.
+      setNotifyOnPickup(c.notify_family_on_pickup ?? null)
       setCapacity(c.capacity != null ? String(c.capacity) : '')
       setPaymentAmount(c.payment_amount != null ? String(c.payment_amount) : '')
       setFromDisplayName(c.from_display_name ?? '')
@@ -86,8 +97,19 @@ export default function EventSettingsPage() {
   }, [orgSlug, eventSlug])
 
   const showHeadcountSection = !enabledModules.includes('attendee-roster')
+  // Effective default for the pickup notice (P3): follows the CURRENTLY
+  // selected type's registration unit — so switching the event to a
+  // child-registration type flips an untouched checkbox to the default-ON it
+  // will actually get, instead of freezing the load-time type's default.
+  const selectedTypeRegistrationUnit =
+    eventTypes.find((t) => t.id === eventTypeId)?.registrationUnit ?? event?.registration_type
+  const notifyChecked = notifyOnPickup ?? selectedTypeRegistrationUnit === 'child'
   const rosterEnabled = enabledModules.includes('attendee-roster')
   const isMarketDay = event ? kindOf(event) === 'market_day' : false
+  // B8: key-contact editing is NOT gated on the roster module — every client
+  // job has people worth calling on the day. Roster orgs keep contacts in
+  // their own card; roster-less orgs keep the combined headcount+contacts one.
+  const showContactsEditor = showHeadcountSection || !isMarketDay
 
   function updateKeyContact(index: number, patch: Partial<EventKeyContact>) {
     setKeyContacts((rows) => rows.map((row, i) => (i === index ? { ...row, ...patch } : row)))
@@ -117,6 +139,12 @@ export default function EventSettingsPage() {
       setError('End time must be after the start time.')
       return
     }
+    // EventLocation requires a name; an address alone would be silently
+    // dropped on save, so refuse it visibly instead.
+    if (!isMarketDay && locationAddress.trim() && !locationName.trim()) {
+      setError('Add a venue name, or clear the address.')
+      return
+    }
     setSaving(true)
     setSaved(false)
     try {
@@ -138,15 +166,25 @@ export default function EventSettingsPage() {
         event_end: eventEnd,
         registration_open: registrationOpen || undefined,
         registration_close: registrationClose || undefined,
+        // Saved as an explicit boolean ONLY once the user has actually set the
+        // toggle (explicit overrides the registration-type default from then
+        // on). An untouched toggle keeps the field ABSENT — undefined is
+        // dropped by updateEvent — so P3's default-ON keeps applying, even
+        // when this same save switches the event to a child-registration type.
+        ...(rosterEnabled && !isMarketDay && notifyOnPickup !== null
+          ? { notify_family_on_pickup: notifyOnPickup }
+          : {}),
         capacity: capacity ? Number(capacity) : undefined,
         payment_amount: paymentAmount ? Number(paymentAmount) : undefined,
         from_display_name: fromDisplayName || undefined,
         reply_to_email: replyToEmail || undefined,
         ...(showHeadcountSection
-          ? {
-              headcount: headcount ? Number(headcount) : undefined,
-              key_contacts: keyContacts.filter((c) => c.name.trim() || c.role.trim()),
-            }
+          ? { headcount: headcount ? Number(headcount) : undefined }
+          : {}),
+        // Contacts save whenever their editor rendered (B8) — not only for
+        // roster-less orgs.
+        ...(showContactsEditor
+          ? { key_contacts: keyContacts.filter((c) => c.name.trim() || c.role.trim()) }
           : {}),
         ...(isMarketDay
           ? {
@@ -160,6 +198,11 @@ export default function EventSettingsPage() {
               // Client jobs carry an optional booking time in the same Event.hours
               // field. Blank clears it (null → delete) so the calendar shows "time TBD".
               hours: hoursStart && hoursEnd ? { start: hoursStart, end: hoursEnd } : null,
+              // …and an optional venue in the same Event.location field. Blank
+              // name clears it; the run sheet and spine header read it.
+              location: locationName.trim()
+                ? { name: locationName.trim(), ...(locationAddress.trim() ? { address: locationAddress.trim() } : {}) }
+                : null,
             }),
       })
       setSaved(true)
@@ -174,6 +217,65 @@ export default function EventSettingsPage() {
   if (!event) {
     return <div className="p-5 text-sm text-muted-foreground">Loading…</div>
   }
+
+  // One editor, two homes: inside "Headcount & key contacts" for roster-less
+  // orgs, its own card for roster orgs (B8 — contacts are not a roster-module
+  // concern).
+  const keyContactsEditor = (
+    <div className="space-y-2">
+      <Label>Key contacts</Label>
+      {keyContacts.map((contact, i) => (
+        <div key={i} className="grid gap-4 sm:grid-cols-2 rounded-lg border border-border p-3">
+          <div className="space-y-1">
+            <Label htmlFor={`contactName-${i}`}>Name</Label>
+            <Input
+              id={`contactName-${i}`}
+              value={contact.name}
+              onChange={(e) => updateKeyContact(i, { name: e.target.value })}
+            />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor={`contactRole-${i}`}>Role</Label>
+            <Input
+              id={`contactRole-${i}`}
+              value={contact.role}
+              onChange={(e) => updateKeyContact(i, { role: e.target.value })}
+            />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor={`contactPhone-${i}`}>Phone (optional)</Label>
+            <Input
+              id={`contactPhone-${i}`}
+              value={contact.phone ?? ''}
+              onChange={(e) => updateKeyContact(i, { phone: e.target.value || undefined })}
+            />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor={`contactEmail-${i}`}>Email (optional)</Label>
+            <Input
+              id={`contactEmail-${i}`}
+              type="email"
+              value={contact.email ?? ''}
+              onChange={(e) => updateKeyContact(i, { email: e.target.value || undefined })}
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => removeKeyContact(i)}
+            >
+              Remove contact
+            </Button>
+          </div>
+        </div>
+      ))}
+      <Button type="button" variant="outline" size="sm" onClick={addKeyContact}>
+        Add contact
+      </Button>
+    </div>
+  )
 
   return (
     <div className="p-5">
@@ -287,6 +389,22 @@ export default function EventSettingsPage() {
                 </div>
               )}
 
+              {!isMarketDay && (
+                <div className="space-y-4">
+                  <div className="space-y-1">
+                    <Label htmlFor="cj-venue">Venue name (optional)</Label>
+                    <Input id="cj-venue" value={locationName} onChange={(e) => { setLocationName(e.target.value); setSaved(false) }} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="cj-address">Venue address (optional)</Label>
+                    <Input id="cj-address" value={locationAddress} onChange={(e) => { setLocationAddress(e.target.value); setSaved(false) }} />
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Where the job happens. The run sheet and event header link the address to Maps.
+                  </p>
+                </div>
+              )}
+
               {isMarketDay && (
                 <div className="space-y-4">
                   <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Market day</h2>
@@ -371,6 +489,22 @@ export default function EventSettingsPage() {
                     In dollars. Leave blank or 0 for free events. TraxEvent collects 1% of paid registrations automatically.
                   </p>
                 </div>
+
+                <div className="space-y-1">
+                  <label className="flex min-h-11 items-center gap-2 text-sm font-medium">
+                    <input
+                      type="checkbox"
+                      className="size-4 accent-[var(--primary)]"
+                      checked={notifyChecked}
+                      onChange={(e) => { setNotifyOnPickup(e.target.checked); setSaved(false) }}
+                    />
+                    Email the family when their child is picked up
+                  </label>
+                  <p className="text-xs text-muted-foreground">
+                    At checkout, the registering family gets a short note saying who collected their
+                    child and when — nothing else. On by default for child-registration events.
+                  </p>
+                </div>
               </CardContent>
             </Card>
           )}
@@ -430,59 +564,21 @@ export default function EventSettingsPage() {
                   </p>
                 </div>
 
-                <div className="space-y-2">
-                  <Label>Key contacts</Label>
-                  {keyContacts.map((contact, i) => (
-                    <div key={i} className="grid gap-4 sm:grid-cols-2 rounded-lg border border-border p-3">
-                      <div className="space-y-1">
-                        <Label htmlFor={`contactName-${i}`}>Name</Label>
-                        <Input
-                          id={`contactName-${i}`}
-                          value={contact.name}
-                          onChange={(e) => updateKeyContact(i, { name: e.target.value })}
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <Label htmlFor={`contactRole-${i}`}>Role</Label>
-                        <Input
-                          id={`contactRole-${i}`}
-                          value={contact.role}
-                          onChange={(e) => updateKeyContact(i, { role: e.target.value })}
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <Label htmlFor={`contactPhone-${i}`}>Phone (optional)</Label>
-                        <Input
-                          id={`contactPhone-${i}`}
-                          value={contact.phone ?? ''}
-                          onChange={(e) => updateKeyContact(i, { phone: e.target.value || undefined })}
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <Label htmlFor={`contactEmail-${i}`}>Email (optional)</Label>
-                        <Input
-                          id={`contactEmail-${i}`}
-                          type="email"
-                          value={contact.email ?? ''}
-                          onChange={(e) => updateKeyContact(i, { email: e.target.value || undefined })}
-                        />
-                      </div>
-                      <div className="sm:col-span-2">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => removeKeyContact(i)}
-                        >
-                          Remove contact
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                  <Button type="button" variant="outline" size="sm" onClick={addKeyContact}>
-                    Add contact
-                  </Button>
-                </div>
+                {keyContactsEditor}
+              </CardContent>
+            </Card>
+          )}
+
+          {!showHeadcountSection && !isMarketDay && (
+            <Card className="md:col-span-2">
+              <CardHeader>
+                <CardTitle className="text-base">Key contacts</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <p className="text-xs text-muted-foreground">
+                  Who to call on the day. The run sheet surfaces these with tap-to-call.
+                </p>
+                {keyContactsEditor}
               </CardContent>
             </Card>
           )}

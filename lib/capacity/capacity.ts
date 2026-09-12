@@ -1,5 +1,6 @@
 import type { CapacityUnit, CapacityUnitKind, Lead, Org } from '@/lib/types'
 import { OPEN_STAGES } from '@/lib/leads'
+import { leadRequirement } from '@/lib/capacity/requirement'
 
 // Bookable = still in play OR the booking itself, matching conflictEventDates in lib/pipeline-view.ts.
 export const BOOKABLE_STAGES = new Set<Lead['stage']>([...OPEN_STAGES, 'closed_won'])
@@ -50,22 +51,27 @@ export function supply(units: CapacityUnit[], kind: CapacityUnitKind, date: stri
 /**
  * Pure, in-memory per-date capacity check. For each requested `date`:
  * - bookable(date) = leads with `event_date === date` in a bookable stage.
- * - mobile demand = every bookable lead needs a serving unit.
- * - venue demand  = only the on-site bookable leads need a room.
+ * - mobile demand = count of bookable leads whose `leadRequirement` needs mobile.
+ * - venue demand  = count of bookable leads whose `leadRequirement` needs venue.
  * - over = a kind's demand exceeds its available supply.
+ *
+ * `org` supplies the optional `event_type_profiles` overlay; absent (the default
+ * `{}`) ⇒ `leadRequirement`'s default rule ⇒ mobile for every bookable lead and
+ * venue for the on-site ones — byte-for-byte the pre-Inc-4 behavior.
  */
 export function computeCapacity(
   leads: Lead[],
   units: CapacityUnit[],
   dates: string[],
+  org: Pick<Org, 'event_type_profiles'> = {},
 ): Map<string, CapacityDay> {
   const result = new Map<string, CapacityDay>()
 
   for (const date of dates) {
     const bookable = leads.filter((l) => l.event_date === date && BOOKABLE_STAGES.has(l.stage))
 
-    const mobileDemand = bookable.length
-    const venueDemand = bookable.filter((l) => l.delivery_mode === 'onsite').length
+    const mobileDemand = bookable.filter((l) => leadRequirement(l, org).mobile).length
+    const venueDemand = bookable.filter((l) => leadRequirement(l, org).venue).length
 
     const mobileSupply = supply(units, 'mobile', date)
     const venueSupply = supply(units, 'venue', date)
@@ -77,7 +83,7 @@ export function computeCapacity(
 
     const over = mobileDemand > mobileSupply || venueDemand > venueSupply
 
-    result.set(date, { date, over, detail, clashes: computeClashes(bookable, units) })
+    result.set(date, { date, over, detail, clashes: computeClashes(bookable, units, org) })
   }
 
   return result
@@ -90,12 +96,14 @@ function liveUnit(units: CapacityUnit[], id: string, kind: CapacityUnitKind): Ca
 }
 
 /**
- * Per-date unit clashes: count each bookable lead's consumed unit ids (mobile
- * always; venue only when on-site), skipping ids that don't resolve to a live
- * unit of that kind. Any unit reaching count ≥ 2 is a clash. Blockouts do NOT
- * suppress a clash — a unit booked twice on a blocked day is doubly wrong.
+ * Per-date unit clashes: count each bookable lead's consumed unit ids, skipping
+ * ids that don't resolve to a live unit of that kind. A lead consumes its mobile
+ * pin only when its `leadRequirement` needs mobile, and its venue pin only when
+ * its requirement needs venue (default: mobile always, venue when on-site). Any
+ * unit reaching count ≥ 2 is a clash. Blockouts do NOT suppress a clash — a unit
+ * booked twice on a blocked day is doubly wrong.
  */
-function computeClashes(bookable: Lead[], units: CapacityUnit[]): UnitClash[] {
+function computeClashes(bookable: Lead[], units: CapacityUnit[], org: Pick<Org, 'event_type_profiles'>): UnitClash[] {
   const counts = new Map<string, { unit: CapacityUnit; count: number }>()
   const bump = (u: CapacityUnit) => {
     const entry = counts.get(u.id)
@@ -105,11 +113,12 @@ function computeClashes(bookable: Lead[], units: CapacityUnit[]): UnitClash[] {
   for (const lead of bookable) {
     const au = lead.assigned_units
     if (!au) continue
-    if (au.mobile) {
+    const req = leadRequirement(lead, org)
+    if (au.mobile && req.mobile) {
       const u = liveUnit(units, au.mobile, 'mobile')
       if (u) bump(u)
     }
-    if (au.venue && lead.delivery_mode === 'onsite') {
+    if (au.venue && req.venue) {
       const u = liveUnit(units, au.venue, 'venue')
       if (u) bump(u)
     }
@@ -122,18 +131,28 @@ function computeClashes(bookable: Lead[], units: CapacityUnit[]): UnitClash[] {
 }
 
 /**
- * The clashing units THIS lead is assigned to (mobile always; venue only when
- * on-site). Empty when the day is undefined or the lead owns no clashing unit.
- * Pure — used to float a double-booked row up and to render its badge.
+ * The clashing units THIS lead is assigned to. A lead owns a unit's clash only
+ * when it actually CONSUMES that unit — its `leadRequirement` needs the kind AND
+ * it is pinned to the unit — mirroring `computeClashes` exactly (both route
+ * through `leadRequirement`). Without this, a profiled offsite lead (needsVenue:
+ * true) would clash in the engine yet never light its row badge, or a
+ * needsMobile:false type would falsely own a mobile clash. Empty when the day is
+ * undefined or the lead owns no clashing unit. Pure — floats a double-booked row
+ * up and renders its badge.
  */
-export function rowOwnsClash(lead: Lead, day: CapacityDay | undefined): UnitClash[] {
+export function rowOwnsClash(
+  lead: Lead,
+  day: CapacityDay | undefined,
+  org: Pick<Org, 'event_type_profiles'> = {},
+): UnitClash[] {
   if (!day) return []
   const au = lead.assigned_units
   if (!au) return []
+  const req = leadRequirement(lead, org)
   const owned: UnitClash[] = []
   for (const clash of day.clashes) {
-    if (clash.kind === 'mobile' && au.mobile === clash.unitId) owned.push(clash)
-    else if (clash.kind === 'venue' && lead.delivery_mode === 'onsite' && au.venue === clash.unitId) owned.push(clash)
+    if (clash.kind === 'mobile' && req.mobile && au.mobile === clash.unitId) owned.push(clash)
+    else if (clash.kind === 'venue' && req.venue && au.venue === clash.unitId) owned.push(clash)
   }
   return owned
 }

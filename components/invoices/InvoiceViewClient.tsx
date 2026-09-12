@@ -1,5 +1,7 @@
 import type { PublicInvoice } from '@/actions/invoices-public'
 import { lineItemSubtotal } from '@/lib/invoices'
+import { invoiceDateUTC } from '@/lib/invoice-presentation'
+import { daysOverdue } from '@/lib/invoice-status'
 import { StatusPill } from '@/components/ui/status-pill'
 
 // Plain presentational component — read-only, no handlers, so no 'use client'.
@@ -14,19 +16,16 @@ function money(n: number): string {
   return `$${n.toFixed(2)}`
 }
 
-// Whole days past the due date; negative when still ahead of it.
-function daysPastDue(dueDate: string, now: Date): number {
-  const due = new Date(`${dueDate}T00:00:00`)
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  return Math.round((today.getTime() - due.getTime()) / 86_400_000)
-}
-
 // Customer-facing reading of the balance — the same "so what" the operator gets
 // in the editor, worded for the person who owes the money.
 function publicBalanceNote(invoice: PublicInvoice, now: Date): string {
   if (invoice.balance <= 0) return 'Paid in full — thank you.'
   if (invoice.due_date) {
-    const d = daysPastDue(invoice.due_date, now)
+    // UTC-pinned day math (lib/invoice-status), not an ambient-zone local:
+    // this document renders wherever the server happens to run, and its
+    // overdue/due-in reading must not depend on the deploy region's clock.
+    // Matches the operator pill's aging convention and the UTC Sent stamp.
+    const d = daysOverdue(invoice.due_date, now)
     if (d > 0) return `${d} day${d === 1 ? '' : 's'} overdue`
     if (d === 0) return 'Due today'
     // Relative, not the raw date — the header already prints the date, and this
@@ -77,7 +76,12 @@ export function InvoiceViewClient({ invoice }: { invoice: PublicInvoice }) {
               invoice.due_date && <p className="mt-1 text-sm text-muted-foreground">Due {invoice.due_date}</p>
             )}
             {invoice.sent_at && (
-              <p className="mt-0.5 text-xs text-muted-foreground">Sent {new Date(invoice.sent_at).toLocaleDateString()}</p>
+              // sent_at is an ISO INSTANT, and this sheet is a server-rendered
+              // customer document: the date must be zone-stable, not the deploy
+              // region's ambient toLocaleDateString (an evening send is already
+              // "tomorrow" on a UTC server). Pinned + labeled, the check-in
+              // manifest precedent — see invoiceDateUTC.
+              <p className="mt-0.5 text-xs text-muted-foreground">Sent {invoiceDateUTC(invoice.sent_at)} (UTC)</p>
             )}
           </div>
         </header>

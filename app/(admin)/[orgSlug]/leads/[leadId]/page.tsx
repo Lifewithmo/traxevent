@@ -18,7 +18,7 @@ import { hasMultiResourceCapacity, listCapacityUnitsCore } from '@/lib/capacity/
 import { BOOKABLE_STAGES } from '@/lib/capacity/capacity'
 import { unitAnnotations } from '@/lib/capacity/assignment'
 import { leadsRef } from '@/lib/crm/leads'
-import type { BillingPlan, Lead } from '@/lib/types'
+import type { BillingPlan, Lead, Org } from '@/lib/types'
 import { OpportunityDetailClient } from '@/components/admin/OpportunityDetailClient'
 
 export default async function LeadDetailPage({ params }: { params: Promise<{ orgSlug: string; leadId: string }> }) {
@@ -26,7 +26,10 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ org
   const orgSnap = await adminDb.collection('orgs').where('slug', '==', orgSlug).limit(1).get()
   if (orgSnap.empty) notFound()
   const orgId = orgSnap.docs[0].id
-  const org = { plan: orgSnap.docs[0].data().plan as BillingPlan | undefined }
+  const org = {
+    plan: orgSnap.docs[0].data().plan as BillingPlan | undefined,
+    event_type_profiles: orgSnap.docs[0].data().event_type_profiles as Org['event_type_profiles'],
+  }
 
   const lead = await getLead(orgId, leadId)
   if (!lead) notFound()
@@ -50,7 +53,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ org
     const sameDateLeads = sameDateSnap.docs
       .map((d) => d.data() as Lead)
       .filter((l) => l.id !== lead.id && BOOKABLE_STAGES.has(l.stage))
-    assignmentAnnotations = Object.fromEntries(unitAnnotations(lead, activeUnits, sameDateLeads))
+    assignmentAnnotations = Object.fromEntries(unitAnnotations(lead, activeUnits, sameDateLeads, org))
   }
 
   const today = todayYmd()

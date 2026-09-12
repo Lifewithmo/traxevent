@@ -28,7 +28,12 @@ export default async function CheckinPage({
   const guardianMode = (event.registration_type ?? 'individual') === 'child'
 
   return (
+    // Keyed by date: changing the date remounts the client, resetting local
+    // checkin state, row phases, and any open undo window to the new day's data.
+    // The client confirms before navigating while any of that state is live
+    // (pending/failed writes or an open undo), so the reset is never silent.
     <CheckinClient
+      key={activeDate}
       orgId={orgId}
       eventId={eventId}
       orgSlug={orgSlug}

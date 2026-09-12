@@ -2,7 +2,7 @@ import { adminDb } from '@/lib/firebase-admin'
 import { buildEventSlug } from '@/lib/slug'
 import { DEFAULT_EVENT_TYPE_ID } from '@/lib/event-types'
 import type { Terminology } from '@/lib/event-types'
-import type { Event, EventRegistrationType, EventKind, EventLocation, EventHours } from '@/lib/types'
+import type { Event, EventRegistrationType, EventKeyContact, EventKind, EventLocation, EventHours } from '@/lib/types'
 
 export function eventsRef(orgId: string) {
   return adminDb.collection('orgs').doc(orgId).collection('events')
@@ -22,6 +22,7 @@ export interface CreateEventCoreInput {
   kind?: EventKind
   location?: EventLocation
   hours?: EventHours
+  key_contacts?: EventKeyContact[]            // seeded by convert-to-work; editable in event settings
   booth_fee?: number
   series_id?: string
   status?: 'draft' | 'active'                 // series days are born active (spec §3.2)
@@ -64,6 +65,7 @@ export async function createEventCore(orgId: string, input: CreateEventCoreInput
     ...(input.kind ? { kind: input.kind } : {}),
     ...(input.location ? { location: input.location } : {}),
     ...(input.hours ? { hours: input.hours } : {}),
+    ...(input.key_contacts && input.key_contacts.length > 0 ? { key_contacts: input.key_contacts } : {}),
     ...(input.booth_fee !== undefined ? { booth_fee: input.booth_fee } : {}),
     ...(input.series_id ? { series_id: input.series_id } : {}),
     event_start: input.event_start,

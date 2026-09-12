@@ -63,7 +63,7 @@ export function conflictEventDates(leads: Lead[]): Set<string> {
  * so this is the DEFAULT state, not an edge case.
  */
 export function radarConflictOpts(
-  org: Pick<Org, 'plan'>,
+  org: Pick<Org, 'plan' | 'event_type_profiles'>,
   leads: Lead[],
   units: CapacityUnit[],
 ): { capacityByDate: Map<string, CapacityDay> } | { conflictDates: Set<string> } {
@@ -75,7 +75,7 @@ export function radarConflictOpts(
           .map((l) => l.event_date!)
       ),
     ]
-    return { capacityByDate: computeCapacity(leads, units, dates) }
+    return { capacityByDate: computeCapacity(leads, units, dates, org) }
   }
   return { conflictDates: conflictEventDates(leads) }
 }
@@ -144,6 +144,9 @@ export function buildPipelineRows(
     // `conflict` and `overCapacity` come from this map (keyed by event_date),
     // and `conflictDates` is IGNORED. Absent ⇒ exactly increment-1 behavior.
     capacityByDate?: Map<string, CapacityDay>
+    // Org event-type profiles so a row's clash OWNERSHIP is profile-aware, matching
+    // computeClashes. Absent ⇒ leadRequirement's default rule (byte-for-byte).
+    eventTypeProfiles?: Org['event_type_profiles']
   } = {}
 ): PipelineGroups {
   const prepLeadDays = opts.prepLeadDays ?? DEFAULT_PREP_LEAD_DAYS
@@ -166,7 +169,7 @@ export function buildPipelineRows(
     // increment-1's ≥2-on-a-date set, byte-for-byte.
     const overCapacity = capacityMode && eventDate != null ? opts.capacityByDate!.get(eventDate) : undefined
     const conflict = capacityMode
-      ? (overCapacity?.over ?? false) || rowOwnsClash(lead, overCapacity).length > 0
+      ? (overCapacity?.over ?? false) || rowOwnsClash(lead, overCapacity, { event_type_profiles: opts.eventTypeProfiles }).length > 0
       : eventDate != null && conflictDates.has(eventDate)
     const radar = {
       eventDate,

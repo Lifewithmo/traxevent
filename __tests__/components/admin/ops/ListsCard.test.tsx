@@ -40,4 +40,9 @@ describe('ListsCard', () => {
     render(<ListsCard orgId="o1" eventId="e1" plan={plan} orgSlug="acme" eventSlug="gala" onPlanChange={vi.fn()} />)
     expect(screen.getByText('Print lists')).toHaveAttribute('href', '/acme/gala/ops/print')
   })
+
+  it('links to the phone-first load-out mode', () => {
+    render(<ListsCard orgId="o1" eventId="e1" plan={plan} orgSlug="acme" eventSlug="gala" onPlanChange={vi.fn()} />)
+    expect(screen.getByText('Open load-out mode')).toHaveAttribute('href', '/acme/gala/ops/loadout')
+  })
 })

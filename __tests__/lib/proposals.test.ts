@@ -10,6 +10,8 @@ import {
   discountAmount,
   depositAmount,
   proposalExpiryInstant,
+  formatProposalExpiry,
+  formatSignedStamp,
 } from '@/lib/proposals'
 import type { Proposal, ProposalLineItem } from '@/lib/types'
 
@@ -189,5 +191,69 @@ describe('proposalExpiryInstant', () => {
   it('does not treat an unparseable value as expired', () => {
     expect(proposalExpiryInstant('not-a-real-date')).toBe(Infinity)
     expect(Date.now() < proposalExpiryInstant('not-a-real-date')).toBe(true)
+  })
+})
+
+// Node re-reads process.env.TZ on Date/Intl access, so these run the formatter
+// under zones on BOTH sides of UTC. The proposal surfaces SSR on one runtime
+// and hydrate on another: any zone- or ICU-dependent byte in these strings is
+// a React #418 hydration abort on the public signing page (the /checkin crash
+// class), so the assertion is exact-string equality in EVERY zone.
+const ZONES = ['UTC', 'Asia/Tokyo', 'America/Los_Angeles', 'Pacific/Kiritimati']
+
+function inZone<T>(tz: string, fn: () => T): T {
+  const prev = process.env.TZ
+  process.env.TZ = tz
+  try {
+    return fn()
+  } finally {
+    if (prev === undefined) delete process.env.TZ
+    else process.env.TZ = prev
+  }
+}
+
+describe('formatProposalExpiry — zone-stable', () => {
+  it('renders a date-only deadline as its own calendar day in every zone', () => {
+    for (const tz of ZONES) {
+      // The mutation this guards against: rendering via the guard's instant
+      // (end of day UTC) + toLocaleDateString shows Tokyo "Aug 7, 2026".
+      expect(inZone(tz, () => formatProposalExpiry('2026-08-06'))).toBe('Aug 6, 2026')
+    }
+  })
+
+  it('renders an ISO-instant deadline pinned to UTC and labeled, in every zone', () => {
+    for (const tz of ZONES) {
+      // 23:30Z is already "tomorrow" east of UTC — a zone-following rendering
+      // could not produce the same string in Tokyo and Los Angeles.
+      expect(inZone(tz, () => formatProposalExpiry('2026-08-06T23:30:00.000Z'))).toBe(
+        'Aug 6, 2026, 11:30 PM UTC',
+      )
+    }
+  })
+
+  it('renders nothing (not "Invalid Date") for unparseable input', () => {
+    expect(formatProposalExpiry('not-a-real-date')).toBe('')
+    expect(formatProposalExpiry('2026-13-01')).toBe('')
+  })
+})
+
+describe('formatSignedStamp — one pinned stamp for web, print, and every zone', () => {
+  it('renders the identical UTC-labeled stamp in every zone', () => {
+    for (const tz of ZONES) {
+      // 2:38 AM UTC is the previous evening in Los Angeles — the exact
+      // divergence that aborted hydration when this was a bare toLocaleString.
+      expect(inZone(tz, () => formatSignedStamp('2026-08-20T02:38:00.000Z'))).toBe(
+        'Aug 20, 2026, 2:38 AM UTC',
+      )
+    }
+  })
+
+  it('handles noon and midnight without a 0 o\'clock', () => {
+    expect(formatSignedStamp('2026-08-20T00:05:00.000Z')).toBe('Aug 20, 2026, 12:05 AM UTC')
+    expect(formatSignedStamp('2026-08-20T12:00:00.000Z')).toBe('Aug 20, 2026, 12:00 PM UTC')
+  })
+
+  it('renders nothing for an unparseable stamp', () => {
+    expect(formatSignedStamp('garbage')).toBe('')
   })
 })

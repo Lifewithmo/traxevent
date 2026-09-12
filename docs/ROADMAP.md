@@ -145,6 +145,49 @@ EventTrax pivot (neutralization, multi-brand, ops core). Detailed designs live i
   drop↔market pickup linkage → registration retirement R2. Manual browser
   walkthrough of the occasion flows still owed.
 
+- **Pipeline Capacity — Finish (resource-capacity increment 4, final)** (PR
+  #130, merged 2026-08-24, live) — closes the track with the four deferred
+  pieces, all additive and backstopped. **Per-event-type resource profiles**
+  are the horizontality win: an operator declares which kinds an `event_type`
+  consumes (0/1 each) in Settings → Resources & capacity, so a "Photo package"
+  needs no cart or room and drops off the forecast/schedule, while an "On-site
+  tasting" needs both. The keystone is one pure `leadRequirement(lead, org) →
+  { mobile, venue }` that **every** capacity engine now routes through
+  (`computeCapacity`/`computeClashes`/`rowOwnsClash`, `forecast`, `schedule`,
+  `unitAnnotations`); it defaults to the prior rule (mobile always, venue when
+  on-site), so **with no profiles configured the whole system is byte-for-byte
+  its Inc 1–3 behavior**, pinned by regression tests. `event_type_profiles`
+  (`{name, needsMobile, needsVenue}[]`) name-matches the free-text `event_type`
+  (trim + case-insensitive, no picklist migration). Also: a **server-side
+  capacity guard** on `setLeadStage` — modeled as a **return value**
+  (`StageChangeResult`), not a thrown error (Next sanitizes those across the
+  client boundary) — that blocks a transition *into* `closed_won` for a business
+  org with units unless overridden, replacing the Inc-2 client pre-confirm in
+  all four callers (the board was previously unguarded); a one-click **auto-
+  suggest a free unit** on the opportunity detail; and **click-to-assign from
+  the schedule**'s Unassigned lane. Verified: build clean, full suite green,
+  guard held (a session-resume had stranded the shell on the contended primary
+  checkout — untouched, every commit on-branch). Known pre-existing (tracked):
+  the schedule Unassigned lane's single-cell-per-date hides a *second* same-date
+  booking. Spec/plan: `superpowers/{specs,plans}/2026-08-19-pipeline-capacity-finish*`.
+
+- **Pipeline Capacity Outlook — resource-capacity increment 3** (PR #124,
+  merged 2026-08-19, live) — the hero planning surface. A **serviceable-days
+  calendar** (`Org.serviceable_days`: weekly pattern + full-year holiday/closure
+  ranges) sets which days count; a **peak-date headroom forecast** (new Capacity
+  Outlook pipeline tab) shows, per month over serviceable days, a booked/ceiling
+  meter per kind + the `~$` headroom you can still sell ("~$85k of September");
+  and a read-only **per-unit schedule** (status grid — booked / open /
+  non-serviceable / blocked-hatched — with an Unassigned lane). Plus
+  **de-siloing**: `Org.resource_labels` + a `kindLabel` helper let the operator
+  name each kind (BrewTrax → "carts"), routed through every surface INCLUDING a
+  retrofit of the Inc-1/2 pills — no literal "cart"/"room" left in copy. Gated to
+  business + ≥1 unit; additive, migration-free. Walked live desktop/tablet/mobile
+  (forecast math + Fall-break closure dropping October; schedule Kart-1 booking +
+  Unassigned lane; overflow-contained). Deferred to **Inc 4** (final): auto/drag
+  assignment, server-side hard block, per-event-type resource profiles. Spec/plan:
+  `superpowers/{specs,plans}/2026-08-19-pipeline-capacity-outlook*`.
+
 - **Pipeline Unit Assignment — resource-capacity increment 2** (PR #119,
   merged 2026-08-18, live) — optional **per-unit assignment**: pin a booking to
   a specific cart/room (`Lead.assigned_units`, never forced), plus **unit-level
@@ -198,6 +241,49 @@ EventTrax pivot (neutralization, multi-brand, ops core). Detailed designs live i
   Deferred to increment 2: date-bucket list, serviceable-ceiling forecast +
   capacity>1, deadline-aware health, per-event-type lead times, server-side hard
   block, board-view chip/badge.
+
+- **Events ambition inc 2 — market-day money, the shopping run, the trust loop**
+  (PR #128, merged 2026-08-23; print dark-mode hotfix #126 shipped ahead) — the
+  refuter-priced cut of inc 1's deferrals: booth_fee finally joins closeout
+  margins + **closeout-lite** for plan-less market days (1 screen · 2 inputs ·
+  1 tap; the MarketDayOverview apology is dead; season strip answers "is the
+  City Market worth it" with an honest newest-30 rollup); the **shopping run**
+  (`/shopping-run`) merges N jobs' lists into one store trip with write-back
+  check-off (one multi-doc transaction) + a provably-equal home chip; the
+  **trust loop** — confirm-ready attestation with a complete staleness
+  contract, guardian who-collected email (post-tx, family-batched,
+  unlisted-guardian copy), send-me-this-sheet, forms blockers in the verdict,
+  org pack/drive buffers, QR printed-to-live bridge (vendored MIT encoder,
+  decode-verified). Register/drops money stays POS-spec-owned; T-12h scheduling
+  blocked on the no-timezone-field fact. Process: 5 scopers → 2-grader panel →
+  5 implementers → 6 reviewers + adversarial verify (8 Important, 0 Critical)
+  → 3 mutation-tested fixers → whole-branch SHIP. 3,438 tests green. Spec:
+  `superpowers/specs/2026-08-23-events-ambition-inc2-design.md`. Owed: the
+  combined inc-1+2 Vercel walkthrough; named deferrals in the spec.
+
+- **Events ambition — computed job brief + day-of execution layer** (PR #122,
+  merged 2026-08-23) — the design-ambition redo of Events past kit parity: the
+  client-job dashboard is now a computed brief (countdown · honest anchor time ·
+  venue/Maps · readiness **verdict** naming concrete reachable blockers ·
+  admin-gated invoice AR — the Balance tile finally works for roster-less orgs ·
+  one promoted next-best-action), plus the category mechanism no market product
+  owns (Curate computes but prints paper; Goodshuffle executes on phones but
+  never computes; FSM leaders assume a stocked van): a phone-first **load-out
+  mode** (`/ops/loadout`, packages × headcount quantities, 44px kit `touch`
+  targets, unconditional recompute core + headcount auto-re-derive) and a
+  call-sheet-anatomy **run sheet** (`/ops/runsheet` + print) with its capture
+  moments (venue fields, contacts un-gated for roster orgs, convert-time
+  seeding). Also: readiness-horizon rail on the events home ("no ops plan yet"
+  outranks all), line-pressure **check-in** (search, family bulk, flags at the
+  moment of action, transactional custody history with server-derived undo —
+  forgery/clobber structurally impossible), live closeout margin deltas, and
+  next-job-first Today. Process: anchor → walks + market research + 5 seam
+  refuters → 3-grader panel (9 binding resolutions) → 7 implementers → 8
+  reviewers + adversarial verify → 7 mutation-tested fixers → whole-branch SHIP.
+  3,164 tests green. Spec: `superpowers/specs/2026-08-19-events-ambition-design.md`.
+  Owed: Vercel walkthrough (375/768/desktop); named increment-2 deferrals in the
+  spec; pre-existing `listItinerary` cross-org read + nested-`<main>` landmark
+  defect spun off as separate tasks.
 
 - **Track 2 module level-up rollout — COMPLETE** (PRs #90–#100, merged
   2026-08-16) — every operator-facing module now runs on the shared UI kit.

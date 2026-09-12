@@ -9,7 +9,10 @@ vi.mock('next/navigation', () => ({
   useSearchParams: () => search,
 }))
 const deleteLead = vi.fn().mockResolvedValue(undefined)
-const setLeadStage = vi.fn().mockResolvedValue(undefined)
+// setLeadStage returns a discriminated result (increment 4): { ok: true } on a
+// completed write, { ok: false, guard } on a refused win. A return value, not a
+// thrown error (Next redacts thrown Server Action errors in production).
+const setLeadStage = vi.fn().mockResolvedValue({ ok: true })
 const updateLead = vi.fn().mockResolvedValue(undefined)
 vi.mock('@/actions/leads', () => ({
   deleteLead: (...a: unknown[]) => deleteLead(...a),
@@ -76,7 +79,7 @@ describe('OpportunityDetailClient', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     deleteLead.mockResolvedValue(undefined)
-    setLeadStage.mockResolvedValue(undefined)
+    setLeadStage.mockResolvedValue({ ok: true })
     updateLead.mockResolvedValue(undefined)
     search = new URLSearchParams()
   })
@@ -545,6 +548,73 @@ describe('OpportunityDetailClient', () => {
     it('is absent entirely when showAssignment is false', () => {
       render(<OpportunityDetailClient {...base} lead={lead} />)
       expect(screen.queryByLabelText('Serving unit')).toBeNull()
+    })
+
+    /**
+     * Auto-suggest (Tesler anticipation): when the serving unit is Unassigned and
+     * a unit of that kind is free on the date, a quiet one-click NAMES the exact
+     * unit it will assign — no loud CTA, the operator's own pick and Unassigned
+     * both stay first-class. Read from the same `annotations`, no new query.
+     */
+    describe('the free-unit suggestion', () => {
+      it('names the first free unit and one click assigns it (merged, optimistic)', async () => {
+        render(
+          <OpportunityDetailClient
+            {...base}
+            lead={{ ...lead, event_date: '2026-09-27', delivery_mode: 'onsite', assigned_units: { venue: 'r1' } }}
+            showAssignment
+            capacityUnits={[k1, k2, roomA]}
+            unitAnnotations={{ k1: { takenBy: 'Benoit shower' }, k2: {}, r1: {} }}
+          />
+        )
+        // k1 is taken → the suggestion skips it and names the first FREE one, k2.
+        const suggest = screen.getByRole('button', { name: 'Use Kart 2 (free)' })
+        fireEvent.click(suggest)
+        await waitFor(() =>
+          expect(updateLead).toHaveBeenCalledWith('o1', 'l1', { assigned_units: { venue: 'r1', mobile: 'k2' } })
+        )
+      })
+
+      it('is hidden when every unit of the kind is taken or blocked', () => {
+        render(
+          <OpportunityDetailClient
+            {...base}
+            lead={{ ...lead, event_date: '2026-09-27' }}
+            showAssignment
+            capacityUnits={[k1, k2]}
+            unitAnnotations={{ k1: { takenBy: 'Benoit shower' }, k2: { blocked: true } }}
+          />
+        )
+        expect(screen.queryByRole('button', { name: /Use .* \(free\)/ })).toBeNull()
+      })
+
+      it('is hidden when a serving unit is already assigned', () => {
+        render(
+          <OpportunityDetailClient
+            {...base}
+            lead={{ ...lead, event_date: '2026-09-27', assigned_units: { mobile: 'k1' } }}
+            showAssignment
+            capacityUnits={[k1, k2]}
+            unitAnnotations={{ k1: {}, k2: {} }}
+          />
+        )
+        // Mobile is set to Kart 1, so no serving-unit suggestion — even though Kart 2 is free.
+        expect(screen.queryByRole('button', { name: 'Use Kart 2 (free)' })).toBeNull()
+      })
+
+      it('suggests a free room too, but only when on-site with the room Unassigned', () => {
+        const roomB = unit({ id: 'r2', name: 'Room B', kind: 'venue' })
+        render(
+          <OpportunityDetailClient
+            {...base}
+            lead={{ ...lead, event_date: '2026-09-27', delivery_mode: 'onsite', assigned_units: { mobile: 'k1' } }}
+            showAssignment
+            capacityUnits={[k1, roomA, roomB]}
+            unitAnnotations={{ k1: {}, r1: { blocked: true }, r2: {} }}
+          />
+        )
+        expect(screen.getByRole('button', { name: 'Use Room B (free)' })).toBeInTheDocument()
+      })
     })
   })
 

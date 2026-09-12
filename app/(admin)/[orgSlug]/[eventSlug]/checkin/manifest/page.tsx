@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic'
 
 import { requireEventPage } from '@/lib/auth/guards'
 import { listAllEventMembers, getCheckinsForDate } from '@/actions/checkins'
-import type { CheckinRecord } from '@/lib/types'
+import type { CustodyCheckinRecord } from '@/actions/checkins'
 
 export async function generateMetadata({
   params,
@@ -14,6 +14,9 @@ export async function generateMetadata({
   return { title: `${event.name} — Attendance Manifest` }
 }
 
+// The paper custody record: if the tablet dies, this sheet is what the desk
+// runs on. It must carry what the screen carries — allergies/medical and the
+// emergency contact — not just names and signature lines.
 export default async function CheckinManifestPage({
   params,
   searchParams,
@@ -27,48 +30,75 @@ export default async function CheckinManifestPage({
 
   const activeDate = date ?? new Date().toISOString().slice(0, 10)
 
+  // Members arrive sorted by family name then member name (server-side).
   const [members, checkins] = await Promise.all([
     listAllEventMembers(orgId, eventId),
     getCheckinsForDate(orgId, eventId, activeDate),
   ])
 
-  const byMember = new Map<string, CheckinRecord>(checkins.map((c) => [c.member_id, c]))
+  const byMember = new Map<string, CustodyCheckinRecord>(checkins.map((c) => [c.member_id, c]))
 
+  // Server-rendered paper: the runtime's timezone is meaningless to whoever
+  // holds this sheet, and an unlabeled server clock face reads as local while
+  // being wrong for every non-UTC desk. Same story as the brief's confirm
+  // stamp (lib/event-spine.formatConfirmStamp): pin UTC and SAY so — the
+  // In/Out column headers carry the label. The on-screen check-in page shows
+  // the same records viewer-local, honestly, because it formats in the
+  // browser; the two clock faces differ without either one lying.
   function fmtTime(iso?: string): string {
     if (!iso) return ''
-    return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+    return new Date(iso).toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZone: 'UTC',
+    })
   }
 
   return (
     <div className="print-root">
       <style>{`
         .print-root * { box-sizing: border-box; }
-        .print-root { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 12px; color: #000; margin: 0; padding: 16px; }
+        /* Paper never inverts: background forced alongside the ink so dark mode
+           can't render this custody record black-on-black on screen. */
+        .print-root { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 11px; color: #000; background: #fff; min-height: 100vh; margin: 0; padding: 16px; }
         .print-root h1 { font-size: 18px; margin: 0 0 2px; }
         .print-root .meta { color: #666; font-size: 11px; margin-bottom: 16px; }
         .print-root table { width: 100%; border-collapse: collapse; }
         .print-root th { text-align: left; font-size: 10px; text-transform: uppercase; color: #888; border-bottom: 1px solid #ccc; padding: 6px 4px; }
-        .print-root td { padding: 6px 4px; border-bottom: 1px solid #eee; }
-        .print-root .sig { display: inline-block; width: 120px; border-bottom: 1px solid #999; }
+        .print-root td { padding: 6px 4px; border-bottom: 1px solid #eee; vertical-align: top; }
+        .print-root .sig { display: inline-block; width: 90px; border-bottom: 1px solid #999; }
+        .print-root .warn { font-weight: 600; }
+        .print-root .sub { color: #666; }
         @media print {
           aside { display: none !important; }
-          main { padding: 0 !important; background: none !important; overflow: visible !important; }
+          main, [data-event-main] { padding: 0 !important; background: none !important; overflow: visible !important; }
           .print-root { padding: 0; }
           @page { margin: 1.5cm; }
         }
       `}</style>
 
       <h1>{event.name} — Attendance Manifest</h1>
-      <p className="meta">{activeDate} · {members.length} registered · printed {new Date().toLocaleDateString()}</p>
+      <p className="meta">
+        {activeDate} · {members.length} registered · printed{' '}
+        {new Date().toLocaleDateString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric',
+          timeZone: 'UTC',
+        })}{' '}
+        · check-in/out times in UTC
+      </p>
 
       <table>
         <thead>
           <tr>
             <th>Name</th>
             <th>Family</th>
+            <th>Allergies / medical</th>
+            <th>Emergency contact</th>
             <th>Status</th>
-            <th>In</th>
-            <th>Out</th>
+            <th>In (UTC)</th>
+            <th>Out (UTC)</th>
             <th>Picked up by</th>
           </tr>
         </thead>
@@ -79,8 +109,13 @@ export default async function CheckinManifestPage({
               <tr key={m.member_id}>
                 <td>{m.first_name} {m.last_name}</td>
                 <td>{m.family_name}</td>
+                <td>{m.allergy_text ? <span className="warn">{m.allergy_text}</span> : ''}</td>
+                <td>
+                  {m.emergency_contact_name}
+                  {m.emergency_contact_name && m.emergency_contact_phone ? <span className="sub"> · {m.emergency_contact_phone}</span> : m.emergency_contact_phone}
+                </td>
                 <td>{rec ? (rec.status === 'in' ? 'Checked in' : 'Out') : 'Not arrived'}</td>
-                <td>{fmtTime(rec?.checked_in_at)}</td>
+                <td>{fmtTime(rec?.first_checked_in_at ?? rec?.checked_in_at)}</td>
                 <td>{fmtTime(rec?.checked_out_at)}</td>
                 <td>{rec?.guardian_pickup_name ?? <span className="sig">&nbsp;</span>}</td>
               </tr>

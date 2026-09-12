@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   computeShoppingList, computePackingList, deriveDeadlines, instantiateChecklists,
-  computeCloseoutSummary, DEADLINE_TEMPLATES,
+  computeCloseoutSummary, marketDayCloseoutSummary, DEADLINE_TEMPLATES,
 } from '@/lib/ops/derive'
 import type { WorkPackage, OpsResource, ChecklistTemplate } from '@/lib/types'
 
@@ -176,5 +176,59 @@ describe('computeCloseoutSummary', () => {
     const summary = computeCloseoutSummary({ packages: [p], resources, guests: 10, actual_consumables: [], sales: 0 })
     expect(summary.planned_consumable_cost).toBe(0)
     expect(summary.cost_gaps).toBeUndefined()
+  })
+
+  // ——— Booth fee (spec 2026-08-23 S1.1) ————————————————————————————————————
+  it('subtracts the booth fee from BOTH margins and reports it as fees', () => {
+    const p = pkg({ price: 1200, lines: [{ kind: 'consumable', resource_id: 'res-beans', qty_per_guest: 1 }] })
+    const summary = computeCloseoutSummary({
+      packages: [p], resources, guests: 100,
+      actual_consumables: [{ resource_id: 'res-beans', qty_used: 90 }],
+      sales: 150,
+      booth_fee: 45,
+    })
+    expect(summary.fees).toBe(45)
+    expect(summary.revenue).toBe(1350)                          // fee is a cost, never netted from revenue
+    expect(summary.planned_margin).toBeCloseTo(1350 - 55 - 45)  // planned side pays the fee too
+    expect(summary.actual_margin).toBeCloseTo(1350 - 49.5 - 45)
+  })
+
+  it('leaves the summary byte-identical for zero or absent booth fee', () => {
+    const p = pkg({ price: 1200, lines: [{ kind: 'consumable', resource_id: 'res-beans', qty_per_guest: 1 }] })
+    const input = {
+      packages: [p], resources, guests: 100,
+      actual_consumables: [{ resource_id: 'res-beans', qty_used: 90 }],
+      sales: 150,
+    }
+    const withZero = computeCloseoutSummary({ ...input, booth_fee: 0 })
+    const absent = computeCloseoutSummary(input)
+    expect(withZero).toEqual(absent)
+    expect(withZero.fees).toBeUndefined()
+    expect(withZero.planned_margin).toBeCloseTo(1295)
+  })
+})
+
+describe('marketDayCloseoutSummary', () => {
+  it('prices a plan-less day: revenue = sales, costs from actuals only, fees = booth fee', () => {
+    const summary = marketDayCloseoutSummary({
+      resources,
+      actual_consumables: [{ resource_id: 'res-beans', qty_used: 10 }],
+      sales: 176,
+      booth_fee: 35,
+    })
+    expect(summary.revenue).toBe(176)
+    expect(summary.planned_consumable_cost).toBe(0)      // no plan → nothing planned
+    expect(summary.actual_consumable_cost).toBeCloseTo(5.5)
+    expect(summary.fees).toBe(35)
+    expect(summary.actual_margin).toBeCloseTo(176 - 5.5 - 35)
+    expect(summary.planned_margin).toBeCloseTo(176 - 35)
+    expect(summary.cost_gaps).toBeUndefined()
+  })
+
+  it('handles the empty day without inventing money', () => {
+    const summary = marketDayCloseoutSummary({ resources: [], actual_consumables: [], sales: 0, booth_fee: 0 })
+    expect(summary.revenue).toBe(0)
+    expect(summary.actual_margin).toBe(0)
+    expect(summary.fees).toBeUndefined()
   })
 })

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
+import { renderToString } from 'react-dom/server'
 
 vi.mock('@/actions/proposals-public', () => ({
   recordProposalView: vi.fn().mockResolvedValue(undefined),
@@ -168,5 +169,106 @@ describe('ProposalResponseClient — themed presentation (behavior-preserving re
     expect(screen.getByText("What's included")).toBeInTheDocument()
     expect(screen.getAllByText(/Venue liaison/)).toHaveLength(1)
     expect(screen.getAllByText(/Espresso bar/)).toHaveLength(1)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Zone-safe date rendering — the /checkin crash class (PR #134) on the one
+// page a CUSTOMER signs and pays from. The signature stamp and the expiry
+// line formatted via bare toLocale* at first render, so SSR baked the
+// server's zone/ICU rendering into the payload and the browser's hydration
+// pass produced the viewer's — React #418, hydration aborted, every handler
+// dead: a customer who could not sign. Mirrors the CheckinClient regression
+// shape: SSR-payload assertion + hydrate-mode zero console.error + a live
+// handler.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// 2:38 AM UTC is the previous evening (and previous DAY) anywhere west of
+// UTC, and Aug 30's end-of-day-UTC guard instant is already Aug 31 east of
+// it — both fixtures diverge under any zone-following rendering.
+const SIGNED_AT = '2026-08-20T02:38:00.000Z'
+const SIGNED_STAMP = 'on Aug 20, 2026, 2:38 AM UTC'
+const EXPIRES = '2026-08-30'
+
+const signedProposal = () => proposal({
+  status: 'accepted',
+  line_items: [{ id: 'l1', description: 'Bar service', quantity: 1, unit_price: 1000 }],
+  signed: { signer_name: 'Jane Smith', signed_at: SIGNED_AT },
+  expires_at: EXPIRES,
+})
+
+describe('ProposalResponseClient — zone-safe stamps, no hydration crash', () => {
+  it('SSR payload pins the signature stamp and expiry — never the runtime zone', () => {
+    const html = renderToString(<ProposalResponseClient token="tok" proposal={signedProposal()} />)
+    const text = html.replace(/<!-- -->/g, '') // strip JSX child separators
+    // Byte-deterministic renderings: the hydration pass reproduces these
+    // exactly on any browser, so the page can never abort over them.
+    expect(text).toContain(SIGNED_STAMP)
+    expect(text).toContain('This proposal expires Aug 30, 2026')
+    // The defect's output: the runtime-zone toLocale* renderings. (In this
+    // process both "server" and viewer share a zone, so ANY appearance of
+    // these means the value was formatted zone-following again.)
+    expect(text).not.toContain(new Date(SIGNED_AT).toLocaleString())
+    expect(text).not.toContain(
+      new Date(`${EXPIRES}T23:59:59.999Z`).toLocaleDateString(),
+    )
+  })
+
+  it('hydrates the signed page with zero console.error and shows the pinned stamp', () => {
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    container.innerHTML = renderToString(
+      <ProposalResponseClient token="tok" proposal={signedProposal()} />,
+    )
+
+    // No suppressHydrationWarning anywhere on these lines — a server/client
+    // divergence would surface right here as a console.error from React.
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      render(<ProposalResponseClient token="tok" proposal={signedProposal()} />, {
+        container,
+        hydrate: true,
+      })
+      expect(consoleError).not.toHaveBeenCalled()
+    } finally {
+      consoleError.mockRestore()
+    }
+
+    expect(screen.getByText(new RegExp(SIGNED_STAMP))).toBeInTheDocument()
+    container.remove()
+  })
+
+  it('hydrates the open (signable) page alive: zero console.error and working selection', () => {
+    const openProposal = () => proposal({
+      line_items: [
+        { id: 'l1', description: 'Bar service', quantity: 1, unit_price: 1000 },
+        { id: 'l2', description: 'Champagne tower', quantity: 1, unit_price: 400, optional: true },
+      ],
+      expires_at: EXPIRES,
+    })
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    container.innerHTML = renderToString(
+      <ProposalResponseClient token="tok" proposal={openProposal()} />,
+    )
+
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      render(<ProposalResponseClient token="tok" proposal={openProposal()} />, {
+        container,
+        hydrate: true,
+      })
+      expect(consoleError).not.toHaveBeenCalled()
+    } finally {
+      consoleError.mockRestore()
+    }
+
+    // The production symptom was an inert page — hydration aborted, nothing
+    // attached, the customer unable to sign. The selection handlers must be
+    // ALIVE after hydrating the exact SSR payload.
+    expect(totalText()).toContain('$1000.00')
+    fireEvent.click(screen.getByLabelText(/Champagne tower/))
+    expect(totalText()).toContain('$1400.00')
+    container.remove()
   })
 })

@@ -223,3 +223,76 @@ export function proposalExpiryInstant(expiresAt: string): number {
   const t = new Date(expiresAt).getTime()
   return Number.isNaN(t) ? Infinity : t
 }
+
+// ── Zone-safe display formatters for the proposal surfaces ──────────────────
+//
+// Both customer-facing surfaces render on the server first, and the
+// interactive public page then HYDRATES in the customer's browser. A date
+// rendered with a bare toLocale* follows the runtime's own zone and ICU, so
+// the SSR payload bakes the SERVER's rendering in and the hydration pass
+// re-renders the VIEWER's — React aborts with minified error #418 and no
+// handler on the page ever attaches (the /checkin crash class, PR #134). On
+// THIS page that means a customer who cannot sign or pay.
+//
+// These formatters are assembled manually — digits plus a fixed month table —
+// rather than through Intl even with locale and zone pinned, because Intl
+// output is not byte-stable across ICU versions (ICU 72 swapped the space
+// before AM/PM for U+202F): the server's Node and the customer's browser can
+// disagree by one whitespace character, which is all a hydration abort needs.
+// Manual assembly cannot drift between runtimes.
+
+const STAMP_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+/** "Aug 20, 2026, 2:38 AM UTC" — read from the instant's UTC fields only. */
+function utcInstantStamp(d: Date): string {
+  const h24 = d.getUTCHours()
+  const hour = h24 % 12 === 0 ? 12 : h24 % 12
+  const minute = String(d.getUTCMinutes()).padStart(2, '0')
+  const ampm = h24 < 12 ? 'AM' : 'PM'
+  return `${STAMP_MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}, ${hour}:${minute} ${ampm} UTC`
+}
+
+/**
+ * The "This proposal expires ..." display, type-honest per shape of the value:
+ *
+ * - Date-only (the admin editor's <input type="date">, the only shape the
+ *   field holds in practice): the operator named a calendar DAY, so render
+ *   that day's own digits — never via an instant plus a zone, which shows a
+ *   viewer east of UTC the day AFTER the one the operator wrote. Stays
+ *   consistent with the guards: proposalExpiryInstant cuts off at the END of
+ *   that day UTC, so the named day is signable everywhere it is currently
+ *   that date — the display can never promise a day the guard denies.
+ * - ISO datetime: a true instant, rendered pinned to UTC and labeled (the
+ *   check-in manifest / formatConfirmStamp precedent) — an unlabeled
+ *   zone-dependent rendering of a deadline is wrong for someone.
+ * - Unparseable: '' — the guard treats it as never-expiring (see above), so
+ *   render no expiry line rather than "Invalid Date".
+ */
+export function formatProposalExpiry(expiresAt: string): string {
+  if (DATE_ONLY.test(expiresAt)) {
+    const [y, m, d] = expiresAt.split('-').map(Number)
+    if (m < 1 || m > 12) return ''
+    return `${STAMP_MONTHS[m - 1]} ${d}, ${y}`
+  }
+  const t = new Date(expiresAt)
+  if (Number.isNaN(t.getTime())) return ''
+  return utcInstantStamp(t)
+}
+
+/**
+ * The signature stamp on a signed proposal — one string for the interactive
+ * public page, the print view, and anything else that restates it.
+ *
+ * PINNED to UTC and labeled, not viewer-local behind a hydration gate,
+ * because signed_at is the legal-ish record on a document BOTH parties keep:
+ * the customer's browser zone and the operator's printout must not state two
+ * different times for one signature (the check-in manifest precedent, PR
+ * #134). Determinism is also what makes it hydration-safe with no gate — the
+ * "Signed" confirmation needs no placeholder flash. '' for an unparseable
+ * stamp.
+ */
+export function formatSignedStamp(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  return utcInstantStamp(d)
+}

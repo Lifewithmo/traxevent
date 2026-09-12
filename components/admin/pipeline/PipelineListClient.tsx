@@ -17,7 +17,8 @@ import { OPEN_STAGES, LEAD_STAGE_LABELS, LOST_REASON_LABELS, opportunityTitle } 
 import { STAGE_TONE, money, shortDate, type Tone } from '@/lib/pipeline-presentation'
 import type { PipelineGroups, PipelineRow, closedThisMonth } from '@/lib/pipeline-view'
 import { rowOwnsClash, type CapacityDay } from '@/lib/capacity/capacity'
-import type { Customer, Lead, LeadStage } from '@/lib/types'
+import { kindLabel } from '@/lib/capacity/labels'
+import type { Customer, Lead, LeadStage, Org } from '@/lib/types'
 import { NewOpportunityForm } from './NewOpportunityForm'
 import { IntakeLinkCard } from './IntakeLinkCard'
 import { ClosedMonthSummary } from './ClosedMonthSummary'
@@ -35,6 +36,14 @@ interface PipelineListClientProps {
   // offsite / on-site delivery toggle. Computed on the server (page.tsx) so the
   // client never queries the org's plan or units. Undefined ⇒ hidden.
   showDeliveryMode?: boolean
+  // The operator's vocabulary for the two capacity kinds (increment 3 de-silo).
+  // Threaded from the org so the over-capacity pill reads in their words via
+  // `kindLabel`. Absent ⇒ the neutral platform defaults; base/solo orgs never
+  // render the pill at all, so this is simply unused for them.
+  resourceLabels?: Org['resource_labels']
+  // Event-type profiles (increment 4) so a row's clash badge/ownership is
+  // profile-aware, matching the server engine. Absent ⇒ leadRequirement default.
+  eventTypeProfiles?: Org['event_type_profiles']
 }
 
 /*
@@ -97,24 +106,34 @@ export function bookByChip(row: PipelineRow): { text: string; tone: Tone } | nul
  *
  * WHICH kind it names: only the kind(s) that actually breached (demand > supply)
  * — a spare cart is not the story on a day the ROOMS ran out. If both breach,
- * lead with the larger overage (demand − supply), the sharper shortfall. mobile
- * → "carts", venue → "rooms"; `demand` is that kind's own demand (all bookable
- * for mobile, on-site only for venue), so venue reads "N events" meaning the
- * on-site ones. ONE date format: `shortDate`, the module's single vocabulary.
+ * lead with the larger overage (demand − supply), the sharper shortfall. `demand`
+ * is that kind's own demand (all bookable for mobile, on-site only for venue), so
+ * venue reads "N events" meaning the on-site ones. ONE date format: `shortDate`,
+ * the module's single vocabulary.
+ *
+ * DE-SILO (increment 3): the kind NOUN is not the hardcoded BrewTrax
+ * "cart"/"room" any longer — it routes through `kindLabel(org, kind, count)`, the
+ * single source of the kind vocabulary, so it reads in the operator's own words
+ * (a truck op → "trucks"; an org that has named nothing → the neutral platform
+ * default "serving unit(s)"/"room(s)"). `count` is the supply, which also drives
+ * singular vs plural, so "1 serving unit" / "2 serving units" comes out right.
  *
  * Returns null when the day is not actually over (defensive — the caller already
  * gates on `overCapacity?.over`, but a `detail` with no breach would otherwise
  * pick a non-breaching kind and print a contradiction).
  */
-export function overCapacityChip(cap: CapacityDay, eventDate?: string): string | null {
+export function overCapacityChip(
+  cap: CapacityDay,
+  resourceLabels: Org['resource_labels'],
+  eventDate?: string,
+): string | null {
   const breaches = cap.detail
     .filter((d) => d.demand > d.supply)
     .sort((a, b) => b.demand - b.supply - (a.demand - a.supply))
   const worst = breaches[0]
   if (!worst) return null
-  const noun = worst.kind === 'venue' ? 'room' : 'cart'
   const events = `${worst.demand} event${worst.demand === 1 ? '' : 's'}`
-  const units = `${worst.supply} ${noun}${worst.supply === 1 ? '' : 's'}`
+  const units = `${worst.supply} ${kindLabel({ resource_labels: resourceLabels }, worst.kind, worst.supply)}`
   return `Over capacity — ${events} · ${units} (${shortDate(eventDate ?? cap.date)})`
 }
 
@@ -153,7 +172,7 @@ function GroupHeader({ label, rows, alert }: { label: string; rows: PipelineRow[
 }
 
 export function PipelineListClient({
-  orgId, orgSlug, groups, closed, openCount, monthly, customers, showDeliveryMode,
+  orgId, orgSlug, groups, closed, openCount, monthly, customers, showDeliveryMode, resourceLabels, eventTypeProfiles,
 }: PipelineListClientProps) {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState<Tab>('open')
@@ -244,57 +263,58 @@ export function PipelineListClient({
       setNotice(`${opportunityTitle(row.lead)} is still moving — wait for that change to land.`)
       return
     }
-    /*
-      SAME-DAY DOUBLE-BOOK WARN. Capacity is 1 for the solo-operator anchor
-      (spec: increment 1), so winning a second job for a date that already
-      carries a `closed_won` is very likely a mistake — the operator cannot serve
-      both. We warn, we do not block: the deadline radar is advisory, and a real
-      "yes, book both" (a partner, a subcontract) must still be reachable.
-
-      The check reads props already in hand — the booked jobs are the
-      `closed_won` leads in `closed`, and we scan the open `groups` too so the
-      rule holds even if a won deal ever surfaces there. No new data, no query.
-      Cancel aborts BEFORE any `setMoving`/`setLeadStage`, so a declined confirm
-      leaves the row exactly as it was.
-    */
-    if (newStage === 'closed_won' && row.lead.event_date) {
-      const booked = [
-        ...closed,
-        ...groups.needs_attention.map((r) => r.lead),
-        ...groups.waiting.map((r) => r.lead),
-        ...groups.active.map((r) => r.lead),
-      ].some(
-        (l) =>
-          l.id !== row.lead.id &&
-          l.stage === 'closed_won' &&
-          l.event_date === row.lead.event_date,
-      )
-      if (booked && !window.confirm(
-        `Another job is already booked for ${shortDate(row.lead.event_date)}. Book this one too?`,
-      )) {
-        return
-      }
-    }
     setError(null)
     setNotice(null)
     setMoving((m) => ({ ...m, [row.lead.id]: { from: row.lead.stage, to: newStage } }))
-    try {
-      await setLeadStage(orgId, row.lead.id, newStage)
+    // Re-arm ON THE FAILURE / declined-confirm PATHS ONLY — nothing else is
+    // coming. Without this a refused move leaves the advance button stuck
+    // reading "Moving…" and disabled forever. The success path is re-armed by
+    // the refreshed props.
+    const rearm = () => setMoving((m) => {
+      const next = { ...m }
+      delete next[row.lead.id]
+      return next
+    })
+    const advance = () => {
       if (newStage === 'closed_won') {
         router.push(`/${orgSlug}/leads/${row.lead.id}?convert=1`)
       } else {
         router.refresh()
       }
+    }
+    /*
+      SERVER-AUTHORITATIVE CAPACITY GUARD (increment 4). The same-date double-book
+      warn is no longer computed here — the server's `setLeadStage` guard runs the
+      full `computeCapacity`/clash math (broader + more accurate than the Inc-2
+      client pre-check) and, on a would-be over/clash win, RETURNS
+      `{ ok: false, guard }` rather than throwing. (A thrown guard could not
+      survive Next's production RSC error redaction — see lib/capacity/guard.ts.)
+      We surface `guard` in a confirm (advisory, not a block), and on confirm
+      re-call with `{ override: true }`. One guard, one confirm, no silent
+      double-book from any non-UI path. A declined confirm re-arms the row. A
+      genuine failure still throws and is caught below.
+    */
+    try {
+      const result = await setLeadStage(orgId, row.lead.id, newStage)
+      if (!result.ok) {
+        if (!window.confirm(result.guard)) {
+          rearm()
+          return
+        }
+        const override = await setLeadStage(orgId, row.lead.id, newStage, { override: true })
+        if (!override.ok) {
+          // Override skips the guard, so this is unreachable in practice; treat
+          // an unexpected refusal as a no-op rather than navigating.
+          rearm()
+          return
+        }
+        advance()
+        return
+      }
+      advance()
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to move opportunity')
-      // Re-arm ON THE FAILURE PATH ONLY — nothing else is coming. Without this
-      // a refused move leaves the advance button stuck reading "Moving…" and
-      // disabled forever. The success path is re-armed by the refreshed props.
-      setMoving((m) => {
-        const next = { ...m }
-        delete next[row.lead.id]
-        return next
-      })
+      rearm()
     }
   }
 
@@ -313,7 +333,7 @@ export function PipelineListClient({
       for any row whose assigned unit isn't among the day's clashes, so the
       increment-1 "Date conflict" path is untouched.
     */
-    const clash = rowOwnsClash(lead, row.overCapacity)
+    const clash = rowOwnsClash(lead, row.overCapacity, { event_type_profiles: eventTypeProfiles })
     return (
       <div
         key={lead.id}
@@ -375,7 +395,7 @@ export function PipelineListClient({
                 */}
                 {row.overCapacity?.over ? (
                   (() => {
-                    const text = overCapacityChip(row.overCapacity, row.eventDate)
+                    const text = overCapacityChip(row.overCapacity, resourceLabels, row.eventDate)
                     return text
                       ? <StatusPill tone="alert" className="max-w-full whitespace-normal">{text}</StatusPill>
                       : null

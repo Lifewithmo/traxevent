@@ -37,7 +37,9 @@ vi.mock('@/actions/leads', () => ({
   deleteLead: vi.fn(),
   updateLead: vi.fn().mockResolvedValue(undefined),
   markLeadLost: (...a: unknown[]) => markLeadLost(...a),
-  setLeadStage: vi.fn().mockResolvedValue(undefined),
+  // { ok: true } is the completed-write result (increment 4 — setLeadStage
+  // returns a discriminated value, never throws its capacity guard).
+  setLeadStage: vi.fn().mockResolvedValue({ ok: true }),
   setLeadWaiting: vi.fn(),
   clearLeadWaiting: vi.fn(),
 }))

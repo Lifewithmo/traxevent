@@ -6,7 +6,7 @@ import { getTemplatesForOrg } from '@/lib/ops/checklist-templates'
 import {
   computeShoppingList, computePackingList, deriveDeadlines, instantiateChecklists,
 } from '@/lib/ops/derive'
-import type { OpsPlan, OpsRequirements, OpsChangeEntry } from '@/lib/types'
+import type { OpsPlan, OpsRequirements, OpsChangeEntry, OpsListItem } from '@/lib/types'
 
 export function opsPlanRef(orgId: string, eventId: string) {
   return adminDb.collection('orgs').doc(orgId)
@@ -145,6 +145,11 @@ export async function updateOpsRequirementsCore(
 
     payload.change_log = FieldValue.arrayUnion(...entries)
     payload.updated_at = now
+    // Confirm-ready staleness contract (inc-2 P2, clearing path a): ANY logged
+    // requirements change — service_start and site_needs count, not just the
+    // guests branch — invalidates the operator's "ready" attestation. Same-value
+    // writes short-circuit above and do NOT clear.
+    payload.ready_confirmed = FieldValue.delete()
 
     if (reDerive) {
       const guests = updates.guests ?? plan.requirements.guests
@@ -154,13 +159,132 @@ export async function updateOpsRequirementsCore(
         if (!foundIds.has(id)) throw new Error(`Package no longer exists: ${id}`)
       }
       const resources = await listResourcesCore(orgId)
-      const prevChecked = new Map(plan.shopping_list.map((i) => [`${i.resource_id}|${i.unit ?? ''}`, i.checked]))
-      payload.shopping_list = computeShoppingList(packages, resources, guests)
-        .map((i) => ({ ...i, checked: prevChecked.get(`${i.resource_id}|${i.unit ?? ''}`) ?? false }))
+      payload.shopping_list = preserveChecked(plan.shopping_list, computeShoppingList(packages, resources, guests))
       // packing_list intentionally omitted: it doesn't depend on guests.
       payload.needs_review = true
     }
     tx.update(ref, payload)
+  })
+}
+
+/** Carry `checked` forward across a re-derivation, keyed by resource_id|unit
+ *  (same key as updateOpsRequirementsCore's guests path). */
+function preserveChecked(prev: OpsListItem[], next: OpsListItem[]): OpsListItem[] {
+  const prevChecked = new Map(prev.map((i) => [`${i.resource_id}|${i.unit ?? ''}`, i.checked]))
+  return next.map((i) => ({ ...i, checked: prevChecked.get(`${i.resource_id}|${i.unit ?? ''}`) ?? false }))
+}
+
+/**
+ * Unconditional re-derive of BOTH lists from the CURRENT packages/resources
+ * (spec 2026-08-19 B5). Exists because updateOpsRequirementsCore short-circuits
+ * on same-value writes: a package edit changes quantities without touching any
+ * requirement, so "re-save guests" can never refresh the lists. Two callers:
+ * the load-out surface's explicit Recompute affordance, and updateEvent's
+ * headcount hook (which passes `guests`).
+ *
+ * - `checked` survives by resource_id|unit; items that no longer derive drop out.
+ * - A package_id that no longer resolves fails VISIBLY (same message as the
+ *   guests re-derive path) — never a silently shorter list.
+ * - `guests` provided and different from the plan's → requirements.guests is
+ *   synced and needs_review is set (guests-path precedent: the change
+ *   originated off the ops surface, so the operator must re-verify). A plain
+ *   recompute does NOT set needs_review — the actor is looking at the fresh
+ *   lists as they land.
+ *
+ * Returns the updated plan so callers can refresh client state without a
+ * second read.
+ */
+export async function recomputeOpsListsCore(
+  orgId: string,
+  eventId: string,
+  actorUid: string,
+  opts: { guests?: number } = {},
+): Promise<OpsPlan> {
+  if (opts.guests !== undefined && (!Number.isFinite(opts.guests) || opts.guests <= 0)) throw new Error('Guest count must be positive')
+  const ref = opsPlanRef(orgId, eventId)
+  return adminDb.runTransaction(async (tx) => {
+    const snap = await tx.get(ref)
+    if (!snap.exists) throw new Error('No ops plan for this event')
+    const plan = snap.data() as OpsPlan
+
+    const packages = await getWorkPackagesByIdsCore(orgId, plan.package_ids)
+    const foundIds = new Set(packages.map((p) => p.id))
+    for (const id of plan.package_ids) {
+      if (!foundIds.has(id)) throw new Error(`Package no longer exists: ${id}`)
+    }
+    const resources = await listResourcesCore(orgId)
+
+    const guests = opts.guests ?? plan.requirements.guests
+    const guestsChanged = opts.guests !== undefined && opts.guests !== plan.requirements.guests
+    const shopping_list = preserveChecked(plan.shopping_list, computeShoppingList(packages, resources, guests))
+    const packing_list = preserveChecked(plan.packing_list, computePackingList(packages, resources))
+
+    const now = new Date().toISOString()
+    const entries: OpsChangeEntry[] = [{ at: now, by: actorUid, field: 'recomputed' }]
+    if (guestsChanged) {
+      entries.push({ at: now, by: actorUid, field: 'guests', from: String(plan.requirements.guests), to: String(guests) })
+    }
+    const payload: Record<string, unknown> = {
+      shopping_list,
+      packing_list,
+      change_log: FieldValue.arrayUnion(...entries),
+      updated_at: now,
+      // Confirm-ready staleness contract (inc-2 P2, clearing path b): every
+      // recompute — the load-out's explicit affordance AND updateEvent's
+      // headcount hook, i.e. BOTH callers — invalidates the attestation: the
+      // lists it attested to just changed under it.
+      ready_confirmed: FieldValue.delete(),
+      ...(guestsChanged ? { 'requirements.guests': guests, needs_review: true } : {}),
+    }
+    tx.update(ref, payload)
+    // Strip ready_confirmed from the returned plan too — callers swap client
+    // state from this object, and a cleared attestation must not linger there.
+    const { ready_confirmed: _cleared, ...planSansConfirm } = plan
+    void _cleared
+    return {
+      ...planSansConfirm,
+      shopping_list,
+      packing_list,
+      change_log: [...plan.change_log, ...entries],
+      updated_at: now,
+      ...(guestsChanged ? { requirements: { ...plan.requirements, guests }, needs_review: true } : {}),
+    }
+  })
+}
+
+/**
+ * Transactional set-checked for a group of list items — the per-list
+ * "check all" on the load-out surface. One read + one write, never N serial
+ * toggleListItemCore calls (spec 2026-08-19 B2's bulk-core rule applied to
+ * lists). `keys` omitted → every item in the list; provided → exactly those
+ * items (resource_id|unit match, same convention as toggleListItemCore), with
+ * a visible failure when any key doesn't resolve.
+ */
+export async function bulkSetListCheckedCore(
+  orgId: string,
+  eventId: string,
+  list: 'shopping_list' | 'packing_list',
+  checked: boolean,
+  keys?: { resource_id: string; unit?: string }[],
+): Promise<void> {
+  const ref = opsPlanRef(orgId, eventId)
+  await adminDb.runTransaction(async (tx) => {
+    const snap = await tx.get(ref)
+    if (!snap.exists) throw new Error('No ops plan for this event')
+    const plan = snap.data() as OpsPlan
+    const items = plan[list]
+    let next: OpsListItem[]
+    if (keys === undefined) {
+      next = items.map((i) => ({ ...i, checked }))
+    } else {
+      const wanted = new Set(keys.map((k) => `${k.resource_id}|${k.unit ?? ''}`))
+      const present = new Set(items.map((i) => `${i.resource_id}|${i.unit ?? ''}`))
+      for (const k of wanted) {
+        if (!present.has(k)) throw new Error('Item not found')
+      }
+      next = items.map((i) => (wanted.has(`${i.resource_id}|${i.unit ?? ''}`) ? { ...i, checked } : i))
+    }
+    tx.update(ref, { [list]: next, updated_at: new Date().toISOString() })
   })
 }
 
@@ -241,6 +365,67 @@ export async function toggleDeadlineCore(
     if (idx === -1) throw new Error('Deadline not found')
     const deadlines = plan.deadlines.map((d, n) => (n === idx ? { ...d, done } : d))
     tx.update(ref, { deadlines, updated_at: new Date().toISOString() })
+  })
+}
+
+/**
+ * Operator attestation "this job is ready" (inc-2 P2) — the evening-before
+ * ritual. Sets `ready_confirmed: {at, by}` and logs the attestation.
+ *
+ * Staleness contract (P2, exhaustive — the clears live where the writes live):
+ *   (a) updateOpsRequirementsCore clears on ANY logged change entry;
+ *   (b) recomputeOpsListsCore clears on every recompute (both callers);
+ *   (c) updateEvent clears on event date/hours edits (actions/events.ts hook —
+ *       a moved start time invalidates the attestation).
+ * NOT cleared, deliberately and documented (P2):
+ *   - package edits: a package edit never writes the plan doc, so nothing here
+ *     can observe it — the attestation inherits needs_review's KNOWN staleness
+ *     hole (see recomputeOpsListsCore's header: "re-save guests can never
+ *     refresh the lists"). A recompute is the recovery path, and it clears.
+ *   - itinerary edits: v1 records the anchor used in the confirm button's
+ *     attestation microcopy ("anchored 3:00 PM"), so what was confirmed is on
+ *     the record even if the schedule shifts afterward.
+ */
+export async function confirmReadyCore(
+  orgId: string,
+  eventId: string,
+  actorUid: string,
+): Promise<{ at: string; by: string }> {
+  const ref = opsPlanRef(orgId, eventId)
+  const now = new Date().toISOString()
+  const confirmed = { at: now, by: actorUid }
+  await adminDb.runTransaction(async (tx) => {
+    const snap = await tx.get(ref)
+    if (!snap.exists) throw new Error('No ops plan for this event')
+    tx.update(ref, {
+      ready_confirmed: confirmed,
+      change_log: FieldValue.arrayUnion({ at: now, by: actorUid, field: 'ready_confirmed' }),
+      updated_at: now,
+    })
+  })
+  return confirmed
+}
+
+/**
+ * Clearing path (c) of the confirm-ready staleness contract: event date/hours
+ * edits happen on the Event doc, outside every plan-writing core above, so
+ * updateEvent (actions/events.ts) calls this after its own write — mirroring
+ * the inc-1 headcount hook. No-op when there is no plan or no attestation;
+ * a real clear is logged so the trail explains the vanished stamp.
+ */
+export async function clearReadyConfirmedCore(orgId: string, eventId: string, actorUid: string): Promise<void> {
+  const ref = opsPlanRef(orgId, eventId)
+  const now = new Date().toISOString()
+  await adminDb.runTransaction(async (tx) => {
+    const snap = await tx.get(ref)
+    if (!snap.exists) return
+    const plan = snap.data() as OpsPlan
+    if (!plan.ready_confirmed) return
+    tx.update(ref, {
+      ready_confirmed: FieldValue.delete(),
+      change_log: FieldValue.arrayUnion({ at: now, by: actorUid, field: 'ready_confirm_cleared' }),
+      updated_at: now,
+    })
   })
 }
 

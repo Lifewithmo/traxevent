@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import type { PublicProposal } from '@/actions/proposals-public'
 import { respondToProposal, signProposal, recordProposalView, getPublicProposal } from '@/actions/proposals-public'
-import { computeSelectedTotal, depositAmount } from '@/lib/proposals'
+import { computeSelectedTotal, depositAmount, formatSignedStamp } from '@/lib/proposals'
 import type { PaymentStatus } from '@/lib/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -125,6 +125,15 @@ export function ProposalResponseClient({
   const declined = declinedLocally || effectiveProposal.status === 'rejected'
   const signedInfo: SignedInfo | undefined =
     effectiveProposal.signed ?? (signResult ? { signer_name: signerName.trim() } : undefined)
+
+  // Pinned-UTC, byte-deterministic stamp (see formatSignedStamp): the SSR
+  // payload and the hydration pass render the same string, so the signature
+  // line can never abort hydration. A viewer-local toLocaleString here took
+  // the WHOLE page down with it in the /checkin incident's crash class
+  // (React #418 → inert page → the customer cannot sign or pay), and the
+  // print route states this same stamp — one signature, one time, on both
+  // documents.
+  const signedStamp = signedInfo?.signed_at ? formatSignedStamp(signedInfo.signed_at) : ''
 
   const showForm = !declined && !signedInfo && beforeAcceptStep === 'idle'
   const showPayment = !declined && !signedInfo && beforeAcceptStep === 'payment'
@@ -427,9 +436,7 @@ export function ProposalResponseClient({
             <CardContent className="space-y-3">
               <p className="text-sm text-gray-700">
                 Signed by <span className="font-medium text-gray-900">{signedInfo.signer_name}</span>
-                {signedInfo.signed_at && (
-                  <> on {new Date(signedInfo.signed_at).toLocaleString()}</>
-                )}
+                {signedStamp && <> on {signedStamp}</>}
                 .
               </p>
               {paymentStatus === 'deposit_paid' && (

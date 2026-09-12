@@ -22,7 +22,7 @@ vi.mock('@/lib/ops/resources', () => ({ listResourcesCore: vi.fn() }))
 vi.mock('@/lib/ops/checklist-templates', () => ({ getTemplatesForOrg: vi.fn() }))
 
 import {
-  toggleListItemCore, completeChecklistStepCore, toggleDeadlineCore, acknowledgeReviewCore,
+  toggleListItemCore, bulkSetListCheckedCore, completeChecklistStepCore, toggleDeadlineCore, acknowledgeReviewCore,
 } from '@/lib/ops/event-ops'
 import type { OpsPlan } from '@/lib/types'
 
@@ -74,6 +74,61 @@ describe('toggleListItemCore', () => {
     const payload = planUpdateSpy.mock.calls[0][0]
     expect(payload.shopping_list[0]).toMatchObject({ unit: 'lb', checked: true })
     expect(payload.shopping_list[1]).toMatchObject({ unit: 'shot', checked: false })
+  })
+})
+
+describe('bulkSetListCheckedCore (load-out check-all)', () => {
+  const twoItemPlan = () => ({
+    ...plan(),
+    shopping_list: [
+      { resource_id: 'res-beans', name: 'Beans', qty: 5, unit: 'lb', checked: false },
+      { resource_id: 'res-cups', name: 'Cups', qty: 120, checked: true },
+    ],
+  })
+
+  it('checks every item in the list in ONE transactional write, not N toggles', async () => {
+    planGetSpy.mockResolvedValue({ exists: true, data: twoItemPlan })
+    await bulkSetListCheckedCore('o1', 'e1', 'shopping_list', true)
+    expect(planUpdateSpy).toHaveBeenCalledTimes(1)
+    const payload = planUpdateSpy.mock.calls[0][0]
+    expect(payload.shopping_list.map((i: { checked: boolean }) => i.checked)).toEqual([true, true])
+    expect(payload.updated_at).toEqual(expect.any(String))
+  })
+
+  it('targets only the named keys (resource_id|unit), leaving others untouched', async () => {
+    planGetSpy.mockResolvedValue({
+      exists: true,
+      data: () => ({
+        ...plan(),
+        shopping_list: [
+          { resource_id: 'res-beans', name: 'Beans', qty: 5, unit: 'lb', checked: false },
+          { resource_id: 'res-cups', name: 'Cups', qty: 120, checked: false },
+        ],
+      }),
+    })
+    await bulkSetListCheckedCore('o1', 'e1', 'shopping_list', true, [{ resource_id: 'res-beans', unit: 'lb' }])
+    const payload = planUpdateSpy.mock.calls[0][0]
+    expect(payload.shopping_list[0]).toMatchObject({ resource_id: 'res-beans', checked: true })
+    expect(payload.shopping_list[1]).toMatchObject({ resource_id: 'res-cups', checked: false }) // not named — untouched
+  })
+
+  it('unchecks a whole list too', async () => {
+    planGetSpy.mockResolvedValue({ exists: true, data: twoItemPlan })
+    await bulkSetListCheckedCore('o1', 'e1', 'shopping_list', false)
+    const payload = planUpdateSpy.mock.calls[0][0]
+    expect(payload.shopping_list.map((i: { checked: boolean }) => i.checked)).toEqual([false, false])
+  })
+
+  it('fails visibly when a named key does not resolve', async () => {
+    planGetSpy.mockResolvedValue({ exists: true, data: twoItemPlan })
+    await expect(bulkSetListCheckedCore('o1', 'e1', 'shopping_list', true, [{ resource_id: 'res-nope' }]))
+      .rejects.toThrow('Item not found')
+    expect(planUpdateSpy).not.toHaveBeenCalled()
+  })
+
+  it('throws when no plan exists', async () => {
+    planGetSpy.mockResolvedValue({ exists: false })
+    await expect(bulkSetListCheckedCore('o1', 'e1', 'packing_list', true)).rejects.toThrow('No ops plan')
   })
 })
 
