@@ -5,6 +5,7 @@ import { assertOrgAdmin } from '@/lib/auth/assert'
 import { orgIdBySlug } from '@/lib/calendar-fetch'
 import { logActivity } from '@/lib/activity'
 import { addDays } from '@/lib/opportunity-detail'
+import { getOpsPlanCore, clearReadyConfirmedCore } from '@/lib/ops/event-ops'
 import type { Event } from '@/lib/types'
 
 // NOTE: this is a 'use server' module — every VALUE export must be an async
@@ -96,7 +97,7 @@ export async function bulkRescheduleAgenda(
 
   const orgId = await orgIdBySlug(orgSlug)
   if (!orgId) throw new Error('Org not found')
-  await assertOrgAdmin(orgId)
+  const member = await assertOrgAdmin(orgId)
 
   const failures: AgendaMoveFailure[] = []
   const touched: Array<{ leadId: string; date: string }> = []
@@ -105,7 +106,7 @@ export async function bulkRescheduleAgenda(
   for (const m of moves) {
     try {
       const leadId = m.kind === 'event'
-        ? await moveBookedJob(orgId, m.id, m.date, m.hours)
+        ? await moveBookedJob(orgId, m.id, m.date, member.uid, m.hours)
         : await moveHold(orgId, m.id, m.date)
       moved += 1
       if (leadId) touched.push({ leadId, date: m.date })
@@ -187,15 +188,29 @@ function leadsCol(orgId: string) {
  *
  * Firestore requires every read before every write inside a transaction, hence
  * the two gets up front.
+ *
+ * CONFIRM-READY (inc-2 P2, clearing path (c)): a moved date or a shifted
+ * working window invalidates the operator's "ready" attestation on the ops
+ * plan — this is the SECOND event date/hours write path in the repo (the first
+ * is updateEvent in actions/events.ts), and the trust contract must hold on
+ * both or the plan page keeps showing "Confirmed ready" for a date that moved.
+ * The clear runs POST-WRITE, mirroring the updateEvent hook: the business
+ * transaction commits first (clearReadyConfirmedCore opens its own transaction,
+ * so it cannot nest inside this one), and if the clear then fails the move
+ * stays applied and the error surfaces as this row's per-item failure — same
+ * visible-throw recovery contract as updateEvent, where the load-out staleness
+ * warning is the backstop. Only a REAL change clears: a same-day re-drop or a
+ * re-sent identical window must not eat the attestation.
  */
 async function moveBookedJob(
   orgId: string,
   eventId: string,
   date: string,
+  actorUid: string,
   hours?: { start: string; end: string },
 ): Promise<string | null> {
   const eventRef = eventsCol(orgId).doc(eventId)
-  return adminDb.runTransaction<string | null>(async (tx) => {
+  const { leadId, dateOrHoursChanged } = await adminDb.runTransaction<{ leadId: string | null; dateOrHoursChanged: boolean }>(async (tx) => {
     const eventSnap = await tx.get(eventRef)
     if (!eventSnap.exists) throw new Error('Job not found')
     const event = eventSnap.data() as Event
@@ -203,24 +218,56 @@ async function moveBookedJob(
     const leadRef = event.lead_id ? leadsCol(orgId).doc(event.lead_id) : null
     const leadSnap = leadRef ? await tx.get(leadRef) : null
 
+    // Field-wise real-change detection, mirroring the updateEvent hook. The
+    // window compare uses shiftEventWindow's OWN fallbacks (missing event_end
+    // reads as event_start) so backfilling an absent end on a same-day move is
+    // not mistaken for a reschedule. Hours compare FIELD-WISE, never by
+    // serialization: production Firestore returns map keys sorted ({end,
+    // start}) while callers send {start, end}, so JSON.stringify of IDENTICAL
+    // hours is unequal on prod and equal on the emulator. Absent `hours` means
+    // "window untouched" (a plain day move) — it never counts as a change.
+    const window = shiftEventWindow(event, date)
+    const prevStart = event.event_start ?? ''
+    const prevEnd = event.event_end ?? prevStart
+    const prevHours = event.hours ?? null
+    const hoursChanged =
+      hours !== undefined &&
+      (hours.start !== (prevHours?.start ?? null) || hours.end !== (prevHours?.end ?? null))
+    const dateOrHoursChanged =
+      window.event_start !== prevStart || window.event_end !== prevEnd || hoursChanged
+
     const now = new Date().toISOString()
     // The time-of-day write rides in the SAME update as the date write — a
     // retimed job that lost its date cascade would corrupt the radar just as
     // surely as a moved one.
-    tx.update(eventRef, { ...shiftEventWindow(event, date), ...(hours ? { hours } : {}), updated_at: now })
+    tx.update(eventRef, { ...window, ...(hours ? { hours } : {}), updated_at: now })
 
     // The cascade the radar depends on. Skipped only when there is genuinely no
     // opportunity document to write — never as an optimisation.
     if (leadRef && leadSnap?.exists) {
       tx.update(leadRef, { event_date: date, updated_at: now })
-      return event.lead_id ?? null
+      return { leadId: event.lead_id ?? null, dateOrHoursChanged }
     }
-    return null
+    return { leadId: null, dateOrHoursChanged }
   })
+
+  // Post-write clear, guarded the way the updateEvent hook guards: a cheap plan
+  // read first, so the common no-plan / not-yet-confirmed job never pays for a
+  // clearing transaction.
+  if (dateOrHoursChanged) {
+    const plan = await getOpsPlanCore(orgId, eventId)
+    if (plan?.ready_confirmed) {
+      await clearReadyConfirmedCore(orgId, eventId, actorUid)
+    }
+  }
+
+  return leadId
 }
 
 /** A tentative hold has no Event (buildCalendarFeed suppresses the lead row as
- *  soon as any event references it), so `Lead.event_date` is the whole fact. */
+ *  soon as any event references it), so `Lead.event_date` is the whole fact.
+ *  No confirm-ready handling here BY CONSTRUCTION: ops plans hang off an Event
+ *  document (`orgs/{org}/events/{id}/ops/plan`), and a hold has none. */
 async function moveHold(orgId: string, leadId: string, date: string): Promise<string | null> {
   const leadRef = leadsCol(orgId).doc(leadId)
   return adminDb.runTransaction<string | null>(async (tx) => {
