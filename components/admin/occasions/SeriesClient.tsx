@@ -30,10 +30,18 @@ function fmtMoney(n: number): string {
  *  'beyond_cap' = never read — the day sits past the 30-day rollup. Distinct
  *  from 'unknown' on purpose: nothing failed, and the copy must say so. */
 export type SeriesDayMoney =
-  | { state: 'closed'; sales: number; fee: number; net: number; consumables?: number }
+  /** `imported` (inc-3 B3): sales_source === 'square_csv' — imported money is
+   *  labeled as imported at every render, this strip included. */
+  | { state: 'closed'; sales: number; fee: number; net: number; consumables?: number; imported?: boolean }
   | { state: 'none' }
   | { state: 'unknown' }
   | { state: 'beyond_cap' }
+
+/** Fine-print provenance marker beside a closed day's equation (B3). */
+function importedMark(m: Extract<SeriesDayMoney, { state: 'closed' }>): React.ReactNode {
+  if (!m.imported) return null
+  return <span className="text-xs" title="Sales imported from a Square export"> · Square</span>
+}
 
 /** "sales − fee = net" cell for one day row; null = render nothing. */
 function dayMoneyCell(m: SeriesDayMoney | undefined, dayPast: boolean): React.ReactNode {
@@ -63,7 +71,7 @@ function dayMoneyCell(m: SeriesDayMoney | undefined, dayPast: boolean): React.Re
         className="text-sm tabular-nums text-muted-foreground"
         title={costs > 0 ? `${fmtMoney(m.sales)} sales − ${fmtMoney(m.fee)} booth fee − ${fmtMoney(costs)} recorded consumables` : undefined}
       >
-        {fmtMoney(m.sales)} − {fmtMoney(m.fee)}{costs > 0 && <> − {fmtMoney(costs)}</>} = {net}
+        {fmtMoney(m.sales)} − {fmtMoney(m.fee)}{costs > 0 && <> − {fmtMoney(costs)}</>} = {net}{importedMark(m)}
       </span>
     )
   }
@@ -72,7 +80,7 @@ function dayMoneyCell(m: SeriesDayMoney | undefined, dayPast: boolean): React.Re
       className="text-sm tabular-nums text-muted-foreground"
       title={costs > 0 ? `${fmtMoney(m.sales)} sales − ${fmtMoney(costs)} recorded consumables` : undefined}
     >
-      net {net}
+      net {net}{importedMark(m)}
     </span>
   )
 }

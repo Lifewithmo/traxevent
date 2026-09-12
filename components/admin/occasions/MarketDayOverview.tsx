@@ -10,7 +10,7 @@ function money(n: number): string {
 }
 
 export function MarketDayOverview({
-  orgSlug, event, series, today, isAdmin, closeoutNet,
+  orgSlug, event, series, today, isAdmin, closeoutNet, salesImported = false,
 }: {
   orgSlug: string
   event: Event
@@ -22,6 +22,9 @@ export function MarketDayOverview({
   /** Net for the day when saved sales exist (any saved sales counts — Mark-complete
    *  optional), computed through marketDayCloseoutSummary; null = not closed out. */
   closeoutNet: number | null
+  /** Inc-3 B3: sales_source === 'square_csv' — imported money is labeled as
+   *  imported at every render, this tile included. */
+  salesImported?: boolean
 }) {
   const fee = event.booth_fee ?? 0
   const dayArrived = today >= event.event_start.slice(0, 10)
@@ -46,7 +49,8 @@ export function MarketDayOverview({
           Net {money(closeoutNet)}
         </p>
         <p className="text-sm text-muted-foreground">
-          {fee > 0 ? `after the ${money(fee)} booth fee` : 'no booth fee'} ·{' '}
+          {fee > 0 ? `after the ${money(fee)} booth fee` : 'no booth fee'}
+          {salesImported && <> · sales imported from Square</>} ·{' '}
           <Link href={`/${orgSlug}/${event.slug}/closeout`} className="underline">view</Link>
         </p>
       </div>

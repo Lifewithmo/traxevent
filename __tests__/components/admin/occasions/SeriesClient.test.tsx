@@ -120,6 +120,24 @@ describe('SeriesClient season money', () => {
     expect(screen.getByText(/over 1 day · 1 of 1 day positive/)).toBeInTheDocument()
   })
 
+  // Inc-3 B3: imported money is labeled as imported at every render — the
+  // season strip included; typed days stay unmarked.
+  it('marks a Square-imported day and leaves typed days unmarked', () => {
+    render(
+      <SeriesClient
+        orgId="org-1" orgSlug="acme" series={SERIES} days={THREE_DAYS} isAdmin
+        today="2026-08-23"
+        money={{
+          d1: { state: 'closed', sales: 180, fee: 45, net: 135, imported: true },
+          d2: { state: 'closed', sales: 200, fee: 45, net: 155 },
+          d3: { state: 'none' },
+        }}
+      />
+    )
+    expect(screen.getByTestId('day-d1')).toHaveTextContent('$180 − $45 = $135 · Square')
+    expect(screen.getByTestId('day-d2').textContent).not.toMatch(/Square/)
+  })
+
   it('nudges past unclosed days, leaves future days quiet, never fakes $0 on a failed read', () => {
     const days = [
       { ...THREE_DAYS[0] },                                     // d1 past, active
