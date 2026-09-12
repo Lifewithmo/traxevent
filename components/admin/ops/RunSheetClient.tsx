@@ -55,6 +55,9 @@ export interface RunSheetClientProps {
   confirmedByName: string | null
   /** Org back-plan buffers; absent fields fall back to the constants. */
   buffers?: OpsBuffers
+  /** Per-event override (OpsRequirements.buffers, inc-3 S3.1) — per-field
+   *  precedence event → org → constants inside resolveBuffers. */
+  eventBuffers?: OpsBuffers
 }
 
 const ANCHOR_SOURCE_HINT: Record<AnchorTime['label'], string> = {
@@ -202,8 +205,8 @@ export function RunSheetClient(props: RunSheetClientProps) {
     }
   }
 
-  const backPlan = props.anchor ? backPlanFromAnchor(props.anchor.hhmm, props.buffers) : null
-  const bufferLabel = bufferAssumptionLabel(props.buffers)
+  const backPlan = props.anchor ? backPlanFromAnchor(props.anchor.hhmm, props.buffers, props.eventBuffers) : null
+  const bufferLabel = bufferAssumptionLabel(props.buffers, props.eventBuffers)
 
   // Attestation microcopy (P2): the confirm button names the facts on screen
   // that the tap attests to — live checklist state, load count, the anchor and

@@ -3,7 +3,7 @@
 import { assertEventPage, assertOrgAdmin } from '@/lib/auth/assert'
 import {
   getOpsPlanCore, instantiateOpsPlanCore, updateOpsRequirementsCore,
-  toggleListItemCore, bulkSetListCheckedCore, recomputeOpsListsCore,
+  toggleListItemCore, setListItemNoteCore, bulkSetListCheckedCore, recomputeOpsListsCore,
   completeChecklistStepCore, toggleDeadlineCore, acknowledgeReviewCore,
   confirmReadyCore, sendRunSheetCore,
   type InstantiateOpsPlanInput,
@@ -58,6 +58,17 @@ export async function toggleListItem(
 ): Promise<void> {
   await assertEventPage(orgId, eventId, 'ops')
   return toggleListItemCore(orgId, eventId, list, resourceId, checked, unit)
+}
+
+/** Per-item shelf note (inc-3 S3.3) — LOADOUT-ONLY editing (B5); the run and
+ *  both prints display notes read-only. Same gate + addressing as
+ *  toggleListItem; a blank note clears the field. */
+export async function setListItemNote(
+  orgId: string, eventId: string,
+  list: 'shopping_list' | 'packing_list', resourceId: string, note: string, unit?: string,
+): Promise<void> {
+  await assertEventPage(orgId, eventId, 'ops')
+  return setListItemNoteCore(orgId, eventId, list, resourceId, note, unit)
 }
 
 /** Load-out "check all" — one transaction for the whole group, not N toggles. */

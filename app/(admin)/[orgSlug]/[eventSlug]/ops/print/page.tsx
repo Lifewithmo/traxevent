@@ -52,6 +52,8 @@ function List({ title, items }: { title: string; items: OpsListItem[] }) {
               <span className="flex-1">
                 {i.name}
                 {i.needs_conversion && <span className="ml-2 text-xs text-neutral-600">(check by eye)</span>}
+                {/* Shelf note (inc-3 S3.3) — read-only on paper, like the run. */}
+                {i.note && <span className="block text-xs text-neutral-600">{i.note}</span>}
               </span>
               <span className="tabular-nums">{i.unit ? `${i.qty} ${i.unit}` : `× ${i.qty}`}</span>
             </li>

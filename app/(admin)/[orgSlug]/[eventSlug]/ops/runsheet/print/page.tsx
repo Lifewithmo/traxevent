@@ -59,6 +59,9 @@ export default async function RunSheetPrintPage({
     ),
   ])
   const buffers = org?.ops_buffers
+  // Per-event override (inc-3 S3.1): unthreaded, this paper would print chips
+  // that disagree with the live sheet (the B5-named miss).
+  const eventBuffers = plan?.requirements.buffers
 
   const itinerary = groupItineraryByDay(itineraryItems)
   const anchor = resolveAnchorTime({
@@ -66,7 +69,7 @@ export default async function RunSheetPrintPage({
     hoursStart: event.hours?.start,
     itinerary,
   })
-  const backPlan = anchor ? backPlanFromAnchor(anchor.hhmm, buffers) : null
+  const backPlan = anchor ? backPlanFromAnchor(anchor.hhmm, buffers, eventBuffers) : null
 
   const startDay = parseDay(event.event_start)
   const singleDay = !event.event_end || event.event_end === event.event_start
@@ -135,7 +138,7 @@ export default async function RunSheetPrintPage({
           <p className="mt-1 text-sm">
             Pack by <span className="font-semibold">{backPlan.packBy}</span> · Leave by{' '}
             <span className="font-semibold">{backPlan.leaveBy}</span>{' '}
-            <span className="text-neutral-600">({bufferAssumptionLabel(buffers)})</span>
+            <span className="text-neutral-600">({bufferAssumptionLabel(buffers, eventBuffers)})</span>
           </p>
         )}
         {event.location && (

@@ -412,6 +412,12 @@ describe('sendRunSheetEmail', () => {
     expect(html).toContain('assumes 75m pack · 15m drive')
   })
 
+  it('captions with the per-event override source when eventBuffers are threaded (inc-3 S3.1)', async () => {
+    await sendRunSheetEmail({ ...base, eventBuffers: { drive_minutes: 90 } })
+    const html = emailsSendSpy.mock.calls[0][0].html as string
+    expect(html).toContain('assumes 50m pack · 90m drive · drive set for this job')
+  })
+
   it('escapes operator-entered content', async () => {
     await sendRunSheetEmail({ ...base, venue: { name: '<script>x</script>' }, contacts: [] })
     const html = emailsSendSpy.mock.calls[0][0].html as string

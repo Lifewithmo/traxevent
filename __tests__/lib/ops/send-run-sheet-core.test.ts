@@ -89,6 +89,19 @@ describe('sendRunSheetCore', () => {
     expect(call.eventSlug).toBe('smith-wedding-2026')
   })
 
+  it('threads the per-event buffer override into the back-plan AND the label params (inc-3 S3.1 — the evening email must not disagree with the screen)', async () => {
+    planDocGet.mockResolvedValue({
+      exists: true,
+      data: () => ({ ...PLAN, requirements: { ...PLAN.requirements, buffers: { drive_minutes: 90 } } }),
+    })
+    await sendRunSheetCore('o1', 'e1', { email: 'owner@demo.co' })
+    const call = vi.mocked(sendRunSheetEmail).mock.calls[0][0]
+    // 3:00 PM − 90m EVENT drive = 1:30 PM leave; − 50m ORG pack = 12:40 PM pack.
+    expect(call.backPlan).toEqual({ packBy: '12:40 PM', leaveBy: '1:30 PM' })
+    expect(call.buffers).toEqual({ pack_minutes: 50, drive_minutes: 20 })
+    expect(call.eventBuffers).toEqual({ drive_minutes: 90 })
+  })
+
   it('a failed domain lookup must not block the send — falls back to the default from', async () => {
     vi.mocked(getVerifiedSendingDomainCore).mockRejectedValueOnce(new Error('firestore down'))
     await sendRunSheetCore('o1', 'e1', { email: 'op@demo.co' })

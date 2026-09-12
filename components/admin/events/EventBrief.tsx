@@ -82,9 +82,9 @@ export function EventBrief({ orgSlug, eventSlug, event, kpis, today, isAdmin, al
     hoursStart: event.hours?.start,
     firstItineraryTime: kpis.firstItineraryTime,
   })
-  // Org buffers (inc-2 S4.3) thread through the kpis; the constants remain the
-  // fallback inside resolveBuffers when the org never set any.
-  const chips = time && phase !== 'wrapped' ? backPlanChips(time.hhmm, kpis.buffers) : null
+  // Org buffers (inc-2 S4.3) + the per-event override (inc-3 S3.1) thread
+  // through the kpis; resolveBuffers applies event → org → constants per field.
+  const chips = time && phase !== 'wrapped' ? backPlanChips(time.hhmm, kpis.buffers, kpis.event_buffers) : null
   const contacts = (event.key_contacts ?? []).filter((c) => c.phone || c.email).slice(0, 3)
   const settingsHref = `/${orgSlug}/${eventSlug}/settings`
   const day = formatJobDay(event.event_start)
@@ -204,7 +204,7 @@ export function EventBrief({ orgSlug, eventSlug, event, kpis, today, isAdmin, al
               <span className="font-medium">Pack by {chips.packBy}</span>
               <Sep pad />
               <span className="font-medium">Leave by {chips.leaveBy}</span>
-              <span className="ml-2 text-xs text-muted-foreground">{bufferAssumptionLabel(kpis.buffers)}</span>
+              <span className="ml-2 text-xs text-muted-foreground">{bufferAssumptionLabel(kpis.buffers, kpis.event_buffers)}</span>
             </p>
           )}
         </section>

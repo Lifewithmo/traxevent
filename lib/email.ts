@@ -462,6 +462,9 @@ export interface RunSheetEmailParams {
   anchor: { label: string; display: string } | null
   backPlan: { packBy: string; leaveBy: string } | null
   buffers?: { pack_minutes?: number; drive_minutes?: number }
+  /** Per-event override (OpsRequirements.buffers, inc-3 S3.1) — threaded so the
+   *  caption below resolves with the SAME precedence that produced backPlan. */
+  eventBuffers?: { pack_minutes?: number; drive_minutes?: number }
   venue: { name: string; address?: string } | null
   contacts: Array<{ name: string; role: string; phone?: string; email?: string }>
   siteNeeds: string[]
@@ -490,7 +493,7 @@ export async function sendRunSheetEmail(params: RunSheetEmailParams): Promise<vo
   // re-derivation whose fallbacks/semantics could silently drift from the
   // emailed Pack-by/Leave-by times ("the label can never disagree with the
   // math", lib/ops/anchor.ts).
-  const bufferLabel = bufferAssumptionLabel(params.buffers)
+  const bufferLabel = bufferAssumptionLabel(params.buffers, params.eventBuffers)
 
   const section = (title: string, body: string) => `
     <h2 style="color:#64748B;font-size:12px;text-transform:uppercase;letter-spacing:.05em;margin:20px 0 4px">${title}</h2>

@@ -23,13 +23,15 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { Check, Loader2 } from 'lucide-react'
+import { Check, Loader2, NotebookPen } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { EmptyState } from '@/components/ui/empty-state'
 import { StatusPill } from '@/components/ui/status-pill'
-import { toggleListItem, bulkSetListChecked, recomputeOpsLists } from '@/actions/event-ops'
+import { toggleListItem, setListItemNote, bulkSetListChecked, recomputeOpsLists } from '@/actions/event-ops'
 import { useSerializedCheckWrites } from '@/components/admin/ops/useSerializedCheckWrites'
 import { computeReadiness } from '@/lib/ops/readiness'
+import { OPS_NOTE_MAX_CHARS } from '@/lib/event-ui'
 import { cn } from '@/lib/utils'
 import type { OpsPlan, OpsListItem } from '@/lib/types'
 
@@ -88,6 +90,44 @@ export function LoadoutClient(props: LoadoutClientProps) {
   // run); the semantics are documented there.
   const writes = useSerializedCheckWrites()
   const { pending, failed } = writes
+  // Per-item shelf notes (inc-3 S3.3) — the expand-row idiom (shopping run's
+  // chevron precedent): one row's editor open at a time, explicit Save (a
+  // phone surface — blur-commit misfires on scroll), visible failure inline.
+  const [noteOpen, setNoteOpen] = useState<string | null>(null)
+  const [noteDraft, setNoteDraft] = useState('')
+  const [noteSaving, setNoteSaving] = useState(false)
+  const [noteError, setNoteError] = useState<string | null>(null)
+
+  function openNoteEditor(list: ListKey, item: OpsListItem) {
+    setNoteOpen(keyOf(list, item))
+    setNoteDraft(item.note ?? '')
+    setNoteError(null)
+  }
+
+  async function saveNote(list: ListKey, item: OpsListItem) {
+    const trimmed = noteDraft.trim()
+    setNoteSaving(true)
+    setNoteError(null)
+    try {
+      await setListItemNote(orgId, eventId, list, item.resource_id, trimmed, item.unit)
+      // Server truth reached the doc — mirror it locally (blank ⇒ note removed).
+      setPlan((p) => (p ? {
+        ...p,
+        [list]: p[list].map((x) => {
+          if (!sameItem(x, item)) return x
+          const { note: _dropped, ...rest } = x
+          void _dropped
+          return trimmed ? { ...rest, note: trimmed } : rest
+        }),
+      } : p))
+      setNoteOpen(null)
+    } catch (err: unknown) {
+      // Visible failure, editor stays open with the draft — never a silent drop.
+      setNoteError(err instanceof Error ? err.message : 'Didn’t save')
+    } finally {
+      setNoteSaving(false)
+    }
+  }
 
   useEffect(() => { setLoadedAt(new Date()) }, [])
 
@@ -269,38 +309,75 @@ export function LoadoutClient(props: LoadoutClientProps) {
               const key = keyOf(list, item)
               const isPending = pending.has(key)
               const isFailed = failed.has(key)
+              const isNoteOpen = noteOpen === key
               return (
                 <li key={`${item.resource_id}|${item.unit ?? ''}`}>
-                  {/* The whole row is the check target (≥44px, one-handed). */}
-                  <button
-                    type="button"
-                    role="checkbox"
-                    aria-checked={item.checked}
-                    aria-label={item.name}
-                    disabled={busy}
-                    onClick={() => handleRowTap(list, item)}
-                    className="flex min-h-11 w-full items-center gap-3 rounded-lg px-1 py-1.5 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50"
-                  >
-                    <span
-                      aria-hidden
-                      className={cn(
-                        'grid size-6 shrink-0 place-items-center rounded-md border transition-colors',
-                        item.checked ? 'border-primary bg-primary text-primary-foreground' : 'border-input bg-background',
-                      )}
+                  <div className="flex items-center gap-1">
+                    {/* The whole row is the check target (≥44px, one-handed). */}
+                    <button
+                      type="button"
+                      role="checkbox"
+                      aria-checked={item.checked}
+                      aria-label={item.name}
+                      disabled={busy}
+                      onClick={() => handleRowTap(list, item)}
+                      className="flex min-h-11 min-w-0 flex-1 items-center gap-3 rounded-lg px-1 py-1.5 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50"
                     >
-                      {item.checked && <Check className="size-4" />}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className={cn('block truncate text-base leading-snug', item.checked ? 'text-muted-foreground line-through' : 'text-foreground')}>
-                        {item.name}
+                      <span
+                        aria-hidden
+                        className={cn(
+                          'grid size-6 shrink-0 place-items-center rounded-md border transition-colors',
+                          item.checked ? 'border-primary bg-primary text-primary-foreground' : 'border-input bg-background',
+                        )}
+                      >
+                        {item.checked && <Check className="size-4" />}
                       </span>
-                      {item.needs_conversion && (
-                        <StatusPill tone="pending" className="mt-0.5">check by eye</StatusPill>
+                      <span className="min-w-0 flex-1">
+                        <span className={cn('block truncate text-base leading-snug', item.checked ? 'text-muted-foreground line-through' : 'text-foreground')}>
+                          {item.name}
+                        </span>
+                        {/* Shelf note (inc-3 S3.3): always visible — the note IS
+                            the honest substitution record, never behind a tap.
+                            Deliberately not struck through on checked. */}
+                        {item.note && (
+                          <span className="block truncate text-xs text-muted-foreground">{item.note}</span>
+                        )}
+                        {item.needs_conversion && (
+                          <StatusPill tone="pending" className="mt-0.5">check by eye</StatusPill>
+                        )}
+                      </span>
+                      {isPending && <span aria-hidden className="size-1.5 shrink-0 animate-pulse rounded-full bg-primary" />}
+                      <span className="shrink-0 text-sm tabular-nums text-muted-foreground">{qtyLabel(item)}</span>
+                    </button>
+                    {/* Expand-row note editor toggle (shopping run's chevron idiom). */}
+                    <Button size="icon-touch" variant="ghost" aria-expanded={isNoteOpen}
+                      aria-label={`${item.note ? 'Edit' : 'Add'} note for ${item.name}`}
+                      onClick={() => (isNoteOpen ? setNoteOpen(null) : openNoteEditor(list, item))}>
+                      <NotebookPen className={cn('size-4', item.note && 'text-primary')} />
+                    </Button>
+                  </div>
+                  {isNoteOpen && (
+                    <div className="mb-2 ml-9 mr-1 space-y-1">
+                      <div className="flex items-center gap-2">
+                        <Input
+                          aria-label={`Note for ${item.name}`}
+                          value={noteDraft}
+                          maxLength={OPS_NOTE_MAX_CHARS}
+                          placeholder="Add note… e.g. subbed with oat milk"
+                          disabled={noteSaving}
+                          onChange={(e) => setNoteDraft(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void saveNote(list, item) } }}
+                        />
+                        <Button size="touch" variant="outline" disabled={noteSaving}
+                          onClick={() => void saveNote(list, item)}>
+                          {noteSaving ? (<><Loader2 className="animate-spin" aria-hidden /> Saving…</>) : 'Save'}
+                        </Button>
+                      </div>
+                      {noteError && (
+                        <p className="text-sm font-medium text-[var(--danger-fg)]">{noteError}</p>
                       )}
-                    </span>
-                    {isPending && <span aria-hidden className="size-1.5 shrink-0 animate-pulse rounded-full bg-primary" />}
-                    <span className="shrink-0 text-sm tabular-nums text-muted-foreground">{qtyLabel(item)}</span>
-                  </button>
+                    </div>
+                  )}
                   {isFailed && (
                     <div className="mb-1 flex items-center justify-between gap-2 rounded-lg bg-[var(--danger-bg)] pl-3">
                       <p className="text-sm font-medium text-[var(--danger-fg)]">Didn&apos;t save</p>

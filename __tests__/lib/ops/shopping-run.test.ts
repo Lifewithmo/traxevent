@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import {
   RUN_CAP, RUN_DAYS,
-  carryExcludedIds, computeShoppingRun, constituentKey, parseRunDays, selectShoppingRunWindow, shoppingRunStats,
+  buildShoppingRunCsv, carryExcludedIds, computeShoppingRun, constituentKey, parseRunDays,
+  selectShoppingRunWindow, shoppingRunCsvFilename, shoppingRunStats,
   type ShoppingRunPair,
 } from '@/lib/ops/shopping-run'
 import { selectHorizonWindow } from '@/lib/ops/readiness-horizon'
@@ -275,5 +276,77 @@ describe('shoppingRunStats', () => {
 
   it('reports empty honestly', () => {
     expect(shoppingRunStats([])).toEqual({ unchecked: 0, total: 0, jobs: 0 })
+  })
+})
+
+describe('shelf notes on the run (inc-3 S3.3 — read-only display data)', () => {
+  it('carries each item note onto its constituent, merged rows included', () => {
+    const bags = resource({ id: 'r-ice', name: 'Ice', unit: 'bag' })
+    const a = pair(event({ id: 'a', name: 'Smith Wedding' }), [
+      { resource_id: 'r-ice', name: 'Ice', qty: 3, unit: 'bag', checked: false, note: 'crushed only' },
+    ])
+    const b = pair(event({ id: 'b', name: 'Corp Party' }), [
+      { resource_id: 'r-ice', name: 'Ice', qty: 2, unit: 'bag', checked: false },
+    ])
+    const rows = computeShoppingRun([a, b], [bags])
+    expect(rows).toHaveLength(1)
+    const notes = rows[0].constituents.map((c) => c.note)
+    expect(notes).toContain('crushed only')
+    // The un-noted constituent carries NO note key — never an empty string.
+    expect(rows[0].constituents.find((c) => c.event_id === 'b')?.note).toBeUndefined()
+  })
+})
+
+describe('buildShoppingRunCsv (inc-3 S3.2 — pure, client-side blob source)', () => {
+  const bags = resource({ id: 'r-ice', name: 'Ice', unit: 'bag' })
+
+  it('emits header + one line per row with display qty/unit, job attribution, and notes', () => {
+    const a = pair(event({ id: 'a', name: 'Smith Wedding' }), [
+      { resource_id: 'r-ice', name: 'Ice', qty: 3, unit: 'bag', checked: true, note: 'crushed only' },
+    ])
+    const b = pair(event({ id: 'b', name: 'Corp Party' }), [
+      { resource_id: 'r-ice', name: 'Ice', qty: 2, unit: 'bag', checked: false },
+    ])
+    const csv = buildShoppingRunCsv(computeShoppingRun([a, b], [bags]))
+    const [header, line] = csv.split('\n')
+    expect(header).toBe('Item,Qty,Unit,Canonical Qty,Canonical Unit,Bought,Jobs,Notes')
+    expect(line).toBe('"Ice","5","bag","","","partly","Smith Wedding; Corp Party","Smith Wedding: crushed only"')
+  })
+
+  it('carries the CANONICAL totals for converted rows — the vendor-books hook, activated', () => {
+    const milk = resource({ id: 'r-milk', name: 'Milk', unit: 'gal', dimension: 'volume' })
+    const a = pair(event({ id: 'a' }), [{ resource_id: 'r-milk', name: 'Milk', qty: 1, unit: 'gal', checked: false }])
+    const csv = buildShoppingRunCsv(computeShoppingRun([a], [milk]))
+    const line = csv.split('\n')[1]
+    const cells = line.split('","').map((c) => c.replace(/^"|"$/g, ''))
+    expect(cells[0]).toBe('Milk')
+    expect(Number(cells[3])).toBeGreaterThan(0)  // canonical qty present
+    expect(cells[4]).toBe('ml')                  // canonical unit
+  })
+
+  it('escapes quotes, commas, and newlines the lib/csv.ts way (every cell quoted, quotes doubled)', () => {
+    const weird = resource({ id: 'r-x', name: 'Beans, "dark" roast', unit: 'bag' })
+    const a = pair(event({ id: 'a', name: 'A' }), [
+      { resource_id: 'r-x', name: 'Beans, "dark" roast', qty: 1, unit: 'bag', checked: false, note: 'line1\nline2, "quoted"' },
+    ])
+    const csv = buildShoppingRunCsv(computeShoppingRun([a], [weird]))
+    expect(csv).toContain('"Beans, ""dark"" roast"')
+    expect(csv).toContain('"line1\nline2, ""quoted"""')
+  })
+
+  it('single-job notes are NOT event-prefixed; the empty run is just the header', () => {
+    const a = pair(event({ id: 'a', name: 'Solo Job' }), [
+      { resource_id: 'r-ice', name: 'Ice', qty: 1, unit: 'bag', checked: false, note: 'crushed only' },
+    ])
+    const csv = buildShoppingRunCsv(computeShoppingRun([a], [bags]))
+    expect(csv.split('\n')[1]).toContain('"crushed only"')
+    expect(csv).not.toContain('Solo Job: crushed only')
+    expect(buildShoppingRunCsv([])).toBe('Item,Qty,Unit,Canonical Qty,Canonical Unit,Bought,Jobs,Notes')
+  })
+})
+
+describe('shoppingRunCsvFilename', () => {
+  it('names the file by window + run date (the run is cross-event — no single slug exists)', () => {
+    expect(shoppingRunCsvFilename(7, '2026-09-12')).toBe('shopping-run-7d-2026-09-12.csv')
   })
 })

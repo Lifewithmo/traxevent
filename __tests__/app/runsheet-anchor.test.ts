@@ -129,6 +129,15 @@ describe('backPlanFromAnchor', () => {
   it('re-exports the CANONICAL label so chips and caption cannot disagree', () => {
     expect(bufferAssumptionLabel).toBe(uiBufferAssumptionLabel)
     expect(bufferAssumptionLabel()).toBe(`assumes ${PACK_MINUTES}m pack · ${DRIVE_MINUTES}m drive`)
-    expect(bufferAssumptionLabel({ pack_minutes: 50, drive_minutes: 20 })).toBe('assumes 50m pack · 20m drive')
+    // inc-3: org-sourced numbers name their source.
+    expect(bufferAssumptionLabel({ pack_minutes: 50, drive_minutes: 20 })).toBe('assumes 50m pack · 20m drive · org default')
+  })
+
+  // ── Per-event override (inc-3 S3.1): third arg threads to resolveBuffers ───
+
+  it('back-plans with the per-event override winning per FIELD over the org', () => {
+    // 3:00 PM − 90m event drive = 1:30 PM leave; − 50m ORG pack = 12:40 PM pack.
+    expect(backPlanFromAnchor('15:00', { pack_minutes: 50, drive_minutes: 20 }, { drive_minutes: 90 }))
+      .toEqual({ packBy: '12:40 PM', leaveBy: '1:30 PM' })
   })
 })

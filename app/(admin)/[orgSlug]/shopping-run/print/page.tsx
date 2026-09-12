@@ -119,7 +119,12 @@ export default async function ShoppingRunPrintPage({
                 {row.constituents.map((c) => (
                   <li key={`${c.event_id}|${c.unit ?? ''}`} className="flex items-baseline gap-2">
                     <span>{c.checked ? '☑' : '☐'}</span>
-                    <span className="flex-1">{c.event_name} · {dayLabel(c.event_start)}</span>
+                    <span className="flex-1">
+                      {c.event_name} · {dayLabel(c.event_start)}
+                      {/* Shelf note (inc-3 S3.3) — read-only display; editing
+                          lives on the owning job's load-out (B5). */}
+                      {c.note && <span className="block italic">{c.note}</span>}
+                    </span>
                     <span className="tabular-nums">{c.unit ? `${c.qty} ${c.unit}` : `× ${c.qty}`}</span>
                   </li>
                 ))}

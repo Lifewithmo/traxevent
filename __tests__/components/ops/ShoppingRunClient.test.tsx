@@ -151,6 +151,48 @@ describe('ShoppingRunClient — per-row bulk failures', () => {
   })
 })
 
+describe('ShoppingRunClient — shelf notes + run CSV (inc-3 S3.2/S3.3)', () => {
+  it('displays notes READ-ONLY at buy time, job-attributed only when the row merges several jobs', () => {
+    render(<ShoppingRunClient {...baseProps({
+      jobs: [mkJob('e1', 'Wedding'), mkJob('e2', 'Corporate')],
+      pairs: [
+        mkPair('e1', 'Wedding', [{ ...milk(false), note: 'oat milk only' }, { ...cups(false), note: 'the 12oz ones' }]),
+        mkPair('e2', 'Corporate', [milk(false)]),
+      ],
+    })} />)
+    // Merged Milk row (2 jobs) → attributed; single-job Cups row → bare note.
+    expect(screen.getByText('Wedding: oat milk only')).toBeInTheDocument()
+    expect(screen.getByText('the 12oz ones')).toBeInTheDocument()
+    // Read-only surface: no note inputs anywhere on the run (B5 — editing
+    // lives on the owning job's load-out).
+    expect(document.querySelector('input')).toBeNull()
+  })
+
+  it('Export CSV builds a client-side blob named for the window + run day — no server call', () => {
+    const created: string[] = []
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+      created.push(this.download)
+    })
+    const createUrlSpy = vi.fn(() => 'blob:fake')
+    const revokeSpy = vi.fn()
+    vi.stubGlobal('URL', Object.assign(Object.create(URL), { createObjectURL: createUrlSpy, revokeObjectURL: revokeSpy }))
+
+    render(<ShoppingRunClient {...baseProps()} />)
+    fireEvent.click(screen.getByRole('button', { name: /Export CSV/ }))
+
+    expect(createUrlSpy).toHaveBeenCalledTimes(1)
+    expect(revokeSpy).toHaveBeenCalledWith('blob:fake')
+    expect(created).toHaveLength(1)
+    expect(created[0]).toMatch(/^shopping-run-7d-\d{4}-\d{2}-\d{2}\.csv$/)
+    // Nothing crossed the wire: the export is pure client mechanics.
+    expect(toggleListItem).not.toHaveBeenCalled()
+    expect(bulkSetRunChecked).not.toHaveBeenCalled()
+
+    clickSpy.mockRestore()
+    vi.unstubAllGlobals()
+  })
+})
+
 describe('ShoppingRunClient — exclusions ride the URL through window changes', () => {
   it('serializes the server-carried exclude list into every scope link, out-of-window ids included', () => {
     // 'far-job' was excluded in the 14-day view and sits outside the current

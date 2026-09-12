@@ -146,36 +146,73 @@ export const MAX_BUFFER_MINUTES = 480
  */
 export const SERIES_ROLLUP_CAP = 30
 
-/** Org-default pack/drive buffers (Org.ops_buffers shape); absent fields fall back to the constants. */
+/** Max characters for an operator-authored per-item shelf note (inc-3 S3.3).
+ *  Lives here (client-safe) so the loadout editor's maxLength, its pre-flight
+ *  check, and the server core (lib/ops/event-ops.ts) share ONE number. */
+export const OPS_NOTE_MAX_CHARS = 200
+
+/** Org-default pack/drive buffers (Org.ops_buffers shape) — ALSO the shape of
+ *  the per-event override (OpsRequirements.buffers, inc-3 S3.1); absent fields
+ *  fall back through the precedence chain below. */
 export interface OpsBuffers {
   pack_minutes?: number
   drive_minutes?: number
 }
 
-/** Effective buffer minutes after fallback — single source for chips and labels. */
-export function resolveBuffers(buffers?: OpsBuffers): { pack: number; drive: number } {
-  return {
-    pack: buffers?.pack_minutes && buffers.pack_minutes > 0 ? buffers.pack_minutes : PACK_MINUTES,
-    drive: buffers?.drive_minutes && buffers.drive_minutes > 0 ? buffers.drive_minutes : DRIVE_MINUTES,
-  }
-}
-
-/** The assumption caption rendered wherever the chips render, e.g. "assumes 50m pack · 20m drive". */
-export function bufferAssumptionLabel(buffers?: OpsBuffers): string {
-  const { pack, drive } = resolveBuffers(buffers)
-  return `assumes ${pack}m pack · ${drive}m drive`
+/** A stored buffer field is usable iff it would survive the save-path
+ *  validation (actions/ops-buffers.ts + updateOpsRequirementsCore): a whole
+ *  1..MAX_BUFFER_MINUTES minutes. Anything else falls through to the next
+ *  precedence tier — a garbage stored value inherits, it never poisons chips. */
+function validBufferMinutes(n: number | undefined): number | undefined {
+  return n !== undefined && Number.isInteger(n) && n > 0 && n <= MAX_BUFFER_MINUTES ? n : undefined
 }
 
 /**
- * Back-planned 'Pack by / Leave by' from the resolved job time minus the org's
- * buffers (fixed 45m/30m defaults when unset) — always labeled as an assumption
- * via bufferAssumptionLabel. null when the time is malformed or back-planning
- * crosses midnight.
+ * Effective buffer minutes after per-FIELD precedence (inc-3 S3.1):
+ * event override → org default → constants. THE single resolution site — every
+ * chips/label call routes here, so the four render surfaces (job brief, run
+ * sheet, runsheet print, evening email) can never disagree. An event may
+ * override only drive and still inherit the org's pack.
  */
-export function backPlanChips(hhmm: string, buffers?: OpsBuffers): { packBy: string; leaveBy: string } | null {
+export function resolveBuffers(buffers?: OpsBuffers, eventBuffers?: OpsBuffers): { pack: number; drive: number } {
+  return {
+    pack: validBufferMinutes(eventBuffers?.pack_minutes) ?? validBufferMinutes(buffers?.pack_minutes) ?? PACK_MINUTES,
+    drive: validBufferMinutes(eventBuffers?.drive_minutes) ?? validBufferMinutes(buffers?.drive_minutes) ?? DRIVE_MINUTES,
+  }
+}
+
+/**
+ * The assumption caption rendered wherever the chips render. Extends the inc-2
+ * vocabulary ("assumes 50m pack · 20m drive") with an honest source qualifier
+ * (inc-3 S3.1): "· set for this job" / "· pack set for this job" / "· drive
+ * set for this job" when the event override supplies the number(s),
+ * "· org default" when the org's settings do, and the bare inc-2 wording when
+ * only the standard 45m/30m assumption is in play.
+ */
+export function bufferAssumptionLabel(buffers?: OpsBuffers, eventBuffers?: OpsBuffers): string {
+  const { pack, drive } = resolveBuffers(buffers, eventBuffers)
+  const base = `assumes ${pack}m pack · ${drive}m drive`
+  const eventPack = validBufferMinutes(eventBuffers?.pack_minutes) !== undefined
+  const eventDrive = validBufferMinutes(eventBuffers?.drive_minutes) !== undefined
+  if (eventPack && eventDrive) return `${base} · set for this job`
+  if (eventPack) return `${base} · pack set for this job`
+  if (eventDrive) return `${base} · drive set for this job`
+  const orgAny =
+    validBufferMinutes(buffers?.pack_minutes) !== undefined ||
+    validBufferMinutes(buffers?.drive_minutes) !== undefined
+  return orgAny ? `${base} · org default` : base
+}
+
+/**
+ * Back-planned 'Pack by / Leave by' from the resolved job time minus the
+ * resolved buffers (event override → org → fixed 45m/30m) — always labeled as
+ * an assumption via bufferAssumptionLabel. null when the time is malformed or
+ * back-planning crosses midnight.
+ */
+export function backPlanChips(hhmm: string, buffers?: OpsBuffers, eventBuffers?: OpsBuffers): { packBy: string; leaveBy: string } | null {
   const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm)
   if (!m) return null
-  const { pack: packMin, drive: driveMin } = resolveBuffers(buffers)
+  const { pack: packMin, drive: driveMin } = resolveBuffers(buffers, eventBuffers)
   const start = Number(m[1]) * 60 + Number(m[2])
   const leave = start - driveMin
   const pack = leave - packMin

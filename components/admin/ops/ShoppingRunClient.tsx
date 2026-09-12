@@ -26,7 +26,7 @@
 
 import { useMemo, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { Check, ChevronDown, Loader2, Minus, Printer } from 'lucide-react'
+import { Check, ChevronDown, Download, Loader2, Minus, Printer } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { StatusPill } from '@/components/ui/status-pill'
@@ -34,7 +34,8 @@ import { toggleListItem } from '@/actions/event-ops'
 import { bulkSetRunChecked } from '@/actions/shopping-run'
 import { useSerializedCheckWrites } from '@/components/admin/ops/useSerializedCheckWrites'
 import {
-  RUN_DAYS, RUN_WINDOW_OPTIONS, computeShoppingRun, constituentKey, shoppingRunStats,
+  RUN_DAYS, RUN_WINDOW_OPTIONS, buildShoppingRunCsv, computeShoppingRun, constituentKey,
+  shoppingRunCsvFilename, shoppingRunStats,
   type RunConstituent, type ShoppingRunPair, type ShoppingRunRow,
 } from '@/lib/ops/shopping-run'
 import { cn } from '@/lib/utils'
@@ -221,6 +222,21 @@ export function ShoppingRunClient(props: ShoppingRunClientProps) {
     } finally {
       setRowBusy(null)
     }
+  }
+
+  /** Run CSV export (inc-3 S3.2) — exactly the ReportsClient blob mechanics.
+   *  Exports the run AS DISPLAYED (current scope, live checked state). */
+  function handleExportCsv() {
+    const csv = buildShoppingRunCsv(rows)
+    const blob = new Blob([csv], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    // en-CA = YYYY-MM-DD in the OPERATOR's timezone — the file is named for
+    // the day they made the run, not the UTC day.
+    a.download = shoppingRunCsvFilename(days, new Date().toLocaleDateString('en-CA'))
+    a.click()
+    URL.revokeObjectURL(url)
   }
 
   function toggleExpanded(key: string) {
@@ -416,6 +432,18 @@ export function ShoppingRunClient(props: ShoppingRunClientProps) {
                     <ChevronDown className={cn('size-4 transition-transform', isOpen && 'rotate-180')} />
                   </Button>
                 </div>
+                {/* Shelf notes (inc-3 S3.3) — READ-ONLY here (B5: editing lives
+                    on the owning job's load-out): visible at buy time without a
+                    tap, job-attributed when the row merges several jobs. */}
+                {row.constituents.some((c) => c.note) && (
+                  <ul className="mb-1 ml-9 space-y-0.5">
+                    {row.constituents.filter((c) => c.note).map((c) => (
+                      <li key={`note-${constituentKey(c)}`} className="text-xs text-muted-foreground">
+                        {row.constituents.length > 1 ? `${c.event_name}: ${c.note}` : c.note}
+                      </li>
+                    ))}
+                  </ul>
+                )}
                 {error && (
                   <div className="mb-1 flex items-center justify-between gap-2 rounded-lg bg-[var(--danger-bg)] pl-3">
                     <p className="text-sm font-medium text-[var(--danger-fg)]">
@@ -489,9 +517,16 @@ export function ShoppingRunClient(props: ShoppingRunClientProps) {
             <p className="text-xs text-muted-foreground">
               Rounded up per job — may overstate the combined need. On-hand stock isn&apos;t netted out.
             </p>
-            <Button size="touch" variant="ghost" nativeButton={false} render={<Link href={printHref} />}>
-              <Printer data-icon="inline-start" aria-hidden className="size-4" /> Print
-            </Button>
+            <div className="flex items-center">
+              {/* Run CSV (inc-3 S3.2): client-side blob, ReportsClient's
+                  'Export missing CSV' mechanics — no server code. */}
+              <Button size="touch" variant="ghost" onClick={handleExportCsv}>
+                <Download data-icon="inline-start" aria-hidden className="size-4" /> Export CSV
+              </Button>
+              <Button size="touch" variant="ghost" nativeButton={false} render={<Link href={printHref} />}>
+                <Printer data-icon="inline-start" aria-hidden className="size-4" /> Print
+              </Button>
+            </div>
           </div>
         </footer>
       </div>

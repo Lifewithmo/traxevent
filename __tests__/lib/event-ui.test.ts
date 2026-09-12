@@ -11,6 +11,7 @@ import {
   formatEventDate,
   formatEventDateRange,
   parseDay,
+  resolveBuffers,
   resolveJobTime,
   zonedStampParts,
 } from '@/lib/event-ui'
@@ -129,8 +130,8 @@ describe('buffers (inc 2)', () => {
     expect(bufferAssumptionLabel({ pack_minutes: 0, drive_minutes: -5 })).toBe('assumes 45m pack · 30m drive')
   })
 
-  it('uses org buffers in chips and label', () => {
-    expect(bufferAssumptionLabel({ pack_minutes: 50, drive_minutes: 20 })).toBe('assumes 50m pack · 20m drive')
+  it('uses org buffers in chips and label — the label names the org as the source (inc-3)', () => {
+    expect(bufferAssumptionLabel({ pack_minutes: 50, drive_minutes: 20 })).toBe('assumes 50m pack · 20m drive · org default')
     expect(backPlanChips('14:00', { pack_minutes: 50, drive_minutes: 20 })).toEqual({
       packBy: '12:50 PM',
       leaveBy: '1:40 PM',
@@ -150,6 +151,53 @@ describe('buffers (inc 2)', () => {
     // max=/parse/error copy — both import THIS constant, so the ceiling
     // cannot drift between the pre-flight check and the server rejection.
     expect(MAX_BUFFER_MINUTES).toBe(480)
+  })
+})
+
+describe('per-event buffer overrides (inc-3 S3.1 — per-FIELD precedence event → org → constants)', () => {
+  const ORG = { pack_minutes: 50, drive_minutes: 20 }
+
+  it('an event may override only drive and still inherit the org pack', () => {
+    expect(resolveBuffers(ORG, { drive_minutes: 90 })).toEqual({ pack: 50, drive: 90 })
+    // 14:00 − 90 drive = 12:30 PM leave; − 50 pack = 11:40 AM pack.
+    expect(backPlanChips('14:00', ORG, { drive_minutes: 90 })).toEqual({
+      packBy: '11:40 AM',
+      leaveBy: '12:30 PM',
+    })
+  })
+
+  it('an event may override only pack and still inherit the org drive', () => {
+    expect(resolveBuffers(ORG, { pack_minutes: 15 })).toEqual({ pack: 15, drive: 20 })
+  })
+
+  it('a full event override wins both fields over the org', () => {
+    expect(resolveBuffers(ORG, { pack_minutes: 10, drive_minutes: 5 })).toEqual({ pack: 10, drive: 5 })
+  })
+
+  it('event override falls through to the CONSTANTS when the org never set buffers', () => {
+    expect(resolveBuffers(undefined, { drive_minutes: 90 })).toEqual({ pack: 45, drive: 90 })
+  })
+
+  it('invalid event fields inherit instead of poisoning (0, negative, fractional, over-ceiling)', () => {
+    expect(resolveBuffers(ORG, { pack_minutes: 0 })).toEqual({ pack: 50, drive: 20 })
+    expect(resolveBuffers(ORG, { drive_minutes: -5 })).toEqual({ pack: 50, drive: 20 })
+    expect(resolveBuffers(ORG, { pack_minutes: 12.5 })).toEqual({ pack: 50, drive: 20 })
+    expect(resolveBuffers(ORG, { drive_minutes: MAX_BUFFER_MINUTES + 1 })).toEqual({ pack: 50, drive: 20 })
+  })
+
+  it('the label stays honest about the source — extends the inc-2 vocabulary, per field', () => {
+    expect(bufferAssumptionLabel(ORG, { pack_minutes: 40, drive_minutes: 90 }))
+      .toBe('assumes 40m pack · 90m drive · set for this job')
+    expect(bufferAssumptionLabel(ORG, { drive_minutes: 90 }))
+      .toBe('assumes 50m pack · 90m drive · drive set for this job')
+    expect(bufferAssumptionLabel(ORG, { pack_minutes: 40 }))
+      .toBe('assumes 40m pack · 20m drive · pack set for this job')
+    // No event override → the org qualifier; nothing set → the bare standard line.
+    expect(bufferAssumptionLabel(ORG)).toBe('assumes 50m pack · 20m drive · org default')
+    expect(bufferAssumptionLabel(ORG, {})).toBe('assumes 50m pack · 20m drive · org default')
+    expect(bufferAssumptionLabel()).toBe('assumes 45m pack · 30m drive')
+    // An INVALID event field must not claim "set for this job" — it inherited.
+    expect(bufferAssumptionLabel(ORG, { drive_minutes: 0 })).toBe('assumes 50m pack · 20m drive · org default')
   })
 })
 

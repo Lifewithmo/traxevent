@@ -80,13 +80,15 @@ export interface BackPlan {
 
 /**
  * Runsheet naming for the shared back-plan math — see backPlanChips above.
- * `buffers` = the org's ops_buffers (inc-2 S4.3); absent fields fall back to
- * the PACK/DRIVE constants inside resolveBuffers, so constant behavior is the
- * default everywhere. Caption the chips with bufferAssumptionLabel(buffers)
- * (re-exported above) so the label can never disagree with the math.
+ * `buffers` = the org's ops_buffers (inc-2 S4.3); `eventBuffers` = the plan's
+ * per-event override (OpsRequirements.buffers, inc-3 S3.1). Per-field
+ * precedence event → org → the PACK/DRIVE constants happens inside
+ * resolveBuffers, so constant behavior is the default everywhere. Caption the
+ * chips with bufferAssumptionLabel(buffers, eventBuffers) (re-exported above)
+ * so the label can never disagree with the math.
  */
-export function backPlanFromAnchor(hhmm: string, buffers?: OpsBuffers): BackPlan | null {
-  return backPlanChips(hhmm, buffers)
+export function backPlanFromAnchor(hhmm: string, buffers?: OpsBuffers, eventBuffers?: OpsBuffers): BackPlan | null {
+  return backPlanChips(hhmm, buffers, eventBuffers)
 }
 
 export function mapsSearchUrl(query: string): string {

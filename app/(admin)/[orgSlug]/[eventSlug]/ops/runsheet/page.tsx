@@ -103,6 +103,7 @@ export default async function RunSheetPage({
       readyConfirmed={plan?.ready_confirmed ?? null}
       confirmedByName={confirmedByName}
       {...(buffers !== undefined ? { buffers } : {})}
+      {...(plan?.requirements.buffers !== undefined ? { eventBuffers: plan.requirements.buffers } : {})}
     />
   )
 }

@@ -89,6 +89,11 @@ export interface EventSpineKpis {
    *  loaded org doc (inc-2 S4.3) so the brief's Pack-by/Leave-by chips and
    *  their assumption label use the org's numbers; absent → the constants. */
   buffers?: OpsBuffers
+  /** Per-event pack/drive override (OpsRequirements.buffers, inc-3 S3.1) from
+   *  the spine's own plan read — the brief's chips must back-plan with the
+   *  same event → org → constants precedence as the run sheet and the evening
+   *  email. Absent when ops is gated off, there is no plan, or no override. */
+  event_buffers?: OpsBuffers
   /** Org.timezone (IANA), passed through verbatim like `buffers` (inc-3 S1.1)
    *  so the brief's confirm stamp renders org-local; absent → labeled UTC. */
   timezone?: string
@@ -302,6 +307,8 @@ export async function getEventSpineKpis({ orgId, eventId, event, allowedPages, i
     firstItineraryTime: null,
     blockers: [],
     ...(buffers !== undefined ? { buffers } : {}),
+    // Per-event override rides the plan the core already read — zero extra reads.
+    ...(core.plan?.requirements?.buffers !== undefined ? { event_buffers: core.plan.requirements.buffers } : {}),
     ...(timezone !== undefined ? { timezone } : {}),
   }
   if (!wantBriefFacts) return kpis

@@ -9,6 +9,7 @@ import { ListsCard } from '@/components/admin/ops/ListsCard'
 import { ChecklistsCard } from '@/components/admin/ops/ChecklistsCard'
 import { IssuesCard } from '@/components/admin/ops/IssuesCard'
 import type { OpsPlan, OpsIssue, WorkPackage } from '@/lib/types'
+import type { OpsBuffers } from '@/lib/event-ui'
 
 export interface OpsPlanClientProps {
   orgId: string
@@ -24,6 +25,9 @@ export interface OpsPlanClientProps {
   eventHeadcount?: number
   industryPackId?: string
   complianceWarnings: { name: string; expires_on: string }[]
+  /** Org.ops_buffers — what a blank per-event override inherits (inc-3 S3.1);
+   *  RequirementsCard shows it as the placeholder/helper, never re-reads it. */
+  orgBuffers?: OpsBuffers
 }
 
 // Renders under the shared event spine (sticky header + tabs), which owns the
@@ -63,6 +67,7 @@ export function OpsPlanClient(props: OpsPlanClientProps) {
           <RequirementsCard
             orgId={props.orgId} eventId={props.eventId}
             plan={plan} packages={props.packages} onPlanChange={setPlan}
+            orgBuffers={props.orgBuffers}
           />
           <DeadlinesCard orgId={props.orgId} eventId={props.eventId} plan={plan} industryPackId={props.industryPackId} onPlanChange={setPlan} />
           <ChecklistsCard orgId={props.orgId} eventId={props.eventId} plan={plan} onPlanChange={setPlan} />

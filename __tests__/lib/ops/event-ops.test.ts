@@ -29,7 +29,7 @@ import { listResourcesCore } from '@/lib/ops/resources'
 import { getTemplatesForOrg } from '@/lib/ops/checklist-templates'
 import {
   instantiateOpsPlanCore, updateOpsRequirementsCore, recomputeOpsListsCore,
-  confirmReadyCore, clearReadyConfirmedCore,
+  confirmReadyCore, clearReadyConfirmedCore, setListItemNoteCore,
 } from '@/lib/ops/event-ops'
 import type { OpsPlan } from '@/lib/types'
 
@@ -220,6 +220,91 @@ describe('updateOpsRequirementsCore', () => {
     await updateOpsRequirementsCore('o1', 'e1', { site_needs: ['power'] }, 'u2')
     expect(planUpdateSpy).not.toHaveBeenCalled()
   })
+
+  // ── Per-event buffer overrides (inc-3 S3.1) ────────────────────────────────
+
+  it('accepts a buffers override: writes it, logs it, does NOT re-derive lists', async () => {
+    planGetSpy.mockResolvedValue({ exists: true, data: () => existing })
+    await updateOpsRequirementsCore('o1', 'e1', { buffers: { drive_minutes: 90 } }, 'u2')
+    const payload = planUpdateSpy.mock.calls[0][0]
+    expect(payload['requirements.buffers']).toEqual({ drive_minutes: 90 })
+    expect(payload.shopping_list).toBeUndefined()
+    expect(payload.needs_review).toBeUndefined()
+    const entry = payload.change_log.elements[payload.change_log.elements.length - 1]
+    expect(entry).toMatchObject({ by: 'u2', field: 'buffers' })
+  })
+
+  it('SPEC PIN — a buffers edit is a logged requirements change, so inc-2\'s any-entry rule clears ready_confirmed', async () => {
+    planGetSpy.mockResolvedValue({
+      exists: true,
+      data: () => ({ ...existing, ready_confirmed: { at: 't0', by: 'u9' } }),
+    })
+    await updateOpsRequirementsCore('o1', 'e1', { buffers: { pack_minutes: 40, drive_minutes: 90 } }, 'u2')
+    expect(planUpdateSpy.mock.calls[0][0].ready_confirmed).toEqual(DELETE_SENTINEL)
+  })
+
+  it('a same-value buffers write short-circuits — no entry, no attestation clear (key order immune)', async () => {
+    planGetSpy.mockResolvedValue({
+      exists: true,
+      data: () => ({
+        ...existing,
+        // Reversed key order vs the client's normalized shape — Firestore maps
+        // have no stable order, and order alone must not count as a change.
+        requirements: { ...existing.requirements, buffers: { drive_minutes: 90, pack_minutes: 40 } },
+        ready_confirmed: { at: 't0', by: 'u9' },
+      }),
+    })
+    await updateOpsRequirementsCore('o1', 'e1', { buffers: { pack_minutes: 40, drive_minutes: 90 } }, 'u2')
+    expect(planUpdateSpy).not.toHaveBeenCalled()
+  })
+
+  it('clearing the override ({} after a set) IS a change — logged and attestation-clearing', async () => {
+    planGetSpy.mockResolvedValue({
+      exists: true,
+      data: () => ({
+        ...existing,
+        requirements: { ...existing.requirements, buffers: { drive_minutes: 90 } },
+        ready_confirmed: { at: 't0', by: 'u9' },
+      }),
+    })
+    await updateOpsRequirementsCore('o1', 'e1', { buffers: {} }, 'u2')
+    const payload = planUpdateSpy.mock.calls[0][0]
+    expect(payload['requirements.buffers']).toEqual({})
+    expect(payload.ready_confirmed).toEqual(DELETE_SENTINEL)
+  })
+
+  it('rejects invalid buffers with the SAME rule as the org action (integer 1..480), before any write', async () => {
+    planGetSpy.mockResolvedValue({ exists: true, data: () => existing })
+    for (const bad of [
+      { pack_minutes: 0 }, { drive_minutes: -5 }, { pack_minutes: 12.5 }, { drive_minutes: 481 },
+    ]) {
+      await expect(updateOpsRequirementsCore('o1', 'e1', { buffers: bad }, 'u2'))
+        .rejects.toThrow(/must be a whole number of minutes between 1 and 480/)
+    }
+    // @ts-expect-error unknown key at runtime
+    await expect(updateOpsRequirementsCore('o1', 'e1', { buffers: { pack: 30 } }, 'u2'))
+      .rejects.toThrow('Unknown buffer field: pack')
+    // @ts-expect-error wrong shape at runtime
+    await expect(updateOpsRequirementsCore('o1', 'e1', { buffers: 30 }, 'u2'))
+      .rejects.toThrow('Buffers must be an object')
+    expect(planUpdateSpy).not.toHaveBeenCalled()
+  })
+
+  // ── Shelf notes survive the guests re-derive (inc-3 S3.3) ─────────────────
+
+  it('guest change: preserveChecked carries the shelf NOTE alongside checked, by resource_id|unit', async () => {
+    planGetSpy.mockResolvedValue({
+      exists: true,
+      data: () => ({
+        ...existing,
+        shopping_list: [{ resource_id: 'res-beans', name: 'Beans', qty: 75, unit: 'lb', checked: true, note: 'subbed with oat milk' }],
+      }),
+    })
+    await updateOpsRequirementsCore('o1', 'e1', { guests: 120 }, 'u2')
+    const item = planUpdateSpy.mock.calls[0][0].shopping_list[0]
+    expect(item.checked).toBe(true)
+    expect(item.note).toBe('subbed with oat milk')
+  })
 })
 
 describe('recomputeOpsListsCore (spec 2026-08-19 B5)', () => {
@@ -329,6 +414,81 @@ describe('recomputeOpsListsCore (spec 2026-08-19 B5)', () => {
     })
     await recomputeOpsListsCore('o1', 'e1', 'u3', { guests: 120 })
     expect(planUpdateSpy.mock.calls[0][0].ready_confirmed).toEqual(DELETE_SENTINEL)
+  })
+
+  it('carries shelf NOTES across a recompute on BOTH lists — a recompute must never eat a note (inc-3 S3.3)', async () => {
+    planGetSpy.mockResolvedValue({
+      exists: true,
+      data: () => ({
+        ...existing,
+        shopping_list: [{ resource_id: 'res-beans', name: 'Beans', qty: 4.69, unit: 'lb', checked: true, note: 'subbed with oat milk' }],
+        packing_list: [{ resource_id: 'res-machine', name: 'Machine', qty: 1, checked: true, note: 'left hinge sticks' }],
+      }),
+    })
+    const result = await recomputeOpsListsCore('o1', 'e1', 'u3')
+    const payload = planUpdateSpy.mock.calls[0][0]
+    expect(payload.shopping_list[0].note).toBe('subbed with oat milk')
+    expect(payload.packing_list[0].note).toBe('left hinge sticks')
+    // The returned plan feeds client state directly — notes must ride there too.
+    expect(result.shopping_list[0].note).toBe('subbed with oat milk')
+    expect(result.packing_list[0].note).toBe('left hinge sticks')
+  })
+})
+
+describe('setListItemNoteCore (inc-3 S3.3 — loadout-only editing)', () => {
+  const existing: OpsPlan = {
+    package_ids: ['wp1'],
+    requirements: { guests: 100 },
+    deadlines: [],
+    packing_list: [{ resource_id: 'res-machine', name: 'Machine', qty: 1, checked: false }],
+    shopping_list: [
+      { resource_id: 'res-beans', name: 'Beans', qty: 4.69, unit: 'lb', checked: true },
+      { resource_id: 'res-beans', name: 'Beans', qty: 2, unit: 'bag', checked: false, needs_conversion: true },
+    ],
+    checklists: [], needs_review: false, change_log: [],
+    created_at: 't',
+  }
+
+  beforeEach(() => {
+    planGetSpy.mockResolvedValue({ exists: true, data: () => existing })
+  })
+
+  it('sets a trimmed note on the resource_id|unit-addressed item, leaving the rest untouched', async () => {
+    await setListItemNoteCore('o1', 'e1', 'shopping_list', 'res-beans', '  subbed with oat milk — 2 cartons  ', 'lb')
+    const payload = planUpdateSpy.mock.calls[0][0]
+    expect(payload.shopping_list[0]).toMatchObject({ unit: 'lb', note: 'subbed with oat milk — 2 cartons', checked: true })
+    expect('note' in payload.shopping_list[1]).toBe(false) // the same-resource 'bag' row is NOT the target
+    expect(payload.updated_at).toEqual(expect.any(String))
+    // A note is shelf bookkeeping, never a requirements change: no attestation
+    // clear, no review flag.
+    expect('ready_confirmed' in payload).toBe(false)
+    expect('needs_review' in payload).toBe(false)
+  })
+
+  it('a blank note REMOVES the field', async () => {
+    planGetSpy.mockResolvedValue({
+      exists: true,
+      data: () => ({
+        ...existing,
+        packing_list: [{ resource_id: 'res-machine', name: 'Machine', qty: 1, checked: false, note: 'old note' }],
+      }),
+    })
+    await setListItemNoteCore('o1', 'e1', 'packing_list', 'res-machine', '   ')
+    const item = planUpdateSpy.mock.calls[0][0].packing_list[0]
+    expect('note' in item).toBe(false)
+  })
+
+  it('enforces the SHARED length cap server-side', async () => {
+    await expect(setListItemNoteCore('o1', 'e1', 'shopping_list', 'res-beans', 'x'.repeat(201), 'lb'))
+      .rejects.toThrow('Note must be 200 characters or fewer')
+    expect(planUpdateSpy).not.toHaveBeenCalled()
+  })
+
+  it('fails visibly on an unknown item or a missing plan', async () => {
+    await expect(setListItemNoteCore('o1', 'e1', 'shopping_list', 'nope', 'n', 'lb')).rejects.toThrow('Item not found')
+    planGetSpy.mockResolvedValue({ exists: false })
+    await expect(setListItemNoteCore('o1', 'e1', 'shopping_list', 'res-beans', 'n', 'lb')).rejects.toThrow('No ops plan')
+    expect(planUpdateSpy).not.toHaveBeenCalled()
   })
 })
 
