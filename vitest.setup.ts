@@ -28,3 +28,26 @@ if (typeof window !== 'undefined' && (!window.localStorage || typeof window.loca
     configurable: true,
   })
 }
+
+// jsdom implements no CSSOM view module, so `window.matchMedia` is simply
+// absent — any component that has to know its breakpoint in JS (an `inert`
+// off-canvas drawer can't be media-queried in CSS) crashes on mount. Default to
+// "no query matches", i.e. the desktop shape; a test that needs the mobile
+// branch replaces this with its own stub.
+if (typeof window !== 'undefined' && typeof window.matchMedia !== 'function') {
+  Object.defineProperty(window, 'matchMedia', {
+    value: (query: string): MediaQueryList =>
+      ({
+        media: query,
+        matches: false,
+        onchange: null,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        addListener: () => {},
+        removeListener: () => {},
+        dispatchEvent: () => false,
+      }) as unknown as MediaQueryList,
+    writable: true,
+    configurable: true,
+  })
+}

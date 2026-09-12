@@ -17,6 +17,48 @@ export function addDays(baseYmd: string, days: number): string {
   return d.toISOString().slice(0, 10)
 }
 
+/**
+ * Parse a strict YYYY-MM-DD to its UTC midnight Date, or null if it is not a
+ * real calendar date.
+ *
+ * A shape-only regex is NOT enough. `2026-02-31` matches /^\d{4}-\d{2}-\d{2}$/,
+ * and `new Date('2026-02-31T00:00:00.000Z')` silently ROLLS OVER to March 3 —
+ * so a route that only shape-tests renders a confidently-labelled "March 3,
+ * 2026" at the URL /calendar/2026-02-31. Round-tripping is what catches that:
+ * only a date that actually exists re-formats to the identical input string.
+ *
+ * The regex still runs first so the accepted shape is explicit (zero-padded,
+ * no timestamp suffix) rather than relying on the engine's lenient fallback
+ * date parsing.
+ */
+export function parseYmd(ymd: string): Date | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return null
+  const d = new Date(`${ymd}T00:00:00.000Z`)
+  if (Number.isNaN(d.getTime())) return null
+  // The round-trip: rejects rollovers (2026-02-31 -> 2026-03-03).
+  return d.toISOString().slice(0, 10) === ymd ? d : null
+}
+
+/** True only for a real, zero-padded YYYY-MM-DD calendar date. */
+export function isValidYmd(ymd: string): boolean {
+  return parseYmd(ymd) !== null
+}
+
+/**
+ * Coerce an untrusted date-ish query param (e.g. `?week=`) to a real YYYY-MM-DD,
+ * falling back to `fallback` when it is missing or unparseable.
+ *
+ * A bad *query param* must never 404 or throw on an otherwise-valid page: before
+ * this, a garbage `?week` flowed straight into date construction and threw
+ * RangeError, taking the whole cockpit down. The leading slice(0, 10) preserves
+ * the previous tolerance for a full ISO timestamp being passed as the anchor.
+ */
+export function normalizeYmd(candidate: string | undefined, fallback: string): string {
+  if (!candidate) return fallback
+  const ymd = candidate.slice(0, 10)
+  return isValidYmd(ymd) ? ymd : fallback
+}
+
 /** Local calendar date as YYYY-MM-DD (matches <input type="date"> values). */
 export function todayYmd(now: Date = new Date()): string {
   const y = now.getFullYear()

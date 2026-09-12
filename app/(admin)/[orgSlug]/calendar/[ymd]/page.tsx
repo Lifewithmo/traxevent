@@ -2,15 +2,15 @@ export const dynamic = 'force-dynamic'
 
 import { notFound } from 'next/navigation'
 import { getDayDetail } from '@/actions/calendar'
-import { orgCalendarFeed, orgEvents, orgIdBySlug } from '@/lib/calendar-fetch'
+import { orgBookabilityCtx, orgCalendarFeed, orgEvents, orgInvoices, orgIdBySlug } from '@/lib/calendar-fetch'
 import { filterFeed, PIPELINE_KINDS } from '@/lib/calendar'
 import { feedInWindow, normalizeView } from '@/lib/calendar-window'
 import { buildRunway } from '@/lib/calendar-cashflow'
-import { todayYmd } from '@/lib/opportunity-detail'
+import { bookability as verdictFor } from '@/lib/calendar-bookability'
+import { todayYmd, isValidYmd, normalizeYmd } from '@/lib/opportunity-detail'
 import { CalendarCanvas } from '@/components/admin/calendar/CalendarCanvas'
+import { BookabilityProvider } from '@/components/admin/calendar/bookability-context'
 import { DaySpine } from '@/components/admin/calendar/DaySpine'
-
-const YMD = /^\d{4}-\d{2}-\d{2}$/
 
 /**
  * The day-detail spine route. Renders the same canvas (with the day highlighted)
@@ -25,7 +25,10 @@ export default async function CalendarDayPage({
   searchParams: Promise<{ week?: string; view?: string; kinds?: string }>
 }) {
   const [{ orgSlug, ymd }, sp] = await Promise.all([params, searchParams])
-  if (!YMD.test(ymd)) notFound()
+  // Round-trip validation, NOT a shape regex: /^\d{4}-\d{2}-\d{2}$/ accepts
+  // 2026-02-31, which Date rolls over to March 3 — the page then rendered a
+  // confident "March 3, 2026" at the URL /calendar/2026-02-31.
+  if (!isValidYmd(ymd)) notFound()
 
   const orgId = await orgIdBySlug(orgSlug)
   if (!orgId) notFound()
@@ -33,34 +36,57 @@ export default async function CalendarDayPage({
   const today = todayYmd()
   const view = normalizeView(sp.view)
   // With a day open, centre the canvas on that day unless a week is pinned.
-  const anchor = (sp.week ?? ymd).slice(0, 10)
+  const anchor = normalizeYmd(sp.week, ymd)
   const kinds = sp.kinds === 'pipeline' ? 'pipeline' : undefined
 
   // orgCalendarFeed / orgEvents are React.cache()'d, so these reuse the layout's
   // fetch within the request. getDayDetail keeps its own source fan-out (it needs
   // the raw arrays) — a tracked perf fast-follow, see lib/calendar-fetch.ts.
-  const [feed, events, detail] = await Promise.all([
+  const [feed, events, invoices, bookabilityCtx, detail] = await Promise.all([
     orgCalendarFeed(orgId, orgSlug),
     orgEvents(orgId),
+    orgInvoices(orgId),
+    orgBookabilityCtx(orgId, orgSlug, today),
     getDayDetail(orgId, orgSlug, ymd),
   ])
   const scoped = kinds === 'pipeline' ? filterFeed(feed, PIPELINE_KINDS) : feed
+  // The grid renders the window; ⌘K searches `scoped`, the same items unwindowed.
+  // It matters most on THIS route: in Day view the window is a single day, so a
+  // windowed search index made "No matches" a statement about one square of the
+  // calendar dressed up as a statement about the whole book.
   const items = feedInWindow(scoped, view, anchor)
-  const runway = buildRunway(feed, events, new Date())
+  const runway = buildRunway(feed, events, new Date(), invoices)
+  // The full answer — verdict, binding constraint AND the nearest open dates —
+  // for the one day the spine is about. Computed here (server, pure, no I/O)
+  // rather than in the spine so DaySpine stays a presentation component.
+  //
+  // Past days get no verdict: every date behind today is technically closed on
+  // lead time, and stamping "can't be prepped in time" across an archived day
+  // answers a question nobody asked.
+  const bookability = bookabilityCtx && ymd >= today ? verdictFor(ymd, bookabilityCtx) : undefined
 
   return (
     <>
-      <CalendarCanvas
-        orgSlug={orgSlug}
-        items={items}
-        today={today}
-        view={view}
-        anchor={anchor}
-        kinds={kinds}
-        selectedDay={ymd}
-      />
+      <BookabilityProvider ctx={bookabilityCtx}>
+        <CalendarCanvas
+          orgSlug={orgSlug}
+          items={items}
+          feed={scoped}
+          today={today}
+          view={view}
+          anchor={anchor}
+          kinds={kinds}
+          selectedDay={ymd}
+        />
+      </BookabilityProvider>
       <div className="w-full shrink-0 border-t border-border lg:w-[360px] lg:border-l lg:border-t-0">
-        <DaySpine orgSlug={orgSlug} today={today} detail={detail} runway={runway} />
+        <DaySpine
+          orgSlug={orgSlug}
+          today={today}
+          detail={detail}
+          runway={runway}
+          bookability={bookability}
+        />
       </div>
     </>
   )

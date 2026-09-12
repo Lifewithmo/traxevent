@@ -19,6 +19,7 @@
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar: var(--sidebar);
   --color-sidebar-muted: var(--sidebar-muted);
+  --color-sidebar-hover: var(--sidebar-hover);
   --color-chart-5: var(--chart-5);
   --color-chart-4: var(--chart-4);
   --color-chart-3: var(--chart-3);
@@ -213,6 +214,29 @@
   --sidebar-accent-foreground: #1450a3;
   --sidebar-border: #e7e9ed;
   --sidebar-ring: #1450a3;
+  /* Rail hover/focus surface. NOT --card: the light rail IS #ffffff, so a
+     bg-card hover over bg-sidebar was 1.000 contrast — a literal no-op. This
+     cool grey reads at 1.21 against the rail while keeping rail ink at 14.0
+     (foreground) / 4.65 (muted). */
+  --sidebar-hover: #e6eaf1;
+
+  /* Calendar kind marks — a SEVEN-way categorical ramp, deliberately NOT the
+     two-hue semantic palette: --primary and --link are the same value, so
+     `event` (booked job) and `lead` (tentative hold) were ΔE 0.0 apart, one
+     swatch for the highest-stakes pair on the screen; drop/follow_up collided
+     a second time at ΔE 10.2 light / 4.6 dark. Verified by
+     scripts/calendar-palette-check.mjs and re-asserted from this file by
+     __tests__/components/admin/calendar/kind-palette.test.ts: every one of the
+     21 pairs is >= ΔE 25.2 (light) / 35.8 (dark) and every mark clears 3:1 on
+     both --card and --background. Colour is still never the sole channel —
+     <KindDot/> pairs each token with a distinct shape and an sr-only label. */
+  --cal-kind-event: #1450a3;
+  --cal-kind-lead: #7b3fb0;
+  --cal-kind-drop: #146b3d;
+  --cal-kind-invoice-due: #8a5000;
+  --cal-kind-follow-up: #00767c;
+  --cal-kind-task: #5e6672;
+  --cal-kind-compliance: #c4362a;
 }
 
 .dark {
@@ -250,6 +274,16 @@
   --sidebar-accent-foreground: #ededeb;
   --sidebar-border: #333333;
   --sidebar-ring: #5ca8e8;
+  --sidebar-hover: #2e2e2c; /* 1.37 against the dark rail (bg-card was 1.10) */
+
+  /* Dark half of the calendar kind ramp — see the :root block for the why. */
+  --cal-kind-event: #5ca8e8;
+  --cal-kind-lead: #c093ee;
+  --cal-kind-drop: #4fc07e;
+  --cal-kind-invoice-due: #f0b93d;
+  --cal-kind-follow-up: #4fd0d8;
+  --cal-kind-task: #a6a9a3;
+  --cal-kind-compliance: #f0705c;
 
   --status-confirmed-bg: #16321f; --status-confirmed-fg: #7fe3a3;
   --status-pending-bg: #3a2e12;   --status-pending-fg: #f0b93d;
@@ -269,7 +303,11 @@
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    /* Full-strength --ring, not ring/50: at 50% alpha the focus outline composited
+       to #8aa8d1 on white (2.44:1) and #385e7e on the dark ground (2.72:1), under
+       the 3:1 WCAG 1.4.11 needs for a non-text UI indicator. Opaque it measures
+       7.76:1 light / 7.27:1 dark. */
+    @apply border-border outline-ring;
   }
   body {
     @apply bg-background text-foreground;

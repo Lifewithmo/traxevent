@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, afterEach, vi } from 'vitest'
 import { buildIcs, icsEscape } from '@/lib/ics'
 import type { CalendarItem } from '@/lib/calendar'
 
@@ -81,6 +81,59 @@ describe('buildIcs', () => {
     expect(ics).not.toContain('DTSTART;VALUE=DATE') // timed items never fall back to all-day
     expect(ics).toContain('UID:drop-d1:w1@traxevent')
     expect(ics).toContain('UID:drop-d1:w2@traxevent')
+  })
+
+  // The crew feed's whole job on a phone: a tappable address and a way back in.
+  // vitest.config pins NEXT_PUBLIC_APP_ORIGIN, so the "unset" case stubs it off.
+  describe('LOCATION / URL', () => {
+    afterEach(() => vi.unstubAllEnvs())
+
+    const line = (ics: string, prefix: string) => ics.split('\r\n').filter((l) => l.startsWith(prefix))
+
+    it('emits LOCATION when the item carries a place, RFC-5545 escaped', () => {
+      const ics = buildIcs([item({ location: 'Boise Farmers Market, 10 S 8th St, Boise, ID' })], 'Feed', now)
+      // commas escape exactly like SUMMARY/DESCRIPTION
+      expect(ics).toContain('LOCATION:Boise Farmers Market\\, 10 S 8th St\\, Boise\\, ID')
+    })
+
+    it('omits LOCATION entirely — not an empty line — when the item has no place', () => {
+      const ics = buildIcs([item({})], 'Feed', now)
+      expect(line(ics, 'LOCATION')).toEqual([])
+      expect(ics).not.toContain('LOCATION:')
+    })
+
+    it('folds a LOCATION longer than 75 octets like every other text line', () => {
+      const ics = buildIcs([item({ location: 'B'.repeat(100) })], 'Feed', now)
+      const first = line(ics, 'LOCATION:')[0]
+      expect(first.length).toBeLessThanOrEqual(75)
+      expect(ics).toContain('\r\n B')
+    })
+
+    it('emits URL resolved against NEXT_PUBLIC_APP_ORIGIN', () => {
+      vi.stubEnv('NEXT_PUBLIC_APP_ORIGIN', 'https://app.traxevent.com')
+      const ics = buildIcs([item({ href: '/acme/gala/dashboard' })], 'Feed', now)
+      expect(ics).toContain('URL:https://app.traxevent.com/acme/gala/dashboard')
+    })
+
+    it('omits URL entirely when the origin is unset — never a relative link', () => {
+      vi.stubEnv('NEXT_PUBLIC_APP_ORIGIN', '')
+      const ics = buildIcs([item({ href: '/acme/gala/dashboard', location: 'Somewhere' })], 'Feed', now)
+      expect(line(ics, 'URL')).toEqual([])
+      expect(ics).not.toContain('URL:')
+      // LOCATION is independent of the origin and still lands
+      expect(ics).toContain('LOCATION:Somewhere')
+    })
+
+    it('leaves the URL unescaped (URI value type) while still folding a long one', () => {
+      vi.stubEnv('NEXT_PUBLIC_APP_ORIGIN', 'https://app.traxevent.com')
+      const ics = buildIcs([item({ href: `/acme/${'d'.repeat(80)}/dashboard` })], 'Feed', now)
+      const parts = line(ics, 'URL:')
+      expect(parts[0].length).toBeLessThanOrEqual(75)
+      // unfolding restores the exact absolute URL — no backslashes introduced
+      expect(ics.split('\r\n').filter((l) => l.startsWith('URL:') || l.startsWith(' d')).join('').replace(/^URL:/, '').replace(/ /g, ''))
+        .toBe(`https://app.traxevent.com/acme/${'d'.repeat(80)}/dashboard`)
+      expect(ics).not.toContain('URL:https://app.traxevent.com\\')
+    })
   })
 
   it('uses stable UIDs so calendar apps update instead of duplicating', () => {
