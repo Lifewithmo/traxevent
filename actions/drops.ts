@@ -11,7 +11,7 @@ import { adminDb } from '@/lib/firebase-admin'
 import { customersRef } from '@/lib/crm/customers'
 import { buildDropAnnouncementEmail, assertDelivered } from '@/lib/email'
 import { getResend } from '@/lib/resend'
-import { getVerifiedSendingDomain } from '@/actions/domains'
+import { getVerifiedSendingDomainCore } from '@/lib/sending-domain'
 import type { Customer, Drop, Org } from '@/lib/types'
 
 const APP_ORIGIN = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://traxevent.com'
@@ -76,7 +76,7 @@ export async function publishDrop(orgId: string, dropId: string): Promise<Drop> 
       if (subscribers.length > 0) {
         let fromDomain: string | undefined
         try {
-          fromDomain = await getVerifiedSendingDomain(orgId)
+          fromDomain = await getVerifiedSendingDomainCore(orgId)
         } catch {
           // fall back to the platform default sender
         }

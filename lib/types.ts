@@ -59,10 +59,13 @@ export interface Org {
   timezone?: string
   // Evening-before run-sheet send (inc-3 scheduling substrate). Absent ⇒ ON
   // when a timezone is set. last_evening_run_at powers the settings liveness
-  // line ("Last evening send: Fri 6:04 PM MDT — 1 run sheet").
+  // line ("Last evening send: Fri 6:04 PM MDT — 1 run sheet");
+  // last_evening_sent_count is the run-sheet count of that same run (written
+  // together, may be 0 — a healthy quiet night is a real, distinguishable state).
   ops_notifications?: {
     evening_run_sheet_opt_out?: boolean
     last_evening_run_at?: string
+    last_evening_sent_count?: number
   }
   created_at: string
 }

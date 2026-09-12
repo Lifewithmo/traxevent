@@ -50,7 +50,7 @@ vi.mock('@/lib/auth/session', () => ({ getCurrentUser: vi.fn().mockResolvedValue
 vi.mock('@/lib/auth/assert', () => ({ assertEventPage: vi.fn().mockResolvedValue({ role: 'admin', event_access: {} }), assertOrgMember: vi.fn().mockResolvedValue({}), assertOrgAdmin: vi.fn().mockResolvedValue({}) }))
 vi.mock('@/actions/access-tokens', () => ({ attachAccessToken: attachAccessTokenSpy }))
 vi.mock('@/lib/email', () => ({ sendRegistrationConfirmation: sendEmailSpy }))
-vi.mock('@/actions/domains', () => ({ getVerifiedSendingDomain: vi.fn().mockResolvedValue(undefined) }))
+vi.mock('@/lib/sending-domain', () => ({ getVerifiedSendingDomainCore: vi.fn().mockResolvedValue(undefined) }))
 
 import { createRegistration } from '@/actions/registrations'
 import type { CreateRegistrationInput } from '@/actions/registrations'

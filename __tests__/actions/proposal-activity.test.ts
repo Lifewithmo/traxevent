@@ -63,7 +63,7 @@ vi.mock('next/headers', () => ({
   }),
 }))
 vi.mock('@/lib/email', () => ({ sendProposalSignedConfirmation: vi.fn().mockResolvedValue(undefined) }))
-vi.mock('@/actions/domains', () => ({ getVerifiedSendingDomain: vi.fn().mockResolvedValue(undefined) }))
+vi.mock('@/lib/sending-domain', () => ({ getVerifiedSendingDomainCore: vi.fn().mockResolvedValue(undefined) }))
 
 import { sendProposal } from '@/actions/proposals'
 import { recordProposalView, signProposal } from '@/actions/proposals-public'

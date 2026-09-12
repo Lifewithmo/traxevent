@@ -3,7 +3,7 @@
 import { adminDb } from '@/lib/firebase-admin'
 import { attachAccessToken } from '@/actions/access-tokens'
 import { sendRegistrationConfirmation } from '@/lib/email'
-import { getVerifiedSendingDomain } from '@/actions/domains'
+import { getVerifiedSendingDomainCore } from '@/lib/sending-domain'
 import type { Event, Family, FamilyMember } from '@/lib/types'
 import { buildFamilyId } from '@/lib/tokens'
 import { mergeSavedMembers } from '@/lib/saved-members'
@@ -118,7 +118,7 @@ export async function createRegistration(
   // (previously the Resend error was discarded), so this needs an explicit guard.
   if (!input.skipConfirmationEmail) {
     try {
-      const fromDomain = await getVerifiedSendingDomain(input.orgId)
+      const fromDomain = await getVerifiedSendingDomainCore(input.orgId)
       await sendRegistrationConfirmation({
         to: input.family.email,
         firstName: input.family.first_name,

@@ -3,7 +3,7 @@
 import { adminDb } from '@/lib/firebase-admin'
 import { assertEventPage } from '@/lib/auth/assert'
 import { getResend, buildFromAddress, deriveLocalPart, resolveSenderEmail } from '@/lib/resend'
-import { getVerifiedSendingDomain } from '@/actions/domains'
+import { getVerifiedSendingDomainCore } from '@/lib/sending-domain'
 import type { Event, Family, CommunicationLogEntry, OrgMember } from '@/lib/types'
 import { randomBytes } from 'crypto'
 
@@ -51,7 +51,7 @@ export async function sendEmailBlast(
     return { sent: 0 }
   }
 
-  const sendingDomain = await getVerifiedSendingDomain(orgId)
+  const sendingDomain = await getVerifiedSendingDomainCore(orgId)
   // Default: the event identity. If the blast is sent as a specific org member AND the
   // org has a verified domain, reconstruct the sender address authoritatively from the
   // member record — never trust a client-supplied address.

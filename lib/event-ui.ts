@@ -186,3 +186,71 @@ export function backPlanChips(hhmm: string, buffers?: OpsBuffers): { packBy: str
   const leaveBy = fmt(leave)
   return packBy && leaveBy ? { packBy, leaveBy } : null
 }
+
+// ── Org-local timestamp vocabulary (inc-3 S1.1 tz stamp retrofits) ───────────
+// CANONICAL formatter behind every org-local stamp: the guardian-email fine
+// print (lib/email.ts), the confirm-ready stamp (lib/event-spine.ts), both
+// print freshness lines, and the settings liveness line. One implementation so
+// "6:04 PM MDT" can never be assembled three slightly-different ways.
+
+export interface ZonedStampParts {
+  /** 'YYYY-MM-DD' in the zone (NOT the UTC date — they differ around midnight). */
+  date: string
+  /** Short weekday in the zone, e.g. 'Fri'. */
+  weekday: string
+  /** '6:04 PM' — assembled from parts, never Intl's joined string (see below). */
+  time: string
+  /** Zone abbreviation, e.g. 'MDT' (Intl falls back to 'GMT-6'-style elsewhere). */
+  zone: string
+}
+
+/**
+ * '2026-08-23T21:14:00.000Z' + 'America/Boise' → { date: '2026-08-23',
+ * weekday: 'Sun', time: '3:14 PM', zone: 'MDT' }. Returns null for a garbage
+ * iso OR an invalid/unknown zone — callers keep their labeled-UTC fallback,
+ * never a thrown render.
+ *
+ * SSR-safety (PR #135 lesson): even pinned-zone Intl output differs across
+ * runtimes — newer ICU joins time with U+202F (narrow no-break space) before
+ * AM/PM, older with a plain space — so any string that must match between the
+ * server and a hydrating client cannot come from Intl's joined `format()`.
+ * We assemble `time` manually from formatToParts (hour/minute/dayPeriod) and
+ * STILL normalize U+202F → ' ' defensively in case a part value ever carries
+ * one. The zone abbreviation is Intl's, which is stable across current Node +
+ * browser ICU for named zones; client renders of these stamps should still
+ * post-gate or suppressHydrationWarning where a mismatch would warn.
+ */
+export function zonedStampParts(iso: string, timeZone: string): ZonedStampParts | null {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return null
+  let raw: Intl.DateTimeFormatPart[]
+  try {
+    raw = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      weekday: 'short',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+      timeZoneName: 'short',
+    }).formatToParts(d)
+  } catch {
+    return null // unknown/invalid IANA zone — caller falls back to labeled UTC
+  }
+  const parts: Partial<Record<Intl.DateTimeFormatPart['type'], string>> = {}
+  for (const p of raw) {
+    if (p.type !== 'literal') parts[p.type] = p.value
+  }
+  const { year, month, day, weekday, hour, minute, dayPeriod, timeZoneName } = parts
+  if (!year || !month || !day || !weekday || !hour || !minute || !dayPeriod || !timeZoneName) return null
+  // Defensive U+202F normalization (see the SSR-safety note above).
+  const clean = (s: string) => s.replace(/\u202f/g, ' ')
+  return {
+    date: `${year}-${month}-${day}`,
+    weekday: clean(weekday),
+    time: clean(`${hour}:${minute} ${dayPeriod}`),
+    zone: clean(timeZoneName),
+  }
+}

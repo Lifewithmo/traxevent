@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic'
 import { requireEventPage } from '@/lib/auth/guards'
 import { getCommunicationLog } from '@/actions/communicate'
 import { listMembers } from '@/actions/members'
-import { getVerifiedSendingDomain } from '@/actions/domains'
+import { getVerifiedSendingDomainCore } from '@/lib/sending-domain'
 import { CommunicateClient } from '@/components/admin/CommunicateClient'
 
 export default async function CommunicatePage({
@@ -16,7 +16,7 @@ export default async function CommunicatePage({
   const [log, members, verifiedDomain] = await Promise.all([
     getCommunicationLog(orgId, eventId),
     listMembers(orgId),
-    getVerifiedSendingDomain(orgId),
+    getVerifiedSendingDomainCore(orgId),
   ])
 
   return (

@@ -6,7 +6,17 @@ import { getTemplatesForOrg } from '@/lib/ops/checklist-templates'
 import {
   computeShoppingList, computePackingList, deriveDeadlines, instantiateChecklists,
 } from '@/lib/ops/derive'
-import type { OpsPlan, OpsRequirements, OpsChangeEntry, OpsListItem } from '@/lib/types'
+import { listItineraryCore } from '@/lib/itinerary-data'
+import { formatTime, groupItineraryByDay } from '@/lib/itinerary'
+import { formatEventDateRange } from '@/lib/event-ui'
+import {
+  resolveAnchorTime,
+  backPlanFromAnchor,
+  RUN_SHEET_CHECKLIST_PHASES,
+} from '@/app/(admin)/[orgSlug]/[eventSlug]/ops/runsheet/anchor'
+import { sendRunSheetEmail } from '@/lib/email'
+import { getVerifiedSendingDomainCore } from '@/lib/sending-domain'
+import type { Event, Org, OpsPlan, OpsRequirements, OpsChangeEntry, OpsListItem } from '@/lib/types'
 
 export function opsPlanRef(orgId: string, eventId: string) {
   return adminDb.collection('orgs').doc(orgId)
@@ -427,6 +437,83 @@ export async function clearReadyConfirmedCore(orgId: string, eventId: string, ac
       updated_at: now,
     })
   })
+}
+
+/**
+ * Render + send the inline run sheet (inc-2 S3.3, extracted inc-3 B5 so the
+ * self-send action AND the evening-before cron share ONE implementation —
+ * the email a cron sends must be byte-for-byte the email the button sends).
+ *
+ * GUARD-FREE by design: the cron has no session, so identity comes from the
+ * caller — the action passes its asserted member's email, the cron passes the
+ * org owner's. Callers MUST have gated already (assertEventPage, or the cron
+ * route's CRON_SECRET). Sending IS the action (nudge.ts precedent): a rejected
+ * send throws — nothing here may report "sent" for mail that never left.
+ */
+export async function sendRunSheetCore(
+  orgId: string,
+  eventId: string,
+  recipient: { email: string },
+): Promise<{ to: string }> {
+  const [eventSnap, orgSnap, plan, itineraryItems] = await Promise.all([
+    adminDb.collection('orgs').doc(orgId).collection('events').doc(eventId).get(),
+    adminDb.collection('orgs').doc(orgId).get(),
+    getOpsPlanCore(orgId, eventId),
+    listItineraryCore(orgId, eventId),
+  ])
+  if (!eventSnap.exists) throw new Error('Event not found')
+  const event = eventSnap.data() as Event
+  const org = orgSnap.data() as Org | undefined
+
+  let fromDomain: string | undefined
+  try {
+    fromDomain = await getVerifiedSendingDomainCore(orgId)
+  } catch {
+    // domain lookup failure must not block the send — fall back to the default
+  }
+
+  const itinerary = groupItineraryByDay(itineraryItems)
+  const anchor = resolveAnchorTime({
+    serviceStart: plan?.requirements.service_start,
+    hoursStart: event.hours?.start,
+    itinerary,
+  })
+  const buffers = org?.ops_buffers
+  const loadoutItems = plan ? [...plan.shopping_list, ...plan.packing_list] : []
+  const checklists = (plan?.checklists ?? [])
+    .filter((c) => (RUN_SHEET_CHECKLIST_PHASES as readonly string[]).includes(c.phase))
+
+  await sendRunSheetEmail({
+    to: recipient.email,
+    eventName: event.name,
+    dateLabel: formatEventDateRange(event.event_start, event.event_end),
+    anchor: anchor ? { label: anchor.label, display: anchor.display } : null,
+    backPlan: anchor ? backPlanFromAnchor(anchor.hhmm, buffers) : null,
+    buffers,
+    venue: event.location ?? null,
+    contacts: event.key_contacts ?? [],
+    // Pre-formatted for the email body (the email module renders, never derives).
+    itinerary: itinerary.map((day) => ({
+      day: formatEventDateRange(day.day),
+      items: day.items.map((i) => ({
+        start_time: formatTime(i.start_time),
+        title: i.title,
+        ...(i.location ? { location: i.location } : {}),
+      })),
+    })),
+    siteNeeds: plan?.requirements.site_needs ?? [],
+    checklists: checklists.map((c) => ({
+      name: c.name,
+      done: c.steps.filter((s) => s.done).length,
+      total: c.steps.length,
+    })),
+    loadout: plan ? { checked: loadoutItems.filter((i) => i.checked).length, total: loadoutItems.length } : null,
+    orgSlug: org?.slug ?? '',
+    eventSlug: event.slug,
+    fromDisplayName: org?.branding?.display_name ?? org?.name,
+    fromDomain,
+  })
+  return { to: recipient.email }
 }
 
 export async function acknowledgeReviewCore(orgId: string, eventId: string, actorUid: string): Promise<void> {

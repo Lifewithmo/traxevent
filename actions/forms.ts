@@ -6,7 +6,7 @@ import { assertFamilyAccess } from '@/lib/auth/family-access'
 import { FieldValue } from 'firebase-admin/firestore'
 import { headers } from 'next/headers'
 import { sendFormSignedConfirmation } from '@/lib/email'
-import { getVerifiedSendingDomain } from '@/actions/domains'
+import { getVerifiedSendingDomainCore } from '@/lib/sending-domain'
 import type { FormTemplate, EventFormAssignment, SignedForm } from '@/lib/types'
 import { randomBytes } from 'crypto'
 
@@ -178,7 +178,7 @@ export async function submitSignedForm(
   // receipt, not the record. sendFormSignedConfirmation now throws on a rejected send
   // (previously the Resend error was discarded), so this needs an explicit guard.
   try {
-    const fromDomain = await getVerifiedSendingDomain(orgId)
+    const fromDomain = await getVerifiedSendingDomainCore(orgId)
     await sendFormSignedConfirmation({
       to: input.signerEmail,
       firstName: input.signerFirstName,

@@ -79,6 +79,9 @@ export default async function DashboardPage({
     // Org back-plan buffers (inc-2 S4.3) — pure passthrough from the already-
     // loaded org doc to the brief's Pack-by/Leave-by chips + label.
     ...(org.ops_buffers ? { buffers: org.ops_buffers } : {}),
+    // Org timezone (inc-3 S1.1) — same passthrough; the brief's confirm stamp
+    // renders org-local when set, labeled UTC otherwise.
+    ...(org.timezone ? { timezone: org.timezone } : {}),
   })
 
   return (

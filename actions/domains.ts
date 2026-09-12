@@ -98,10 +98,9 @@ export async function removeSendingDomain(orgId: string): Promise<void> {
   })
 }
 
-export async function getVerifiedSendingDomain(orgId: string): Promise<string | undefined> {
-  const org = await getOrg(orgId)
-  if (org?.sending_domain_status === 'verified' && org.sending_domain) {
-    return org.sending_domain
-  }
-  return undefined
-}
+// getVerifiedSendingDomain moved to lib/sending-domain.ts (inc-3 B5): it was a
+// guard-free 'use server' export — an unauthenticated POST endpoint leaking any
+// org's sending domain (the listItinerary class). Every caller was server-side
+// and now imports getVerifiedSendingDomainCore; with zero remaining callers the
+// export is DELETED rather than guarded (a member assert would have broken the
+// unauthenticated webhook/public-flow callers, which gate by other means).

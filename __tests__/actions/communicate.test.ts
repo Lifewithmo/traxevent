@@ -30,7 +30,7 @@ vi.mock('@/lib/resend', () => ({
     !opts.verifiedDomain || !opts.localPart ? undefined : `${opts.localPart}@${opts.verifiedDomain}`,
 }))
 
-vi.mock('@/actions/domains', () => ({ getVerifiedSendingDomain: getVerifiedDomainSpy }))
+vi.mock('@/lib/sending-domain', () => ({ getVerifiedSendingDomainCore: getVerifiedDomainSpy }))
 
 vi.mock('@/lib/firebase-admin', () => ({
   adminDb: {

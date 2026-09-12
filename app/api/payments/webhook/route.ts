@@ -5,7 +5,7 @@ import { stripe } from '@/lib/stripe'
 import { headers } from 'next/headers'
 import { adminDb } from '@/lib/firebase-admin'
 import { sendRegistrationConfirmation, sendProposalSignedConfirmation, sendOrderConfirmation } from '@/lib/email'
-import { getVerifiedSendingDomain } from '@/actions/domains'
+import { getVerifiedSendingDomainCore } from '@/lib/sending-domain'
 import { reconcileProposalDeposit } from '@/lib/crm/deposit-reconcile'
 import { confirmOrderCore, markRefundedCore, ordersRef } from '@/lib/storefront/orders'
 import { getDropCore } from '@/lib/storefront/drops'
@@ -66,7 +66,7 @@ export async function POST(req: Request) {
         ].filter(Boolean).join(' · ')
         let fromDomain: string | undefined
         try {
-          fromDomain = await getVerifiedSendingDomain(orgId)
+          fromDomain = await getVerifiedSendingDomainCore(orgId)
         } catch {
           // domain lookup failure should not block the email
         }
@@ -188,7 +188,7 @@ export async function POST(req: Request) {
           // when the signer originally signs, well before any deposit.
           let fromDomain: string | undefined
           try {
-            fromDomain = orgRef ? await getVerifiedSendingDomain(orgRef.id) : undefined
+            fromDomain = orgRef ? await getVerifiedSendingDomainCore(orgRef.id) : undefined
           } catch {
             // domain lookup failure should not block the email — fall back to default
           }
@@ -267,7 +267,7 @@ export async function POST(req: Request) {
 
       // Send confirmation email (best-effort — don't fail the webhook if email fails)
       try {
-        const fromDomain = await getVerifiedSendingDomain(familyData.org_id)
+        const fromDomain = await getVerifiedSendingDomainCore(familyData.org_id)
         await sendRegistrationConfirmation({
           to: familyData.email,
           firstName: familyData.first_name,

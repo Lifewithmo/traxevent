@@ -668,6 +668,28 @@ describe('computeEventVerdict', () => {
     // stamp stays viewer-local; the label here is what keeps the two honest.
     expect(formatConfirmStamp(AT)).toBe('9:14 PM UTC')
   })
+
+  it('renders the confirm stamp ORG-LOCAL with the zone abbreviated when Org.timezone is set (inc-3 S1.1)', () => {
+    // 2026-08-19T21:14Z = 3:14 PM MDT in Boise.
+    expect(formatConfirmStamp(AT, 'America/Boise')).toBe('3:14 PM MDT')
+    // An invalid zone falls back to labeled UTC — never a blank, never a lie.
+    expect(formatConfirmStamp(AT, 'Not/AZone')).toBe('9:14 PM UTC')
+    expect(formatConfirmStamp('garbage', 'America/Boise')).toBe('')
+  })
+
+  it('threads the org timezone into the verdict label and the demoted confirmedNote', () => {
+    expect(computeEventVerdict({
+      phase: 'upcoming', ops: confirmedOps, readiness: { pct: 100, items: [] } as never,
+      closeout: null, blockers: [], timeZone: 'America/Boise',
+    })).toEqual({ label: 'Confirmed ready — 3:14 PM MDT', tone: 'ok' })
+
+    const demoted = computeEventVerdict({
+      phase: 'upcoming', ops: confirmedOps, readiness: null, closeout: null,
+      blockers: [{ kind: 'deadline', label: 'x', severity: 'alert' } as never],
+      timeZone: 'America/Boise',
+    })
+    expect(demoted?.confirmedNote).toBe('Confirmed 3:14 PM MDT · 1 open blocker')
+  })
 })
 
 describe('computeEventNba', () => {

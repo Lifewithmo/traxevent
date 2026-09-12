@@ -39,7 +39,6 @@ import {
   createSendingDomain,
   verifySendingDomain,
   removeSendingDomain,
-  getVerifiedSendingDomain,
 } from '@/actions/domains'
 
 describe('createSendingDomain', () => {
@@ -143,24 +142,7 @@ describe('removeSendingDomain', () => {
   })
 })
 
-describe('getVerifiedSendingDomain', () => {
-  beforeEach(() => vi.clearAllMocks())
-
-  it('returns the domain when status is verified', async () => {
-    getOrgSpy.mockResolvedValue({ id: 'org-1', sending_domain: 'mail.firsthills.org', sending_domain_status: 'verified' })
-    const domain = await getVerifiedSendingDomain('org-1')
-    expect(domain).toBe('mail.firsthills.org')
-  })
-
-  it('returns undefined when status is pending', async () => {
-    getOrgSpy.mockResolvedValue({ id: 'org-1', sending_domain: 'mail.firsthills.org', sending_domain_status: 'pending' })
-    const domain = await getVerifiedSendingDomain('org-1')
-    expect(domain).toBeUndefined()
-  })
-
-  it('returns undefined when no domain is set', async () => {
-    getOrgSpy.mockResolvedValue({ id: 'org-1' })
-    const domain = await getVerifiedSendingDomain('org-1')
-    expect(domain).toBeUndefined()
-  })
-})
+// getVerifiedSendingDomain was a guard-free 'use server' export (any caller
+// could read any org's sending domain). It moved to
+// lib/sending-domain.getVerifiedSendingDomainCore (inc-3 B5) — covered in
+// __tests__/lib/sending-domain.test.ts.

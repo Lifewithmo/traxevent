@@ -19,7 +19,7 @@ import { requireEventPage } from '@/lib/auth/guards'
 import { getOpsPlan } from '@/actions/event-ops'
 import { listItineraryCore } from '@/lib/itinerary-data'
 import { formatTime, groupItineraryByDay } from '@/lib/itinerary'
-import { formatEventDateRange, parseDay } from '@/lib/event-ui'
+import { formatEventDateRange, parseDay, zonedStampParts } from '@/lib/event-ui'
 import { PrintButton } from '@/components/admin/ops/PrintButton'
 import { encodeQr, qrSvgPath, qrViewBox, type QrCode } from '@/lib/qr'
 import { resolveAnchorTime, backPlanFromAnchor, bufferAssumptionLabel, RUN_SHEET_CHECKLIST_PHASES } from '../anchor'
@@ -47,16 +47,18 @@ export default async function RunSheetPrintPage({
 }) {
   const { orgSlug, eventSlug } = await params
   const { orgId, eventId, event } = await requireEventPage(orgSlug, eventSlug, 'ops')
-  const [plan, itineraryItems, headerList, buffers] = await Promise.all([
+  const [plan, itineraryItems, headerList, org] = await Promise.all([
     getOpsPlan(orgId, eventId),
     listItineraryCore(orgId, eventId),
     headers(),
-    // Org back-plan buffers (inc-2 S4.3); soft-failing — constants remain the fallback.
+    // Org back-plan buffers (inc-2 S4.3) + timezone for the freshness stamp
+    // (inc-3 S1.1); soft-failing — constants / labeled UTC remain the fallback.
     adminDb.collection('orgs').doc(orgId).get().then(
-      (snap) => (snap.data() as Org | undefined)?.ops_buffers,
+      (snap) => snap.data() as Org | undefined,
       () => undefined,
     ),
   ])
+  const buffers = org?.ops_buffers
 
   const itinerary = groupItineraryByDay(itineraryItems)
   const anchor = resolveAnchorTime({
@@ -88,6 +90,18 @@ export default async function RunSheetPrintPage({
   const liveUrl = host ? `${proto}://${host}${livePath}` : livePath
   // QR only for a full URL — a bare path scans into nothing useful.
   const qr = host ? tryEncodeQr(liveUrl) : null
+
+  // Freshness line (inc-3 S1.1 tz retrofit): this page renders at request time,
+  // so "Printed <stamp>" is the honest freshness marker. Org-local with the
+  // zone abbreviated when Org.timezone is set — shared zonedStampParts
+  // (assembled from Intl PARTS, U+202F normalized; PR #135 — safe here because
+  // the string is server-only) — labeled UTC otherwise, so the paper never
+  // shows a bare local-looking time that lies.
+  const printedIso = new Date().toISOString()
+  const zoned = org?.timezone ? zonedStampParts(printedIso, org.timezone) : null
+  const printedStamp = zoned
+    ? `${zoned.date} ${zoned.time} ${zoned.zone}`
+    : `${printedIso.slice(0, 10)} ${printedIso.slice(11, 16)} UTC`
 
   return (
     <>
@@ -228,7 +242,7 @@ export default async function RunSheetPrintPage({
             </svg>
           )}
           <p className="text-xs text-neutral-600">
-            Live sheet (this paper goes stale): <span className="font-medium">{liveUrl}</span>
+            Printed {printedStamp} · Live sheet (this paper goes stale): <span className="font-medium">{liveUrl}</span>
           </p>
         </div>
       </div>

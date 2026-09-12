@@ -12,6 +12,7 @@ import {
   formatEventDateRange,
   parseDay,
   resolveJobTime,
+  zonedStampParts,
 } from '@/lib/event-ui'
 
 describe('tone maps', () => {
@@ -149,5 +150,47 @@ describe('buffers (inc 2)', () => {
     // max=/parse/error copy — both import THIS constant, so the ceiling
     // cannot drift between the pre-flight check and the server rejection.
     expect(MAX_BUFFER_MINUTES).toBe(480)
+  })
+})
+
+describe('zonedStampParts (inc-3 S1.1 — the ONE org-local stamp formatter)', () => {
+  it('renders an org-local stamp with the zone abbreviated', () => {
+    // 2026-08-23T21:14Z in Boise is 3:14 PM MDT, still Aug 23.
+    expect(zonedStampParts('2026-08-23T21:14:00.000Z', 'America/Boise')).toEqual({
+      date: '2026-08-23',
+      weekday: 'Sun',
+      time: '3:14 PM',
+      zone: 'MDT',
+    })
+  })
+
+  it('crosses the day boundary in the ZONE, not in UTC', () => {
+    // 2026-09-12T00:00Z is still Fri Sep 11 in Denver.
+    expect(zonedStampParts('2026-09-12T00:00:00.000Z', 'America/Denver')).toEqual({
+      date: '2026-09-11',
+      weekday: 'Fri',
+      time: '6:00 PM',
+      zone: 'MDT',
+    })
+  })
+
+  it('tracks DST: the same zone abbreviates MST in winter, MDT in summer', () => {
+    expect(zonedStampParts('2026-01-15T20:00:00.000Z', 'America/Denver')?.zone).toBe('MST')
+    expect(zonedStampParts('2026-07-15T20:00:00.000Z', 'America/Denver')?.zone).toBe('MDT')
+  })
+
+  it('never emits U+202F (the SSR-mismatch character from PR #135) anywhere in its parts', () => {
+    const parts = zonedStampParts('2026-08-23T21:14:00.000Z', 'America/Boise')!
+    for (const v of Object.values(parts)) {
+      expect(v).not.toMatch(/\u202f/)
+    }
+  })
+
+  it('returns null for an unknown zone — callers keep their labeled-UTC fallback', () => {
+    expect(zonedStampParts('2026-08-23T21:14:00.000Z', 'Not/AZone')).toBeNull()
+  })
+
+  it('returns null for a garbage iso', () => {
+    expect(zonedStampParts('garbage', 'America/Boise')).toBeNull()
   })
 })

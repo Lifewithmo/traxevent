@@ -62,7 +62,7 @@ const VERDICT_TONE: Record<EventVerdict['tone'], string> = {
 export function EventBrief({ orgSlug, eventSlug, event, kpis, today, isAdmin, allowedPages }: EventBriefProps) {
   const countdown = eventCountdown(event.event_start, event.event_end, today)
   const phase = eventPhaseOf(countdown.value)
-  const verdict = computeEventVerdict({ phase, ops: kpis.ops, readiness: kpis.readiness, closeout: kpis.closeout, blockers: kpis.blockers })
+  const verdict = computeEventVerdict({ phase, ops: kpis.ops, readiness: kpis.readiness, closeout: kpis.closeout, blockers: kpis.blockers, timeZone: kpis.timezone })
   const nba = computeEventNba({ phase, ops: kpis.ops, closeout: kpis.closeout, blockers: kpis.blockers, allowedPages })
   // B9: the promoted blocker lives in the button — only the rest render as rows
   // (promotion skips unreachable targets, so it is not always blockers[0]).

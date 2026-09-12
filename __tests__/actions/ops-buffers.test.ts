@@ -17,7 +17,8 @@ vi.mock('@/lib/auth/assert', () => ({
   assertOrgAdmin: vi.fn().mockResolvedValue({ role: 'admin' }),
 }))
 
-import { updateOpsBuffers } from '@/actions/ops-buffers'
+import { FieldValue } from 'firebase-admin/firestore'
+import { updateOpsBuffers, updateOrgTimezone, updateEveningRunSheetOptOut } from '@/actions/ops-buffers'
 
 beforeEach(() => vi.clearAllMocks())
 
@@ -84,6 +85,73 @@ describe('updateOpsBuffers', () => {
     await expect(
       updateOpsBuffers('org-1', { pack_minutes: '45' as unknown as number }),
     ).rejects.toThrow()
+    expect(orgDocUpdateSpy).not.toHaveBeenCalled()
+  })
+})
+
+describe('updateOrgTimezone (inc-3 S1.1)', () => {
+  it('asserts admin then persists a valid IANA zone', async () => {
+    const { assertOrgAdmin } = await import('@/lib/auth/assert')
+    await updateOrgTimezone('org-1', 'America/Boise')
+    expect(assertOrgAdmin).toHaveBeenCalledWith('org-1')
+    expect(orgDocUpdateSpy).toHaveBeenCalledWith({ timezone: 'America/Boise' })
+  })
+
+  it('trims before storing', async () => {
+    await updateOrgTimezone('org-1', '  America/Denver ')
+    expect(orgDocUpdateSpy).toHaveBeenCalledWith({ timezone: 'America/Denver' })
+  })
+
+  it('rejects a zone Intl cannot construct — a value that saves can never render as a fallback', async () => {
+    await expect(updateOrgTimezone('org-1', 'Not/AZone')).rejects.toThrow(/unknown time zone/i)
+    expect(orgDocUpdateSpy).not.toHaveBeenCalled()
+  })
+
+  it('null and empty string CLEAR the field (labeled-UTC fallback; the cron skips the org)', async () => {
+    await updateOrgTimezone('org-1', null)
+    await updateOrgTimezone('org-1', '')
+    expect(orgDocUpdateSpy).toHaveBeenCalledTimes(2)
+    for (const call of orgDocUpdateSpy.mock.calls) {
+      expect(call[0]).toEqual({ timezone: FieldValue.delete() })
+    }
+  })
+
+  it('rejects and does NOT write when admin is denied', async () => {
+    const { assertOrgAdmin } = await import('@/lib/auth/assert')
+    vi.mocked(assertOrgAdmin).mockRejectedValueOnce(new Error('Forbidden'))
+    await expect(updateOrgTimezone('org-1', 'America/Boise')).rejects.toThrow('Forbidden')
+    expect(orgDocUpdateSpy).not.toHaveBeenCalled()
+  })
+})
+
+describe('updateEveningRunSheetOptOut (inc-3 S1.3)', () => {
+  it('asserts admin then dot-path updates ONLY the opt-out flag — liveness stamps survive', async () => {
+    const { assertOrgAdmin } = await import('@/lib/auth/assert')
+    await updateEveningRunSheetOptOut('org-1', true)
+    expect(assertOrgAdmin).toHaveBeenCalledWith('org-1')
+    expect(orgDocUpdateSpy).toHaveBeenCalledWith({
+      'ops_notifications.evening_run_sheet_opt_out': true,
+    })
+  })
+
+  it('re-enabling writes false (absent ⇒ ON is the type contract; false is explicit ON)', async () => {
+    await updateEveningRunSheetOptOut('org-1', false)
+    expect(orgDocUpdateSpy).toHaveBeenCalledWith({
+      'ops_notifications.evening_run_sheet_opt_out': false,
+    })
+  })
+
+  it('rejects a non-boolean smuggled past the types', async () => {
+    await expect(
+      updateEveningRunSheetOptOut('org-1', 'yes' as unknown as boolean),
+    ).rejects.toThrow()
+    expect(orgDocUpdateSpy).not.toHaveBeenCalled()
+  })
+
+  it('rejects and does NOT write when admin is denied', async () => {
+    const { assertOrgAdmin } = await import('@/lib/auth/assert')
+    vi.mocked(assertOrgAdmin).mockRejectedValueOnce(new Error('Forbidden'))
+    await expect(updateEveningRunSheetOptOut('org-1', true)).rejects.toThrow('Forbidden')
     expect(orgDocUpdateSpy).not.toHaveBeenCalled()
   })
 })
