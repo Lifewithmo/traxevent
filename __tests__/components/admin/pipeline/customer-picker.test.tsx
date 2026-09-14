@@ -31,6 +31,51 @@ describe('CustomerPicker', () => {
     expect(onChange).toHaveBeenCalledWith(null)
   })
 
+  // A screen-reader user hears the highlighted row via aria-activedescendant
+  // but nothing about how many rows there are; the sr-only live region fills
+  // that gap. The visible "No matching clients" line exists because an empty
+  // dropdown that silently never opens reads as a broken search.
+  describe('result feedback', () => {
+    it('announces the match count through a polite live region', () => {
+      render(<CustomerPicker customers={customers} value={null} onChange={() => {}} />)
+      type('a')
+      expect(screen.getByText('2 clients match')).toBeInTheDocument()
+      type('riv')
+      expect(screen.getByText('1 client matches')).toBeInTheDocument()
+    })
+
+    it('shows a No-matching-clients state once the query is two characters', () => {
+      render(<CustomerPicker customers={customers} value={null} onChange={() => {}} />)
+      type('z')
+      // One character finds half the book — the "nothing" claim waits for two.
+      expect(screen.queryByText('No matching clients')).not.toBeInTheDocument()
+      type('zz')
+      expect(screen.getAllByText('No matching clients').length).toBeGreaterThan(0)
+      expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+    })
+
+    it('dismisses the no-matches note on Escape without closing an enclosing dialog', () => {
+      const onOpenChange = vi.fn()
+      render(
+        <Dialog open onOpenChange={onOpenChange}>
+          <DialogContent>
+            <DialogTitle>New opportunity</DialogTitle>
+            <CustomerPicker customers={customers} value={null} onChange={() => {}} />
+          </DialogContent>
+        </Dialog>
+      )
+      const input = screen.getByRole('combobox', { name: /link to existing customer/i })
+      type('zz')
+      // Visible note + the sr-only live region both carry the text…
+      expect(screen.getAllByText('No matching clients')).toHaveLength(2)
+      fireEvent.keyDown(input, { key: 'Escape' })
+      // …Escape removes the visible note (live region text just goes stale)
+      // and must NOT fall through to tear down the dialog.
+      expect(screen.getAllByText('No matching clients')).toHaveLength(1)
+      expect(onOpenChange).not.toHaveBeenCalled()
+    })
+  })
+
   it('announces itself as a collapsed combobox until there are matches', () => {
     render(<CustomerPicker customers={customers} value={null} onChange={() => {}} />)
     const input = screen.getByRole('combobox', { name: /link to existing customer/i })

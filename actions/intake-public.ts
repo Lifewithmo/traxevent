@@ -6,6 +6,7 @@ import { adminDb } from '@/lib/firebase-admin'
 import { checkRateLimit } from '@/lib/rate-limit'
 import { findOrCreateCustomerCore } from '@/lib/crm/customers'
 import { createLeadCore } from '@/lib/crm/leads'
+import { validateLeadFields, firstLeadFieldError } from '@/lib/crm/validate'
 import { logActivity } from '@/lib/activity'
 import { sendIntakeNotification } from '@/lib/email'
 import type { Org } from '@/lib/types'
@@ -80,23 +81,16 @@ export async function submitIntake(
   const message = (input.message ?? '').trim()
   const guestCount = input.guest_count
 
-  if (!name || name.length > 200) throw new Error('Please enter your name.')
-  if (!email || email.length > 200 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    throw new Error('Please enter a valid email address.')
-  }
-  if (phone.length > 200 || eventType.length > 200) {
-    throw new Error('That submission looks too long.')
-  }
-  if (message.length > 2000) throw new Error('Please keep your message under 2000 characters.')
-  if (eventDate && !/^\d{4}-\d{2}-\d{2}$/.test(eventDate)) {
-    throw new Error('Please pick a valid event date.')
-  }
-  if (
-    guestCount != null &&
-    (!Number.isInteger(guestCount) || guestCount < 0 || guestCount > 100000)
-  ) {
-    throw new Error('Please enter a valid guest count.')
-  }
+  // Shared rule set (lib/crm/validate) — the same checks and byte-for-byte
+  // the same messages this action always threw, now also enforced on the
+  // operator path (actions/leads.ts) so no door accepts less than this one.
+  const fieldError = firstLeadFieldError(
+    validateLeadFields(
+      { name, email, phone, event_type: eventType, event_date: eventDate, guest_count: guestCount, notes: message },
+      { requireName: true, requireEmail: true }
+    )
+  )
+  if (fieldError) throw new Error(fieldError)
 
   const { customer } = await findOrCreateCustomerCore(orgId, {
     name,

@@ -8,7 +8,10 @@ import { listActivity } from '@/actions/activity'
 import { listInvoicesByCustomerCore } from '@/lib/crm/invoices'
 import { mergeActivity } from '@/lib/crm/customer-activity'
 import { customerAR } from '@/lib/crm/ar-rollup'
+import { buildEventTypeOptions } from '@/lib/crm/event-type-options'
+import { hasMultiResourceCapacity, listCapacityUnitsCore } from '@/lib/capacity/units'
 import { ClientCockpit } from '@/components/admin/clients/ClientCockpit'
+import type { BillingPlan, Org } from '@/lib/types'
 
 export default async function CustomerDetailPage({
   params,
@@ -19,21 +22,37 @@ export default async function CustomerDetailPage({
   const orgSnap = await adminDb.collection('orgs').where('slug', '==', orgSlug).limit(1).get()
   if (orgSnap.empty) notFound()
   const orgId = orgSnap.docs[0].id
+  // Org doc fields the create form needs (New Opportunity inc 1) — this page
+  // was already paying for the whole document in the slug lookup above and
+  // discarding everything but the id.
+  const orgData = orgSnap.docs[0].data()
+  const plan = orgData.plan as BillingPlan | undefined
+  const eventTypeProfiles = orgData.event_type_profiles as Org['event_type_profiles']
 
   const customer = await getCustomer(orgId, customerId)
   if (!customer) notFound()
 
-  const [opportunities, notes, invoices, ownActivity] = await Promise.all([
+  const [opportunities, notes, invoices, ownActivity, units] = await Promise.all([
     listCustomerOpportunities(orgId, customerId),
     listNotes(orgId, 'customer', customerId),
     listInvoicesByCustomerCore(orgId, customerId),
     listActivity(orgId, 'customer', customerId),
+    // Same gate + backstop as the pipeline page: only a business-tier org can
+    // have units, so everyone else pays no read and gets no delivery toggle.
+    hasMultiResourceCapacity({ plan }) ? listCapacityUnitsCore(orgId) : Promise.resolve([]),
   ])
   const leadActivity = await Promise.all(
     opportunities.map((l) => listActivity(orgId, 'opportunity', l.id))
   )
   const activity = mergeActivity([ownActivity, ...leadActivity])
   const ar = customerAR(invoices, new Date())
+
+  // The delivery-mode toggle needs a room to host in: ≥1 ACTIVE venue unit —
+  // the same rule the pipeline page threads to its create form.
+  const showDeliveryMode = units.some((u) => u.kind === 'venue' && u.active)
+  // Chip vocabulary: profiles + THIS customer's own history (one shared rule,
+  // lib/crm/event-type-options — the pipeline page feeds it the whole org's).
+  const eventTypeOptions = buildEventTypeOptions(eventTypeProfiles, opportunities)
 
   // The rollup/story is derived in the client from opportunities — no prop for it.
   return (
@@ -46,6 +65,8 @@ export default async function CustomerDetailPage({
       invoices={invoices}
       activity={activity}
       ar={ar}
+      showDeliveryMode={showDeliveryMode}
+      eventTypeOptions={eventTypeOptions}
     />
   )
 }

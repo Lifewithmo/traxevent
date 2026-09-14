@@ -1,5 +1,5 @@
 import { adminDb } from '@/lib/firebase-admin'
-import { FieldValue } from 'firebase-admin/firestore'
+import { FieldValue, type WriteBatch } from 'firebase-admin/firestore'
 import { LEAD_STAGES } from '@/lib/leads'
 import type { Lead, LeadStage, LeadWaiting, LostReason } from '@/lib/types'
 import { randomBytes } from 'crypto'
@@ -56,9 +56,21 @@ export interface CreateLeadCoreInput {
   assigned_units?: Lead['assigned_units']
 }
 
+export interface CreateLeadCoreOpts {
+  /** Extra docs written atomically WITH the lead in one batch — e.g. the
+   *  follow-up task a lead is born with (actions/leads.ts). The callback adds
+   *  its writes to `batch`; the commit stays here so the lead can never land
+   *  without its companions (or vice versa). */
+  alsoWrite?: (batch: WriteBatch, lead: Lead) => void
+}
+
 /** Guard-free lead create. Validates name/stage; performs no auth, no customer
  *  dedup, and logs no activity — those are the caller's responsibility. */
-export async function createLeadCore(orgId: string, input: CreateLeadCoreInput): Promise<Lead> {
+export async function createLeadCore(
+  orgId: string,
+  input: CreateLeadCoreInput,
+  opts?: CreateLeadCoreOpts
+): Promise<Lead> {
   if (!input.name?.trim()) throw new Error('Name is required')
   if (!LEAD_STAGES.includes(input.stage)) throw new Error('Invalid stage')
   const id = randomBytes(8).toString('hex')
@@ -81,7 +93,14 @@ export async function createLeadCore(orgId: string, input: CreateLeadCoreInput):
     ...(input.delivery_mode ? { delivery_mode: input.delivery_mode } : {}),
     ...(input.assigned_units ? { assigned_units: input.assigned_units } : {}),
   }
-  await leadsRef(orgId).doc(id).set(lead)
+  if (opts?.alsoWrite) {
+    const batch = adminDb.batch()
+    batch.set(leadsRef(orgId).doc(id), lead)
+    opts.alsoWrite(batch, lead)
+    await batch.commit()
+  } else {
+    await leadsRef(orgId).doc(id).set(lead)
+  }
   return lead
 }
 

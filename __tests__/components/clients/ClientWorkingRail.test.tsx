@@ -9,13 +9,54 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh, push: vi.fn() }
 // way CustomerDetailClient.test.tsx mocks '@/actions/customers'.
 vi.mock('@/actions/customers', () => ({ updateCustomer: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('@/actions/proposals', () => ({ listProposals: vi.fn().mockResolvedValue([]) }))
-vi.mock('@/actions/leads', () => ({ createLead: vi.fn().mockResolvedValue({ id: 'l9' }) }))
+// No '@/actions/leads' mock any more: the rail lost its NewOpportunityForm
+// instance (New Opportunity inc 1 — ONE form per page, owned by ClientCockpit),
+// so nothing in its import graph reaches firebase-admin through that module.
 
 describe('ClientWorkingRail', () => {
   beforeEach(() => {
     vi.mocked(updateCustomer).mockReset()
     vi.mocked(updateCustomer).mockResolvedValue(undefined)
     refresh.mockClear()
+  })
+
+  /*
+    ONE FORM INSTANCE PER PAGE (New Opportunity inc 1). The rail used to mount
+    its own NewOpportunityForm next to the cockpit's — two instances, duplicate
+    ids on one page. The rail now only TRIGGERS: every empty-state CTA that used
+    to open its private form calls `onNewJob`, and the cockpit owns the single
+    instance.
+  */
+  describe('onNewJob (the rail triggers, the cockpit owns the form)', () => {
+    const bareProps = {
+      orgId: 'o',
+      orgSlug: 'acme',
+      customer: { id: 'c1', name: 'Tessa Lund' } as never,
+      opportunities: [],
+      invoices: [],
+      ar: { invoiced: 0, paid: 0, outstanding: 0, overdueAmount: 0, openCount: 0 },
+    }
+
+    it('renders no form or dialog of its own', () => {
+      render(<ClientWorkingRail {...bareProps} onNewJob={() => {}} />)
+      expect(screen.queryByRole('dialog')).toBeNull()
+    })
+
+    it('routes the empty Jobs CTA to onNewJob', () => {
+      const onNewJob = vi.fn()
+      render(<ClientWorkingRail {...bareProps} onNewJob={onNewJob} />)
+      fireEvent.click(screen.getByRole('button', { name: 'Book a job' }))
+      expect(onNewJob).toHaveBeenCalledTimes(1)
+    })
+
+    it('routes the proposal and invoice empty CTAs to onNewJob when the client has no job yet', () => {
+      const onNewJob = vi.fn()
+      render(<ClientWorkingRail {...bareProps} onNewJob={onNewJob} />)
+      // With no lead to hang them on, both CTAs fall back to booking the job first.
+      fireEvent.click(screen.getByRole('button', { name: 'Draft one' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Create invoice' }))
+      expect(onNewJob).toHaveBeenCalledTimes(2)
+    })
   })
 
   it('shows the open-balance footer on the invoices card and an empty CTA when there are none', () => {

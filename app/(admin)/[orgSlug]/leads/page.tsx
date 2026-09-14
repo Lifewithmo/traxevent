@@ -9,6 +9,9 @@ import { listTasks } from '@/actions/tasks'
 import { listProposals } from '@/actions/proposals'
 import { buildPipelineRows, closedThisMonth, radarConflictOpts, DEFAULT_PREP_LEAD_DAYS } from '@/lib/pipeline-view'
 import { hasMultiResourceCapacity, listCapacityUnitsCore } from '@/lib/capacity/units'
+import { buildBookabilityCtx } from '@/lib/calendar-bookability'
+import { orgEvents } from '@/lib/calendar-fetch'
+import { buildEventTypeOptions } from '@/lib/crm/event-type-options'
 import { todayYmd } from '@/lib/opportunity-detail'
 import { OPEN_STAGES, CLOSED_STAGES } from '@/lib/leads'
 import { PipelineListClient } from '@/components/admin/pipeline/PipelineListClient'
@@ -42,7 +45,14 @@ export default async function LeadsPage({
   // render the pill, so it is simply unused for them.
   const resourceLabels = orgData.resource_labels as Org['resource_labels']
 
-  const [leads, customers] = await Promise.all([listLeads(orgId), listCustomers(orgId)])
+  // `orgEvents` is the ONE Firestore read this increment adds to the page
+  // (spec §6 Data, feasibility-verified): the form's bookability verdict must
+  // read demand off the same events the calendar renders, or it contradicts
+  // the job block the cockpit draws (see `calendarDemand`). Folded into the
+  // existing parallel fan-out so it costs latency nothing.
+  const [leads, customers, events] = await Promise.all([
+    listLeads(orgId), listCustomers(orgId), orgEvents(orgId),
+  ])
   const open = leads.filter((l) => OPEN_STAGES.includes(l.stage))
   const closed = leads.filter((l) => CLOSED_STAGES.includes(l.stage))
   const inputs = await Promise.all(open.map(async (lead) => {
@@ -106,7 +116,29 @@ export default async function LeadsPage({
   // loaded above — no extra read — and false for every base/solo org (empty
   // `units`). Both pipeline surfaces get it so their create forms match.
   const showDeliveryMode = units.some((u) => u.kind === 'venue' && u.active)
-  const shared = { orgId, orgSlug, groups, monthly, showDeliveryMode }
+
+  /*
+    The create form's live-verdict context (New Opportunity inc 1). Built from
+    what this render already holds — leads, units, today — plus the one added
+    `orgEvents` read above; the form then answers "are you free Oct 4?" client-
+    side with zero further I/O. A variable (not an inline literal) so
+    `event_type_profiles` can ride along past `buildBookabilityCtx`'s
+    Pick<'plan'|'prep_lead_days'> input type: the builder forwards its `org`
+    verbatim to `radarConflictOpts`, which IS profile-aware, and the calendar's
+    own `orgBookabilityCtx` passes the full org doc — dropping profiles here
+    would make the form's verdict disagree with both the calendar cockpit and
+    this very page's over-capacity pills.
+  */
+  const ctxOrg = { plan: org.plan, prep_lead_days: prepLeadDays, event_type_profiles: org.event_type_profiles }
+  const bookabilityCtx = buildBookabilityCtx({ orgSlug, org: ctxOrg, leads, events, units, today })
+
+  // The form's event-type chip vocabulary: profile names first, then the org's
+  // own history by frequency (lib/crm/event-type-options — one rule shared
+  // with the cockpit page). Whole-org history here: every lead, open or closed,
+  // is a word the operator has actually used.
+  const eventTypeOptions = buildEventTypeOptions(org.event_type_profiles, leads)
+
+  const shared = { orgId, orgSlug, groups, monthly, showDeliveryMode, eventTypeOptions, bookabilityCtx }
   return (
     <div>
       {/* `units` is populated only for a business org (the gate above); a

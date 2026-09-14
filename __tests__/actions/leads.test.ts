@@ -17,6 +17,10 @@ const getCustomerCore = vi.hoisted(() => vi.fn())
 // units + leads.
 const orgDocGetSpy = vi.hoisted(() => vi.fn().mockResolvedValue({ exists: true, data: () => ({ id: 'org-1', plan: 'starter' }) }))
 const unitsListSpy = vi.hoisted(() => vi.fn().mockResolvedValue({ docs: [] }))
+// Batch seam (New Opportunity inc 1): createLead with a follow_up_date commits
+// the lead doc AND its follow-up task in one WriteBatch.
+const batchSetSpy = vi.hoisted(() => vi.fn())
+const batchCommitSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 
 vi.mock('@/lib/firebase-admin', () => {
   const leadsCol = {
@@ -26,6 +30,11 @@ vi.mock('@/lib/firebase-admin', () => {
       get: leadDocGetSpy,
       update: leadDocUpdateSpy,
       delete: leadDocDeleteSpy,
+      // tasksRef(orgId, leadId) = .../leads/{leadId}/tasks — task doc refs are
+      // tagged so batch.set assertions can tell them from the lead doc ref.
+      collection: vi.fn().mockImplementation((sub: string) =>
+        sub === 'tasks' ? { doc: vi.fn((taskId?: string) => ({ __taskDoc: taskId })) } : {}
+      ),
     })),
     orderBy: vi.fn().mockReturnValue({ get: listLeadsSpy }),
   }
@@ -43,6 +52,7 @@ vi.mock('@/lib/firebase-admin', () => {
   return {
     adminDb: {
       collection: vi.fn().mockReturnValue({ doc: vi.fn().mockReturnValue(orgDoc) }),
+      batch: vi.fn().mockImplementation(() => ({ set: batchSetSpy, commit: batchCommitSpy })),
     },
   }
 })
@@ -165,8 +175,10 @@ describe('leads actions', () => {
     expect(leadDocUpdateSpy.mock.calls[0][0].assigned_units).toEqual({ mobile: 'k2' })
   })
 
-  it('createLead throws "Name is required" for blank name and does not write', async () => {
-    await expect(createLead('org-1', { name: '   ' })).rejects.toThrow('Name is required')
+  it('createLead rejects a blank name with the shared-validator message and does not write', async () => {
+    // The message comes from lib/crm/validate — the one rule set intake and
+    // the operator path share (it kept intake's historical strings).
+    await expect(createLead('org-1', { name: '   ' })).rejects.toThrow('Please enter your name.')
     expect(leadDocSetSpy).not.toHaveBeenCalled()
   })
 
@@ -415,6 +427,136 @@ describe('createLead linked mode (customer_id)', () => {
   })
 
   it('still requires a name when no customer_id is given', async () => {
-    await expect(createLead('o1', {})).rejects.toThrow('Name is required')
+    await expect(createLead('o1', {})).rejects.toThrow('Please enter your name.')
+  })
+
+  it('does not require a name when a customer_id carries the identity', async () => {
+    vi.mocked(getCustomerCore).mockResolvedValue({ id: 'c9', name: 'Dana Kim', created_at: 'x' })
+    const lead = await createLead('o1', { customer_id: 'c9' })
+    expect(lead.name).toBe('Dana Kim')
+  })
+})
+
+/*
+  New Opportunity increment 1 — createLead validates through the SHARED
+  validator (lib/crm/validate: the same rules as public intake, throwing the
+  first error), writes an optional follow-up task in the SAME Firestore batch
+  as the lead doc, and logs a 'created' activity after the commit.
+*/
+describe('createLead shared validation (increment: New Opportunity)', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('rejects an invalid email with the intake message and writes nothing', async () => {
+    await expect(createLead('o1', { name: 'Ada', email: 'not-an-email' })).rejects.toThrow(
+      'Please enter a valid email address.'
+    )
+    expect(findOrCreateCustomerCore).not.toHaveBeenCalled()
+    expect(leadDocSetSpy).not.toHaveBeenCalled()
+  })
+
+  it('rejects a malformed event_date and a fractional guest_count', async () => {
+    await expect(createLead('o1', { name: 'Ada', event_date: '10/10/2026' })).rejects.toThrow(
+      'Please pick a valid event date.'
+    )
+    await expect(createLead('o1', { name: 'Ada', guest_count: 3.5 })).rejects.toThrow(
+      'Please enter a valid guest count.'
+    )
+    expect(leadDocSetSpy).not.toHaveBeenCalled()
+  })
+
+  it('rejects a negative estimated_value (operator-only rule)', async () => {
+    await expect(createLead('o1', { name: 'Ada', estimated_value: -5 })).rejects.toThrow(
+      'Please enter a valid estimated value.'
+    )
+    expect(leadDocSetSpy).not.toHaveBeenCalled()
+  })
+
+  it('accepts a PAST event_date — the client warns, the server never blocks', async () => {
+    findOrCreateCustomerCore.mockResolvedValue({ customer: { id: 'c1', name: 'Ada', created_at: 'x' }, created: true })
+    const lead = await createLead('o1', { name: 'Ada', event_date: '2000-01-01' })
+    expect(lead.event_date).toBe('2000-01-01')
+    expect(leadDocSetSpy).toHaveBeenCalled()
+  })
+})
+
+describe('createLead follow-up at birth (increment: New Opportunity)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    findOrCreateCustomerCore.mockResolvedValue({
+      customer: { id: 'c1', name: 'Dana Kim', created_at: 'x' }, created: true,
+    })
+  })
+
+  it('commits the lead AND the follow-up task in one batch (no plain set)', async () => {
+    const lead = await createLead('o1', { name: 'Dana Kim', follow_up_date: '2026-09-16' })
+    // Atomic: both docs go through the batch; the single-doc path is not used.
+    expect(leadDocSetSpy).not.toHaveBeenCalled()
+    expect(batchCommitSpy).toHaveBeenCalledTimes(1)
+    expect(batchSetSpy).toHaveBeenCalledTimes(2)
+    const [leadRef, leadData] = batchSetSpy.mock.calls[0]
+    const [taskRef, taskData] = batchSetSpy.mock.calls[1]
+    expect(leadRef.set).toBe(leadDocSetSpy) // the lead doc ref
+    expect(leadData).toMatchObject({ name: 'Dana Kim', stage: 'inquiry' })
+    expect(taskRef.__taskDoc).toBe(taskData.id) // .../leads/{id}/tasks/{taskId}
+    expect(taskData).toMatchObject({
+      lead_id: lead.id,
+      title: 'Follow up with Dana',
+      done: false,
+      due_date: '2026-09-16',
+    })
+    expect(taskData.id).toMatch(/^[0-9a-f]{16}$/)
+    expect(taskData.created_at).toEqual(expect.any(String))
+  })
+
+  it('uses a supplied follow_up_title over the default', async () => {
+    await createLead('o1', { name: 'Dana Kim', follow_up_date: '2026-09-16', follow_up_title: '  Send tasting menu  ' })
+    expect(batchSetSpy.mock.calls[1][1].title).toBe('Send tasting menu')
+  })
+
+  it("defaults the title from the LINKED customer's name", async () => {
+    vi.mocked(getCustomerCore).mockResolvedValue({ id: 'c9', name: 'Ada Lovelace', created_at: 'x' })
+    await createLead('o1', { customer_id: 'c9', follow_up_date: '2026-09-16' })
+    expect(batchSetSpy.mock.calls[1][1].title).toBe('Follow up with Ada')
+  })
+
+  it('without follow_up_date the plain single-doc write path is untouched', async () => {
+    await createLead('o1', { name: 'Dana Kim' })
+    expect(leadDocSetSpy).toHaveBeenCalledTimes(1)
+    expect(batchSetSpy).not.toHaveBeenCalled()
+    expect(batchCommitSpy).not.toHaveBeenCalled()
+  })
+
+  it('treats a blank follow_up_date as absent', async () => {
+    await createLead('o1', { name: 'Dana Kim', follow_up_date: '   ' })
+    expect(leadDocSetSpy).toHaveBeenCalledTimes(1)
+    expect(batchSetSpy).not.toHaveBeenCalled()
+  })
+
+  it("logs a 'created' activity naming the booked follow-up", async () => {
+    const lead = await createLead('o1', { name: 'Dana Kim', follow_up_date: '2026-09-16' })
+    expect(logActivity).toHaveBeenCalledWith('o1', {
+      parent_type: 'opportunity',
+      parent_id: lead.id,
+      kind: 'created',
+      summary: 'Opportunity created · follow-up booked for 2026-09-16',
+    })
+  })
+
+  it("logs a plain 'created' activity when no follow-up is set", async () => {
+    const lead = await createLead('o1', { name: 'Dana Kim' })
+    expect(logActivity).toHaveBeenCalledWith('o1', {
+      parent_type: 'opportunity',
+      parent_id: lead.id,
+      kind: 'created',
+      summary: 'Opportunity created',
+    })
+  })
+
+  it('the activity is logged AFTER the batch commit (write-then-log order)', async () => {
+    const order: string[] = []
+    batchCommitSpy.mockImplementationOnce(async () => { order.push('commit') })
+    vi.mocked(logActivity).mockImplementationOnce(async () => { order.push('log') })
+    await createLead('o1', { name: 'Dana Kim', follow_up_date: '2026-09-16' })
+    expect(order).toEqual(['commit', 'log'])
   })
 })

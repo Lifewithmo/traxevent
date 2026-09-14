@@ -1,9 +1,12 @@
 'use server'
 
+import { randomBytes } from 'crypto'
 import { assertOrgMember, assertOrgAdmin } from '@/lib/auth/assert'
 import { LEAD_STAGES, closedAtPatch, LOST_REASON_LABELS } from '@/lib/leads'
 import { logActivity } from '@/lib/activity'
 import { createLeadCore, leadsRef, listLeadsCore, updateLeadCore, type LeadUpdate } from '@/lib/crm/leads'
+import { tasksRef } from '@/lib/crm/tasks'
+import { validateLeadFields, firstLeadFieldError } from '@/lib/crm/validate'
 import { findOrCreateCustomerCore, getCustomerCore } from '@/lib/crm/customers'
 import { convertOpportunityToWorkCore, type ConvertToWorkInput } from '@/lib/crm/convert'
 import { getOrg } from '@/actions/orgs'
@@ -12,7 +15,7 @@ import { hasMultiResourceCapacity, computeCapacity } from '@/lib/capacity/capaci
 import { leadRequirement } from '@/lib/capacity/requirement'
 import { kindLabel } from '@/lib/capacity/labels'
 import type { StageChangeResult } from '@/lib/capacity/guard'
-import type { Lead, LeadStage, LeadWaiting, LostReason, Event, Customer } from '@/lib/types'
+import type { Lead, LeadStage, LeadWaiting, LostReason, Event, Customer, Task } from '@/lib/types'
 
 // NOTE: this is a 'use server' module — every export must be an async function.
 // LeadUpdate (a type) is therefore NOT re-exported here; import it from
@@ -33,6 +36,8 @@ export interface CreateLeadInput {
   notes?: string
   delivery_mode?: 'offsite' | 'onsite'
   assigned_units?: Lead['assigned_units']
+  follow_up_date?: string  // ISO ymd; when present, a follow-up Task is created WITH the lead
+  follow_up_title?: string // default: 'Follow up with {first word of contact name}'
 }
 
 export async function listLeads(orgId: string): Promise<Lead[]> {
@@ -51,15 +56,36 @@ export async function createLead(orgId: string, input: CreateLeadInput): Promise
   const stage = input.stage ?? 'inquiry'
   if (!LEAD_STAGES.includes(stage)) throw new Error('Invalid stage')
 
+  // One rule set for every door a lead comes through: the operator path
+  // validates exactly what the public intake form does (lib/crm/validate).
+  // Linked mode takes its identity from the customer record, so only the
+  // unlinked path requires a name here.
+  const fieldError = firstLeadFieldError(
+    validateLeadFields(
+      {
+        name: input.name,
+        email: input.email,
+        phone: input.phone,
+        event_type: input.event_type,
+        event_date: input.event_date,
+        guest_count: input.guest_count,
+        estimated_value: input.estimated_value,
+        notes: input.notes,
+      },
+      { requireName: !input.customer_id }
+    )
+  )
+  if (fieldError) throw new Error(fieldError)
+
   let customer: Customer
   if (input.customer_id) {
     const found = await getCustomerCore(orgId, input.customer_id)
     if (!found) throw new Error('Customer not found')
     customer = found
   } else {
-    if (!input.name?.trim()) throw new Error('Name is required')
+    // The validator above required a non-blank name on this path.
     customer = (await findOrCreateCustomerCore(orgId, {
-      name: input.name.trim(),
+      name: input.name!.trim(),
       ...(input.organization?.trim() ? { company: input.organization.trim() } : {}),
       ...(input.email?.trim() ? { email: input.email.trim() } : {}),
       ...(input.phone?.trim() ? { phone: input.phone.trim() } : {}),
@@ -81,20 +107,58 @@ export async function createLead(orgId: string, input: CreateLeadInput): Promise
         ...(input.organization?.trim() ? { organization: input.organization.trim() } : {}),
       }
 
-  return createLeadCore(orgId, {
-    ...contact,
-    stage,
-    customer_id: customer.id,
-    source: 'manual',
-    ...(input.title !== undefined ? { title: input.title } : {}),
-    ...(input.event_type !== undefined ? { event_type: input.event_type } : {}),
-    ...(input.event_date !== undefined ? { event_date: input.event_date } : {}),
-    ...(input.estimated_value != null ? { estimated_value: input.estimated_value } : {}),
-    ...(input.guest_count != null ? { guest_count: input.guest_count } : {}),
-    ...(input.notes !== undefined ? { notes: input.notes } : {}),
-    ...(input.delivery_mode !== undefined ? { delivery_mode: input.delivery_mode } : {}),
-    ...(input.assigned_units !== undefined ? { assigned_units: input.assigned_units } : {}),
+  const followUpDate = input.follow_up_date?.trim()
+  const lead = await createLeadCore(
+    orgId,
+    {
+      ...contact,
+      stage,
+      customer_id: customer.id,
+      source: 'manual',
+      ...(input.title !== undefined ? { title: input.title } : {}),
+      ...(input.event_type !== undefined ? { event_type: input.event_type } : {}),
+      ...(input.event_date !== undefined ? { event_date: input.event_date } : {}),
+      ...(input.estimated_value != null ? { estimated_value: input.estimated_value } : {}),
+      ...(input.guest_count != null ? { guest_count: input.guest_count } : {}),
+      ...(input.notes !== undefined ? { notes: input.notes } : {}),
+      ...(input.delivery_mode !== undefined ? { delivery_mode: input.delivery_mode } : {}),
+      ...(input.assigned_units !== undefined ? { assigned_units: input.assigned_units } : {}),
+    },
+    // The follow-up task commits in the SAME batch as the lead doc: "born with
+    // a next step" must be atomic — a lead without its booked follow-up would
+    // quietly recreate the needs-attention state this exists to prevent.
+    followUpDate
+      ? {
+          alsoWrite: (batch, created) => {
+            const taskId = randomBytes(8).toString('hex')
+            const task: Task = {
+              id: taskId,
+              lead_id: created.id,
+              // "Follow up with Dana", not the full formal name — this title
+              // shows up in the task queue where terseness reads better.
+              title: input.follow_up_title?.trim() || `Follow up with ${created.name.split(/\s+/)[0]}`,
+              done: false,
+              created_at: new Date().toISOString(),
+              due_date: followUpDate,
+            }
+            batch.set(tasksRef(orgId, created.id).doc(taskId), task)
+          },
+        }
+      : undefined
+  )
+
+  // Best-effort from here down — the business write has committed (logActivity
+  // swallows its own failures; see lib/activity.ts).
+  await logActivity(orgId, {
+    parent_type: 'opportunity',
+    parent_id: lead.id,
+    kind: 'created',
+    summary: followUpDate
+      ? `Opportunity created · follow-up booked for ${followUpDate}`
+      : 'Opportunity created',
   })
+
+  return lead
 }
 
 export async function updateLead(orgId: string, leadId: string, updates: LeadUpdate): Promise<void> {

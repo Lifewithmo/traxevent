@@ -4,6 +4,8 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { NewOpportunityForm } from '@/components/admin/pipeline/NewOpportunityForm'
+import { CreatedToast } from '@/components/admin/pipeline/CreatedToast'
+import { getBookabilityCtx } from '@/actions/bookability'
 import { ActivityTimeline } from '@/components/admin/opportunity/ActivityTimeline'
 import { ClientWorkingRail } from '@/components/admin/clients/ClientWorkingRail'
 import { ClientCockpitHeader } from '@/components/admin/clients/ClientCockpitHeader'
@@ -23,20 +25,32 @@ interface ClientCockpitProps {
   invoices: Invoice[]
   activity: ActivityEvent[]
   ar: CustomerAR
+  // Server-computed create-form context (New Opportunity inc 1, contract C5):
+  // business tier + ≥1 active venue unit gates the delivery toggle, and the
+  // chip vocabulary is profiles + THIS customer's own history (page.tsx).
+  showDeliveryMode?: boolean
+  eventTypeOptions?: string[]
 }
 
 function byCreatedDesc<T extends { created_at?: string }>(rows: T[]): T[] {
   return [...rows].sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? ''))
 }
 
-export function ClientCockpit({ orgId, orgSlug, customer, opportunities, notes, invoices, activity, ar }: ClientCockpitProps) {
+export function ClientCockpit({
+  orgId, orgSlug, customer, opportunities, notes, invoices, activity, ar, showDeliveryMode, eventTypeOptions,
+}: ClientCockpitProps) {
   const router = useRouter()
   const [creatingJob, setCreatingJob] = useState(false)
+  // The after-create toast ("Job created for {name}"). The cockpit stays put —
+  // the refreshed rail shows the job — so the toast is the close-the-loop
+  // signal, keyed by the lead so a second create re-arms its own 8s clock.
+  const [createdJob, setCreatedJob] = useState<Lead | null>(null)
 
   const today = todayYmd()
   const row = buildClientRow(customer, opportunities, today)
   const story = buildClientStory(row, opportunities, today)
-  const mostRecentLeadId = byCreatedDesc(opportunities)[0]?.id
+  const mostRecentJob = byCreatedDesc(opportunities)[0]
+  const mostRecentLeadId = mostRecentJob?.id
   // "Pinned note" = the most recent note, surfaced above the fold. Note has
   // no `pinned` flag (lib/types.ts) — the full history still lives in the
   // Activity timeline below (createNote also logs a 'note' activity event).
@@ -94,7 +108,9 @@ export function ClientCockpit({ orgId, orgSlug, customer, opportunities, notes, 
           <ActivityTimeline orgId={orgId} parentType="customer" parentId={customer.id} activity={activity} />
         </div>
 
-        {/* Right: the working rail (Task 19) */}
+        {/* Right: the working rail (Task 19). It TRIGGERS the create form via
+            onNewJob and no longer owns an instance — one form per page (inc 1);
+            two instances meant duplicate field ids in one document. */}
         <ClientWorkingRail
           orgId={orgId}
           orgSlug={orgSlug}
@@ -102,10 +118,43 @@ export function ClientCockpit({ orgId, orgSlug, customer, opportunities, notes, 
           opportunities={opportunities}
           invoices={invoices}
           ar={ar}
+          onNewJob={() => setCreatingJob(true)}
         />
       </div>
 
-      <NewOpportunityForm orgId={orgId} open={creatingJob} onClose={() => setCreatingJob(false)} customer={customer} />
+      {/*
+        THE ONE FORM INSTANCE (contract C5). Cockpit specifics, per the spec's
+        role table ("Owner on the Client cockpit"):
+        • `customer` pins WHO — the form skips the picker and contact fields.
+        • ctx is LAZY (contract C3): most cockpit visits never open the form,
+          so the bookability context is fetched by the form once on first open
+          instead of being paid for on every page render (2–3 reads).
+        • `initialValues` seed type + guests from the client's most recent job
+          — repeat business usually repeats its shape; both stay editable.
+      */}
+      <NewOpportunityForm
+        orgId={orgId}
+        orgSlug={orgSlug}
+        open={creatingJob}
+        onClose={() => setCreatingJob(false)}
+        customer={customer}
+        showDeliveryMode={showDeliveryMode}
+        eventTypeOptions={eventTypeOptions}
+        loadBookabilityCtx={() => getBookabilityCtx(orgId, orgSlug)}
+        initialValues={mostRecentJob
+          ? { event_type: mostRecentJob.event_type, guest_count: mostRecentJob.guest_count }
+          : undefined}
+        onCreated={(lead: Lead) => setCreatedJob(lead)}
+      />
+
+      {createdJob && (
+        <CreatedToast
+          key={createdJob.id}
+          message={`Job created for ${customer.name}`}
+          href={`/${orgSlug}/leads/${createdJob.id}`}
+          onDismiss={() => setCreatedJob(null)}
+        />
+      )}
     </div>
   )
 }

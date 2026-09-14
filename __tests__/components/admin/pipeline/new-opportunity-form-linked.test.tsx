@@ -17,18 +17,22 @@ describe('NewOpportunityForm linked mode', () => {
   beforeEach(() => vi.clearAllMocks())
 
   it('hides contact inputs and shows who it is for', () => {
-    render(<NewOpportunityForm orgId="o1" open onClose={() => {}} customer={customer} />)
+    render(<NewOpportunityForm orgId="o1" orgSlug="brew" open onClose={() => {}} customer={customer} />)
     expect(screen.getByText(/for dana kim/i)).toBeInTheDocument()
-    expect(screen.queryByLabelText('Name')).not.toBeInTheDocument()
-    expect(screen.queryByLabelText('Email')).not.toBeInTheDocument()
+    expect(screen.queryByRole('textbox', { name: 'Name' })).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Phone')).not.toBeInTheDocument()
+    // The More-details disclosure carries email/org for a NEW contact only —
+    // linked mode snapshots them from the customer record.
+    fireEvent.click(screen.getByRole('button', { name: /more details/i }))
+    expect(screen.queryByLabelText('Email')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Organization')).not.toBeInTheDocument()
   })
 
   it('submits customer_id without contact fields and can save with no name typed', async () => {
-    render(<NewOpportunityForm orgId="o1" open onClose={() => {}} customer={customer} />)
+    render(<NewOpportunityForm orgId="o1" orgSlug="brew" open onClose={() => {}} customer={customer} />)
+    fireEvent.click(screen.getByRole('button', { name: /more details/i }))
     fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Fall gala' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Create opportunity' }))
     await waitFor(() => expect(createLead).toHaveBeenCalledWith('o1', expect.objectContaining({
       customer_id: 'c1', title: 'Fall gala',
     })))
@@ -37,13 +41,23 @@ describe('NewOpportunityForm linked mode', () => {
     expect(input).not.toHaveProperty('email')
   })
 
-  it('still requires a name in standalone mode', () => {
-    render(<NewOpportunityForm orgId="o1" open onClose={() => {}} />)
-    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+  it('keeps Create enabled with no name in standalone mode and errors on submit instead', async () => {
+    render(<NewOpportunityForm orgId="o1" orgSlug="brew" open onClose={() => {}} />)
+    const submit = screen.getByRole('button', { name: 'Create opportunity' })
+    // Defect #8: validation happens on submit with a field error — never a
+    // disabled button the operator has to reverse-engineer.
+    expect(submit).not.toBeDisabled()
+    fireEvent.click(submit)
+    await waitFor(() =>
+      expect(screen.getByRole('textbox', { name: 'Name' })).toHaveAttribute('aria-invalid', 'true')
+    )
+    expect(createLead).not.toHaveBeenCalled()
   })
 
   it('shows a single identity display when picking a customer via the typeahead', () => {
-    render(<NewOpportunityForm orgId="o1" open onClose={() => {}} customers={[customer]} />)
+    render(<NewOpportunityForm orgId="o1" orgSlug="brew" open onClose={() => {}} customers={[customer]} />)
+    // The picker is the explicit fallback, collapsed to one line until asked for.
+    fireEvent.click(screen.getByRole('button', { name: /search clients/i }))
     fireEvent.change(screen.getByLabelText(/link to existing customer/i), { target: { value: 'dana' } })
     fireEvent.click(screen.getByRole('button', { name: /dana kim/i }))
     expect(screen.getByText(/linked to/i)).toBeInTheDocument()
@@ -61,12 +75,12 @@ describe('NewOpportunityForm linked mode', () => {
   */
   describe('delivery-mode toggle', () => {
     it('renders no delivery control unless showDeliveryMode is set', () => {
-      render(<NewOpportunityForm orgId="o1" open onClose={() => {}} customer={customer} />)
+      render(<NewOpportunityForm orgId="o1" orgSlug="brew" open onClose={() => {}} customer={customer} />)
       expect(screen.queryByRole('group', { name: 'Where' })).not.toBeInTheDocument()
     })
 
     it('offers a labelled offsite / on-site group when showDeliveryMode is set', () => {
-      render(<NewOpportunityForm orgId="o1" open onClose={() => {}} customer={customer} showDeliveryMode />)
+      render(<NewOpportunityForm orgId="o1" orgSlug="brew" open onClose={() => {}} customer={customer} showDeliveryMode />)
       const group = screen.getByRole('group', { name: 'Where' })
       expect(group).toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'Offsite', pressed: true })).toBeInTheDocument()
@@ -74,18 +88,18 @@ describe('NewOpportunityForm linked mode', () => {
     })
 
     it('persists an on-site choice through createLead', async () => {
-      render(<NewOpportunityForm orgId="o1" open onClose={() => {}} customer={customer} showDeliveryMode />)
+      render(<NewOpportunityForm orgId="o1" orgSlug="brew" open onClose={() => {}} customer={customer} showDeliveryMode />)
       fireEvent.click(screen.getByRole('button', { name: 'On-site' }))
       expect(screen.getByRole('button', { name: 'On-site', pressed: true })).toBeInTheDocument()
-      fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Create opportunity' }))
       await waitFor(() => expect(createLead).toHaveBeenCalledWith('o1', expect.objectContaining({
         delivery_mode: 'onsite',
       })))
     })
 
     it('leaves delivery_mode unwritten when the operator keeps the offsite default', async () => {
-      render(<NewOpportunityForm orgId="o1" open onClose={() => {}} customer={customer} showDeliveryMode />)
-      fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+      render(<NewOpportunityForm orgId="o1" orgSlug="brew" open onClose={() => {}} customer={customer} showDeliveryMode />)
+      fireEvent.click(screen.getByRole('button', { name: 'Create opportunity' }))
       await waitFor(() => expect(createLead).toHaveBeenCalled())
       expect(vi.mocked(createLead).mock.calls[0][1]).not.toHaveProperty('delivery_mode')
     })

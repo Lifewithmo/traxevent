@@ -10,6 +10,9 @@ interface CustomerPickerProps {
   customers: Customer[]
   value: Customer | null
   onChange: (customer: Customer | null) => void
+  /** The form renders the picker collapsed behind an "or search clients" line;
+   *  expanding it should land the caret in the search box without a second tap. */
+  autoFocus?: boolean
 }
 
 const optionLabel = (c: Customer) =>
@@ -24,7 +27,7 @@ const optionLabel = (c: Customer) =>
  * instead. The `<li>` is the ARIA option; the button inside it is only the
  * pointer target and is taken out of the tab order.
  */
-export function CustomerPicker({ customers, value, onChange }: CustomerPickerProps) {
+export function CustomerPicker({ customers, value, onChange, autoFocus }: CustomerPickerProps) {
   const [query, setQuery] = useState('')
   const [active, setActive] = useState(-1)
   const [dismissed, setDismissed] = useState(false)
@@ -60,6 +63,10 @@ export function CustomerPicker({ customers, value, onChange }: CustomerPickerPro
     : []
   const open = matches.length > 0 && !dismissed
   const activeIndex = open && active < matches.length ? active : -1
+  // The empty result is only meaningful once the query could plausibly have
+  // matched something — one character finds half the book, so the "nothing"
+  // claim waits for two. Shares `dismissed` with the list: Escape quiets both.
+  const noMatches = q.length >= 2 && matches.length === 0 && !dismissed
 
   function pick(customer: Customer) {
     onChange(customer)
@@ -70,7 +77,9 @@ export function CustomerPicker({ customers, value, onChange }: CustomerPickerPro
 
   function onKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
     if (event.key === 'Escape') {
-      if (!open) return
+      // `noMatches` is dismissable the same way the list is — Escape with
+      // either showing must not fall through to the dialog underneath.
+      if (!open && !noMatches) return
       event.preventDefault()
       setDismissed(true)
       setActive(-1)
@@ -105,6 +114,7 @@ export function CustomerPicker({ customers, value, onChange }: CustomerPickerPro
       <Input
         id="customerPicker"
         role="combobox"
+        autoFocus={autoFocus}
         autoComplete="off"
         aria-expanded={open}
         aria-controls={open ? listId : undefined}
@@ -119,6 +129,22 @@ export function CustomerPicker({ customers, value, onChange }: CustomerPickerPro
         onKeyDown={onKeyDown}
         placeholder="Search clients by name, company, or email"
       />
+      {/* The suggestion list changes under a screen-reader user's fingers with
+          no announcement — `aria-activedescendant` names the highlighted row
+          but nothing says how many rows there are. A polite live region fills
+          that gap; sr-only because the sighted answer is the list itself. */}
+      <p aria-live="polite" className="sr-only">
+        {q
+          ? matches.length > 0
+            ? `${matches.length} ${matches.length === 1 ? 'client matches' : 'clients match'}`
+            : 'No matching clients'
+          : ''}
+      </p>
+      {noMatches && (
+        <p className="rounded-md border border-border px-3 py-2 text-sm text-muted-foreground">
+          No matching clients
+        </p>
+      )}
       {open && (
         <ul
           id={listId}
