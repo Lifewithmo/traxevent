@@ -350,7 +350,7 @@ EventTrax pivot (neutralization, multi-brand, ops core). Detailed designs live i
   create, draft-requirement-aware verdict).
 
 - **Event types — first-class settings + picker unification** (branch
-  `feat/event-types-inc1`, built 2026-09-14; PR pending) — `Org.event_type_profiles`
+  `feat/event-types-inc1`, built 2026-09-14; PR #140) — `Org.event_type_profiles`
   promoted to the one id-referenced, archivable taxonomy: a new Settings →
   Event types page (rename-with-backfill, merge, guarded delete,
   adopt-from-history, per-type usage counts) replaces the legacy
