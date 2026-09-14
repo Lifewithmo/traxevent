@@ -13,7 +13,7 @@ import { ClientKpiBand } from '@/components/admin/clients/ClientKpiBand'
 import { buildClientRow } from '@/lib/crm/client-list'
 import { buildClientStory } from '@/lib/crm/client-story'
 import { todayYmd, formatRelativeTime } from '@/lib/opportunity-detail'
-import type { Customer, Lead, Note, Invoice, ActivityEvent } from '@/lib/types'
+import type { Customer, Lead, Note, Invoice, ActivityEvent, Org } from '@/lib/types'
 import type { CustomerAR } from '@/lib/crm/ar-rollup'
 
 interface ClientCockpitProps {
@@ -30,10 +30,16 @@ interface ClientCockpitProps {
   // chip vocabulary is profiles + THIS customer's own history (page.tsx).
   showDeliveryMode?: boolean
   eventTypeOptions?: string[]
-  // C5b: the RAW profile vocabulary (trimmed, original casing) — independent
-  // of the merged/capped chip list; the form keys its "not a configured event
-  // type" hint on this.
-  eventTypeProfileNames?: string[]
+  // The org's event-type profiles (event types inc 1) — the form's matching
+  // source for the hint, delivery-mode hiding, and the event_type_id payload
+  // (it ignores archived entries itself).
+  eventTypeProfiles?: Org['event_type_profiles']
+  // Owner/admin: the create form offers the inline "+ New type" chip and
+  // hint action. Computed server-side from the member role.
+  canCreateEventTypes?: boolean
+  // The operator's kind vocabulary for the inline-create popover's policy
+  // toggles ("needs cart" in their words via kindLabel).
+  resourceLabels?: Org['resource_labels']
 }
 
 function byCreatedDesc<T extends { created_at?: string }>(rows: T[]): T[] {
@@ -42,7 +48,7 @@ function byCreatedDesc<T extends { created_at?: string }>(rows: T[]): T[] {
 
 export function ClientCockpit({
   orgId, orgSlug, customer, opportunities, notes, invoices, activity, ar, showDeliveryMode, eventTypeOptions,
-  eventTypeProfileNames,
+  eventTypeProfiles, canCreateEventTypes, resourceLabels,
 }: ClientCockpitProps) {
   const router = useRouter()
   const [creatingJob, setCreatingJob] = useState(false)
@@ -145,7 +151,9 @@ export function ClientCockpit({
         customer={customer}
         showDeliveryMode={showDeliveryMode}
         eventTypeOptions={eventTypeOptions}
-        eventTypeProfileNames={eventTypeProfileNames}
+        eventTypeProfiles={eventTypeProfiles}
+        canCreateEventTypes={canCreateEventTypes}
+        resourceLabels={resourceLabels}
         // C5b: the pinned customer's own history IS their past-job count.
         pastJobCounts={{ [customer.id]: opportunities.length }}
         // Slug-only by contract (C5b): the action resolves the org from the

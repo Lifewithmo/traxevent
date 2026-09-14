@@ -47,12 +47,14 @@ interface PipelineListClientProps {
   eventTypeProfiles?: Org['event_type_profiles']
   // The create form's chip vocabulary (contract C5): profile names first, then
   // the org's own historical types by frequency — computed on the server
-  // (lib/crm/event-type-options) and passed through untouched.
+  // (lib/crm/event-type-options) and passed through untouched. The form's
+  // profile matching (hint, delivery-mode hiding, event_type_id) runs against
+  // `eventTypeProfiles` above — the form ignores archived entries itself.
   eventTypeOptions?: string[]
-  // C5b: the RAW profile vocabulary (trimmed, original casing) — independent
-  // of the merged/capped chip list above; the form keys its "not a configured
-  // event type" hint on this.
-  eventTypeProfileNames?: string[]
+  // Owner/admin (event types inc 1): the create form offers the inline
+  // "+ New type" chip and hint action. Computed server-side from the member
+  // role — the role itself never ships to the client.
+  canCreateEventTypes?: boolean
   // C5b: customer_id → total opportunity count over the page's loaded leads,
   // for the caller-recognition hint's "{n} past jobs".
   pastJobCounts?: Record<string, number>
@@ -191,7 +193,7 @@ function GroupHeader({ label, rows, alert }: { label: string; rows: PipelineRow[
 
 export function PipelineListClient({
   orgId, orgSlug, groups, closed, openCount, monthly, customers, showDeliveryMode, resourceLabels, eventTypeProfiles,
-  eventTypeOptions, eventTypeProfileNames, pastJobCounts, bookabilityCtx,
+  eventTypeOptions, canCreateEventTypes, pastJobCounts, bookabilityCtx,
 }: PipelineListClientProps) {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState<Tab>('open')
@@ -645,7 +647,9 @@ export function PipelineListClient({
         customers={customers}
         showDeliveryMode={showDeliveryMode}
         eventTypeOptions={eventTypeOptions}
-        eventTypeProfileNames={eventTypeProfileNames}
+        eventTypeProfiles={eventTypeProfiles}
+        canCreateEventTypes={canCreateEventTypes}
+        resourceLabels={resourceLabels}
         pastJobCounts={pastJobCounts}
         bookabilityCtx={bookabilityCtx}
         onCreated={handleCreated}

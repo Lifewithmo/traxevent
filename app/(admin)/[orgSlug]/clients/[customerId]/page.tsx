@@ -1,17 +1,16 @@
 export const dynamic = 'force-dynamic'
 
 import { notFound } from 'next/navigation'
-import { adminDb } from '@/lib/firebase-admin'
+import { requireOrgMember } from '@/lib/auth/guards'
 import { getCustomer, listCustomerOpportunities } from '@/actions/customers'
 import { listNotes } from '@/actions/notes'
 import { listActivity } from '@/actions/activity'
 import { listInvoicesByCustomerCore } from '@/lib/crm/invoices'
 import { mergeActivity } from '@/lib/crm/customer-activity'
 import { customerAR } from '@/lib/crm/ar-rollup'
-import { buildEventTypeOptions, eventTypeProfileNames } from '@/lib/crm/event-type-options'
+import { buildEventTypeOptions } from '@/lib/crm/event-type-options'
 import { hasMultiResourceCapacity, listCapacityUnitsCore } from '@/lib/capacity/units'
 import { ClientCockpit } from '@/components/admin/clients/ClientCockpit'
-import type { BillingPlan, Org } from '@/lib/types'
 
 export default async function CustomerDetailPage({
   params,
@@ -19,15 +18,13 @@ export default async function CustomerDetailPage({
   params: Promise<{ orgSlug: string; customerId: string }>
 }) {
   const { orgSlug, customerId } = await params
-  const orgSnap = await adminDb.collection('orgs').where('slug', '==', orgSlug).limit(1).get()
-  if (orgSnap.empty) notFound()
-  const orgId = orgSnap.docs[0].id
-  // Org doc fields the create form needs (New Opportunity inc 1) — this page
-  // was already paying for the whole document in the slug lookup above and
-  // discarding everything but the id.
-  const orgData = orgSnap.docs[0].data()
-  const plan = orgData.plan as BillingPlan | undefined
-  const eventTypeProfiles = orgData.event_type_profiles as Org['event_type_profiles']
+  // requireOrgMember (was a raw slug query): same org read + notFound, and it
+  // also resolves the MEMBER — the create form's inline event-type create is
+  // owner/admin only (event types inc 1), decided server-side.
+  const { org, orgId, member } = await requireOrgMember(orgSlug)
+  const plan = org.plan
+  const eventTypeProfiles = org.event_type_profiles
+  const canCreateEventTypes = member.role === 'owner' || member.role === 'admin'
 
   const customer = await getCustomer(orgId, customerId)
   if (!customer) notFound()
@@ -52,12 +49,11 @@ export default async function CustomerDetailPage({
   const showDeliveryMode = units.some((u) => u.kind === 'venue' && u.active)
   // Chip vocabulary: profiles + THIS customer's own history (one shared rule,
   // lib/crm/event-type-options — the pipeline page feeds it the whole org's).
+  // The form's profile matching (hint, delivery-mode hiding, event_type_id)
+  // runs against the org profile array threaded below. (The cockpit's
+  // pastJobCounts is derived in ClientCockpit from the pinned customer's own
+  // opportunities — no extra prop.)
   const eventTypeOptions = buildEventTypeOptions(eventTypeProfiles, opportunities)
-  // C5b: the RAW profile vocabulary, independent of the merged chip list —
-  // the form keys its "not a configured event type" hint on this. (The
-  // cockpit's pastJobCounts is derived in ClientCockpit from the pinned
-  // customer's own opportunities — no extra prop.)
-  const profileNames = eventTypeProfileNames(eventTypeProfiles)
 
   // The rollup/story is derived in the client from opportunities — no prop for it.
   return (
@@ -72,7 +68,9 @@ export default async function CustomerDetailPage({
       ar={ar}
       showDeliveryMode={showDeliveryMode}
       eventTypeOptions={eventTypeOptions}
-      eventTypeProfileNames={profileNames}
+      eventTypeProfiles={eventTypeProfiles}
+      canCreateEventTypes={canCreateEventTypes}
+      resourceLabels={org.resource_labels}
     />
   )
 }

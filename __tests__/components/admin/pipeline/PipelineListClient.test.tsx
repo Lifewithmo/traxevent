@@ -634,7 +634,9 @@ describe('PipelineListClient', () => {
         customers={[{ id: 'c1', name: 'Jane Doe' } as never]}
         showDeliveryMode
         eventTypeOptions={['Wedding', 'Market']}
-        eventTypeProfileNames={['Wedding']}
+        eventTypeProfiles={[{ id: 'p-wed', name: 'Wedding', needsMobile: true, needsVenue: true }]}
+        canCreateEventTypes
+        resourceLabels={{ mobile: { one: 'cart', many: 'carts' } }}
         pastJobCounts={{ c1: 3 }}
         bookabilityCtx={degradedCtx}
       />)
@@ -642,9 +644,12 @@ describe('PipelineListClient', () => {
       expect(props).toMatchObject({
         orgId: 'o1', orgSlug: 'demo', open: false,
         showDeliveryMode: true, eventTypeOptions: ['Wedding', 'Market'],
-        // C5b: the raw profile vocabulary and the per-customer past-job counts
-        // ride through untouched — the form keys its hints on them.
-        eventTypeProfileNames: ['Wedding'],
+        // Event types inc 1: the org profile array, the owner/admin
+        // inline-create gate, and the operator's kind words all ride through
+        // untouched — the form keys its matching and popover on them.
+        eventTypeProfiles: [{ id: 'p-wed', name: 'Wedding', needsMobile: true, needsVenue: true }],
+        canCreateEventTypes: true,
+        resourceLabels: { mobile: { one: 'cart', many: 'carts' } },
         pastJobCounts: { c1: 3 },
         bookabilityCtx: degradedCtx,
       })

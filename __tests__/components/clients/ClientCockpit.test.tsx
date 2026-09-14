@@ -96,7 +96,9 @@ describe('ClientCockpit (New Opportunity inc 1 — one form instance, contract C
     render(<ClientCockpit {...baseProps}
       showDeliveryMode
       eventTypeOptions={['Wedding', 'Market']}
-      eventTypeProfileNames={['Wedding']}
+      eventTypeProfiles={[{ id: 'p-wed', name: 'Wedding', needsMobile: true, needsVenue: true }]}
+      canCreateEventTypes
+      resourceLabels={{ mobile: { one: 'cart', many: 'carts' } }}
       opportunities={[
         opp({ id: 'a', created_at: '2025-05-01T00:00:00.000Z' }),
         opp({ id: 'b', created_at: '2026-02-01T00:00:00.000Z' }),
@@ -106,9 +108,13 @@ describe('ClientCockpit (New Opportunity inc 1 — one form instance, contract C
     expect(props).toMatchObject({
       orgId: 'o', orgSlug: 'acme', open: false,
       showDeliveryMode: true, eventTypeOptions: ['Wedding', 'Market'],
-      // C5b: the raw profile vocabulary rides through untouched, and the
-      // pinned customer's own history IS their past-job count.
-      eventTypeProfileNames: ['Wedding'],
+      // Event types inc 1: the org profile array, the owner/admin
+      // inline-create gate, and the operator's kind words ride through
+      // untouched — and the pinned customer's own history IS their
+      // past-job count.
+      eventTypeProfiles: [{ id: 'p-wed', name: 'Wedding', needsMobile: true, needsVenue: true }],
+      canCreateEventTypes: true,
+      resourceLabels: { mobile: { one: 'cart', many: 'carts' } },
       pastJobCounts: { c1: 2 },
     })
     // Lazy, not preloaded: the cockpit hands a LOADER (contract C3 via C5's
