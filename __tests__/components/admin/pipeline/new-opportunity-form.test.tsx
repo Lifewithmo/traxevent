@@ -414,7 +414,10 @@ describe('NewOpportunityForm', () => {
       expect(screen.queryByText(/not a configured event type/i)).not.toBeInTheDocument()
     })
 
-    it('treats an ARCHIVED profile as not configured — hint shows, no id rides along', async () => {
+    // F4: leadRequirement's NAME match includes archived profiles, so a typed
+    // archived name gets the ARCHIVED policy — the old "capacity uses the
+    // default rule" hint was a lie for exactly that input.
+    it("typing an ARCHIVED type's name says its saved policy applies — never the default-rule hint", async () => {
       renderForm({
         eventTypeOptions: [],
         eventTypeProfiles: [
@@ -423,14 +426,27 @@ describe('NewOpportunityForm', () => {
         ],
       })
       fireEvent.change(nameInput(), { target: { value: 'Jane Doe' } })
-      fireEvent.change(screen.getByLabelText('Event type'), { target: { value: 'Wedding' } })
-      // Archived profiles are gone from the pickers but their name typed by
-      // hand still gets the default-rule hint (they are not configured for
-      // NEW work) — and never the archived profile's id.
-      expect(screen.getByText(/not a configured event type/i)).toBeInTheDocument()
+      fireEvent.change(screen.getByLabelText('Event type'), { target: { value: '  wedding ' } }) // trim + case-insensitive
+      expect(screen.getByText(/archived type — its saved policy still applies/i)).toBeInTheDocument()
+      expect(screen.queryByText(/not a configured event type/i)).not.toBeInTheDocument()
+      // Still never the archived profile's id: it is gone from the pickers and
+      // the payload — resolution happens by NAME server-side.
       fireEvent.click(screen.getByRole('button', { name: 'Create opportunity' }))
       await waitFor(() => expect(createLead).toHaveBeenCalled())
       expect(vi.mocked(createLead).mock.calls[0][1]).not.toHaveProperty('event_type_id')
+    })
+
+    it('a non-matching name still gets the default-rule hint when only archived types share the org', () => {
+      renderForm({
+        eventTypeOptions: [],
+        eventTypeProfiles: [
+          { id: 'p-gala', name: 'Gala', needsMobile: true, needsVenue: false },
+          { ...wedding, archived: true },
+        ],
+      })
+      fireEvent.change(screen.getByLabelText('Event type'), { target: { value: 'Birthday' } })
+      expect(screen.getByText(/not a configured event type/i)).toBeInTheDocument()
+      expect(screen.queryByText(/archived type/i)).not.toBeInTheDocument()
     })
 
     it('renders a plain input with no chips and no unrecognized-type hint when there are no options', () => {

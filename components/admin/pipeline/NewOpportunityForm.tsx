@@ -351,14 +351,29 @@ export function NewOpportunityForm({
     return matched
   }, [activeProfiles, trimmedType, typeKey])
   const profileMatched = Boolean(matchedProfile)
+  // ARCHIVED name match, checked against the FULL props array (this form
+  // filters active itself): leadRequirement's name match includes archived
+  // profiles, so a typed archived name still gets that ARCHIVED policy and
+  // Where is still ignored — the hint and the toggle must not pretend the
+  // default rule applies. Active membership wins when both somehow match.
+  const archivedNameMatch = useMemo(() => {
+    if (trimmedType === '' || matchedProfile) return undefined
+    let matched: EventTypeProfile | undefined
+    for (const p of eventTypeProfiles ?? []) {
+      if (p.archived && p.name.trim().toLowerCase() === typeKey) matched = p // last match wins
+    }
+    return matched
+  }, [eventTypeProfiles, matchedProfile, trimmedType, typeKey])
   // Quiet, never blocking: a free-text type is legitimate (profiles are an
   // overlay, not a migration) — the hint just says what the capacity engine
-  // will do with it.
-  const typeUnrecognized = activeProfiles.length > 0 && trimmedType !== '' && !profileMatched
-  // A matched profile is authoritative about Where — leadRequirement ignores
-  // delivery_mode entirely on a match, so the toggle would be a dead control
-  // and its answer silently discarded. Hide it and submit nothing.
-  const deliveryModeRelevant = Boolean(showDeliveryMode) && !profileMatched
+  // will do with it. An archived name match gets its own truthful hint below.
+  const typeUnrecognized =
+    activeProfiles.length > 0 && trimmedType !== '' && !profileMatched && !archivedNameMatch
+  // A matched profile — active OR archived — is authoritative about Where:
+  // leadRequirement ignores delivery_mode entirely on a match, so the toggle
+  // would be a dead control and its answer silently discarded. Hide it and
+  // submit nothing.
+  const deliveryModeRelevant = Boolean(showDeliveryMode) && !profileMatched && !archivedNameMatch
 
   // Derived, never persisted: the placeholder previews "Jane Doe · Wedding ·
   // Oct 4" but the field submits ONLY what the operator types — persisting the
@@ -657,9 +672,17 @@ export function NewOpportunityForm({
                         )}
                       </p>
                     )}
-                    {activeProfiles.length === 0 && (
+                    {archivedNameMatch && (
+                      <p className="text-xs text-muted-foreground">
+                        Archived type — its saved policy still applies.
+                      </p>
+                    )}
+                    {activeProfiles.length === 0 && !archivedNameMatch && (
                       // 0-profiles onboarding (spec §empty states): free text
                       // always works; the link says where verdicts come from.
+                      // Suppressed while an archived name matches — "configure
+                      // profiles to get verdicts" reads wrong when the typed
+                      // type already HAS a (saved, archived) policy.
                       <p className="text-xs text-muted-foreground">
                         Type any event type —{' '}
                         <Link

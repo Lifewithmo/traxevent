@@ -141,5 +141,30 @@ describe('NewOpportunityForm linked mode', () => {
       })))
       expect(vi.mocked(createLead).mock.calls[0][1]).not.toHaveProperty('delivery_mode')
     })
+
+    // F4: leadRequirement's name match includes ARCHIVED profiles — the saved
+    // lead gets the archived policy and the toggle's answer is ignored, so the
+    // toggle must leave the screen for an archived name match too.
+    it('hides the Where toggle for an ARCHIVED name match — its saved policy already answers Where', async () => {
+      render(
+        <NewOpportunityForm
+          orgId="o1" orgSlug="brew" open onClose={() => {}} customer={customer}
+          showDeliveryMode
+          eventTypeProfiles={[{ id: 'p-wed', name: 'Wedding', needsMobile: true, needsVenue: true, archived: true }]}
+        />
+      )
+      expect(screen.getByRole('group', { name: 'Where' })).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: 'On-site' }))
+      const typeInput = screen.getByLabelText('Event type')
+      fireEvent.change(typeInput, { target: { value: ' wedding ' } }) // trim + case-insensitive
+      expect(screen.queryByRole('group', { name: 'Where' })).not.toBeInTheDocument()
+      // The superseded On-site pick never rides along either.
+      fireEvent.click(screen.getByRole('button', { name: 'Create opportunity' }))
+      await waitFor(() => expect(createLead).toHaveBeenCalled())
+      expect(vi.mocked(createLead).mock.calls[0][1]).not.toHaveProperty('delivery_mode')
+      // Non-matching text brings the toggle back.
+      fireEvent.change(typeInput, { target: { value: 'Birthday' } })
+      expect(screen.getByRole('group', { name: 'Where' })).toBeInTheDocument()
+    })
   })
 })
