@@ -73,4 +73,65 @@ describe('RequirementsCard', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
     expect(screen.getByLabelText('Guests')).toHaveValue(80)
   })
+
+  // ── Per-event buffer overrides (inc-3 S3.1) ────────────────────────────────
+
+  it('blank buffer inputs show what they inherit: the org default when set, else the constants', () => {
+    const { unmount } = render(
+      <RequirementsCard orgId="o1" eventId="e1" plan={plan} packages={[pkg]} onPlanChange={vi.fn()}
+        orgBuffers={{ pack_minutes: 50, drive_minutes: 20 }} />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+    expect(screen.getByLabelText('Pack time (minutes)')).toHaveAttribute('placeholder', '50')
+    expect(screen.getByLabelText('Drive time (minutes)')).toHaveAttribute('placeholder', '20')
+    expect(screen.getByText(/Blank inherits 50m pack · 20m drive/)).toBeInTheDocument()
+    unmount()
+    render(<RequirementsCard orgId="o1" eventId="e1" plan={plan} packages={[pkg]} onPlanChange={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+    expect(screen.getByLabelText('Pack time (minutes)')).toHaveAttribute('placeholder', '45')
+    expect(screen.getByLabelText('Drive time (minutes)')).toHaveAttribute('placeholder', '30')
+  })
+
+  it('saves the override through the EXISTING requirements path as a full replace-the-scalar object', async () => {
+    render(<RequirementsCard orgId="o1" eventId="e1" plan={plan} packages={[pkg]} onPlanChange={vi.fn()}
+      orgBuffers={{ pack_minutes: 50, drive_minutes: 20 }} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+    fireEvent.change(screen.getByLabelText('Drive time (minutes)'), { target: { value: '90' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() =>
+      expect(updateOpsRequirements).toHaveBeenCalledWith('o1', 'e1', { buffers: { drive_minutes: 90 } }),
+    )
+  })
+
+  it('does NOT send buffers when the override is untouched (no spurious attestation clear)', async () => {
+    const withOverride: OpsPlan = {
+      ...plan,
+      requirements: { ...plan.requirements, buffers: { drive_minutes: 90 } },
+    }
+    render(<RequirementsCard orgId="o1" eventId="e1" plan={withOverride} packages={[pkg]} onPlanChange={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+    fireEvent.change(screen.getByLabelText('Guests'), { target: { value: '120' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(updateOpsRequirements).toHaveBeenCalledWith('o1', 'e1', { guests: 120 }))
+  })
+
+  it('blocks invalid buffer minutes with the shared-ceiling copy and disables Save', () => {
+    render(<RequirementsCard orgId="o1" eventId="e1" plan={plan} packages={[pkg]} onPlanChange={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+    fireEvent.change(screen.getByLabelText('Drive time (minutes)'), { target: { value: '481' } })
+    expect(screen.getByText(/whole number between 1 and 480/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+    fireEvent.change(screen.getByLabelText('Drive time (minutes)'), { target: { value: '90' } })
+    expect(screen.getByRole('button', { name: 'Save' })).not.toBeDisabled()
+  })
+
+  it('view mode names the override source with the SHARED assumption vocabulary', () => {
+    const withOverride: OpsPlan = {
+      ...plan,
+      requirements: { ...plan.requirements, buffers: { drive_minutes: 90 } },
+    }
+    render(<RequirementsCard orgId="o1" eventId="e1" plan={withOverride} packages={[pkg]} onPlanChange={vi.fn()}
+      orgBuffers={{ pack_minutes: 50, drive_minutes: 20 }} />)
+    expect(screen.getByText('assumes 50m pack · 90m drive · drive set for this job')).toBeInTheDocument()
+  })
 })

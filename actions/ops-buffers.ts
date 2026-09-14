@@ -1,6 +1,7 @@
 'use server'
 
 import { adminDb } from '@/lib/firebase-admin'
+import { FieldValue } from 'firebase-admin/firestore'
 import { assertOrgAdmin } from '@/lib/auth/assert'
 import { MAX_BUFFER_MINUTES } from '@/lib/event-ui'
 import type { Org } from '@/lib/types'
@@ -43,4 +44,43 @@ export async function updateOpsBuffers(
   }
 
   await adminDb.collection('orgs').doc(orgId).update({ ops_buffers })
+}
+
+/**
+ * Persist the org's IANA timezone (inc-3 S1.1) — the field that makes
+ * "18:00 org-local" computable for the cron AND turns the labeled-UTC stamps
+ * (guardian email, confirm-ready, print freshness) org-local. Org-admin only.
+ * `null`/'' CLEARS the field (surfaces fall back to labeled UTC; the cron
+ * skips the org — documented behavior). Validation is by construction: a zone
+ * is valid iff Intl can construct a formatter for it — the same check every
+ * render site's fallback relies on, so a value that saves here can never
+ * render as a fallback.
+ */
+export async function updateOrgTimezone(orgId: string, timezone: string | null): Promise<void> {
+  await assertOrgAdmin(orgId)
+
+  const trimmed = timezone?.trim() ?? ''
+  if (!trimmed) {
+    await adminDb.collection('orgs').doc(orgId).update({ timezone: FieldValue.delete() })
+    return
+  }
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: trimmed })
+  } catch {
+    throw new Error(`Unknown time zone: ${trimmed}`)
+  }
+  await adminDb.collection('orgs').doc(orgId).update({ timezone: trimmed })
+}
+
+/**
+ * Org-level opt-out for the evening-before run-sheet email (inc-3 S1.3).
+ * Dot-path update so the liveness stamps under ops_notifications survive.
+ * Org-admin only.
+ */
+export async function updateEveningRunSheetOptOut(orgId: string, optOut: boolean): Promise<void> {
+  await assertOrgAdmin(orgId)
+  if (typeof optOut !== 'boolean') throw new Error('optOut must be a boolean')
+  await adminDb.collection('orgs').doc(orgId).update({
+    'ops_notifications.evening_run_sheet_opt_out': optOut,
+  })
 }

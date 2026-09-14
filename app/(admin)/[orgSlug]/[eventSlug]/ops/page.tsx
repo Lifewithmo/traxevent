@@ -39,6 +39,7 @@ export default async function OpsPage({
       eventHeadcount={event.headcount}
       industryPackId={org.industry_pack_id}
       complianceWarnings={complianceWarnings}
+      orgBuffers={org.ops_buffers}
     />
   )
 }

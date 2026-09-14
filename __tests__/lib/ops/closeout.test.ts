@@ -68,6 +68,55 @@ describe('saveActualsCore', () => {
     await expect(saveActualsCore('o1', 'e1', { consumables: [{ resource_id: 'res-beans', qty_used: -5 }] }))
       .rejects.toThrow('Quantities must be non-negative')
   })
+
+  // Inc-3 B3: sales provenance persists through the save path so imported
+  // money stays labeled at every render, post-reload included.
+  it('persists sales_source alongside sales', async () => {
+    closeoutGetSpy.mockResolvedValue({ exists: false })
+    await saveActualsCore('o1', 'e1', { sales: 1248.27, sales_source: 'square_csv' })
+    expect(closeoutSetSpy.mock.calls[0][0].actuals.sales_source).toBe('square_csv')
+  })
+
+  // D5: provenance is an invariant of the WRITE PATH, not client courtesy —
+  // a caller that writes sales alone (the full CloseoutClient does exactly
+  // this) must not merge-keep a stale import label on a hand-retyped figure.
+  it("a sales write that names NO source defaults to 'manual' — flipping a stored 'square_csv'", async () => {
+    closeoutGetSpy.mockResolvedValue({
+      exists: true,
+      data: () => ({ actuals: { sales: 1248.27, sales_source: 'square_csv' }, completed: false, created_at: 't' }),
+    })
+    await saveActualsCore('o1', 'e1', { sales: 1300 })
+    const merged = closeoutSetSpy.mock.calls[0][0].actuals
+    expect(merged.sales).toBe(1300)
+    expect(merged.sales_source).toBe('manual')
+  })
+
+  it("a later manual save overwrites a stale 'square_csv' provenance", async () => {
+    closeoutGetSpy.mockResolvedValue({
+      exists: true,
+      data: () => ({ actuals: { sales: 1248.27, sales_source: 'square_csv' }, completed: false, created_at: 't' }),
+    })
+    await saveActualsCore('o1', 'e1', { sales: 1300, sales_source: 'manual' })
+    const merged = closeoutSetSpy.mock.calls[0][0].actuals
+    expect(merged.sales).toBe(1300)
+    expect(merged.sales_source).toBe('manual')
+  })
+
+  it('leaves provenance untouched when the save carries no sales (waste-only edit)', async () => {
+    closeoutGetSpy.mockResolvedValue({
+      exists: true,
+      data: () => ({ actuals: { sales: 1248.27, sales_source: 'square_csv' }, completed: false, created_at: 't' }),
+    })
+    await saveActualsCore('o1', 'e1', { waste_notes: 'dumped 2 gal' })
+    const merged = closeoutSetSpy.mock.calls[0][0].actuals
+    expect(merged.sales_source).toBe('square_csv')
+    expect(merged.waste_notes).toBe('dumped 2 gal')
+  })
+
+  it('rejects an unknown sales_source value', async () => {
+    await expect(saveActualsCore('o1', 'e1', { sales: 1, sales_source: 'stripe' as never }))
+      .rejects.toThrow('Unknown sales source')
+  })
 })
 
 describe('closeoutSummaryCore', () => {

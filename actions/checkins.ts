@@ -5,7 +5,7 @@ import { adminDb } from '@/lib/firebase-admin'
 import type { CheckinRecord, Event, EventFormAssignment, EventMember, Family, FamilyMember, Org } from '@/lib/types'
 import { assertEventPage } from '@/lib/auth/assert'
 import { sendGuardianPickupNotice } from '@/lib/email'
-import { getVerifiedSendingDomain } from '@/actions/domains'
+import { getVerifiedSendingDomainCore } from '@/lib/sending-domain'
 
 function eventRef(orgId: string, eventId: string) {
   return adminDb.collection('orgs').doc(orgId).collection('events').doc(eventId)
@@ -318,7 +318,7 @@ async function notifyFamilyOfPickup(
   const org = orgSnap.data() as Org | undefined
   let fromDomain: string | undefined
   try {
-    fromDomain = await getVerifiedSendingDomain(orgId)
+    fromDomain = await getVerifiedSendingDomainCore(orgId)
   } catch {
     // domain lookup failure must not block the notice — platform default from
   }
@@ -332,6 +332,8 @@ async function notifyFamilyOfPickup(
     ...(records[0].guardian_pickup_name ? { guardianName: records[0].guardian_pickup_name } : {}),
     ...(records[0].guardian_flag === 'unlisted_guardian' ? { unlistedGuardian: true } : {}),
     checkedOutAt: records[0].checked_out_at ?? new Date().toISOString(),
+    // Org timezone (inc-3 S1.1): the fine-print stamp renders org-local when set.
+    ...(org?.timezone ? { timeZone: org.timezone } : {}),
     eventName: event.name,
     orgName: org?.branding?.display_name ?? org?.name ?? 'the organizer',
     ...(event.from_display_name ? { fromDisplayName: event.from_display_name } : {}),

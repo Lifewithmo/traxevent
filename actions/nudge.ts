@@ -7,7 +7,7 @@ import { sendProposalNudge } from '@/lib/email'
 import { unopenedSentProposal } from '@/lib/pipeline-view'
 import { getLead } from '@/actions/leads'
 import { listProposals } from '@/actions/proposals'
-import { getVerifiedSendingDomain } from '@/actions/domains'
+import { getVerifiedSendingDomainCore } from '@/lib/sending-domain'
 import type { Org } from '@/lib/types'
 
 // Sends a reminder for the newest sent-but-unopened proposal on the lead.
@@ -26,7 +26,7 @@ export async function nudgeProposal(orgId: string, leadId: string): Promise<void
   const org = orgSnap.data() as Org | undefined
   let fromDomain: string | undefined
   try {
-    fromDomain = await getVerifiedSendingDomain(orgId)
+    fromDomain = await getVerifiedSendingDomainCore(orgId)
   } catch {
     // domain lookup failure should not block the email — fall back to default
   }

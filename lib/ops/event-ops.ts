@@ -6,7 +6,17 @@ import { getTemplatesForOrg } from '@/lib/ops/checklist-templates'
 import {
   computeShoppingList, computePackingList, deriveDeadlines, instantiateChecklists,
 } from '@/lib/ops/derive'
-import type { OpsPlan, OpsRequirements, OpsChangeEntry, OpsListItem } from '@/lib/types'
+import { listItineraryCore } from '@/lib/itinerary-data'
+import { formatTime, groupItineraryByDay } from '@/lib/itinerary'
+import { formatEventDateRange, MAX_BUFFER_MINUTES, OPS_NOTE_MAX_CHARS } from '@/lib/event-ui'
+import {
+  resolveAnchorTime,
+  backPlanFromAnchor,
+  RUN_SHEET_CHECKLIST_PHASES,
+} from '@/app/(admin)/[orgSlug]/[eventSlug]/ops/runsheet/anchor'
+import { sendRunSheetEmail } from '@/lib/email'
+import { getVerifiedSendingDomainCore } from '@/lib/sending-domain'
+import type { Event, Org, OpsPlan, OpsRequirements, OpsChangeEntry, OpsListItem } from '@/lib/types'
 
 export function opsPlanRef(orgId: string, eventId: string) {
   return adminDb.collection('orgs').doc(orgId)
@@ -93,7 +103,44 @@ export async function instantiateOpsPlanCore(
 }
 
 const QUANTITY_FIELDS = new Set<keyof OpsRequirements>(['guests'])
-const REQUIREMENT_FIELDS = new Set<keyof OpsRequirements>(['guests', 'service_start', 'service_end', 'site_needs', 'notes'])
+const REQUIREMENT_FIELDS = new Set<keyof OpsRequirements>(['guests', 'service_start', 'service_end', 'site_needs', 'notes', 'buffers'])
+
+const BUFFER_KEYS = ['pack_minutes', 'drive_minutes'] as const
+
+/**
+ * Validate + normalize the per-event buffers override (inc-3 S3.1) to a fixed
+ * key order. Same rule as the org action (actions/ops-buffers.ts): each present
+ * field is a whole 1..MAX_BUFFER_MINUTES minutes; `{}` clears the override
+ * (falls back to org, then constants). Replace-the-scalar semantics, mirroring
+ * updateOpsBuffers: callers always send the full object, an absent field is
+ * CLEARED (inherits), never a single-field patch.
+ */
+function normalizeEventBuffers(raw: unknown): NonNullable<OpsRequirements['buffers']> {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+    throw new Error('Buffers must be an object with pack_minutes/drive_minutes')
+  }
+  for (const key of Object.keys(raw)) {
+    if (!(BUFFER_KEYS as readonly string[]).includes(key)) throw new Error(`Unknown buffer field: ${key}`)
+  }
+  const cfg = raw as NonNullable<OpsRequirements['buffers']>
+  const buffers: NonNullable<OpsRequirements['buffers']> = {}
+  for (const key of BUFFER_KEYS) {
+    const minutes = cfg[key]
+    if (minutes === undefined) continue
+    if (!Number.isInteger(minutes) || minutes <= 0 || minutes > MAX_BUFFER_MINUTES) {
+      throw new Error(
+        `${key === 'pack_minutes' ? 'Pack' : 'Drive'} time must be a whole number of minutes between 1 and ${MAX_BUFFER_MINUTES}`,
+      )
+    }
+    buffers[key] = minutes
+  }
+  return buffers
+}
+
+/** Field-wise compare, immune to Firestore map key order (JSON.stringify is not). */
+function sameEventBuffers(a: OpsRequirements['buffers'], b: OpsRequirements['buffers']): boolean {
+  return BUFFER_KEYS.every((key) => (a?.[key] ?? undefined) === (b?.[key] ?? undefined))
+}
 
 /**
  * Requirement changes propagate but never silently (spec §3.3): every change
@@ -118,6 +165,12 @@ export async function updateOpsRequirementsCore(
     }
   }
   if (updates.guests !== undefined && (!Number.isFinite(updates.guests) || updates.guests <= 0)) throw new Error('Guest count must be positive')
+  // Per-event buffers (inc-3 S3.1): validated with the SAME rule as the org
+  // action, normalized to fixed key order before the write. Throws before the
+  // transaction — an invalid override never reaches the doc.
+  if (updates.buffers !== undefined) {
+    updates = { ...updates, buffers: normalizeEventBuffers(updates.buffers) }
+  }
 
   const ref = opsPlanRef(orgId, eventId)
   await adminDb.runTransaction(async (tx) => {
@@ -133,7 +186,12 @@ export async function updateOpsRequirementsCore(
       if (value === undefined) continue
       payload[`requirements.${field}`] = value
       const prev = plan.requirements[field as keyof OpsRequirements]
-      if (JSON.stringify(prev) === JSON.stringify(value)) continue
+      // buffers: field-wise compare — Firestore map key order is not stable,
+      // and a same-value save must NOT log an entry (or clear the attestation).
+      const same = field === 'buffers'
+        ? sameEventBuffers(prev as OpsRequirements['buffers'], value as OpsRequirements['buffers'])
+        : JSON.stringify(prev) === JSON.stringify(value)
+      if (same) continue
       entries.push({
         at: now, by: actorUid, field,
         ...(prev !== undefined ? { from: JSON.stringify(prev).replace(/^"|"$/g, '') } : {}),
@@ -167,11 +225,20 @@ export async function updateOpsRequirementsCore(
   })
 }
 
-/** Carry `checked` forward across a re-derivation, keyed by resource_id|unit
- *  (same key as updateOpsRequirementsCore's guests path). */
+/** Carry `checked` AND the operator's shelf `note` (inc-3 S3.3) forward across
+ *  a re-derivation, keyed by resource_id|unit (same key as
+ *  updateOpsRequirementsCore's guests path) — a recompute must never eat a
+ *  note the operator typed at the shelf. */
 function preserveChecked(prev: OpsListItem[], next: OpsListItem[]): OpsListItem[] {
-  const prevChecked = new Map(prev.map((i) => [`${i.resource_id}|${i.unit ?? ''}`, i.checked]))
-  return next.map((i) => ({ ...i, checked: prevChecked.get(`${i.resource_id}|${i.unit ?? ''}`) ?? false }))
+  const prevByKey = new Map(prev.map((i) => [`${i.resource_id}|${i.unit ?? ''}`, i]))
+  return next.map((i) => {
+    const p = prevByKey.get(`${i.resource_id}|${i.unit ?? ''}`)
+    return {
+      ...i,
+      checked: p?.checked ?? false,
+      ...(p?.note !== undefined ? { note: p.note } : {}),
+    }
+  })
 }
 
 /**
@@ -315,6 +382,45 @@ export async function toggleListItemCore(
   })
 }
 
+/**
+ * Per-item shelf note (inc-3 S3.3) — the honest substitute for a substitution
+ * feature ("subbed with oat milk — 2 cartons"). LOADOUT-ONLY editing (B5): the
+ * run and both prints display notes read-only. Mirrors toggleListItemCore's
+ * transaction + resource_id|unit addressing exactly; a blank/whitespace note
+ * REMOVES the field. Like a check-off, a note is shelf bookkeeping: it bumps
+ * updated_at but never clears ready_confirmed or sets needs_review.
+ */
+export async function setListItemNoteCore(
+  orgId: string,
+  eventId: string,
+  list: 'shopping_list' | 'packing_list',
+  resourceId: string,
+  note: string,
+  unit?: string,
+): Promise<void> {
+  if (typeof note !== 'string') throw new Error('Note must be a string')
+  const trimmed = note.trim()
+  if (trimmed.length > OPS_NOTE_MAX_CHARS) {
+    throw new Error(`Note must be ${OPS_NOTE_MAX_CHARS} characters or fewer`)
+  }
+  const ref = opsPlanRef(orgId, eventId)
+  await adminDb.runTransaction(async (tx) => {
+    const snap = await tx.get(ref)
+    if (!snap.exists) throw new Error('No ops plan for this event')
+    const plan = snap.data() as OpsPlan
+    const items = plan[list]
+    const idx = items.findIndex((i) => i.resource_id === resourceId && (i.unit ?? null) === (unit ?? null))
+    if (idx === -1) throw new Error('Item not found')
+    const next = items.map((i, n) => {
+      if (n !== idx) return i
+      const { note: _dropped, ...rest } = i
+      void _dropped
+      return trimmed ? { ...rest, note: trimmed } : rest
+    })
+    tx.update(ref, { [list]: next, updated_at: new Date().toISOString() })
+  })
+}
+
 export async function completeChecklistStepCore(
   orgId: string,
   eventId: string,
@@ -427,6 +533,87 @@ export async function clearReadyConfirmedCore(orgId: string, eventId: string, ac
       updated_at: now,
     })
   })
+}
+
+/**
+ * Render + send the inline run sheet (inc-2 S3.3, extracted inc-3 B5 so the
+ * self-send action AND the evening-before cron share ONE implementation —
+ * the email a cron sends must be byte-for-byte the email the button sends).
+ *
+ * GUARD-FREE by design: the cron has no session, so identity comes from the
+ * caller — the action passes its asserted member's email, the cron passes the
+ * org owner's. Callers MUST have gated already (assertEventPage, or the cron
+ * route's CRON_SECRET). Sending IS the action (nudge.ts precedent): a rejected
+ * send throws — nothing here may report "sent" for mail that never left.
+ */
+export async function sendRunSheetCore(
+  orgId: string,
+  eventId: string,
+  recipient: { email: string },
+): Promise<{ to: string }> {
+  const [eventSnap, orgSnap, plan, itineraryItems] = await Promise.all([
+    adminDb.collection('orgs').doc(orgId).collection('events').doc(eventId).get(),
+    adminDb.collection('orgs').doc(orgId).get(),
+    getOpsPlanCore(orgId, eventId),
+    listItineraryCore(orgId, eventId),
+  ])
+  if (!eventSnap.exists) throw new Error('Event not found')
+  const event = eventSnap.data() as Event
+  const org = orgSnap.data() as Org | undefined
+
+  let fromDomain: string | undefined
+  try {
+    fromDomain = await getVerifiedSendingDomainCore(orgId)
+  } catch {
+    // domain lookup failure must not block the send — fall back to the default
+  }
+
+  const itinerary = groupItineraryByDay(itineraryItems)
+  const anchor = resolveAnchorTime({
+    serviceStart: plan?.requirements.service_start,
+    hoursStart: event.hours?.start,
+    itinerary,
+  })
+  const buffers = org?.ops_buffers
+  // Per-event override (inc-3 S3.1): the evening email's Pack-by/Leave-by must
+  // back-plan with the SAME resolved buffers the screen and paper show.
+  const eventBuffers = plan?.requirements.buffers
+  const loadoutItems = plan ? [...plan.shopping_list, ...plan.packing_list] : []
+  const checklists = (plan?.checklists ?? [])
+    .filter((c) => (RUN_SHEET_CHECKLIST_PHASES as readonly string[]).includes(c.phase))
+
+  await sendRunSheetEmail({
+    to: recipient.email,
+    eventName: event.name,
+    dateLabel: formatEventDateRange(event.event_start, event.event_end),
+    anchor: anchor ? { label: anchor.label, display: anchor.display } : null,
+    backPlan: anchor ? backPlanFromAnchor(anchor.hhmm, buffers, eventBuffers) : null,
+    buffers,
+    ...(eventBuffers !== undefined ? { eventBuffers } : {}),
+    venue: event.location ?? null,
+    contacts: event.key_contacts ?? [],
+    // Pre-formatted for the email body (the email module renders, never derives).
+    itinerary: itinerary.map((day) => ({
+      day: formatEventDateRange(day.day),
+      items: day.items.map((i) => ({
+        start_time: formatTime(i.start_time),
+        title: i.title,
+        ...(i.location ? { location: i.location } : {}),
+      })),
+    })),
+    siteNeeds: plan?.requirements.site_needs ?? [],
+    checklists: checklists.map((c) => ({
+      name: c.name,
+      done: c.steps.filter((s) => s.done).length,
+      total: c.steps.length,
+    })),
+    loadout: plan ? { checked: loadoutItems.filter((i) => i.checked).length, total: loadoutItems.length } : null,
+    orgSlug: org?.slug ?? '',
+    eventSlug: event.slug,
+    fromDisplayName: org?.branding?.display_name ?? org?.name,
+    fromDomain,
+  })
+  return { to: recipient.email }
 }
 
 export async function acknowledgeReviewCore(orgId: string, eventId: string, actorUid: string): Promise<void> {

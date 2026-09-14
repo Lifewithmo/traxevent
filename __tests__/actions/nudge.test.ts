@@ -16,7 +16,7 @@ vi.mock('@/lib/activity', () => ({ logActivity: logActivitySpy }))
 vi.mock('@/lib/email', () => ({ sendProposalNudge: sendProposalNudgeSpy }))
 vi.mock('@/actions/leads', () => ({ getLead: getLeadSpy }))
 vi.mock('@/actions/proposals', () => ({ listProposals: listProposalsSpy }))
-vi.mock('@/actions/domains', () => ({ getVerifiedSendingDomain: vi.fn().mockResolvedValue(undefined) }))
+vi.mock('@/lib/sending-domain', () => ({ getVerifiedSendingDomainCore: vi.fn().mockResolvedValue(undefined) }))
 
 import { nudgeProposal } from '@/actions/nudge'
 

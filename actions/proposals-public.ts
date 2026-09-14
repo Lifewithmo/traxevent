@@ -7,7 +7,7 @@ import { computeSelectedTotal, depositAmount, proposalExpiryInstant } from '@/li
 import { signedDocumentHash } from '@/lib/proposal-signature'
 import { sendProposalSignedConfirmation } from '@/lib/email'
 import { openStampPatch } from '@/lib/proposal-opens'
-import { getVerifiedSendingDomain } from '@/actions/domains'
+import { getVerifiedSendingDomainCore } from '@/lib/sending-domain'
 import { logActivity } from '@/lib/activity'
 import type {
   OrgBranding, Proposal, ProposalStatus, ProposalLineItem, ProposalPackage,
@@ -223,7 +223,7 @@ export async function signProposal(token: string, input: {
   // best-effort confirmation email — never fail the sign on send failure
   let fromDomain: string | undefined
   try {
-    fromDomain = orgRef ? await getVerifiedSendingDomain(orgRef.id) : undefined
+    fromDomain = orgRef ? await getVerifiedSendingDomainCore(orgRef.id) : undefined
   } catch {
     // domain lookup failure should not block the email — fall back to default
   }

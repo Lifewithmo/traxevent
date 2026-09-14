@@ -93,6 +93,9 @@ export interface RunConstituent {
   unit?: string
   needs_conversion?: boolean
   checked: boolean
+  /** Operator shelf note (inc-3 S3.3) — DISPLAY-ONLY on the run + its print;
+   *  editing lives on the owning event's load-out (B5). */
+  note?: string
 }
 
 /** Per-key write identity for a constituent — `${event_id}:${resource_id}|${unit}`.
@@ -170,6 +173,7 @@ export function computeShoppingRun(pairs: ShoppingRunPair[], resources: OpsResou
         ...(item.unit !== undefined ? { unit: item.unit } : {}),
         ...(item.needs_conversion ? { needs_conversion: true } : {}),
         checked: item.checked,
+        ...(item.note !== undefined ? { note: item.note } : {}),
       }
       const res = byId.get(item.resource_id)
       if (!res) {
@@ -278,6 +282,63 @@ export function computeShoppingRun(pairs: ShoppingRunPair[], resources: OpsResou
       || (a.unit ?? '').localeCompare(b.unit ?? '')
       || a.key.localeCompare(b.key),
   )
+}
+
+// ── Run CSV export (inc-3 S3.2) ──────────────────────────────────────────────
+
+/** RFC-4180-ish cell escape — the lib/csv.ts / ReportsClient convention:
+ *  every cell quoted, embedded quotes doubled. NUMERIC columns only: values
+ *  this builder formats from numbers are formula-safe by construction (a
+ *  leading '-' there is a legitimate negative, never a payload), so they must
+ *  NOT get the text-cell apostrophe. */
+function csvCell(v: string | number | undefined): string {
+  return `"${String(v ?? '').replace(/"/g, '""')}"`
+}
+
+/** Free-text cell: quote-escaped like csvCell, PLUS spreadsheet formula-
+ *  injection neutralization — a field starting with =, +, -, @, TAB, or CR
+ *  (an item name/note like `=HYPERLINK(...)`) gets a leading apostrophe so
+ *  Excel/Sheets treat it as text, never a formula. Applied to every string-
+ *  valued column (name/unit/jobs/notes — operator- and intake-entered text);
+ *  builder-constant strings ('yes'/'ml'/…) never start with those characters,
+ *  so the rule stays uniform: strings → csvTextCell, numbers → csvCell. */
+function csvTextCell(v: string | undefined): string {
+  const s = v ?? ''
+  return csvCell(/^[=+\-@\t\r]/.test(s) ? `'${s}` : s)
+}
+
+/**
+ * Pure CSV over the merged run rows (inc-3 S3.2) — client-side blob download,
+ * NO server code. Carries the per-row CANONICAL totals (the vendor-books
+ * forward-compat hook, ops-catalog spec inc 3: supplier pack-size math needs
+ * canonical units, not display units) alongside the display qty/unit, the
+ * per-job attribution, and the operator shelf notes.
+ */
+export function buildShoppingRunCsv(rows: ShoppingRunRow[]): string {
+  const HEADER = 'Item,Qty,Unit,Canonical Qty,Canonical Unit,Bought,Jobs,Notes'
+  const lines = rows.map((row) => {
+    const notes = row.constituents
+      .filter((c) => c.note)
+      .map((c) => (row.constituents.length > 1 ? `${c.event_name}: ${c.note}` : c.note!))
+      .join('; ')
+    return [
+      csvTextCell(row.name),
+      csvCell(row.qty),
+      csvTextCell(row.unit),
+      csvCell(row.canonical?.qty),
+      csvTextCell(row.canonical?.unit),
+      csvTextCell(row.checked === 'all' ? 'yes' : row.checked === 'partial' ? 'partly' : 'no'),
+      csvTextCell(row.constituents.map((c) => c.event_name).join('; ')),
+      csvTextCell(notes),
+    ].join(',')
+  })
+  return [HEADER, ...lines].join('\n')
+}
+
+/** `shopping-run-7d-2026-09-12.csv` — the run has no single event slug (it is
+ *  cross-event by design), so the window + run date carry the identity. */
+export function shoppingRunCsvFilename(days: number, todayYmd: string): string {
+  return `shopping-run-${days}d-${todayYmd}.csv`
 }
 
 export interface ShoppingRunStats {

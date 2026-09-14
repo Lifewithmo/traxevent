@@ -107,8 +107,8 @@ vi.mock('@/lib/email', () => ({
     callOrder.push('send')
   }),
 }))
-vi.mock('@/actions/domains', () => ({
-  getVerifiedSendingDomain: vi.fn().mockResolvedValue('mail.demo.co'),
+vi.mock('@/lib/sending-domain', () => ({
+  getVerifiedSendingDomainCore: vi.fn().mockResolvedValue('mail.demo.co'),
 }))
 
 import {

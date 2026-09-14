@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, within, fireEvent, waitFor } from '@testing-library/react'
+import { renderToString } from 'react-dom/server'
 import userEvent from '@testing-library/user-event'
 
 const createCapacityUnit = vi.hoisted(() => vi.fn())
@@ -22,8 +23,12 @@ vi.mock('@/actions/capacity-config', () => ({
 }))
 
 const updateOpsBuffers = vi.hoisted(() => vi.fn())
+const updateOrgTimezone = vi.hoisted(() => vi.fn())
+const updateEveningRunSheetOptOut = vi.hoisted(() => vi.fn())
 vi.mock('@/actions/ops-buffers', () => ({
   updateOpsBuffers,
+  updateOrgTimezone,
+  updateEveningRunSheetOptOut,
 }))
 
 import { CapacityUnitsClient } from '@/components/admin/settings/CapacityUnitsClient'
@@ -624,6 +629,195 @@ describe('CapacityUnitsClient', () => {
       expect(screen.getByText(/business[- ]plan feature/i)).toBeInTheDocument()
       expect(screen.getByLabelText('Pack time (minutes)')).toBeInTheDocument()
       expect(screen.getByLabelText('Drive time (minutes)')).toBeInTheDocument()
+    })
+  })
+
+  describe('Time zone & evening send (inc-3 S1.1/S1.3/B1)', () => {
+    it('renders the timezone select with the honest unset option and saves a picked zone', async () => {
+      updateOrgTimezone.mockResolvedValue(undefined)
+      render(<CapacityUnitsClient {...base} initialUnits={[]} />)
+
+      const select = screen.getByLabelText('Time zone')
+      expect(select).toHaveValue('')
+      expect(screen.getByText('Not set — times shown as UTC')).toBeInTheDocument()
+
+      // The IANA list fills post-mount (client-only fact — see the component
+      // comment); the device zone is always in it.
+      const device = Intl.DateTimeFormat().resolvedOptions().timeZone
+      await waitFor(() =>
+        expect(within(select as HTMLElement).getByRole('option', { name: device })).toBeInTheDocument(),
+      )
+
+      fireEvent.change(select, { target: { value: device } })
+      await waitFor(() => expect(updateOrgTimezone).toHaveBeenCalledWith('o1', device))
+    })
+
+    it('default-suggests the browser zone when none is saved, and one tap saves it', async () => {
+      updateOrgTimezone.mockResolvedValue(undefined)
+      render(<CapacityUnitsClient {...base} initialUnits={[]} />)
+
+      const device = Intl.DateTimeFormat().resolvedOptions().timeZone
+      const suggestion = await screen.findByRole('button', { name: device })
+      expect(screen.getByText(/your device is on/i)).toBeInTheDocument()
+      fireEvent.click(suggestion)
+      await waitFor(() => expect(updateOrgTimezone).toHaveBeenCalledWith('o1', device))
+    })
+
+    it('clearing back to "Not set" saves null (labeled-UTC fallback everywhere)', async () => {
+      updateOrgTimezone.mockResolvedValue(undefined)
+      render(<CapacityUnitsClient {...base} initialUnits={[]} initialTimezone="America/Boise" />)
+      const select = screen.getByLabelText('Time zone')
+      expect(select).toHaveValue('America/Boise')
+      fireEvent.change(select, { target: { value: '' } })
+      await waitFor(() => expect(updateOrgTimezone).toHaveBeenCalledWith('o1', null))
+    })
+
+    it('gates the evening toggle behind a saved time zone, with the honest window copy', () => {
+      render(<CapacityUnitsClient {...base} initialUnits={[]} />)
+      const toggle = screen.getByRole('checkbox', {
+        name: /email the run sheet the evening before each job/i,
+      })
+      expect(toggle).toBeDisabled()
+      expect(screen.getByText(/set a time zone first — the send goes out between 6 and 9 pm/i)).toBeInTheDocument()
+    })
+
+    it('unchecking the toggle saves the OPT-OUT (true) and shows the paused state', async () => {
+      updateEveningRunSheetOptOut.mockResolvedValue(undefined)
+      render(<CapacityUnitsClient {...base} initialUnits={[]} initialTimezone="America/Boise" />)
+      const toggle = screen.getByRole('checkbox', {
+        name: /email the run sheet the evening before each job/i,
+      })
+      expect(toggle).toBeChecked() // absent opt_out ⇒ ON when a tz is set
+      fireEvent.click(toggle)
+      await waitFor(() => expect(updateEveningRunSheetOptOut).toHaveBeenCalledWith('o1', true))
+      expect(screen.getByText(/paused — no evening-before emails/i)).toBeInTheDocument()
+    })
+
+    it('renders the liveness line ORG-LOCAL with weekday, DATE, zone abbreviation, and count (B1/D10)', () => {
+      render(
+        <CapacityUnitsClient
+          {...base}
+          initialUnits={[]}
+          initialTimezone="America/Denver"
+          initialOpsNotifications={{
+            // 2026-09-12T00:00Z = Fri Sep 11, 6:00 PM MDT.
+            last_evening_run_at: '2026-09-12T00:00:00.000Z',
+            last_evening_sent_count: 1,
+          }}
+        />,
+      )
+      // The month+day is REQUIRED, not tolerated: a weekday+time-only stamp
+      // ("Fri 6:00 PM MDT") let a cron dead for exactly 7/14/21 days render
+      // as a healthy recent run.
+      expect(
+        screen.getByText(/last evening send: Fri, Sep 11, 6:00 PM MDT — 1 run sheet$/i),
+      ).toBeInTheDocument()
+    })
+
+    it('pluralizes the count and keeps a 0-count night distinguishable from "never ran"', () => {
+      render(
+        <CapacityUnitsClient
+          {...base}
+          initialUnits={[]}
+          initialTimezone="America/Denver"
+          initialOpsNotifications={{
+            last_evening_run_at: '2026-09-12T00:00:00.000Z',
+            last_evening_sent_count: 0,
+          }}
+        />,
+      )
+      expect(
+        screen.getByText(/last evening send: Fri, Sep 11, 6:00 PM MDT — 0 run sheets$/i),
+      ).toBeInTheDocument()
+    })
+
+    // D9: the liveness stamp is zone-dependent (Intl zone abbreviations can
+    // drift across ICU builds), so it must be post-mount gated — never
+    // suppressHydrationWarning, which makes React KEEP the stale SSR text
+    // (RunSheetClient confirmStamp precedent).
+    const livenessProps = {
+      ...base,
+      initialUnits: [],
+      initialTimezone: 'America/Denver',
+      initialOpsNotifications: {
+        last_evening_run_at: '2026-09-12T00:00:00.000Z',
+        last_evening_sent_count: 1,
+      },
+    }
+
+    it('SSR bakes NO zone-dependent stamp into the liveness line — stable label + count clause only (D9)', () => {
+      const html = renderToString(<CapacityUnitsClient {...livenessProps} />)
+      // Deterministic placeholder in the SSR payload: the label and the
+      // count clause (both props-derived) — the Intl-derived clock face must
+      // NOT be there. If it is, the gate was removed and a drifted zone
+      // abbreviation could once again be frozen into the HTML.
+      expect(html).toContain('Last evening send:')
+      expect(html).toContain('1 run sheet')
+      expect(html).not.toContain('6:00 PM')
+      expect(html).not.toContain('MDT')
+      expect(html).not.toContain('Sep 11')
+    })
+
+    it('hydrates the SSR HTML without a mismatch, then swaps in the org-local stamp (D9/D10)', () => {
+      const container = document.createElement('div')
+      document.body.appendChild(container)
+      container.innerHTML = renderToString(<CapacityUnitsClient {...livenessProps} />)
+
+      // No suppressHydrationWarning remains on the stamp, so a server/client
+      // divergence would surface right here as a console.error from React.
+      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+      try {
+        render(<CapacityUnitsClient {...livenessProps} />, { container, hydrate: true })
+        expect(consoleError).not.toHaveBeenCalled()
+      } finally {
+        consoleError.mockRestore()
+      }
+
+      // Post-hydration: the full org-local stamp, date included.
+      expect(
+        screen.getByText(/last evening send: Fri, Sep 11, 6:00 PM MDT — 1 run sheet$/i),
+      ).toBeInTheDocument()
+      container.remove()
+    })
+
+    it('designed empty state before the first run', () => {
+      render(<CapacityUnitsClient {...base} initialUnits={[]} initialTimezone="America/Boise" />)
+      expect(
+        screen.getByText(/no sends yet — first one goes out the evening before your next job/i),
+      ).toBeInTheDocument()
+    })
+
+    it('is NOT business-tier-gated: the full section renders on the locked upsell surface too', () => {
+      render(
+        <CapacityUnitsClient
+          {...base}
+          locked
+          initialUnits={[]}
+          initialTimezone="America/Boise"
+          initialOpsNotifications={{ evening_run_sheet_opt_out: false }}
+        />,
+      )
+      expect(screen.getByText(/business[- ]plan feature/i)).toBeInTheDocument()
+      expect(screen.getByLabelText('Time zone')).toBeInTheDocument()
+      expect(
+        screen.getByRole('checkbox', { name: /email the run sheet the evening before each job/i }),
+      ).toBeInTheDocument()
+    })
+
+    it('reverts the select and surfaces the error when the save fails', async () => {
+      updateOrgTimezone.mockRejectedValue(new Error('Forbidden'))
+      render(<CapacityUnitsClient {...base} initialUnits={[]} initialTimezone="America/Boise" />)
+      const select = screen.getByLabelText('Time zone')
+      // A fixed zone that can never equal the saved one (the host machine may
+      // genuinely sit in America/Boise, and same-value picks short-circuit).
+      await waitFor(() =>
+        expect(
+          within(select as HTMLElement).getByRole('option', { name: 'Pacific/Auckland' }),
+        ).toBeInTheDocument(),
+      )
+      fireEvent.change(select, { target: { value: 'Pacific/Auckland' } })
+      expect(await screen.findByText('Forbidden')).toBeInTheDocument()
+      expect(select).toHaveValue('America/Boise')
     })
   })
 

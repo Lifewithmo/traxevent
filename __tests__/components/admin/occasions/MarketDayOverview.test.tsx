@@ -47,6 +47,17 @@ describe('MarketDayOverview money tile', () => {
     expect(screen.getByText('Net −$15')).toBeInTheDocument()
   })
 
+  // Inc-3 B3: imported money is labeled as imported at every render.
+  it('labels an imported figure on the closed-out tile', () => {
+    render(<MarketDayOverview {...base} today="2026-08-23" closeoutNet={141} salesImported />)
+    expect(screen.getByText(/sales imported from Square/)).toBeInTheDocument()
+  })
+
+  it('typed money carries no import label', () => {
+    render(<MarketDayOverview {...base} today="2026-08-23" closeoutNet={141} />)
+    expect(screen.queryByText(/imported from Square/)).not.toBeInTheDocument()
+  })
+
   it('non-admins keep the plain booth-fee tile and never see money or the CTA', () => {
     render(<MarketDayOverview {...base} isAdmin={false} today="2026-08-23" closeoutNet={null} />)
     expect(screen.getByText('Booth fee')).toBeInTheDocument()

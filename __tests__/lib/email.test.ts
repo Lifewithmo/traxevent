@@ -311,6 +311,20 @@ describe('sendGuardianPickupNotice', () => {
     expect(call.html).not.toMatch(/allerg|medical|balance|due/i)
   })
 
+  it('renders the stamp ORG-LOCAL with the zone abbreviated when a timeZone is passed (inc-3 S1.1)', async () => {
+    await sendGuardianPickupNotice({ ...base, timeZone: 'America/Boise' })
+    const call = emailsSendSpy.mock.calls[0][0]
+    // 2026-08-23T21:14Z = 3:14 PM MDT, still Aug 23 in Boise.
+    expect(call.html).toContain('2026-08-23 3:14 PM MDT')
+    expect(call.html).not.toContain('21:14 UTC')
+  })
+
+  it('falls back to the labeled-UTC stamp when the timeZone is invalid — never a lying local time', async () => {
+    await sendGuardianPickupNotice({ ...base, timeZone: 'Not/AZone' })
+    const call = emailsSendSpy.mock.calls[0][0]
+    expect(call.html).toContain('2026-08-23 21:14 UTC')
+  })
+
   it('escapes an attacker-shaped free-typed guardian name', async () => {
     await sendGuardianPickupNotice({ ...base, guardianName: '<img src=x onerror=alert(1)>' })
     const call = emailsSendSpy.mock.calls[0][0]
@@ -396,6 +410,12 @@ describe('sendRunSheetEmail', () => {
     const html = emailsSendSpy.mock.calls[0][0].html as string
     expect(html).toContain(bufferAssumptionLabel(buffers))
     expect(html).toContain('assumes 75m pack · 15m drive')
+  })
+
+  it('captions with the per-event override source when eventBuffers are threaded (inc-3 S3.1)', async () => {
+    await sendRunSheetEmail({ ...base, eventBuffers: { drive_minutes: 90 } })
+    const html = emailsSendSpy.mock.calls[0][0].html as string
+    expect(html).toContain('assumes 50m pack · 90m drive · drive set for this job')
   })
 
   it('escapes operator-entered content', async () => {

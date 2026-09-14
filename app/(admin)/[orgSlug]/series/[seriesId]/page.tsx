@@ -68,6 +68,8 @@ export default async function SeriesPage({
         net: summary.actual_margin,
         // Only when it exists: the cell's equation must stay arithmetically true.
         ...(summary.actual_consumable_cost > 0 ? { consumables: summary.actual_consumable_cost } : {}),
+        // Inc-3 B3: imported money stays labeled on the season strip too.
+        ...(c?.actuals?.sales_source === 'square_csv' ? { imported: true } : {}),
       }
     }
   }

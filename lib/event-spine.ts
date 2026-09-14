@@ -20,7 +20,7 @@ import { listInvoicesCore } from '@/lib/crm/invoices'
 import { customerAR } from '@/lib/crm/ar-rollup'
 import { invoiceBalance } from '@/lib/invoices'
 import { computeReadiness, type Readiness } from '@/lib/ops/readiness'
-import { eventCountdown, parseDay, type OpsBuffers } from '@/lib/event-ui'
+import { eventCountdown, parseDay, zonedStampParts, type OpsBuffers } from '@/lib/event-ui'
 import { summarizeFormCompletion, type FormCompletionFamily, type FormCompletionRow } from '@/lib/forms'
 import {
   buildRegistrationSummary,
@@ -89,6 +89,14 @@ export interface EventSpineKpis {
    *  loaded org doc (inc-2 S4.3) so the brief's Pack-by/Leave-by chips and
    *  their assumption label use the org's numbers; absent → the constants. */
   buffers?: OpsBuffers
+  /** Per-event pack/drive override (OpsRequirements.buffers, inc-3 S3.1) from
+   *  the spine's own plan read — the brief's chips must back-plan with the
+   *  same event → org → constants precedence as the run sheet and the evening
+   *  email. Absent when ops is gated off, there is no plan, or no override. */
+  event_buffers?: OpsBuffers
+  /** Org.timezone (IANA), passed through verbatim like `buffers` (inc-3 S1.1)
+   *  so the brief's confirm stamp renders org-local; absent → labeled UTC. */
+  timezone?: string
 }
 
 export interface GetEventSpineKpisInput {
@@ -109,6 +117,9 @@ export interface GetEventSpineKpisInput {
   /** Org.ops_buffers from the caller's already-loaded org doc — a pure
    *  passthrough to kpis.buffers (no read happens here). */
   buffers?: OpsBuffers
+  /** Org.timezone from the caller's already-loaded org doc — a pure
+   *  passthrough to kpis.timezone (no read happens here). */
+  timezone?: string
 }
 
 // ── Per-request read dedupe (React cache) ────────────────────────────────────
@@ -270,7 +281,7 @@ const readFirstItineraryTime = cache(async (orgId: string, eventId: string): Pro
  * wrapped so a failure yields that section = null — consumers render their
  * fallback and the page never 500s over a KPI.
  */
-export async function getEventSpineKpis({ orgId, eventId, event, allowedPages, includeMoney, today, wantBriefFacts = true, buffers }: GetEventSpineKpisInput): Promise<EventSpineKpis> {
+export async function getEventSpineKpis({ orgId, eventId, event, allowedPages, includeMoney, today, wantBriefFacts = true, buffers, timezone }: GetEventSpineKpisInput): Promise<EventSpineKpis> {
   const todayDay = today ?? new Date().toISOString().slice(0, 10)
 
   const corePromise = readSpineCore(orgId, eventId, allowedPages.join(','), includeMoney, event.event_start, event.lead_id ?? '', todayDay)
@@ -296,6 +307,9 @@ export async function getEventSpineKpis({ orgId, eventId, event, allowedPages, i
     firstItineraryTime: null,
     blockers: [],
     ...(buffers !== undefined ? { buffers } : {}),
+    // Per-event override rides the plan the core already read — zero extra reads.
+    ...(core.plan?.requirements?.buffers !== undefined ? { event_buffers: core.plan.requirements.buffers } : {}),
+    ...(timezone !== undefined ? { timezone } : {}),
   }
   if (!wantBriefFacts) return kpis
 
@@ -476,20 +490,29 @@ export interface EventVerdict {
 }
 
 /**
- * '2026-08-23T21:14:00.000Z' → '9:14 PM UTC'.
+ * '2026-08-23T21:14:00.000Z' → '9:14 PM UTC', or '3:14 PM MDT' with an org tz.
  *
- * ONE deliberate story for the confirm stamp (2026-08-23 review), commented at
- * both render ends: SERVER-rendered stamps (the brief's verdict line and
- * confirmedNote, both built here) format in EXPLICIT UTC with a visible label —
- * the guardian pickup email's fine-print precedent (lib/email.ts) — because the
- * server runtime's timezone is meaningless to the operator, and an unlabeled
- * server-local time reads as viewer-local while being wrong for every non-UTC
- * operator. CLIENT-rendered stamps (RunSheetClient's `confirmStamp`) stay
- * viewer-local: the same field, honestly local because it formats in the
- * viewer's browser. The UTC label here is what lets the two surfaces show
- * different clock faces without either one lying.
+ * ONE deliberate story for the confirm stamp (2026-08-23 review, amended inc-3
+ * S1.1), commented at both render ends: SERVER-rendered stamps (the brief's
+ * verdict line and confirmedNote, both built here) format in the ORG's timezone
+ * with the zone abbreviated when `Org.timezone` is set — via the shared
+ * zonedStampParts (lib/event-ui), which assembles from Intl PARTS with U+202F
+ * normalized (PR #135: joined Intl output differs across runtimes; this stamp
+ * is server-rendered, so pinned-zone Intl with explicit literals is safe, but
+ * we normalize defensively anyway). Without a timezone (or an invalid one) the
+ * stamp keeps the EXPLICIT labeled-UTC fallback — the server runtime's own
+ * timezone is meaningless to the operator, and an unlabeled server-local time
+ * reads as viewer-local while being wrong for every non-UTC operator.
+ * CLIENT-rendered stamps (RunSheetClient's `confirmStamp`) stay viewer-local:
+ * the same field, honestly local because it formats in the viewer's browser.
+ * The zone label here is what lets the two surfaces show different clock faces
+ * without either one lying.
  */
-export function formatConfirmStamp(iso: string): string {
+export function formatConfirmStamp(iso: string, timeZone?: string): string {
+  if (timeZone) {
+    const zoned = zonedStampParts(iso, timeZone)
+    if (zoned) return `${zoned.time} ${zoned.zone}`
+  }
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return ''
   return `${d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'UTC' })} UTC`
@@ -515,8 +538,10 @@ export function computeEventVerdict(input: {
   readiness: Readiness | null
   closeout: { exists: boolean; completed: boolean } | null
   blockers: EventBlocker[]
+  /** Org.timezone — the confirm stamp renders org-local when set (inc-3 S1.1). */
+  timeZone?: string
 }): EventVerdict | null {
-  const { phase, ops, readiness, closeout, blockers } = input
+  const { phase, ops, readiness, closeout, blockers, timeZone } = input
   if (!ops) return null
   if (phase === 'wrapped') {
     if (!ops.hasPlan) return { label: 'Wrapped', tone: 'ok' }
@@ -528,7 +553,7 @@ export function computeEventVerdict(input: {
 
   const confirmed = ops.readyConfirmed
   if (confirmed && blockers.length === 0) {
-    return { label: `Confirmed ready — ${formatConfirmStamp(confirmed.at)}`, tone: 'ok' }
+    return { label: `Confirmed ready — ${formatConfirmStamp(confirmed.at, timeZone)}`, tone: 'ok' }
   }
   // HONEST copy: `ready_confirmed` stores only {at, by} — no blocker snapshot —
   // so "N NEW blockers SINCE the confirm" is structurally unknowable (a deposit
@@ -538,7 +563,7 @@ export function computeEventVerdict(input: {
   // blockers are open right now. Demotion semantics unchanged (P2).
   const confirmedNote = confirmed
     ? {
-        confirmedNote: `Confirmed ${formatConfirmStamp(confirmed.at)} · ${blockers.length} open blocker${blockers.length === 1 ? '' : 's'}`,
+        confirmedNote: `Confirmed ${formatConfirmStamp(confirmed.at, timeZone)} · ${blockers.length} open blocker${blockers.length === 1 ? '' : 's'}`,
       }
     : {}
 

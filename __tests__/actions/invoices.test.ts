@@ -93,8 +93,8 @@ vi.mock('@/lib/email', () => ({
   sendInvoiceEmail: sendInvoiceEmailSpy,
 }))
 
-vi.mock('@/actions/domains', () => ({
-  getVerifiedSendingDomain: getVerifiedSendingDomainSpy,
+vi.mock('@/lib/sending-domain', () => ({
+  getVerifiedSendingDomainCore: getVerifiedSendingDomainSpy,
 }))
 
 import {

@@ -53,6 +53,24 @@ export interface Org {
     pack_minutes?: number
     drive_minutes?: number
   }
+  // IANA timezone (e.g. 'America/Boise'). Absent ⇒ surfaces fall back to their
+  // current labeled-UTC/viewer-local behavior; the evening-before cron SKIPS
+  // tz-less orgs (documented behavior, not an error). Migration-free.
+  timezone?: string
+  // Evening-before run-sheet send (inc-3 scheduling substrate). Absent ⇒ ON
+  // when a timezone is set. last_evening_run_at powers the settings liveness
+  // line ("Last evening send: Fri 6:04 PM MDT — 1 run sheet");
+  // last_evening_sent_count is the run-sheet count for the evening named by
+  // last_evening_for — it ACCUMULATES across the 18–21h catch-up ticks
+  // covering that same evening and resets on a new one (may be 0 — a healthy
+  // quiet night is a real, distinguishable state). last_evening_for is the
+  // org-local "tomorrow" date the run covered (YYYY-MM-DD). Migration-free.
+  ops_notifications?: {
+    evening_run_sheet_opt_out?: boolean
+    last_evening_run_at?: string
+    last_evening_sent_count?: number
+    last_evening_for?: string
+  }
   created_at: string
 }
 
@@ -1048,6 +1066,10 @@ export interface OpsListItem {
   unit?: string
   needs_conversion?: boolean  // quantity kept in its entered unit; no path to the resource's canonical unit (spec §3.4)
   checked: boolean
+  // Operator-authored shelf note ("subbed with oat milk — 2 cartons"). Preserved
+  // across recomputes by resource_id|unit exactly like `checked`; edited on the
+  // loadout surface only, displayed read-only on the run + prints (inc 3).
+  note?: string
 }
 
 export interface OpsChecklistStep {
@@ -1076,6 +1098,14 @@ export interface OpsRequirements {
   service_end?: string
   site_needs?: string[]      // e.g. ['power', 'water', 'ice', 'parking']
   notes?: string
+  // Per-event pack/drive override (drive time is inherently per-venue).
+  // Precedence: event → Org.ops_buffers → lib/event-ui constants, resolved in
+  // ONE place (lib/event-ui.resolveBuffers callers pass the merged shape).
+  // Editing these is a logged requirements change (clears ready_confirmed).
+  buffers?: {
+    pack_minutes?: number
+    drive_minutes?: number
+  }
 }
 
 export interface OpsChangeEntry {
@@ -1098,6 +1128,14 @@ export interface OpsPlan {
   // logged requirements change, any list recompute, and event date/hours edits —
   // inherits needs_review's known package-edit staleness hole (documented there).
   ready_confirmed?: { at: string; by: string }
+  // The event_start date (YYYY-MM-DD) the evening-before email covered.
+  // Date-stamped (not a bare timestamp) so a rescheduled event self-heals:
+  // the cron compares against the CURRENT event_start's date — no clearing
+  // hooks needed in updateEvent or calendar moves. Idempotent per event×date.
+  // event_start is a mixed-format field in live data, so every compare
+  // normalizes BOTH sides to the date (.slice(0, 10)); pre-fix stamps may be
+  // full-ISO and still count as covering their date.
+  evening_sent_for?: string
   change_log: OpsChangeEntry[]
   industry_pack_id?: string  // pack the plan was derived under (for re-derivation)
   created_at: string
@@ -1134,6 +1172,11 @@ export interface OpsActuals {
   consumables?: { resource_id: string; qty_used: number }[]
   hours_worked?: number
   sales?: number         // tips + on-site sales, dollars
+  // Provenance of `sales` — keeps imported money labeled at EVERY render
+  // (closeout, overview tile, season strip) incl. post-reload, and pre-answers
+  // the future counter register's double-count labeling (one money source per
+  // event: imported XOR counter_revenue — POS spec §5). Absent ⇒ 'manual'.
+  sales_source?: 'square_csv' | 'manual'
   waste_notes?: string
 }
 

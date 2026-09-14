@@ -1,6 +1,6 @@
 'use client'
 
-import { useId, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { useEffect, useId, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -17,9 +17,9 @@ import {
   updateResourceLabels,
   updateEventTypeProfiles,
 } from '@/actions/capacity-config'
-import { updateOpsBuffers } from '@/actions/ops-buffers'
+import { updateOpsBuffers, updateOrgTimezone, updateEveningRunSheetOptOut } from '@/actions/ops-buffers'
 import { kindLabel } from '@/lib/capacity/labels'
-import { PACK_MINUTES, DRIVE_MINUTES, MAX_BUFFER_MINUTES } from '@/lib/event-ui'
+import { PACK_MINUTES, DRIVE_MINUTES, MAX_BUFFER_MINUTES, zonedStampParts } from '@/lib/event-ui'
 import type { CapacityBlockout, CapacityUnit, CapacityUnitKind, Org } from '@/lib/types'
 
 interface CapacityUnitsClientProps {
@@ -33,6 +33,11 @@ interface CapacityUnitsClientProps {
   initialEventTypeProfiles?: Org['event_type_profiles']
   /** The org's saved pack/drive buffers; absent per-field ⇒ the 45m/30m constants. */
   initialOpsBuffers?: Org['ops_buffers']
+  /** The org's saved IANA timezone; absent ⇒ stamps stay labeled UTC and the
+   *  evening-before cron skips the org (inc-3 S1.1). */
+  initialTimezone?: string
+  /** Evening-before send opt-out + liveness stamps (inc-3 S1.3/B1). */
+  initialOpsNotifications?: Org['ops_notifications']
   /** True for orgs below the business tier — render the upsell, not the editor. */
   locked?: boolean
 }
@@ -120,6 +125,8 @@ export function CapacityUnitsClient({
   initialResourceLabels,
   initialEventTypeProfiles,
   initialOpsBuffers,
+  initialTimezone,
+  initialOpsNotifications,
   locked = false,
 }: CapacityUnitsClientProps) {
   const [units, setUnits] = useState<CapacityUnit[]>(initialUnits)
@@ -146,9 +153,16 @@ export function CapacityUnitsClient({
   // Pack/drive buffers are org-level day-of timing (job briefs + run sheets),
   // NOT part of the business-tier multi-resource feature — so the section stays
   // reachable on the locked upsell page and in the no-units-yet state alike.
+  // Same rule for the timezone + evening-send section (inc-3 B5): the timezone
+  // must NOT be business-tier-gated — it renders in BOTH branches.
   if (locked) {
     return (
       <LockedPanel>
+        <SchedulingSection
+          orgId={orgId}
+          initialTimezone={initialTimezone}
+          initialOpsNotifications={initialOpsNotifications}
+        />
         <OpsBuffersSection orgId={orgId} initialBuffers={initialOpsBuffers} />
       </LockedPanel>
     )
@@ -608,6 +622,12 @@ export function CapacityUnitsClient({
         </>
       )}
 
+      <SchedulingSection
+        orgId={orgId}
+        initialTimezone={initialTimezone}
+        initialOpsNotifications={initialOpsNotifications}
+      />
+
       <OpsBuffersSection orgId={orgId} initialBuffers={initialOpsBuffers} />
 
       <ConfirmDialog
@@ -624,6 +644,225 @@ export function CapacityUnitsClient({
         }}
       />
     </div>
+  )
+}
+
+// --- Time zone + evening-before send (inc-3 S1.1/S1.3/B1) ---------------------
+
+const emptySubscribe = () => () => {}
+
+/** '2026-09-11' (zonedStampParts' zone-local date) → 'Sep 11'. Static English
+ *  month names — deliberately NOT another Intl formatter (the shared parts
+ *  formatter stays the only one) and immune to ICU drift. The date matters:
+ *  a weekday+time-only stamp let a cron dead for exactly 7/14/21 days pass as
+ *  a healthy recent run. */
+const STAMP_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+function stampMonthDay(date: string): string {
+  const [, mm, dd] = date.split('-')
+  return `${STAMP_MONTHS[Number(mm) - 1] ?? mm} ${Number(dd)}`
+}
+
+/**
+ * Org timezone select + the evening-before run-sheet controls. Self-contained
+ * (own saving/error state, OpsBuffersSection precedent) so it renders
+ * identically on the locked upsell page and the full editor — the timezone is
+ * deliberately NOT business-tier-gated (B5).
+ *
+ * The IANA list and the browser-zone suggestion are CLIENT-ONLY facts: Node's
+ * ICU and the browser's can disagree on `Intl.supportedValuesOf('timeZone')`
+ * (different list lengths), and the server's resolved zone is the server's,
+ * not the operator's — rendering either during SSR would hydrate mismatched.
+ * Both are populated in an effect; the first paint shows just the saved value.
+ */
+function SchedulingSection({
+  orgId,
+  initialTimezone,
+  initialOpsNotifications,
+}: {
+  orgId: string
+  initialTimezone?: string
+  initialOpsNotifications?: Org['ops_notifications']
+}) {
+  const [savedTz, setSavedTz] = useState(initialTimezone ?? '')
+  const [zones, setZones] = useState<string[]>(initialTimezone ? [initialTimezone] : [])
+  const [browserZone, setBrowserZone] = useState<string | null>(null)
+  const [eveningOn, setEveningOn] = useState(
+    !(initialOpsNotifications?.evening_run_sheet_opt_out ?? false),
+  )
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const uid = useId()
+
+  // Hydration gate for the liveness stamp: true only once React runs in the
+  // browser. zonedStampParts assembles from Intl PARTS (U+202F-normalized),
+  // but zone ABBREVIATIONS can still drift across ICU builds (Node's vs the
+  // browser's) — and suppressHydrationWarning is BANNED here: React KEEPS the
+  // stale SSR text instead of patching it (see RunSheetClient's confirmStamp
+  // note). Same null-server-snapshot idiom as RunSheetClient/CheckinClient:
+  // server pass and hydration pass both render the deterministic placeholder,
+  // then the first client render swaps in the org-local stamp — no mismatch,
+  // nothing suppressed.
+  const hydrated = useSyncExternalStore(
+    emptySubscribe,
+    () => true,
+    () => false
+  )
+
+  useEffect(() => {
+    // Post-mount only (see the component comment). DropEditorClient precedent
+    // for reading the device zone; the full list default-suggests it.
+    try {
+      const device = Intl.DateTimeFormat().resolvedOptions().timeZone || null
+      const list =
+        typeof Intl.supportedValuesOf === 'function' ? Intl.supportedValuesOf('timeZone') : []
+      const merged = new Set<string>(list)
+      if (initialTimezone) merged.add(initialTimezone)
+      if (device) merged.add(device)
+      setZones([...merged].sort())
+      setBrowserZone(device)
+    } catch {
+      // keep the saved-value-only list — the select still shows the truth
+    }
+  }, [initialTimezone])
+
+  async function saveTimezone(next: string) {
+    if (next === savedTz) return
+    const prev = savedTz
+    setSavedTz(next) // optimistic; the select reflects the pick immediately
+    setSaving(true)
+    setError(null)
+    try {
+      await updateOrgTimezone(orgId, next || null)
+    } catch (err: unknown) {
+      setSavedTz(prev)
+      setError(err instanceof Error ? err.message : 'Something went wrong. Try again.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function saveEveningOn(nextOn: boolean) {
+    const prev = eveningOn
+    setEveningOn(nextOn)
+    setSaving(true)
+    setError(null)
+    try {
+      await updateEveningRunSheetOptOut(orgId, !nextOn)
+    } catch (err: unknown) {
+      setEveningOn(prev)
+      setError(err instanceof Error ? err.message : 'Something went wrong. Try again.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const lastAt = initialOpsNotifications?.last_evening_run_at
+  const lastCount = initialOpsNotifications?.last_evening_sent_count
+  // Org-local liveness stamp; a saved zone the browser can't resolve falls
+  // back to a labeled-UTC render — never a blank or a lying local time. The
+  // month+day is part of the stamp on purpose: "Fri 6:04 PM MDT" alone let a
+  // cron dead for exactly 7/14/21 days read as a healthy recent run.
+  const zoned = lastAt && savedTz ? zonedStampParts(lastAt, savedTz) : null
+  const livenessStamp = lastAt
+    ? zoned
+      ? `${zoned.weekday}, ${stampMonthDay(zoned.date)}, ${zoned.time} ${zoned.zone}`
+      : `${lastAt.slice(0, 10)} ${lastAt.slice(11, 16)} UTC`
+    : null
+  const countClause =
+    typeof lastCount === 'number' ? `${lastCount} run sheet${lastCount === 1 ? '' : 's'}` : null
+
+  return (
+    <section className="space-y-3" aria-labelledby={`${uid}-heading`}>
+      <div className="space-y-1">
+        <h2
+          id={`${uid}-heading`}
+          className="text-sm font-semibold uppercase tracking-[.04em] text-muted-foreground"
+        >
+          Time zone &amp; evening send
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          Your time zone puts real local times on emails, confirmations, and printed sheets — and
+          sets the clock for the evening-before run-sheet email.
+        </p>
+      </div>
+
+      <div className="space-y-1">
+        <Label htmlFor={`${uid}-tz`} className="text-xs">Time zone</Label>
+        <select
+          id={`${uid}-tz`}
+          value={savedTz}
+          disabled={saving}
+          onChange={(e) => void saveTimezone(e.target.value)}
+          className="border-input h-9 w-full max-w-sm rounded-md border bg-transparent px-3 text-sm shadow-xs outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50 dark:bg-input/30"
+        >
+          <option value="">Not set — times shown as UTC</option>
+          {zones.map((z) => (
+            <option key={z} value={z}>{z}</option>
+          ))}
+        </select>
+        {!savedTz && browserZone && (
+          <p className="text-xs text-muted-foreground">
+            Your device is on{' '}
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => void saveTimezone(browserZone)}
+              className="font-medium text-foreground underline underline-offset-2 disabled:opacity-50"
+            >
+              {browserZone}
+            </button>
+            {' '}— tap to use it.
+          </p>
+        )}
+      </div>
+
+      <div className="space-y-1.5">
+        <label className="flex items-center gap-2 text-sm font-medium">
+          <input
+            type="checkbox"
+            checked={eveningOn}
+            disabled={saving || !savedTz}
+            onChange={(e) => void saveEveningOn(e.target.checked)}
+          />
+          Email the run sheet the evening before each job
+        </label>
+        {!savedTz ? (
+          <p className="text-xs text-muted-foreground">
+            Set a time zone first — the send goes out between 6 and 9 PM your time.
+          </p>
+        ) : eveningOn ? (
+          // Liveness line (B1): a healthy quiet night must be distinguishable
+          // from a broken cron — so a run with zero sends still stamps, and the
+          // empty state is only for "the cron has never run for this org".
+          // The zone-dependent stamp renders only after the `hydrated` gate
+          // above; SSR and the hydration pass show the count clause (or an
+          // em-dash) under the SAME stable label, so nothing mismatches and
+          // nothing needs suppressing.
+          <p className="text-xs text-muted-foreground">
+            {livenessStamp ? (
+              <>
+                {'Last evening send: '}
+                {hydrated
+                  ? countClause
+                    ? `${livenessStamp} — ${countClause}`
+                    : livenessStamp
+                  : (countClause ?? '—')}
+              </>
+            ) : (
+              <>No sends yet — first one goes out the evening before your next job.</>
+            )}
+          </p>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            Paused — no evening-before emails will go out.
+          </p>
+        )}
+      </div>
+
+      <div aria-live="polite" aria-atomic="true">
+        {error && <p className="text-xs text-destructive">{error}</p>}
+      </div>
+    </section>
   )
 }
 

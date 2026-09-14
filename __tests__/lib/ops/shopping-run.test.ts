@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import {
   RUN_CAP, RUN_DAYS,
-  carryExcludedIds, computeShoppingRun, constituentKey, parseRunDays, selectShoppingRunWindow, shoppingRunStats,
-  type ShoppingRunPair,
+  buildShoppingRunCsv, carryExcludedIds, computeShoppingRun, constituentKey, parseRunDays,
+  selectShoppingRunWindow, shoppingRunCsvFilename, shoppingRunStats,
+  type ShoppingRunPair, type ShoppingRunRow,
 } from '@/lib/ops/shopping-run'
 import { selectHorizonWindow } from '@/lib/ops/readiness-horizon'
 import type { Event, OpsListItem, OpsPlan, OpsResource } from '@/lib/types'
@@ -275,5 +276,142 @@ describe('shoppingRunStats', () => {
 
   it('reports empty honestly', () => {
     expect(shoppingRunStats([])).toEqual({ unchecked: 0, total: 0, jobs: 0 })
+  })
+})
+
+describe('shelf notes on the run (inc-3 S3.3 — read-only display data)', () => {
+  it('carries each item note onto its constituent, merged rows included', () => {
+    const bags = resource({ id: 'r-ice', name: 'Ice', unit: 'bag' })
+    const a = pair(event({ id: 'a', name: 'Smith Wedding' }), [
+      { resource_id: 'r-ice', name: 'Ice', qty: 3, unit: 'bag', checked: false, note: 'crushed only' },
+    ])
+    const b = pair(event({ id: 'b', name: 'Corp Party' }), [
+      { resource_id: 'r-ice', name: 'Ice', qty: 2, unit: 'bag', checked: false },
+    ])
+    const rows = computeShoppingRun([a, b], [bags])
+    expect(rows).toHaveLength(1)
+    const notes = rows[0].constituents.map((c) => c.note)
+    expect(notes).toContain('crushed only')
+    // The un-noted constituent carries NO note key — never an empty string.
+    expect(rows[0].constituents.find((c) => c.event_id === 'b')?.note).toBeUndefined()
+  })
+})
+
+describe('buildShoppingRunCsv (inc-3 S3.2 — pure, client-side blob source)', () => {
+  const bags = resource({ id: 'r-ice', name: 'Ice', unit: 'bag' })
+
+  it('emits header + one line per row with display qty/unit, job attribution, and notes', () => {
+    const a = pair(event({ id: 'a', name: 'Smith Wedding' }), [
+      { resource_id: 'r-ice', name: 'Ice', qty: 3, unit: 'bag', checked: true, note: 'crushed only' },
+    ])
+    const b = pair(event({ id: 'b', name: 'Corp Party' }), [
+      { resource_id: 'r-ice', name: 'Ice', qty: 2, unit: 'bag', checked: false },
+    ])
+    const csv = buildShoppingRunCsv(computeShoppingRun([a, b], [bags]))
+    const [header, line] = csv.split('\n')
+    expect(header).toBe('Item,Qty,Unit,Canonical Qty,Canonical Unit,Bought,Jobs,Notes')
+    expect(line).toBe('"Ice","5","bag","","","partly","Smith Wedding; Corp Party","Smith Wedding: crushed only"')
+  })
+
+  it('carries the CANONICAL totals for converted rows — the vendor-books hook, activated', () => {
+    const milk = resource({ id: 'r-milk', name: 'Milk', unit: 'gal', dimension: 'volume' })
+    const a = pair(event({ id: 'a' }), [{ resource_id: 'r-milk', name: 'Milk', qty: 1, unit: 'gal', checked: false }])
+    const csv = buildShoppingRunCsv(computeShoppingRun([a], [milk]))
+    const line = csv.split('\n')[1]
+    const cells = line.split('","').map((c) => c.replace(/^"|"$/g, ''))
+    expect(cells[0]).toBe('Milk')
+    expect(Number(cells[3])).toBeGreaterThan(0)  // canonical qty present
+    expect(cells[4]).toBe('ml')                  // canonical unit
+  })
+
+  it('escapes quotes, commas, and newlines the lib/csv.ts way (every cell quoted, quotes doubled)', () => {
+    const weird = resource({ id: 'r-x', name: 'Beans, "dark" roast', unit: 'bag' })
+    const a = pair(event({ id: 'a', name: 'A' }), [
+      { resource_id: 'r-x', name: 'Beans, "dark" roast', qty: 1, unit: 'bag', checked: false, note: 'line1\nline2, "quoted"' },
+    ])
+    const csv = buildShoppingRunCsv(computeShoppingRun([a], [weird]))
+    expect(csv).toContain('"Beans, ""dark"" roast"')
+    expect(csv).toContain('"line1\nline2, ""quoted"""')
+  })
+
+  it('single-job notes are NOT event-prefixed; the empty run is just the header', () => {
+    const a = pair(event({ id: 'a', name: 'Solo Job' }), [
+      { resource_id: 'r-ice', name: 'Ice', qty: 1, unit: 'bag', checked: false, note: 'crushed only' },
+    ])
+    const csv = buildShoppingRunCsv(computeShoppingRun([a], [bags]))
+    expect(csv.split('\n')[1]).toContain('"crushed only"')
+    expect(csv).not.toContain('Solo Job: crushed only')
+    expect(buildShoppingRunCsv([])).toBe('Item,Qty,Unit,Canonical Qty,Canonical Unit,Bought,Jobs,Notes')
+  })
+})
+
+describe('buildShoppingRunCsv — formula-injection hardening (D7)', () => {
+  // Hand-made rows: buildShoppingRunCsv is pure over ShoppingRunRow, so the
+  // dangerous free-text shapes can be pinned directly.
+  const row = (over: Partial<ShoppingRunRow>): ShoppingRunRow => ({
+    key: 'r|', resource_id: 'r', name: 'Ice', qty: 1, unit: 'bag',
+    checked: 'none', constituents: [], ...over,
+  })
+  const constituent = (over: Partial<ShoppingRunRow['constituents'][number]>) => ({
+    event_id: 'a', event_name: 'Smith Wedding', event_slug: 'a', event_start: '2026-08-12',
+    resource_id: 'r', qty: 1, unit: 'bag', checked: false, ...over,
+  })
+
+  it.each([
+    ['=', '=HYPERLINK("http://evil","x")'],
+    ['+', '+SUM(A1:A9)'],
+    ['-', '-2+3+cmd|\' /C calc\'!A0'],
+    ['@', '@SUM(A1)'],
+    ['tab', '\tX'],
+    ['CR', '\rX'],
+  ])('neutralizes a leading %s in the item NAME with a quote prefix', (_label, name) => {
+    const line = buildShoppingRunCsv([row({ name })]).split('\n')[1]
+    expect(line.startsWith(`"'${name.replace(/"/g, '""')}"`)).toBe(true)
+  })
+
+  it('neutralizes free-text UNIT and NOTE fields the same way', () => {
+    const csv = buildShoppingRunCsv([
+      row({ unit: '=1+1', constituents: [constituent({ note: '@import' })] }),
+    ])
+    expect(csv).toContain('"\'=1+1"')
+    expect(csv).toContain('"\'@import"')
+  })
+
+  it('neutralizes a job attribution whose event name leads with a formula char', () => {
+    const csv = buildShoppingRunCsv([
+      row({ constituents: [constituent({ event_name: '=Evil Corp Gala' })] }),
+    ])
+    expect(csv).toContain('"\'=Evil Corp Gala"')
+  })
+
+  it('leaves a mid-string = untouched — only the LEADING character is the attack surface', () => {
+    const csv = buildShoppingRunCsv([
+      row({ name: 'Brine 5=5 mix', constituents: [constituent({ note: 'ratio a=b' })] }),
+    ])
+    expect(csv).toContain('"Brine 5=5 mix"')
+    expect(csv).toContain('"ratio a=b"')
+    expect(csv).not.toContain("'Brine")
+    expect(csv).not.toContain("'ratio")
+  })
+
+  it('never prefixes NUMERIC columns — a negative qty is a legitimate number, safe by construction', () => {
+    const line = buildShoppingRunCsv([
+      row({ qty: -2, canonical: { qty: -350, unit: 'ml' } }),
+    ]).split('\n')[1]
+    const cells = line.split(',')
+    expect(cells[1]).toBe('"-2"')    // Qty: no apostrophe
+    expect(cells[3]).toBe('"-350"')  // Canonical Qty: no apostrophe
+  })
+
+  it('keeps the existing quote/comma/newline escaping ON TOP of neutralization', () => {
+    const csv = buildShoppingRunCsv([row({ name: '=HYPERLINK("http://evil")' })])
+    // Quote-doubling still applies to the neutralized value.
+    expect(csv).toContain('"\'=HYPERLINK(""http://evil"")"')
+  })
+})
+
+describe('shoppingRunCsvFilename', () => {
+  it('names the file by window + run date (the run is cross-event — no single slug exists)', () => {
+    expect(shoppingRunCsvFilename(7, '2026-09-12')).toBe('shopping-run-7d-2026-09-12.csv')
   })
 })

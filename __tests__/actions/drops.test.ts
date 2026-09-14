@@ -30,7 +30,7 @@ vi.mock('@/lib/resend', () => ({
   // it must exist here or the best-effort catch swallows the batch send
   buildFromAddress: (o: { displayName?: string }) => `"${o.displayName ?? 'x'}" <noreply@test>`,
 }))
-vi.mock('@/actions/domains', () => ({ getVerifiedSendingDomain: getVerifiedSendingDomainSpy }))
+vi.mock('@/lib/sending-domain', () => ({ getVerifiedSendingDomainCore: getVerifiedSendingDomainSpy }))
 
 import { publishDrop } from '@/actions/drops'
 

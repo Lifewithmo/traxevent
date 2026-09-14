@@ -27,7 +27,7 @@ vi.mock('@/lib/email', () => ({
   sendRegistrationConfirmation: vi.fn(),
   sendProposalSignedConfirmation: vi.fn(),
 }))
-vi.mock('@/actions/domains', () => ({ getVerifiedSendingDomain: getVerifiedSendingDomainSpy }))
+vi.mock('@/lib/sending-domain', () => ({ getVerifiedSendingDomainCore: getVerifiedSendingDomainSpy }))
 vi.mock('@/lib/crm/deposit-reconcile', () => ({ reconcileProposalDeposit: vi.fn() }))
 vi.mock('@/lib/firebase-admin', () => ({
   adminDb: {

@@ -1,5 +1,5 @@
 import { getResend, buildFromAddress } from '@/lib/resend'
-import { bufferAssumptionLabel } from '@/lib/event-ui'
+import { bufferAssumptionLabel, zonedStampParts } from '@/lib/event-ui'
 
 const PUBLIC_BASE_URL = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://traxevent.com'
 
@@ -378,6 +378,9 @@ export interface GuardianPickupNoticeParams {
   unlistedGuardian?: boolean
   /** ISO timestamp of the checkout. */
   checkedOutAt: string
+  /** Org.timezone (IANA). Present → the fine-print stamp renders org-local with
+   *  the zone abbreviated ("3:14 PM MDT"); absent/invalid → labeled UTC. */
+  timeZone?: string
   eventName: string
   orgName: string
   fromDisplayName?: string
@@ -405,13 +408,20 @@ export async function sendGuardianPickupNotice(params: GuardianPickupNoticeParam
     names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
   const verb = names.length === 1 ? 'was' : 'were'
 
-  // Server-rendered timestamp: UTC-labeled fine print (ops/print precedent) —
-  // no timezone field exists anywhere, so a bare local-looking time would lie.
+  // Server-rendered timestamp (inc-3 S1.1 tz retrofit): when the org has a
+  // timezone, render org-local with the zone abbreviated ("2026-08-23 3:14 PM
+  // MDT") via the shared zonedStampParts — a server-only string, assembled
+  // from Intl PARTS with U+202F normalized (PR #135: joined Intl output
+  // differs across runtimes). No/invalid timezone keeps the labeled-UTC
+  // fallback — a bare local-looking time would lie.
   // The headline carries the honest "just now": this email sends at checkout.
   const d = new Date(params.checkedOutAt)
-  const stamp = Number.isNaN(d.getTime())
-    ? params.checkedOutAt
-    : `${d.toISOString().slice(0, 10)} ${d.toISOString().slice(11, 16)} UTC`
+  const zoned = params.timeZone ? zonedStampParts(params.checkedOutAt, params.timeZone) : null
+  const stamp = zoned
+    ? `${zoned.date} ${zoned.time} ${zoned.zone}`
+    : Number.isNaN(d.getTime())
+      ? params.checkedOutAt
+      : `${d.toISOString().slice(0, 10)} ${d.toISOString().slice(11, 16)} UTC`
 
   const collectedBy = params.guardianName
     ? params.unlistedGuardian
@@ -452,6 +462,9 @@ export interface RunSheetEmailParams {
   anchor: { label: string; display: string } | null
   backPlan: { packBy: string; leaveBy: string } | null
   buffers?: { pack_minutes?: number; drive_minutes?: number }
+  /** Per-event override (OpsRequirements.buffers, inc-3 S3.1) — threaded so the
+   *  caption below resolves with the SAME precedence that produced backPlan. */
+  eventBuffers?: { pack_minutes?: number; drive_minutes?: number }
   venue: { name: string; address?: string } | null
   contacts: Array<{ name: string; role: string; phone?: string; email?: string }>
   siteNeeds: string[]
@@ -480,7 +493,7 @@ export async function sendRunSheetEmail(params: RunSheetEmailParams): Promise<vo
   // re-derivation whose fallbacks/semantics could silently drift from the
   // emailed Pack-by/Leave-by times ("the label can never disagree with the
   // math", lib/ops/anchor.ts).
-  const bufferLabel = bufferAssumptionLabel(params.buffers)
+  const bufferLabel = bufferAssumptionLabel(params.buffers, params.eventBuffers)
 
   const section = (title: string, body: string) => `
     <h2 style="color:#64748B;font-size:12px;text-transform:uppercase;letter-spacing:.05em;margin:20px 0 4px">${title}</h2>

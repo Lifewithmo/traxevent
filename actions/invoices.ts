@@ -26,7 +26,7 @@ import {
   invoiceVersionSnapshot,
 } from '@/lib/crm/invoices'
 import { sendInvoiceEmail } from '@/lib/email'
-import { getVerifiedSendingDomain } from '@/actions/domains'
+import { getVerifiedSendingDomainCore } from '@/lib/sending-domain'
 import type { Event, Invoice, InvoiceLineItem, InvoiceType, InvoiceDiscount, NormalizedInvoice, Org } from '@/lib/types'
 
 // NOTE: this is a 'use server' module — every export must be an async function.
@@ -263,7 +263,7 @@ export async function sendInvoice(
   const org = orgSnap.data() as Org | undefined
   let fromDomain: string | undefined
   try {
-    fromDomain = await getVerifiedSendingDomain(orgId)
+    fromDomain = await getVerifiedSendingDomainCore(orgId)
   } catch { /* fall back to platform sender */ }
 
   let emailDelivered = true

@@ -20,8 +20,8 @@ vi.mock('@/lib/email', () => ({
   sendRegistrationConfirmation: sendRegistrationConfirmationSpy,
   sendProposalSignedConfirmation: sendProposalSignedConfirmationSpy,
 }))
-vi.mock('@/actions/domains', () => ({
-  getVerifiedSendingDomain: getVerifiedSendingDomainSpy,
+vi.mock('@/lib/sending-domain', () => ({
+  getVerifiedSendingDomainCore: getVerifiedSendingDomainSpy,
 }))
 vi.mock('@/lib/crm/deposit-reconcile', () => ({
   reconcileProposalDeposit: reconcileProposalDepositSpy,
@@ -251,7 +251,7 @@ describe('POST /api/payments/webhook', () => {
       // email the after_accept path sends when it first signs — using the
       // promoted signer's name/email, the proposal's own token, and the org's
       // verified sending domain (resolved the same way the registration
-      // webhook does via getVerifiedSendingDomain).
+      // webhook does via getVerifiedSendingDomainCore).
       expect(getVerifiedSendingDomainSpy).toHaveBeenCalledWith('org-1')
       expect(sendProposalSignedConfirmationSpy).toHaveBeenCalledWith(
         expect.objectContaining({

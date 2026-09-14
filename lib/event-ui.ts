@@ -146,36 +146,73 @@ export const MAX_BUFFER_MINUTES = 480
  */
 export const SERIES_ROLLUP_CAP = 30
 
-/** Org-default pack/drive buffers (Org.ops_buffers shape); absent fields fall back to the constants. */
+/** Max characters for an operator-authored per-item shelf note (inc-3 S3.3).
+ *  Lives here (client-safe) so the loadout editor's maxLength, its pre-flight
+ *  check, and the server core (lib/ops/event-ops.ts) share ONE number. */
+export const OPS_NOTE_MAX_CHARS = 200
+
+/** Org-default pack/drive buffers (Org.ops_buffers shape) — ALSO the shape of
+ *  the per-event override (OpsRequirements.buffers, inc-3 S3.1); absent fields
+ *  fall back through the precedence chain below. */
 export interface OpsBuffers {
   pack_minutes?: number
   drive_minutes?: number
 }
 
-/** Effective buffer minutes after fallback — single source for chips and labels. */
-export function resolveBuffers(buffers?: OpsBuffers): { pack: number; drive: number } {
-  return {
-    pack: buffers?.pack_minutes && buffers.pack_minutes > 0 ? buffers.pack_minutes : PACK_MINUTES,
-    drive: buffers?.drive_minutes && buffers.drive_minutes > 0 ? buffers.drive_minutes : DRIVE_MINUTES,
-  }
-}
-
-/** The assumption caption rendered wherever the chips render, e.g. "assumes 50m pack · 20m drive". */
-export function bufferAssumptionLabel(buffers?: OpsBuffers): string {
-  const { pack, drive } = resolveBuffers(buffers)
-  return `assumes ${pack}m pack · ${drive}m drive`
+/** A stored buffer field is usable iff it would survive the save-path
+ *  validation (actions/ops-buffers.ts + updateOpsRequirementsCore): a whole
+ *  1..MAX_BUFFER_MINUTES minutes. Anything else falls through to the next
+ *  precedence tier — a garbage stored value inherits, it never poisons chips. */
+function validBufferMinutes(n: number | undefined): number | undefined {
+  return n !== undefined && Number.isInteger(n) && n > 0 && n <= MAX_BUFFER_MINUTES ? n : undefined
 }
 
 /**
- * Back-planned 'Pack by / Leave by' from the resolved job time minus the org's
- * buffers (fixed 45m/30m defaults when unset) — always labeled as an assumption
- * via bufferAssumptionLabel. null when the time is malformed or back-planning
- * crosses midnight.
+ * Effective buffer minutes after per-FIELD precedence (inc-3 S3.1):
+ * event override → org default → constants. THE single resolution site — every
+ * chips/label call routes here, so the four render surfaces (job brief, run
+ * sheet, runsheet print, evening email) can never disagree. An event may
+ * override only drive and still inherit the org's pack.
  */
-export function backPlanChips(hhmm: string, buffers?: OpsBuffers): { packBy: string; leaveBy: string } | null {
+export function resolveBuffers(buffers?: OpsBuffers, eventBuffers?: OpsBuffers): { pack: number; drive: number } {
+  return {
+    pack: validBufferMinutes(eventBuffers?.pack_minutes) ?? validBufferMinutes(buffers?.pack_minutes) ?? PACK_MINUTES,
+    drive: validBufferMinutes(eventBuffers?.drive_minutes) ?? validBufferMinutes(buffers?.drive_minutes) ?? DRIVE_MINUTES,
+  }
+}
+
+/**
+ * The assumption caption rendered wherever the chips render. Extends the inc-2
+ * vocabulary ("assumes 50m pack · 20m drive") with an honest source qualifier
+ * (inc-3 S3.1): "· set for this job" / "· pack set for this job" / "· drive
+ * set for this job" when the event override supplies the number(s),
+ * "· org default" when the org's settings do, and the bare inc-2 wording when
+ * only the standard 45m/30m assumption is in play.
+ */
+export function bufferAssumptionLabel(buffers?: OpsBuffers, eventBuffers?: OpsBuffers): string {
+  const { pack, drive } = resolveBuffers(buffers, eventBuffers)
+  const base = `assumes ${pack}m pack · ${drive}m drive`
+  const eventPack = validBufferMinutes(eventBuffers?.pack_minutes) !== undefined
+  const eventDrive = validBufferMinutes(eventBuffers?.drive_minutes) !== undefined
+  if (eventPack && eventDrive) return `${base} · set for this job`
+  if (eventPack) return `${base} · pack set for this job`
+  if (eventDrive) return `${base} · drive set for this job`
+  const orgAny =
+    validBufferMinutes(buffers?.pack_minutes) !== undefined ||
+    validBufferMinutes(buffers?.drive_minutes) !== undefined
+  return orgAny ? `${base} · org default` : base
+}
+
+/**
+ * Back-planned 'Pack by / Leave by' from the resolved job time minus the
+ * resolved buffers (event override → org → fixed 45m/30m) — always labeled as
+ * an assumption via bufferAssumptionLabel. null when the time is malformed or
+ * back-planning crosses midnight.
+ */
+export function backPlanChips(hhmm: string, buffers?: OpsBuffers, eventBuffers?: OpsBuffers): { packBy: string; leaveBy: string } | null {
   const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm)
   if (!m) return null
-  const { pack: packMin, drive: driveMin } = resolveBuffers(buffers)
+  const { pack: packMin, drive: driveMin } = resolveBuffers(buffers, eventBuffers)
   const start = Number(m[1]) * 60 + Number(m[2])
   const leave = start - driveMin
   const pack = leave - packMin
@@ -185,4 +222,76 @@ export function backPlanChips(hhmm: string, buffers?: OpsBuffers): { packBy: str
   const packBy = fmt(pack)
   const leaveBy = fmt(leave)
   return packBy && leaveBy ? { packBy, leaveBy } : null
+}
+
+// ── Org-local timestamp vocabulary (inc-3 S1.1 tz stamp retrofits) ───────────
+// CANONICAL formatter behind every org-local stamp: the guardian-email fine
+// print (lib/email.ts), the confirm-ready stamp (lib/event-spine.ts), both
+// print freshness lines, and the settings liveness line. One implementation so
+// "6:04 PM MDT" can never be assembled three slightly-different ways.
+
+export interface ZonedStampParts {
+  /** 'YYYY-MM-DD' in the zone (NOT the UTC date — they differ around midnight). */
+  date: string
+  /** Short weekday in the zone, e.g. 'Fri'. */
+  weekday: string
+  /** '6:04 PM' — assembled from parts, never Intl's joined string (see below). */
+  time: string
+  /** Zone abbreviation, e.g. 'MDT' (Intl falls back to 'GMT-6'-style elsewhere). */
+  zone: string
+}
+
+/**
+ * '2026-08-23T21:14:00.000Z' + 'America/Boise' → { date: '2026-08-23',
+ * weekday: 'Sun', time: '3:14 PM', zone: 'MDT' }. Returns null for a garbage
+ * iso OR an invalid/unknown zone — callers keep their labeled-UTC fallback,
+ * never a thrown render.
+ *
+ * SSR-safety (PR #135 lesson): even pinned-zone Intl output differs across
+ * runtimes — newer ICU joins time with U+202F (narrow no-break space) before
+ * AM/PM, older with a plain space — so any string that must match between the
+ * server and a hydrating client cannot come from Intl's joined `format()`.
+ * We assemble `time` manually from formatToParts (hour/minute/dayPeriod) and
+ * STILL normalize U+202F → ' ' defensively in case a part value ever carries
+ * one. The zone abbreviation is Intl's, which is stable across current Node +
+ * browser ICU for named zones; client renders of these stamps should still
+ * post-mount gate (deterministic placeholder on the server and hydration
+ * passes, real stamp on the first client render) where a mismatch would warn.
+ * NEVER suppressHydrationWarning — it is banned in this codebase because
+ * React then KEEPS the stale SSR text instead of patching it (see
+ * RunSheetClient's confirmStamp note for the precedent).
+ */
+export function zonedStampParts(iso: string, timeZone: string): ZonedStampParts | null {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return null
+  let raw: Intl.DateTimeFormatPart[]
+  try {
+    raw = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      weekday: 'short',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+      timeZoneName: 'short',
+    }).formatToParts(d)
+  } catch {
+    return null // unknown/invalid IANA zone — caller falls back to labeled UTC
+  }
+  const parts: Partial<Record<Intl.DateTimeFormatPart['type'], string>> = {}
+  for (const p of raw) {
+    if (p.type !== 'literal') parts[p.type] = p.value
+  }
+  const { year, month, day, weekday, hour, minute, dayPeriod, timeZoneName } = parts
+  if (!year || !month || !day || !weekday || !hour || !minute || !dayPeriod || !timeZoneName) return null
+  // Defensive U+202F normalization (see the SSR-safety note above).
+  const clean = (s: string) => s.replace(/\u202f/g, ' ')
+  return {
+    date: `${year}-${month}-${day}`,
+    weekday: clean(weekday),
+    time: clean(`${hour}:${minute} ${dayPeriod}`),
+    zone: clean(timeZoneName),
+  }
 }

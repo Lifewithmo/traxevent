@@ -23,6 +23,8 @@ export default async function CapacityPage({
       initialResourceLabels={org.resource_labels}
       initialEventTypeProfiles={org.event_type_profiles}
       initialOpsBuffers={org.ops_buffers}
+      initialTimezone={org.timezone}
+      initialOpsNotifications={org.ops_notifications}
       locked={!unlocked}
     />
   )
