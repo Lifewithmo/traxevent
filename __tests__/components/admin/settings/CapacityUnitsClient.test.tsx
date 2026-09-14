@@ -14,11 +14,9 @@ vi.mock('@/actions/capacity', () => ({
 
 const updateServiceableDays = vi.hoisted(() => vi.fn())
 const updateResourceLabels = vi.hoisted(() => vi.fn())
-const updateEventTypeProfiles = vi.hoisted(() => vi.fn())
 vi.mock('@/actions/capacity-config', () => ({
   updateServiceableDays,
   updateResourceLabels,
-  updateEventTypeProfiles,
 }))
 
 const updateOpsBuffers = vi.hoisted(() => vi.fn())
@@ -41,7 +39,7 @@ function unit(over: Partial<CapacityUnit> & Pick<CapacityUnit, 'id' | 'name' | '
   }
 }
 
-const base = { orgId: 'o1' }
+const base = { orgId: 'o1', orgSlug: 'brewtrax' }
 
 function summaryText(): string {
   const el = document.querySelector('[data-slot="capacity-summary"]')
@@ -389,121 +387,30 @@ describe('CapacityUnitsClient', () => {
     })
   })
 
-  describe('Event types — per-type resource profiles', () => {
-    it('always states the default rule in a hint line, routed through the operator label', () => {
+  describe('Event types — moved to their own settings page', () => {
+    // The per-type profiles editor lives at /{orgSlug}/event-types now
+    // (event types inc 1). This surface keeps a single pointer row so an
+    // operator who learned the old location is redirected, not stranded.
+    it('renders a pointer row linking to Settings → Event types instead of the retired inline section', () => {
       render(
         <CapacityUnitsClient
           {...base}
-          initialResourceLabels={{ mobile: { one: 'cart', many: 'carts' }, venue: { one: 'room', many: 'rooms' } }}
           initialUnits={[unit({ id: 'm1', name: 'Kart 1', kind: 'mobile' })]}
         />,
       )
-      // The default is legible even with no profiles listed: an unlisted type
-      // falls back to a cart always + a room when on-site.
-      expect(
-        screen.getByText(/Types not listed use the default — a cart always, a room when on-site\./i),
-      ).toBeInTheDocument()
+      const link = screen.getByRole('link', { name: /settings → event types/i })
+      expect(link).toHaveAttribute('href', '/brewtrax/event-types')
+      expect(screen.getByText(/event types moved/i)).toBeInTheDocument()
+      // The retired inline editor is gone.
+      expect(screen.queryByRole('button', { name: /add event type/i })).not.toBeInTheDocument()
+      expect(screen.queryByText(/types not listed use the default/i)).not.toBeInTheDocument()
     })
 
-    it('renders each profile as a row: a name plus two kind toggles', () => {
-      render(
-        <CapacityUnitsClient
-          {...base}
-          initialUnits={[unit({ id: 'm1', name: 'Kart 1', kind: 'mobile' })]}
-          initialEventTypeProfiles={[{ name: 'Wedding', needsMobile: true, needsVenue: false }]}
-        />,
-      )
-      expect(screen.getByDisplayValue('Wedding')).toBeInTheDocument()
-      const mobileToggle = screen.getByRole('button', { name: /Wedding — needs serving unit/i })
-      const venueToggle = screen.getByRole('button', { name: /Wedding — needs room/i })
-      expect(mobileToggle).toHaveAttribute('aria-pressed', 'true')
-      expect(venueToggle).toHaveAttribute('aria-pressed', 'false')
-    })
-
-    it('toggling a kind persists the flipped profile through updateEventTypeProfiles', async () => {
-      updateEventTypeProfiles.mockResolvedValue(undefined)
-      render(
-        <CapacityUnitsClient
-          {...base}
-          initialUnits={[unit({ id: 'm1', name: 'Kart 1', kind: 'mobile' })]}
-          initialEventTypeProfiles={[{ name: 'Wedding', needsMobile: true, needsVenue: false }]}
-        />,
-      )
-
-      fireEvent.click(screen.getByRole('button', { name: /Wedding — needs room/i }))
-      await waitFor(() =>
-        expect(updateEventTypeProfiles).toHaveBeenCalledWith('o1', [
-          { name: 'Wedding', needsMobile: true, needsVenue: true },
-        ]),
-      )
-      expect(screen.getByRole('button', { name: /Wedding — needs room/i })).toHaveAttribute(
-        'aria-pressed',
-        'true',
-      )
-    })
-
-    it('adds an event type through updateEventTypeProfiles', async () => {
-      const user = userEvent.setup()
-      updateEventTypeProfiles.mockResolvedValue(undefined)
-      render(
-        <CapacityUnitsClient
-          {...base}
-          initialUnits={[unit({ id: 'm1', name: 'Kart 1', kind: 'mobile' })]}
-        />,
-      )
-
-      await user.click(screen.getByRole('button', { name: /add event type/i }))
-      await user.type(screen.getByLabelText(/event type name/i), 'Photo package')
-      // A photo shoot needs neither a serving unit nor a room — turn the default off.
-      await user.click(screen.getByRole('button', { name: /needs serving unit/i }))
-      await user.click(screen.getByRole('button', { name: /^add$/i }))
-
-      await waitFor(() =>
-        expect(updateEventTypeProfiles).toHaveBeenCalledWith('o1', [
-          { name: 'Photo package', needsMobile: false, needsVenue: false },
-        ]),
-      )
-      expect(await screen.findByDisplayValue('Photo package')).toBeInTheDocument()
-    })
-
-    it('removes an event type through updateEventTypeProfiles', async () => {
-      updateEventTypeProfiles.mockResolvedValue(undefined)
-      render(
-        <CapacityUnitsClient
-          {...base}
-          initialUnits={[unit({ id: 'm1', name: 'Kart 1', kind: 'mobile' })]}
-          initialEventTypeProfiles={[
-            { name: 'Wedding', needsMobile: true, needsVenue: false },
-            { name: 'Gala', needsMobile: true, needsVenue: true },
-          ]}
-        />,
-      )
-
-      fireEvent.click(screen.getByRole('button', { name: /remove event type Wedding/i }))
-      await waitFor(() =>
-        expect(updateEventTypeProfiles).toHaveBeenCalledWith('o1', [
-          { name: 'Gala', needsMobile: true, needsVenue: true },
-        ]),
-      )
-    })
-
-    it('renames an event type on blur through updateEventTypeProfiles', async () => {
-      updateEventTypeProfiles.mockResolvedValue(undefined)
-      render(
-        <CapacityUnitsClient
-          {...base}
-          initialUnits={[unit({ id: 'm1', name: 'Kart 1', kind: 'mobile' })]}
-          initialEventTypeProfiles={[{ name: 'Wedding', needsMobile: true, needsVenue: false }]}
-        />,
-      )
-
-      const input = screen.getByDisplayValue('Wedding')
-      fireEvent.change(input, { target: { value: 'Reception' } })
-      fireEvent.blur(input)
-      await waitFor(() =>
-        expect(updateEventTypeProfiles).toHaveBeenCalledWith('o1', [
-          { name: 'Reception', needsMobile: true, needsVenue: false },
-        ]),
+    it('keeps the pointer reachable from the no-units empty state too', () => {
+      render(<CapacityUnitsClient {...base} initialUnits={[]} />)
+      expect(screen.getByRole('link', { name: /settings → event types/i })).toHaveAttribute(
+        'href',
+        '/brewtrax/event-types',
       )
     })
   })

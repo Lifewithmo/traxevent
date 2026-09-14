@@ -24,9 +24,9 @@ vi.mock('@/actions/events', () => ({
   updateEvent: (...a: unknown[]) => updateEventSpy(...a),
 }))
 
-// D3 closeout: the page no longer imports actions/event-types at all — that
-// module is deleted in a later task. No mock needed (and none allowed to
-// mask an accidental re-import: an un-mocked import would pull the real
+// D3 closeout: the page no longer imports the legacy event-types actions
+// module (now deleted). No mock needed (and none allowed to mask an
+// accidental re-import: an un-mocked import would pull the real
 // firebase-admin graph and fail the test loudly instead).
 vi.mock('@/actions/departments', () => ({
   listDepartments: vi.fn().mockResolvedValue([]),

@@ -18,10 +18,10 @@ export default async function CapacityPage({
   return (
     <CapacityUnitsClient
       orgId={orgId}
+      orgSlug={orgSlug}
       initialUnits={units}
       initialServiceableDays={org.serviceable_days}
       initialResourceLabels={org.resource_labels}
-      initialEventTypeProfiles={org.event_type_profiles}
       initialOpsBuffers={org.ops_buffers}
       locked={!unlocked}
     />

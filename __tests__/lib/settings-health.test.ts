@@ -46,4 +46,33 @@ describe('buildSettingsAreas', () => {
     const areas = buildSettingsAreas({ ...base, org: { ...base.org, sending_domain_status: 'verified' as const } })
     expect(areas.find((a) => a.slug === 'email-domain')?.configured).toBe(true)
   })
+
+  // Event types inc 1: the area is honestly computed — ≥1 ACTIVE profile.
+  it('marks event types unconfigured when the org has no profiles', () => {
+    expect(buildSettingsAreas(base).find((a) => a.slug === 'event-types')?.configured).toBe(false)
+  })
+
+  it('marks event types configured once at least one active profile exists', () => {
+    const areas = buildSettingsAreas({
+      ...base,
+      org: {
+        ...base.org,
+        event_type_profiles: [{ id: 'et1', name: 'Wedding', needsMobile: true, needsVenue: true }],
+      },
+    })
+    expect(areas.find((a) => a.slug === 'event-types')?.configured).toBe(true)
+  })
+
+  it('does NOT count an all-archived list as configured (archived types feed no picker)', () => {
+    const areas = buildSettingsAreas({
+      ...base,
+      org: {
+        ...base.org,
+        event_type_profiles: [
+          { id: 'et1', name: 'Wedding', needsMobile: true, needsVenue: true, archived: true },
+        ],
+      },
+    })
+    expect(areas.find((a) => a.slug === 'event-types')?.configured).toBe(false)
+  })
 })
