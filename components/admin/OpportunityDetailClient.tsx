@@ -37,9 +37,8 @@ import { ConvertToWorkCard, PROPOSALS_ANCHOR } from '@/components/admin/opportun
 import { LeadProposalsClient } from '@/components/admin/LeadProposalsClient'
 import { LeadInvoicesClient } from '@/components/admin/LeadInvoicesClient'
 import { LeadVendorsClient } from '@/components/admin/LeadVendorsClient'
-import type { ActivityEvent, CapacityUnit, Customer, Event, Lead, NormalizedInvoice, Proposal, Task, Vendor } from '@/lib/types'
+import type { ActivityEvent, CapacityUnit, Customer, Event, EventTypeProfile, Lead, NormalizedInvoice, Proposal, Task, Vendor } from '@/lib/types'
 import type { UnitAnnotation } from '@/lib/capacity/assignment'
-import type { EventType } from '@/lib/event-types'
 import type { ConvertBlocker } from '@/lib/opportunity-detail'
 import type { CalendarItem } from '@/lib/calendar'
 
@@ -51,7 +50,6 @@ interface OpportunityDetailClientProps {
   tasks: Task[]
   activity: ActivityEvent[]
   job: Event | null
-  eventTypes: EventType[]
   proposals: Proposal[]
   invoices: NormalizedInvoice[]
   vendors: Vendor[]
@@ -73,6 +71,10 @@ interface OpportunityDetailClientProps {
   // Serialized `unitAnnotations` map (Map → plain object across the RSC boundary):
   // per-unit-id free/taken/blocked hint for the lead's own event_date.
   unitAnnotations?: Record<string, UnitAnnotation>
+  // Event types inc 1 (spec §5d): the org's ACTIVE event-type profiles, for
+  // FactsGrid's picker (and, via it, OpportunityDetailsForm's). Prop-plumbing
+  // only — T3 owns this file's other edits.
+  eventTypeProfiles?: EventTypeProfile[]
 }
 
 type QuickFact = 'value' | 'date'
@@ -468,7 +470,7 @@ function UnitAssignmentControl({
  * ledes stacked would render the same facts twice — see buildClientStory on the
  * Clients cockpit, where the header carries no equivalent narrative.
  */
-export function OpportunityDetailClient({ orgId, orgSlug, lead, customer, tasks, activity, job, eventTypes, proposals, invoices, vendors, acceptedProposals, pastBookings = 0, convertBlockReason, convertBlocker, today, calendarItems, showDeliveryMode, showAssignment, capacityUnits = [], unitAnnotations = {} }: OpportunityDetailClientProps) {
+export function OpportunityDetailClient({ orgId, orgSlug, lead, customer, tasks, activity, job, proposals, invoices, vendors, acceptedProposals, pastBookings = 0, convertBlockReason, convertBlocker, today, calendarItems, showDeliveryMode, showAssignment, capacityUnits = [], unitAnnotations = {}, eventTypeProfiles = [] }: OpportunityDetailClientProps) {
   const searchParams = useSearchParams()
   const [convertOpen, setConvertOpen] = useState(searchParams.get('convert') === '1')
   /**
@@ -648,12 +650,11 @@ export function OpportunityDetailClient({ orgId, orgSlug, lead, customer, tasks,
             orgSlug={orgSlug}
             lead={lead}
             job={job}
-            eventTypes={eventTypes}
             open={convertOpen}
             blockReason={convertBlockReason}
             blocker={convertBlocker}
           />
-          <FactsGrid orgId={orgId} orgSlug={orgSlug} lead={lead} customer={customer} />
+          <FactsGrid orgId={orgId} orgSlug={orgSlug} lead={lead} customer={customer} eventTypeProfiles={eventTypeProfiles} />
           {showDeliveryMode && <DeliveryModeControl orgId={orgId} lead={lead} />}
           {showAssignment && (
             <UnitAssignmentControl orgId={orgId} lead={lead} units={capacityUnits} annotations={unitAnnotations} />

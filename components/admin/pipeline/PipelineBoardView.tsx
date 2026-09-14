@@ -14,7 +14,7 @@ import { OPEN_STAGES, LEAD_STAGE_LABELS, opportunityTitle } from '@/lib/leads'
 import { money, shortDate } from '@/lib/pipeline-presentation'
 import type { PipelineGroups, PipelineRow, closedThisMonth } from '@/lib/pipeline-view'
 import type { BookabilityCtx } from '@/lib/calendar-bookability'
-import type { Customer, Lead, LeadStage } from '@/lib/types'
+import type { Customer, Lead, LeadStage, Org } from '@/lib/types'
 import { ClosedMonthSummary } from './ClosedMonthSummary'
 import { StageChip } from './StageChip'
 import { NewOpportunityForm } from './NewOpportunityForm'
@@ -34,10 +34,16 @@ interface PipelineBoardViewProps {
   // The create form's chip vocabulary (contract C5) — same server-computed list
   // the list surface threads, so the two views' forms are identical.
   eventTypeOptions?: string[]
-  // C5b: the RAW profile vocabulary (trimmed, original casing) — independent
-  // of the merged/capped chip list above; the form keys its "not a configured
-  // event type" hint on this.
-  eventTypeProfileNames?: string[]
+  // The org's event-type profiles (event types inc 1) — the form's matching
+  // source for the hint, delivery-mode hiding, and the event_type_id payload
+  // (it ignores archived entries itself).
+  eventTypeProfiles?: Org['event_type_profiles']
+  // Owner/admin: the create form offers the inline "+ New type" chip and
+  // hint action. Computed server-side from the member role.
+  canCreateEventTypes?: boolean
+  // The operator's kind vocabulary for the inline-create popover's policy
+  // toggles ("needs cart" in their words via kindLabel).
+  resourceLabels?: Org['resource_labels']
   // C5b: customer_id → total opportunity count over the page's loaded leads,
   // for the caller-recognition hint's "{n} past jobs".
   pastJobCounts?: Record<string, number>
@@ -98,7 +104,7 @@ function applyPending(base: PipelineRow[], pending: Map<string, PendingMove>): P
 
 export function PipelineBoardView({
   orgId, orgSlug, groups, monthly, customers, showDeliveryMode, eventTypeOptions,
-  eventTypeProfileNames, pastJobCounts, bookabilityCtx,
+  eventTypeProfiles, canCreateEventTypes, resourceLabels, pastJobCounts, bookabilityCtx,
 }: PipelineBoardViewProps) {
   const router = useRouter()
   const [rows, setRows] = useState<PipelineRow[]>(() => flatten(groups))
@@ -334,7 +340,9 @@ export function PipelineBoardView({
         customers={customers}
         showDeliveryMode={showDeliveryMode}
         eventTypeOptions={eventTypeOptions}
-        eventTypeProfileNames={eventTypeProfileNames}
+        eventTypeProfiles={eventTypeProfiles}
+        canCreateEventTypes={canCreateEventTypes}
+        resourceLabels={resourceLabels}
         pastJobCounts={pastJobCounts}
         bookabilityCtx={bookabilityCtx}
         onCreated={handleCreated}

@@ -19,13 +19,16 @@ import { validateLeadFields, type LeadFieldErrors } from '@/lib/crm/validate'
 import { bookability, shortDayLabel, type BookabilityCtx } from '@/lib/calendar-bookability'
 import { BookabilityBanner } from '@/components/admin/calendar/BookabilityBanner'
 import { isValidYmd, todayYmd } from '@/lib/opportunity-detail'
+import { activeEventTypeProfiles } from '@/lib/crm/event-type-options'
+import { kindLabel } from '@/lib/capacity/labels'
 import { cn } from '@/lib/utils'
 import { CustomerPicker } from './CustomerPicker'
 import { EventTypeChips } from './EventTypeChips'
+import { NewEventTypePopover } from './NewEventTypePopover'
 import { CallerMatchHint } from './CallerMatchHint'
 import { FollowUpField, defaultFollowUpYmd } from './FollowUpField'
 import { DeliveryModeToggle, type DeliveryMode } from './DeliveryModeToggle'
-import type { Customer, Lead } from '@/lib/types'
+import type { Customer, EventTypeProfile, Lead, Org } from '@/lib/types'
 
 interface NewOpportunityFormProps {
   orgId: string
@@ -39,12 +42,23 @@ interface NewOpportunityFormProps {
   // choose for an org with no venue, so the control simply does not render.
   showDeliveryMode?: boolean
   eventTypeOptions?: string[]         // ordered: profile names first, then historical by frequency
-  // The org's event-type-profile names alone (trimmed, original casing) —
-  // independent of the merged eventTypeOptions, which also carries historical
-  // types. Only PROFILE membership decides what the capacity engine does with
-  // a typed type (leadRequirement, lib/capacity/requirement.ts), so only this
-  // list may drive the "not a configured event type" hint (contract C5b).
-  eventTypeProfileNames?: string[]
+  // The org's event-type profiles (event types inc 1) — independent of the
+  // merged eventTypeOptions, which also carries historical types and stays the
+  // chips' DISPLAY source. Only ACTIVE-profile membership decides what the
+  // capacity engine does with a typed type (leadRequirement), so this list
+  // alone drives the "not a configured event type" hint, the delivery-mode
+  // hiding, AND the `event_type_id` the create payload carries on a name
+  // match. Archived entries are ignored here (the form filters), so callers
+  // may thread the org array verbatim.
+  eventTypeProfiles?: EventTypeProfile[]
+  // Owner/admin (computed server-side from the member role): offers the
+  // inline "+ New type" chip and the hint's "Add as event type" action —
+  // decision (b), never leave the flow. Absent/false ⇒ neither renders.
+  canCreateEventTypes?: boolean
+  // The operator's kind vocabulary for the popover's policy toggles
+  // ("needs cart" / "needs room" in THEIR words via `kindLabel`). Absent ⇒
+  // the neutral platform defaults.
+  resourceLabels?: Org['resource_labels']
   // customer_id -> that customer's total opportunity count, for the caller-
   // recognition card's "· {n} past jobs" segment (contract C5b).
   pastJobCounts?: Record<string, number>
@@ -116,7 +130,9 @@ export function NewOpportunityForm({
   customers,
   showDeliveryMode,
   eventTypeOptions,
-  eventTypeProfileNames,
+  eventTypeProfiles,
+  canCreateEventTypes,
+  resourceLabels,
   pastJobCounts,
   bookabilityCtx,
   loadBookabilityCtx,
@@ -154,6 +170,13 @@ export function NewOpportunityForm({
   const [notes, setNotes] = useState('')
   const [deliveryMode, setDeliveryMode] = useState<DeliveryMode>('offsite')
   const [followUp, setFollowUp] = useState(() => defaultFollowUpYmd(todayYmd()))
+  // Inline create-in-flow (event types inc 1). `sessionProfiles` holds types
+  // created through the popover THIS mount: they are real server records
+  // already, layered over the props until a router.refresh delivers them —
+  // so the new chip appears, matches, and carries its id immediately. NOT
+  // reset with the draft: closing the dialog does not un-create a type.
+  const [typePopoverOpen, setTypePopoverOpen] = useState(false)
+  const [sessionProfiles, setSessionProfiles] = useState<EventTypeProfile[]>([])
 
   const nameRef = useRef<HTMLInputElement>(null)
   const phoneRef = useRef<HTMLInputElement>(null)
@@ -215,6 +238,7 @@ export function NewOpportunityForm({
     setDeliveryMode('offsite')
     setFollowUp(defaultFollowUpYmd(todayYmd()))
     setMoreOpen(false)
+    setTypePopoverOpen(false)
     setErrors({})
     setServerError(null)
     setAnnounce(null)
@@ -286,24 +310,70 @@ export function NewOpportunityForm({
     )
   }, [linked, customers, phone, email, name, dismissedIds])
 
-  const options = eventTypeOptions ?? []
-  const profileNames = eventTypeProfileNames ?? []
+  // ACTIVE profiles: the props' list (archived filtered out) plus any types
+  // created inline this session — a session profile stands down as soon as a
+  // refreshed props list carries its id or name (no duplicate chips/matches).
+  const activeProfiles = useMemo(() => {
+    const base = activeEventTypeProfiles(eventTypeProfiles)
+    const seenIds = new Set(base.map((p) => p.id).filter(Boolean))
+    const seenNames = new Set(base.map((p) => p.name.trim().toLowerCase()))
+    return [
+      ...base,
+      ...sessionProfiles.filter(
+        (p) => !(p.id && seenIds.has(p.id)) && !seenNames.has(p.name.trim().toLowerCase())
+      ),
+    ]
+  }, [eventTypeProfiles, sessionProfiles])
+  // Chip DISPLAY stays the merged options list; a session-created type gets
+  // its chip appended so "Create" can select it before the refresh lands.
+  const options = useMemo(() => {
+    const base = eventTypeOptions ?? []
+    const seen = new Set(base.map((o) => o.trim().toLowerCase()))
+    return [
+      ...base,
+      ...sessionProfiles.map((p) => p.name).filter((n) => !seen.has(n.trim().toLowerCase())),
+    ]
+  }, [eventTypeOptions, sessionProfiles])
   const trimmedType = eventType.trim()
   const typeKey = trimmedType.toLowerCase()
   // PROFILE membership, not merged-options membership: the merged list also
   // carries historical free-text types, which the capacity engine treats with
   // the default rule — keying the hint on it misfires both ways. Same
-  // trim+lowercase match as leadRequirement (lib/capacity/requirement.ts).
-  const profileMatched =
-    trimmedType !== '' && profileNames.some((p) => p.trim().toLowerCase() === typeKey)
+  // trim+lowercase match as leadRequirement (lib/capacity/requirement.ts),
+  // last match winning on dupes for the same reason — and the matched
+  // profile's id is what the create payload will reference.
+  const matchedProfile = useMemo(() => {
+    if (trimmedType === '') return undefined
+    let matched: EventTypeProfile | undefined
+    for (const p of activeProfiles) {
+      if (p.name.trim().toLowerCase() === typeKey) matched = p // last match wins
+    }
+    return matched
+  }, [activeProfiles, trimmedType, typeKey])
+  const profileMatched = Boolean(matchedProfile)
+  // ARCHIVED name match, checked against the FULL props array (this form
+  // filters active itself): leadRequirement's name match includes archived
+  // profiles, so a typed archived name still gets that ARCHIVED policy and
+  // Where is still ignored — the hint and the toggle must not pretend the
+  // default rule applies. Active membership wins when both somehow match.
+  const archivedNameMatch = useMemo(() => {
+    if (trimmedType === '' || matchedProfile) return undefined
+    let matched: EventTypeProfile | undefined
+    for (const p of eventTypeProfiles ?? []) {
+      if (p.archived && p.name.trim().toLowerCase() === typeKey) matched = p // last match wins
+    }
+    return matched
+  }, [eventTypeProfiles, matchedProfile, trimmedType, typeKey])
   // Quiet, never blocking: a free-text type is legitimate (profiles are an
   // overlay, not a migration) — the hint just says what the capacity engine
-  // will do with it.
-  const typeUnrecognized = profileNames.length > 0 && trimmedType !== '' && !profileMatched
-  // A matched profile is authoritative about Where — leadRequirement ignores
-  // delivery_mode entirely on a match, so the toggle would be a dead control
-  // and its answer silently discarded. Hide it and submit nothing.
-  const deliveryModeRelevant = Boolean(showDeliveryMode) && !profileMatched
+  // will do with it. An archived name match gets its own truthful hint below.
+  const typeUnrecognized =
+    activeProfiles.length > 0 && trimmedType !== '' && !profileMatched && !archivedNameMatch
+  // A matched profile — active OR archived — is authoritative about Where:
+  // leadRequirement ignores delivery_mode entirely on a match, so the toggle
+  // would be a dead control and its answer silently discarded. Hide it and
+  // submit nothing.
+  const deliveryModeRelevant = Boolean(showDeliveryMode) && !profileMatched && !archivedNameMatch
 
   // Derived, never persisted: the placeholder previews "Jane Doe · Wedding ·
   // Oct 4" but the field submits ONLY what the operator types — persisting the
@@ -326,6 +396,10 @@ export function NewOpportunityForm({
           }),
       ...(title.trim() ? { title: title.trim() } : {}),
       ...(trimmedType ? { event_type: trimmedType } : {}),
+      // The id ONLY on an active-profile name match (the server re-verifies
+      // against the org doc and drops a stale one silently). Free text with
+      // no match sends the string alone — never blocks, standing decision.
+      ...(matchedProfile?.id ? { event_type_id: matchedProfile.id } : {}),
       ...(eventDate.trim() ? { event_date: eventDate.trim() } : {}),
       ...(notes.trim() ? { notes: notes.trim() } : {}),
       ...(parsedValue != null && !Number.isNaN(parsedValue) ? { estimated_value: parsedValue } : {}),
@@ -339,6 +413,31 @@ export function NewOpportunityForm({
       // lead (contract C2), so the opportunity is born with a next step.
       ...(followUp.trim() ? { follow_up_date: followUp.trim() } : {}),
     }
+  }
+
+  // The operator's kind words for the popover's policy toggles (singular:
+  // the pills read "needs cart" / "needs room" in their vocabulary).
+  const mobileOne = kindLabel({ resource_labels: resourceLabels }, 'mobile', 1)
+  const venueOne = kindLabel({ resource_labels: resourceLabels }, 'venue', 1)
+
+  /** The popover created (or idempotently found) a profile: layer it over the
+   *  props, mirror its canonical name into the field — which selects the chip
+   *  and resolves `event_type_id` — and refresh so the server props catch up.
+   *  Focus returns to the event-type input via the popover's finalFocus. When
+   *  the create was an idempotent match whose SAVED policy overrides the
+   *  toggles the operator just set, say so here in the announce region — the
+   *  popover has closed, so its own live region can't carry the line. */
+  function handleTypeCreated(profile: EventTypeProfile, info: { existingPolicyKept: boolean }) {
+    setSessionProfiles((prev) => [
+      ...prev.filter((p) => !(profile.id && p.id === profile.id)),
+      profile,
+    ])
+    setEventType(profile.name)
+    setTypePopoverOpen(false)
+    if (info.existingPolicyKept) {
+      setAnnounce(`“${profile.name}” already existed — using its saved policy.`)
+    }
+    router.refresh()
   }
 
   /** Create-another keeps the WHAT & WHEN half (the operator is logging a run
@@ -547,7 +646,12 @@ export function NewOpportunityForm({
                 <div className="space-y-3">
                   <div className="space-y-1">
                     <Label htmlFor="leadEventType">Event type</Label>
-                    <EventTypeChips options={options} value={eventType} onChange={setEventType} />
+                    <EventTypeChips
+                      options={options}
+                      value={eventType}
+                      onChange={setEventType}
+                      onCreateNew={canCreateEventTypes ? () => setTypePopoverOpen(true) : undefined}
+                    />
                     <Input
                       ref={eventTypeRef}
                       id="leadEventType"
@@ -560,15 +664,35 @@ export function NewOpportunityForm({
                     {typeUnrecognized && (
                       <p className="text-xs text-muted-foreground">
                         Not a configured event type — capacity uses the default rule.
+                        {canCreateEventTypes && (
+                          <>
+                            {' '}
+                            <button
+                              type="button"
+                              onClick={() => setTypePopoverOpen(true)}
+                              className="inline-flex min-h-6 items-center underline underline-offset-2 hover:text-foreground"
+                            >
+                              Add as event type
+                            </button>
+                          </>
+                        )}
                       </p>
                     )}
-                    {profileNames.length === 0 && (
+                    {archivedNameMatch && (
+                      <p className="text-xs text-muted-foreground">
+                        Archived type — its saved policy still applies.
+                      </p>
+                    )}
+                    {activeProfiles.length === 0 && !archivedNameMatch && (
                       // 0-profiles onboarding (spec §empty states): free text
                       // always works; the link says where verdicts come from.
+                      // Suppressed while an archived name matches — "configure
+                      // profiles to get verdicts" reads wrong when the typed
+                      // type already HAS a (saved, archived) policy.
                       <p className="text-xs text-muted-foreground">
                         Type any event type —{' '}
                         <Link
-                          href={`/${orgSlug}/capacity`}
+                          href={`/${orgSlug}/event-types`}
                           className="inline-flex min-h-6 items-center underline underline-offset-2 hover:text-foreground"
                         >
                           configure profiles to get capacity verdicts
@@ -576,6 +700,23 @@ export function NewOpportunityForm({
                       </p>
                     )}
                     <FieldError id="leadEventType-error">{errors.event_type}</FieldError>
+                    {canCreateEventTypes && (
+                      /* Stacked over this dialog; portalled to <body>, so its
+                         <form> never nests in this one. Prefill = what the
+                         operator already said: the unmatched free text and
+                         the current Where answer. */
+                      <NewEventTypePopover
+                        orgId={orgId}
+                        open={typePopoverOpen}
+                        onClose={() => setTypePopoverOpen(false)}
+                        onCreated={handleTypeCreated}
+                        initialName={profileMatched ? '' : trimmedType}
+                        initialNeedsVenue={deliveryMode === 'onsite'}
+                        mobileLabel={mobileOne}
+                        venueLabel={venueOne}
+                        returnFocusRef={eventTypeRef}
+                      />
+                    )}
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1">

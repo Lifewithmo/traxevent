@@ -7,10 +7,17 @@ vi.mock('@/actions/leads', () => ({ updateLead }))
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh, push: vi.fn() }) }))
 
 import { FactsGrid } from '@/components/admin/opportunity/FactsGrid'
-import type { Lead } from '@/lib/types'
+import type { EventTypeProfile, Lead } from '@/lib/types'
 
 const lead: Lead = { id: 'l1', name: 'Dana Kim', stage: 'proposal', created_at: '' }
-const props = { orgId: 'o1', orgSlug: 'acme', lead, customer: null }
+// Event types inc 1 (spec §5d): FactsGrid's Event type fact now picks from
+// the org's active profiles via EventTypeSelect — most tests exercise that
+// path, with a dedicated group below covering the 0-profiles fallback.
+const eventTypeProfiles: EventTypeProfile[] = [
+  { id: 'et-wedding', name: 'Wedding', needsMobile: true, needsVenue: true },
+  { id: 'et-corporate', name: 'Corporate', needsMobile: true, needsVenue: false },
+]
+const props = { orgId: 'o1', orgSlug: 'acme', lead, customer: null, eventTypeProfiles }
 
 describe('FactsGrid', () => {
   beforeEach(() => {
@@ -69,27 +76,6 @@ describe('FactsGrid', () => {
     expect(screen.queryByRole('button', { name: '150' })).toBeNull()
   })
 
-  it('reverts on Escape without calling the action', () => {
-    render(<FactsGrid {...props} lead={{ ...lead, event_type: 'Wedding' }} />)
-    fireEvent.click(screen.getByRole('button', { name: 'Wedding' }))
-    const input = screen.getByLabelText('Event type')
-    fireEvent.change(input, { target: { value: 'Gala' } })
-    fireEvent.keyDown(input, { key: 'Escape' })
-    expect(screen.queryByLabelText('Event type')).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Wedding' })).toBeInTheDocument()
-    expect(updateLead).not.toHaveBeenCalled()
-  })
-
-  it('commits on Enter through the existing updateLead action', async () => {
-    render(<FactsGrid {...props} />)
-    fireEvent.click(screen.getByRole('button', { name: '+ Add Event type' }))
-    const input = screen.getByLabelText('Event type')
-    fireEvent.change(input, { target: { value: 'Gala' } })
-    fireEvent.keyDown(input, { key: 'Enter' })
-    await waitFor(() => expect(updateLead).toHaveBeenCalledWith('o1', 'l1', { event_type: 'Gala' }))
-    await waitFor(() => expect(refresh).toHaveBeenCalled())
-  })
-
   it('commits a guest count as a number, not a string', async () => {
     render(<FactsGrid {...props} />)
     fireEvent.click(screen.getByRole('button', { name: '+ Add Guest count' }))
@@ -99,33 +85,148 @@ describe('FactsGrid', () => {
     await waitFor(() => expect(updateLead).toHaveBeenCalledWith('o1', 'l1', { guest_count: 120 }))
   })
 
-  it('clearing a set fact sends null so the field is deleted', async () => {
-    render(<FactsGrid {...props} lead={{ ...lead, event_type: 'Wedding' }} />)
+  it('keeps the full details form as an escape hatch rather than the default view', () => {
+    render(<FactsGrid {...props} />)
+    expect(screen.queryByLabelText('Notes')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /edit all details/i }))
+    expect(screen.getByLabelText('Notes')).toBeInTheDocument()
+  })
+})
+
+// Event types inc 1 (spec §5d): the Event type fact switches to
+// EventTypeSelect — a select of the org's active profiles + "Other…". Picking
+// a listed profile is a discrete, save-worthy action and commits immediately
+// (EventTypeSelect's `onCommitSelect`); the revealed Other free-text field
+// keeps the exact commit-on-blur/Enter, revert-on-Escape lifecycle every
+// other fact here uses (EditableFact's contract, specialized because the
+// value is now the compound `{event_type, event_type_id}`, not one string).
+describe('FactsGrid — Event type picker', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    updateLead.mockResolvedValue(undefined)
+  })
+
+  it('opens the select on a blank fact, defaulted to no choice', () => {
+    render(<FactsGrid {...props} />)
+    fireEvent.click(screen.getByRole('button', { name: '+ Add Event type' }))
+    const select = screen.getByLabelText('Event type') as HTMLSelectElement
+    expect(select.tagName).toBe('SELECT')
+    expect(select.value).toBe('')
+    expect(screen.queryByLabelText('Custom event type')).not.toBeInTheDocument()
+  })
+
+  it('opens a SET fact with the matching profile pre-selected', () => {
+    render(<FactsGrid {...props} lead={{ ...lead, event_type: 'Wedding', event_type_id: 'et-wedding' }} />)
     fireEvent.click(screen.getByRole('button', { name: 'Wedding' }))
-    const input = screen.getByLabelText('Event type')
-    fireEvent.change(input, { target: { value: '  ' } })
-    fireEvent.blur(input)
-    await waitFor(() => expect(updateLead).toHaveBeenCalledWith('o1', 'l1', { event_type: null }))
+    const select = screen.getByLabelText('Event type') as HTMLSelectElement
+    expect(select.value).toBe('Wedding')
+  })
+
+  it('picking a listed profile commits immediately with its id', async () => {
+    render(<FactsGrid {...props} />)
+    fireEvent.click(screen.getByRole('button', { name: '+ Add Event type' }))
+    fireEvent.change(screen.getByLabelText('Event type'), { target: { value: 'Corporate' } })
+    await waitFor(() =>
+      expect(updateLead).toHaveBeenCalledWith('o1', 'l1', { event_type: 'Corporate', event_type_id: 'et-corporate' })
+    )
+    expect(await screen.findByRole('button', { name: 'Corporate' })).toBeInTheDocument()
+  })
+
+  it('reverts on Escape without calling the action', () => {
+    render(<FactsGrid {...props} lead={{ ...lead, event_type: 'Wedding', event_type_id: 'et-wedding' }} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Wedding' }))
+    fireEvent.change(screen.getByLabelText('Event type'), { target: { value: '__other__' } })
+    const input = screen.getByLabelText('Custom event type')
+    fireEvent.change(input, { target: { value: 'Gala' } })
+    fireEvent.keyDown(input, { key: 'Escape' })
+    expect(screen.queryByLabelText('Custom event type')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Wedding' })).toBeInTheDocument()
+    expect(updateLead).not.toHaveBeenCalled()
+  })
+
+  it('commits the Other free text on Enter through the existing updateLead action', async () => {
+    render(<FactsGrid {...props} />)
+    fireEvent.click(screen.getByRole('button', { name: '+ Add Event type' }))
+    fireEvent.change(screen.getByLabelText('Event type'), { target: { value: '__other__' } })
+    const input = screen.getByLabelText('Custom event type')
+    fireEvent.change(input, { target: { value: 'Gala' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    await waitFor(() => expect(updateLead).toHaveBeenCalledWith('o1', 'l1', { event_type: 'Gala', event_type_id: null }))
+    await waitFor(() => expect(refresh).toHaveBeenCalled())
+  })
+
+  it('choosing Other… and leaving it blank clears the field on blur (null, not undefined)', async () => {
+    render(<FactsGrid {...props} lead={{ ...lead, event_type: 'Wedding', event_type_id: 'et-wedding' }} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Wedding' }))
+    fireEvent.change(screen.getByLabelText('Event type'), { target: { value: '__other__' } })
+    fireEvent.blur(screen.getByLabelText('Custom event type'))
+    await waitFor(() => expect(updateLead).toHaveBeenCalledWith('o1', 'l1', { event_type: null, event_type_id: null }))
+  })
+
+  // THE INTO-OTHER HANDOFF. Picking "Other…" clears the draft (so the operator
+  // can type) and mounts the autofocused Other input — at which point, in a
+  // real browser, the SELECT blurs with relatedTarget = that input. The host's
+  // commit-on-blur must not treat that hand-off blur as "operator left the
+  // control": it would commit the just-cleared draft, saving event_type: null
+  // over a set value (or closing the editor on a blank one) before a single
+  // keystroke. jsdom never runs the focus cascade — nine green tests missed
+  // this — so the hand-off blur is driven explicitly below to pin it.
+  it('picking "Other…" on a set fact saves nothing and leaves the editor open in Other mode', () => {
+    render(<FactsGrid {...props} lead={{ ...lead, event_type: 'Wedding', event_type_id: 'et-wedding' }} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Wedding' }))
+    fireEvent.change(screen.getByLabelText('Event type'), { target: { value: '__other__' } })
+    expect(updateLead).not.toHaveBeenCalled()
+    expect(screen.getByLabelText('Custom event type')).toBeInTheDocument()
+  })
+
+  it('the select blur during the into-Other handoff never commits the cleared draft', async () => {
+    render(<FactsGrid {...props} lead={{ ...lead, event_type: 'Wedding', event_type_id: 'et-wedding' }} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Wedding' }))
+    const select = screen.getByLabelText('Event type')
+    fireEvent.change(select, { target: { value: '__other__' } })
+    fireEvent.blur(select, { relatedTarget: screen.getByLabelText('Custom event type') })
+    await Promise.resolve()
+    expect(updateLead).not.toHaveBeenCalled()
+    // Editor still open in Other mode, ready for typing.
+    expect(screen.getByLabelText('Custom event type')).toBeInTheDocument()
+  })
+
+  it('typing in the Other field after the handoff commits exactly the typed value on blur', async () => {
+    render(<FactsGrid {...props} lead={{ ...lead, event_type: 'Wedding', event_type_id: 'et-wedding' }} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Wedding' }))
+    const select = screen.getByLabelText('Event type')
+    fireEvent.change(select, { target: { value: '__other__' } })
+    fireEvent.blur(select, { relatedTarget: screen.getByLabelText('Custom event type') })
+    const other = screen.getByLabelText('Custom event type')
+    fireEvent.change(other, { target: { value: 'Gala' } })
+    fireEvent.blur(other)
+    await waitFor(() =>
+      expect(updateLead).toHaveBeenCalledWith('o1', 'l1', { event_type: 'Gala', event_type_id: null })
+    )
+    expect(updateLead).toHaveBeenCalledTimes(1)
   })
 
   it('surfaces a failed save instead of silently dropping the edit', async () => {
     updateLead.mockRejectedValue(new Error('Permission denied'))
     render(<FactsGrid {...props} />)
     fireEvent.click(screen.getByRole('button', { name: '+ Add Event type' }))
-    fireEvent.change(screen.getByLabelText('Event type'), { target: { value: 'Gala' } })
-    fireEvent.keyDown(screen.getByLabelText('Event type'), { key: 'Enter' })
+    fireEvent.change(screen.getByLabelText('Event type'), { target: { value: '__other__' } })
+    fireEvent.change(screen.getByLabelText('Custom event type'), { target: { value: 'Gala' } })
+    fireEvent.keyDown(screen.getByLabelText('Custom event type'), { key: 'Enter' })
     expect(await screen.findByRole('alert')).toHaveTextContent('Permission denied')
   })
 
   // A real browser fires blur when the committing input becomes unfocusable —
   // React flushes `busy` at the end of the discrete keydown, the input goes
-  // inert, and the unfocusing steps run on the active element. jsdom implements
-  // none of that, so the blur is driven explicitly here. Without the guard in
-  // commit(), that second call sees an unchanged `value` prop and writes again.
+  // inert, and the unfocusing steps run on the active element. jsdom does not
+  // implement any of that, so the blur is driven explicitly here. Without the
+  // guard in commit(), that second call sees an unchanged draft and writes
+  // again.
   it('commits once on Enter even when the save-time blur follows', async () => {
     render(<FactsGrid {...props} />)
     fireEvent.click(screen.getByRole('button', { name: '+ Add Event type' }))
-    const input = screen.getByLabelText('Event type')
+    fireEvent.change(screen.getByLabelText('Event type'), { target: { value: '__other__' } })
+    const input = screen.getByLabelText('Custom event type')
     fireEvent.change(input, { target: { value: 'Gala' } })
     fireEvent.keyDown(input, { key: 'Enter' })
     fireEvent.blur(input)
@@ -134,10 +235,16 @@ describe('FactsGrid', () => {
     expect(updateLead).toHaveBeenCalledTimes(1)
   })
 
-  it('never disables the input mid-save, so focus is not ripped away', () => {
+  // Unlike a plain text EditableFact, this control can be disabled mid-save
+  // via a `disabled` prop on EventTypeSelect (a native `<select>` has no
+  // `readOnly` equivalent) — so FactsGrid deliberately never sets it, the
+  // same "stay focusable" contract EditableFact keeps with `readOnly` instead
+  // of `disabled`.
+  it('never disables the Other field mid-save, so focus is not ripped away', () => {
     render(<FactsGrid {...props} />)
     fireEvent.click(screen.getByRole('button', { name: '+ Add Event type' }))
-    const input = screen.getByLabelText('Event type') as HTMLInputElement
+    fireEvent.change(screen.getByLabelText('Event type'), { target: { value: '__other__' } })
+    const input = screen.getByLabelText('Custom event type') as HTMLInputElement
     fireEvent.change(input, { target: { value: 'Gala' } })
     fireEvent.keyDown(input, { key: 'Enter' })
     expect(input.disabled).toBe(false)
@@ -148,9 +255,9 @@ describe('FactsGrid', () => {
   it('holds the committed value on screen while the refreshed prop is in flight', async () => {
     render(<FactsGrid {...props} />)
     fireEvent.click(screen.getByRole('button', { name: '+ Add Event type' }))
-    const input = screen.getByLabelText('Event type')
-    fireEvent.change(input, { target: { value: 'Gala' } })
-    fireEvent.keyDown(input, { key: 'Enter' })
+    fireEvent.change(screen.getByLabelText('Event type'), { target: { value: '__other__' } })
+    fireEvent.change(screen.getByLabelText('Custom event type'), { target: { value: 'Gala' } })
+    fireEvent.keyDown(screen.getByLabelText('Custom event type'), { key: 'Enter' })
     expect(await screen.findByRole('button', { name: 'Gala' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '+ Add Event type' })).toBeNull()
   })
@@ -158,8 +265,9 @@ describe('FactsGrid', () => {
   it('drops the held value the moment the refreshed prop arrives', async () => {
     const { rerender } = render(<FactsGrid {...props} />)
     fireEvent.click(screen.getByRole('button', { name: '+ Add Event type' }))
-    fireEvent.change(screen.getByLabelText('Event type'), { target: { value: 'Gala' } })
-    fireEvent.keyDown(screen.getByLabelText('Event type'), { key: 'Enter' })
+    fireEvent.change(screen.getByLabelText('Event type'), { target: { value: '__other__' } })
+    fireEvent.change(screen.getByLabelText('Custom event type'), { target: { value: 'Gala' } })
+    fireEvent.keyDown(screen.getByLabelText('Custom event type'), { key: 'Enter' })
     await screen.findByRole('button', { name: 'Gala' })
     rerender(<FactsGrid {...props} lead={{ ...lead, event_type: 'Gala Night' }} />)
     expect(screen.getByRole('button', { name: 'Gala Night' })).toBeInTheDocument()
@@ -169,18 +277,41 @@ describe('FactsGrid', () => {
   it('re-editing the held value does not re-save it unchanged', async () => {
     render(<FactsGrid {...props} />)
     fireEvent.click(screen.getByRole('button', { name: '+ Add Event type' }))
-    fireEvent.change(screen.getByLabelText('Event type'), { target: { value: 'Gala' } })
-    fireEvent.keyDown(screen.getByLabelText('Event type'), { key: 'Enter' })
+    fireEvent.change(screen.getByLabelText('Event type'), { target: { value: '__other__' } })
+    fireEvent.change(screen.getByLabelText('Custom event type'), { target: { value: 'Gala' } })
+    fireEvent.keyDown(screen.getByLabelText('Custom event type'), { key: 'Enter' })
     const held = await screen.findByRole('button', { name: 'Gala' })
     fireEvent.click(held)
-    fireEvent.blur(screen.getByLabelText('Event type'))
+    fireEvent.blur(screen.getByLabelText('Custom event type'))
     expect(updateLead).toHaveBeenCalledTimes(1)
   })
 
-  it('keeps the full details form as an escape hatch rather than the default view', () => {
-    render(<FactsGrid {...props} />)
-    expect(screen.queryByLabelText('Notes')).not.toBeInTheDocument()
+  it('passes the active profiles through to the "Edit all details" escape hatch', () => {
+    render(<FactsGrid {...props} lead={{ ...lead, event_type: 'Wedding', event_type_id: 'et-wedding' }} />)
     fireEvent.click(screen.getByRole('button', { name: /edit all details/i }))
-    expect(screen.getByLabelText('Notes')).toBeInTheDocument()
+    // OpportunityDetailsForm's own Event type control — a select, not the
+    // bare text input it used to render.
+    const select = screen.getByLabelText('Event type') as HTMLSelectElement
+    expect(select.tagName).toBe('SELECT')
+    expect(select.value).toBe('Wedding')
+  })
+})
+
+describe('FactsGrid — Event type with zero configured profiles', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    updateLead.mockResolvedValue(undefined)
+  })
+
+  it('falls back to a plain free-text input, matching pre-inc1 behavior', async () => {
+    render(<FactsGrid {...props} eventTypeProfiles={[]} />)
+    fireEvent.click(screen.getByRole('button', { name: '+ Add Event type' }))
+    const input = screen.getByLabelText('Event type')
+    expect(input.tagName).toBe('INPUT')
+    fireEvent.change(input, { target: { value: 'Gala' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    await waitFor(() =>
+      expect(updateLead).toHaveBeenCalledWith('o1', 'l1', { event_type: 'Gala', event_type_id: null })
+    )
   })
 })

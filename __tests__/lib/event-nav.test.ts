@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { buildEventNav } from '@/lib/event-nav'
+import { resolveEnabledModules } from '@/lib/industry-packs'
 import type { Terminology } from '@/lib/event-types'
 
 const terminology: Terminology = {
@@ -41,5 +42,25 @@ describe('buildEventNav', () => {
   it('absent kind means client_job — no market-day nav', () => {
     const items = buildEventNav({ terminology })
     expect(items.map((i) => i.key)).not.toContain('closeout')
+  })
+
+  // D3 closeout: Forms + People are family/roster machinery (signed_forms
+  // counts, volunteer hours) and must not leak into packs without the
+  // attendee-roster module, same as families/assignments/checkin already do.
+  it('coffee-cart (no attendee-roster module) hides Forms + People; general (has it) keeps them', () => {
+    const coffeeCart = buildEventNav({
+      kind: 'client_job',
+      terminology,
+      enabledModules: resolveEnabledModules('coffee-cart'),
+    })
+    const general = buildEventNav({
+      kind: 'client_job',
+      terminology,
+      enabledModules: resolveEnabledModules('general'),
+    })
+    expect(coffeeCart.map((i) => i.key)).not.toContain('forms')
+    expect(coffeeCart.map((i) => i.key)).not.toContain('people')
+    expect(general.map((i) => i.key)).toContain('forms')
+    expect(general.map((i) => i.key)).toContain('people')
   })
 })

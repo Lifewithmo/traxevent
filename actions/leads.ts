@@ -29,6 +29,7 @@ export interface CreateLeadInput {
   phone?: string
   organization?: string
   event_type?: string
+  event_type_id?: string // reference to Org.event_type_profiles[].id; dropped silently unless it verifies
   event_date?: string
   estimated_value?: number
   guest_count?: number
@@ -43,6 +44,23 @@ export interface CreateLeadInput {
 export async function listLeads(orgId: string): Promise<Lead[]> {
   await assertOrgMember(orgId)
   return listLeadsCore(orgId)
+}
+
+/**
+ * Event types inc 1: a lead's `event_type_id` may only persist when it
+ * references a REAL profile on the org doc (archived included — existing is
+ * existing; requirement matching honors archived ids for history). Anything
+ * else — blank, unknown, stale — resolves to undefined and is dropped
+ * SILENTLY: free text never blocks a lead write (standing decision), and a
+ * bogus reference must not poison history. Loads the org doc, so callers only
+ * invoke this when an id was actually supplied.
+ */
+async function verifiedEventTypeId(orgId: string, id: string): Promise<string | undefined> {
+  const trimmed = id.trim()
+  if (!trimmed) return undefined
+  const org = await getOrg(orgId)
+  const known = org?.event_type_profiles?.some((p) => p.id === trimmed) ?? false
+  return known ? trimmed : undefined
 }
 
 export async function getLead(orgId: string, leadId: string): Promise<Lead | null> {
@@ -110,6 +128,13 @@ export async function createLead(orgId: string, input: CreateLeadInput): Promise
         ...(input.organization?.trim() ? { organization: input.organization.trim() } : {}),
       }
 
+  // Verify the (optional) event-type reference before it may persist; the org
+  // doc is only loaded when an id was actually supplied.
+  const eventTypeId =
+    typeof input.event_type_id === 'string'
+      ? await verifiedEventTypeId(orgId, input.event_type_id)
+      : undefined
+
   const followUpDate = input.follow_up_date?.trim()
   const lead = await createLeadCore(
     orgId,
@@ -120,6 +145,7 @@ export async function createLead(orgId: string, input: CreateLeadInput): Promise
       source: 'manual',
       ...(input.title !== undefined ? { title: input.title } : {}),
       ...(input.event_type !== undefined ? { event_type: input.event_type } : {}),
+      ...(eventTypeId ? { event_type_id: eventTypeId } : {}),
       ...(input.event_date !== undefined ? { event_date: input.event_date } : {}),
       ...(input.estimated_value != null ? { estimated_value: input.estimated_value } : {}),
       ...(input.guest_count != null ? { guest_count: input.guest_count } : {}),
@@ -166,13 +192,27 @@ export async function createLead(orgId: string, input: CreateLeadInput): Promise
 
 export async function updateLead(orgId: string, leadId: string, updates: LeadUpdate): Promise<void> {
   await assertOrgAdmin(orgId)
+  // Same trim-guard as createLead: a string event_type_id must verify against
+  // the org's profiles. `null` passes through — it is the explicit unset
+  // (FieldValue.delete in the core). An UNVERIFIABLE id splits on whether the
+  // update also moves `event_type`: alongside a type change the id is UNSET
+  // (merely dropping the key would keep the lead's OLD id, which id-resolves
+  // the old policy under the new label); on its own it is dropped, leaving
+  // the field untouched.
+  const cleaned: LeadUpdate = { ...updates }
+  if (typeof cleaned.event_type_id === 'string') {
+    const verified = await verifiedEventTypeId(orgId, cleaned.event_type_id)
+    if (verified) cleaned.event_type_id = verified
+    else if (cleaned.event_type !== undefined) cleaned.event_type_id = null
+    else delete cleaned.event_type_id
+  }
   let prevStage: LeadStage | undefined
   if (updates.stage) {
     const snap = await leadsRef(orgId).doc(leadId).get()
     prevStage = snap.exists ? (snap.data() as Lead).stage : undefined
   }
   await updateLeadCore(orgId, leadId, {
-    ...updates,
+    ...cleaned,
     ...(updates.stage && prevStage ? closedAtPatch(prevStage, updates.stage, new Date().toISOString()) : {}),
   })
   if (updates.stage && updates.stage !== prevStage) {

@@ -4,9 +4,6 @@ import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { getOrgBySlug } from '@/actions/orgs'
 import { getEventBySlug, updateEvent } from '@/actions/events'
-import { DEFAULT_EVENT_TYPE_ID } from '@/lib/event-types'
-import type { EventType } from '@/lib/event-types'
-import { listOrgEventTypes } from '@/actions/event-types'
 import { listDepartments } from '@/actions/departments'
 import type { Department } from '@/lib/types'
 import { resolveEnabledModules, type ModuleId } from '@/lib/industry-packs'
@@ -30,7 +27,6 @@ export default function EventSettingsPage() {
 
   const [name, setName] = useState('')
   const [status, setStatus] = useState<Event['status']>('draft')
-  const [eventTypeId, setEventTypeId] = useState<string>(DEFAULT_EVENT_TYPE_ID)
   const [eventStart, setEventStart] = useState('')
   const [eventEnd, setEventEnd] = useState('')
   const [registrationOpen, setRegistrationOpen] = useState('')
@@ -46,7 +42,6 @@ export default function EventSettingsPage() {
   const [paymentAmount, setPaymentAmount] = useState<string>('')
   const [fromDisplayName, setFromDisplayName] = useState<string>('')
   const [replyToEmail, setReplyToEmail] = useState<string>('')
-  const [eventTypes, setEventTypes] = useState<EventType[]>([])
   const [departments, setDepartments] = useState<Department[]>([])
   const [departmentId, setDepartmentId] = useState<string>('')
   const [enabledModules, setEnabledModules] = useState<ModuleId[]>([])
@@ -64,7 +59,6 @@ export default function EventSettingsPage() {
       if (!org) return
       setOrgId(org.id)
       setEnabledModules(resolveEnabledModules(org.industry_pack_id))
-      listOrgEventTypes(org.id).then(setEventTypes).catch(() => setError('Failed to load event types'))
       listDepartments(org.id).then(setDepartments).catch(() => setError('Failed to load departments'))
       const c = await getEventBySlug(org.id, eventSlug)
       if (!c) return
@@ -76,7 +70,6 @@ export default function EventSettingsPage() {
       setHoursStart(c.hours?.start ?? '')
       setHoursEnd(c.hours?.end ?? '')
       setBoothFee(c.booth_fee != null ? String(c.booth_fee) : '')
-      setEventTypeId(c.event_type_id ?? DEFAULT_EVENT_TYPE_ID)
       setDepartmentId(c.department_id ?? '')
       setEventStart(c.event_start)
       setEventEnd(c.event_end)
@@ -97,13 +90,12 @@ export default function EventSettingsPage() {
   }, [orgSlug, eventSlug])
 
   const showHeadcountSection = !enabledModules.includes('attendee-roster')
-  // Effective default for the pickup notice (P3): follows the CURRENTLY
-  // selected type's registration unit — so switching the event to a
-  // child-registration type flips an untouched checkbox to the default-ON it
-  // will actually get, instead of freezing the load-time type's default.
-  const selectedTypeRegistrationUnit =
-    eventTypes.find((t) => t.id === eventTypeId)?.registrationUnit ?? event?.registration_type
-  const notifyChecked = notifyOnPickup ?? selectedTypeRegistrationUnit === 'child'
+  // Effective default for the pickup notice (P3): follows the event's own
+  // stored registration_type. (D3 closeout: the in-page "Event type" select
+  // that used to let this re-derive live against a different type is gone —
+  // event_type_id/registration_type now pass through every save untouched,
+  // so there is nothing left here to switch away from.)
+  const notifyChecked = notifyOnPickup ?? event?.registration_type === 'child'
   const rosterEnabled = enabledModules.includes('attendee-roster')
   const isMarketDay = event ? kindOf(event) === 'market_day' : false
   // B8: key-contact editing is NOT gated on the roster module — every client
@@ -148,34 +140,35 @@ export default function EventSettingsPage() {
     setSaving(true)
     setSaved(false)
     try {
-      const selectedType = eventTypes.find((t) => t.id === eventTypeId)
+      // D3 closeout: event_type_id/registration_type/event_type_terminology
+      // are NOT written from this page at all anymore — Settings → Event
+      // types owns type assignment now, and this save must pass the event's
+      // stored values through completely untouched (no key means no write).
       await updateEvent(orgId, event.id, {
         name,
         status,
         department_id: departmentId || null,
-        ...(isMarketDay
-          ? {}
-          : {
-              event_type_id: eventTypeId,
-              registration_type: selectedType ? selectedType.registrationUnit : (event.registration_type ?? 'individual'),
-              event_type_terminology: selectedType
-                ? (selectedType.is_custom ? selectedType.terminology : null)
-                : undefined,
-            }),
         event_start: eventStart,
         event_end: eventEnd,
-        registration_open: registrationOpen || undefined,
-        registration_close: registrationClose || undefined,
+        // Registration-era fields only apply to roster orgs (D3 closeout item
+        // 3 — this is the standing ROADMAP:406 thread): a roster-off org must
+        // never write these, even if the event already carries stored values.
+        ...(rosterEnabled
+          ? {
+              registration_open: registrationOpen || undefined,
+              registration_close: registrationClose || undefined,
+              capacity: capacity ? Number(capacity) : undefined,
+              payment_amount: paymentAmount ? Number(paymentAmount) : undefined,
+            }
+          : {}),
         // Saved as an explicit boolean ONLY once the user has actually set the
         // toggle (explicit overrides the registration-type default from then
         // on). An untouched toggle keeps the field ABSENT — undefined is
-        // dropped by updateEvent — so P3's default-ON keeps applying, even
-        // when this same save switches the event to a child-registration type.
+        // dropped by updateEvent — so P3's default-ON keeps applying however
+        // the event's stored registration_type got set.
         ...(rosterEnabled && !isMarketDay && notifyOnPickup !== null
           ? { notify_family_on_pickup: notifyOnPickup }
           : {}),
-        capacity: capacity ? Number(capacity) : undefined,
-        payment_amount: paymentAmount ? Number(paymentAmount) : undefined,
         from_display_name: fromDisplayName || undefined,
         reply_to_email: replyToEmail || undefined,
         ...(showHeadcountSection
@@ -296,24 +289,6 @@ export default function EventSettingsPage() {
                 />
               </div>
 
-              {!isMarketDay && (
-                <div className="space-y-1">
-                  <Label htmlFor="eventType">Event type</Label>
-                  <select
-                    id="eventType"
-                    className={SELECT_CLASS}
-                    value={eventTypeId}
-                    onChange={(e) => { setEventTypeId(e.target.value); setSaved(false) }}
-                  >
-                    {eventTypes.map((et) => (
-                      <option key={et.id} value={et.id}>
-                        {et.name}{et.is_custom ? ' (custom)' : ''} — {et.description}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
               <div className="space-y-1">
                 <Label htmlFor="department">Department (optional)</Label>
                 <select
@@ -338,7 +313,7 @@ export default function EventSettingsPage() {
                   onChange={(e) => { setStatus(e.target.value as Event['status']); setSaved(false) }}
                 >
                   <option value="draft">Draft — not visible to registrants</option>
-                  <option value="active">Active — registration open</option>
+                  <option value="active">{rosterEnabled ? 'Active — registration open' : 'Active'}</option>
                   <option value="archived">Archived — read-only</option>
                 </select>
               </div>

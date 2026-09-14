@@ -1,14 +1,13 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, within, fireEvent, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // The settings page is a client component that loads its data in an effect.
 // Mock the actions + navigation so none of the firebase-admin graph is pulled in.
-const { refreshSpy, updateEventSpy, modulesSpy, getEventBySlugSpy, eventTypesSpy } = vi.hoisted(() => ({
+const { refreshSpy, updateEventSpy, modulesSpy, getEventBySlugSpy } = vi.hoisted(() => ({
   refreshSpy: vi.fn(),
   updateEventSpy: vi.fn().mockResolvedValue(undefined),
   modulesSpy: vi.fn((): string[] => []),
   getEventBySlugSpy: vi.fn(),
-  eventTypesSpy: vi.fn(),
 }))
 
 vi.mock('next/navigation', () => ({
@@ -25,9 +24,10 @@ vi.mock('@/actions/events', () => ({
   updateEvent: (...a: unknown[]) => updateEventSpy(...a),
 }))
 
-vi.mock('@/actions/event-types', () => ({
-  listOrgEventTypes: (...a: unknown[]) => eventTypesSpy(...a),
-}))
+// D3 closeout: the page no longer imports the legacy event-types actions
+// module (now deleted). No mock needed (and none allowed to mask an
+// accidental re-import: an un-mocked import would pull the real
+// firebase-admin graph and fail the test loudly instead).
 vi.mock('@/actions/departments', () => ({
   listDepartments: vi.fn().mockResolvedValue([]),
 }))
@@ -55,8 +55,6 @@ beforeEach(() => {
   modulesSpy.mockReturnValue([])
   getEventBySlugSpy.mockReset()
   getEventBySlugSpy.mockResolvedValue(BASE_EVENT)
-  eventTypesSpy.mockReset()
-  eventTypesSpy.mockResolvedValue([])
 })
 
 describe('Event settings — client-job booking time', () => {
@@ -156,24 +154,11 @@ describe('Event settings — key contacts for roster orgs', () => {
 
 // P3 tri-state pickup toggle: ONLY a value the user actually set is ever
 // persisted — an untouched toggle keeps the field ABSENT from the payload so
-// the registration-type default (ON for child registration) stays live,
-// including when the same save switches the event's type.
+// the registration-type default (ON for child registration) stays live.
+// (The legacy "Event type" select this default used to re-derive from live is
+// gone as of D3 closeout — see the describe blocks below; the effective
+// default now just reads the event's own stored registration_type.)
 describe('Event settings — guardian pickup toggle (P3 tri-state)', () => {
-  const INDIVIDUAL_TYPE = {
-    id: 'event',
-    name: 'Event',
-    description: 'General event',
-    registrationUnit: 'individual',
-    is_custom: false,
-  }
-  const CHILD_TYPE = {
-    id: 'camp',
-    name: 'Camp',
-    description: 'Kids camp',
-    registrationUnit: 'child',
-    is_custom: false,
-  }
-
   beforeEach(() => {
     // The Registration card (which owns the toggle) renders for roster orgs
     // on non-market-day events.
@@ -220,24 +205,95 @@ describe('Event settings — guardian pickup toggle (P3 tri-state)', () => {
     )
   })
 
-  it('switching to a child-registration type re-derives the untouched box to default-ON and still OMITS the field', async () => {
-    // THE silent-OFF bug this pins: converting an event to child-registration
-    // must not also persist the OLD type's default (false) as an explicit
-    // override that turns pickup emails off forever.
-    eventTypesSpy.mockResolvedValue([INDIVIDUAL_TYPE, CHILD_TYPE])
-    getEventBySlugSpy.mockResolvedValue({ ...BASE_EVENT, registration_type: 'individual' })
+  it('a child-registration event (no in-page switcher anymore) still defaults the untouched box to ON', async () => {
+    getEventBySlugSpy.mockResolvedValue({ ...BASE_EVENT, registration_type: 'child' })
     render(<EventSettingsPage />)
     const box = await screen.findByLabelText(/email the family/i)
-    expect(box).not.toBeChecked()
-
-    fireEvent.change(await screen.findByLabelText(/event type/i), { target: { value: 'camp' } })
-    // Display re-derives: the untouched toggle shows the default it will get.
     expect(box).toBeChecked()
 
     fireEvent.click(screen.getByRole('button', { name: /save settings/i }))
     await waitFor(() => expect(updateEventSpy).toHaveBeenCalled())
     const payload = updateEventSpy.mock.calls[0][2] as Record<string, unknown>
-    expect(payload.registration_type).toBe('child')
     expect('notify_family_on_pickup' in payload).toBe(false)
+  })
+})
+
+// D3 closeout item 3a/3c: the legacy "Event type" select is gone from this
+// page entirely (Settings → Event types owns type assignment now); the
+// event's stored event_type_id/registration_type/event_type_terminology must
+// pass through every save completely untouched.
+describe('Event settings — legacy event-type select removed', () => {
+  it('renders no "Event type" control and never sends event_type_id/registration_type/event_type_terminology on save', async () => {
+    render(<EventSettingsPage />)
+    await screen.findByLabelText(/venue name/i)
+    expect(screen.queryByLabelText(/event type/i)).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: /save settings/i }))
+    await waitFor(() => expect(updateEventSpy).toHaveBeenCalled())
+    const payload = updateEventSpy.mock.calls[0][2] as Record<string, unknown>
+    expect('event_type_id' in payload).toBe(false)
+    expect('registration_type' in payload).toBe(false)
+    expect('event_type_terminology' in payload).toBe(false)
+  })
+})
+
+// D3 closeout item 3: registration fields must not write for roster-off
+// orgs, even when the event already carries stored values (e.g. from before
+// the org's pack was changed, or bad legacy data) — this is the standing
+// ROADMAP:406 thread this branch closes.
+describe('Event settings — registration fields respect the roster gate', () => {
+  it('omits registration_open/close, capacity, and payment_amount when roster is off, even if already stored on the event', async () => {
+    modulesSpy.mockReturnValue([])
+    getEventBySlugSpy.mockResolvedValue({
+      ...BASE_EVENT,
+      registration_open: '2026-01-01',
+      registration_close: '2026-02-01',
+      capacity: 50,
+      payment_amount: 25,
+    })
+    render(<EventSettingsPage />)
+    await screen.findByLabelText(/venue name/i)
+    fireEvent.click(screen.getByRole('button', { name: /save settings/i }))
+    await waitFor(() => expect(updateEventSpy).toHaveBeenCalled())
+    const payload = updateEventSpy.mock.calls[0][2] as Record<string, unknown>
+    expect('registration_open' in payload).toBe(false)
+    expect('registration_close' in payload).toBe(false)
+    expect('capacity' in payload).toBe(false)
+    expect('payment_amount' in payload).toBe(false)
+  })
+
+  it('includes registration fields when roster is on', async () => {
+    modulesSpy.mockReturnValue(['attendee-roster'])
+    getEventBySlugSpy.mockResolvedValue({
+      ...BASE_EVENT,
+      registration_open: '2026-01-01',
+      capacity: 50,
+    })
+    render(<EventSettingsPage />)
+    await screen.findByLabelText(/registration opens/i)
+    fireEvent.click(screen.getByRole('button', { name: /save settings/i }))
+    await waitFor(() => expect(updateEventSpy).toHaveBeenCalled())
+    const payload = updateEventSpy.mock.calls[0][2] as Record<string, unknown>
+    expect(payload.registration_open).toBe('2026-01-01')
+    expect(payload.capacity).toBe(50)
+  })
+})
+
+// D3 closeout item 3b: the Status option copy claimed "registration open" for
+// every org, even ones with no registration feature at all.
+describe('Event settings — Status option copy is roster-aware', () => {
+  it('shows plain "Active" when roster is off', async () => {
+    modulesSpy.mockReturnValue([])
+    render(<EventSettingsPage />)
+    const status = await screen.findByLabelText(/^status$/i)
+    expect(within(status).getByText('Active')).toBeInTheDocument()
+    expect(within(status).queryByText(/Active — registration open/i)).toBeNull()
+  })
+
+  it('shows "Active — registration open" when roster is on', async () => {
+    modulesSpy.mockReturnValue(['attendee-roster'])
+    render(<EventSettingsPage />)
+    const status = await screen.findByLabelText(/^status$/i)
+    expect(within(status).getByText(/Active — registration open/i)).toBeInTheDocument()
   })
 })

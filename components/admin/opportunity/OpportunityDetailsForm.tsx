@@ -7,15 +7,20 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { EventTypeSelect } from '@/components/admin/opportunity/EventTypeSelect'
 import { updateLead } from '@/actions/leads'
 import type { LeadUpdate } from '@/lib/crm/leads'
-import type { Customer, Lead } from '@/lib/types'
+import type { Customer, EventTypeProfile, Lead } from '@/lib/types'
 
 interface OpportunityDetailsFormProps {
   orgId: string
   orgSlug: string
   lead: Lead
   customer: Customer | null
+  // Event types inc 1 (spec §5d): the org's ACTIVE event-type profiles, in
+  // display order. Absent/empty ⇒ the Event type field falls back to its
+  // pre-inc1 plain free-text input (EventTypeSelect's own 0-profiles rule).
+  eventTypeProfiles?: EventTypeProfile[]
 }
 
 /**
@@ -31,7 +36,7 @@ interface OpportunityDetailsFormProps {
  * Its props and its save action are pinned by tests and by FactsGrid — this
  * pass is skin only.
  */
-export function OpportunityDetailsForm({ orgId, orgSlug, lead, customer }: OpportunityDetailsFormProps) {
+export function OpportunityDetailsForm({ orgId, orgSlug, lead, customer, eventTypeProfiles = [] }: OpportunityDetailsFormProps) {
   const router = useRouter()
   const [title, setTitle] = useState(lead.title ?? '')
   const [name, setName] = useState(lead.name)
@@ -39,6 +44,11 @@ export function OpportunityDetailsForm({ orgId, orgSlug, lead, customer }: Oppor
   const [email, setEmail] = useState(lead.email ?? '')
   const [phone, setPhone] = useState(lead.phone ?? '')
   const [eventType, setEventType] = useState(lead.event_type ?? '')
+  // Event types inc 1: tracked alongside the string so a listed pick can
+  // round-trip its id; free text (including a value that no longer matches
+  // any active profile) always clears it on save — see the `opt`-adjacent
+  // logic in handleSave below.
+  const [eventTypeId, setEventTypeId] = useState<string | null>(lead.event_type_id ?? null)
   const [eventDate, setEventDate] = useState(lead.event_date ?? '')
   const [estimatedValue, setEstimatedValue] = useState(lead.estimated_value != null ? String(lead.estimated_value) : '')
   const [guestCount, setGuestCount] = useState(lead.guest_count != null ? String(lead.guest_count) : '')
@@ -65,6 +75,7 @@ export function OpportunityDetailsForm({ orgId, orgSlug, lead, customer }: Oppor
         email: opt(email),
         phone: opt(phone),
         event_type: opt(eventType),
+        event_type_id: eventType.trim() === '' ? null : (eventTypeId ?? null),
         event_date: opt(eventDate),
         estimated_value: parsed,
         guest_count: guests,
@@ -121,7 +132,19 @@ export function OpportunityDetailsForm({ orgId, orgSlug, lead, customer }: Oppor
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="space-y-1">
             <Label htmlFor="oppEventType">Event type</Label>
-            <Input id="oppEventType" value={eventType} onChange={(e) => setEventType(e.target.value)} placeholder="e.g. Wedding" />
+            <EventTypeSelect
+              profiles={eventTypeProfiles}
+              value={eventType}
+              onChange={(next) => {
+                setEventType(next.event_type)
+                setEventTypeId(next.event_type_id ?? null)
+              }}
+              id="oppEventType"
+              otherInputId="oppEventTypeOther"
+              selectAriaLabel="Event type"
+              otherAriaLabel="Custom event type"
+              otherPlaceholder="e.g. Wedding"
+            />
           </div>
           <div className="space-y-1">
             <Label htmlFor="oppEventDate">Event date</Label>

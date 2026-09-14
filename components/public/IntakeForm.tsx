@@ -5,14 +5,20 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { EventTypeSelect } from '@/components/admin/opportunity/EventTypeSelect'
 import { submitIntake } from '@/actions/intake-public'
 
 interface IntakeFormProps {
   token: string
   orgName: string
+  // Event types inc 1 (spec §5c): the org's ACTIVE type names, names only —
+  // no ids, no policy flags cross the public boundary. Absent/empty ⇒ this
+  // stays today's plain free-text field. Either way `submitIntake` receives
+  // only the string; the org resolves `event_type_id` server-side.
+  activeEventTypeNames?: string[]
 }
 
-export function IntakeForm({ token, orgName }: IntakeFormProps) {
+export function IntakeForm({ token, orgName, activeEventTypeNames = [] }: IntakeFormProps) {
   const [mountedAt] = useState(() => Date.now())
   const [sending, setSending] = useState(false)
   const [sent, setSent] = useState(false)
@@ -87,8 +93,30 @@ export function IntakeForm({ token, orgName }: IntakeFormProps) {
           <Input id="intakePhone" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="(555) 555-5555" />
         </div>
         <div className="space-y-1">
-          <Label htmlFor="intakeEventType">Event type</Label>
-          <Input id="intakeEventType" value={eventType} onChange={(e) => setEventType(e.target.value)} placeholder="e.g. Wedding" />
+          {activeEventTypeNames.length > 0 ? (
+            <>
+              <Label htmlFor="intakeEventTypeSelect">Event type</Label>
+              {/* The revealed "Something else…" field IS the pre-existing
+                  free-text input below (same id, same placeholder) — the
+                  select is additive, not a replacement of its validation. */}
+              <EventTypeSelect
+                profiles={activeEventTypeNames.map((name) => ({ name }))}
+                value={eventType}
+                onChange={(next) => setEventType(next.event_type)}
+                id="intakeEventTypeSelect"
+                otherInputId="intakeEventType"
+                selectAriaLabel="Event type"
+                otherAriaLabel="Custom event type"
+                otherPlaceholder="e.g. Wedding"
+                otherOptionLabel="Something else…"
+              />
+            </>
+          ) : (
+            <>
+              <Label htmlFor="intakeEventType">Event type</Label>
+              <Input id="intakeEventType" value={eventType} onChange={(e) => setEventType(e.target.value)} placeholder="e.g. Wedding" />
+            </>
+          )}
         </div>
         <div className="space-y-1">
           <Label htmlFor="intakeEventDate">Event date</Label>

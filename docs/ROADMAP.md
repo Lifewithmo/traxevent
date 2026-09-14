@@ -349,6 +349,30 @@ EventTrax pivot (neutralization, multi-brand, ops core). Detailed designs live i
   the spec's out-of-scope list (value prefill with basis, command-palette
   create, draft-requirement-aware verdict).
 
+- **Event types — first-class settings + picker unification** (branch
+  `feat/event-types-inc1`, built 2026-09-14; PR #140) — `Org.event_type_profiles`
+  promoted to the one id-referenced, archivable taxonomy: a new Settings →
+  Event types page (rename-with-backfill, merge, guarded delete,
+  adopt-from-history, per-type usage counts) replaces the legacy
+  terminology-registry page, and every picker now reads from it — New
+  Opportunity's inline create-in-place popover, the public intake dropdown,
+  and the opportunity editors (FactsGrid / OpportunityDetailsForm) via a
+  shared `EventTypeSelect`. `leadRequirement` matches id → name → default so
+  a rename never silently changes a lead's capacity policy. Folds in
+  Workstream B: the **D3 roster-module gate is finished** (registration
+  fields + Forms/People/registrants routes now condition on `rosterEnabled`;
+  see the Open decisions entry below). Spec:
+  `superpowers/specs/2026-09-14-event-types-first-class-design.md`; plan:
+  `superpowers/plans/2026-09-14-event-types-inc1.md`. Demo seed: four
+  id-referenced profiles (Wedding / Corporate / Private party / Festival)
+  with deliberate drift left unadopted (`Corporate offsite`, `Community
+  event`, `Collaboration`, `Recurring`, `Gala`) for the adopt/merge
+  walkthrough. Full suite + `next build` gate and the authenticated Vercel
+  walkthrough (375/768/desktop) are the remaining Wave 3 steps before merge.
+  Inc-2 queue (per-type lead times, pipeline filter/group, default type,
+  colors/icons, fuzzy merge suggestions) is in the spec's scope-boundaries
+  section.
+
 ## In flight
 
 - **Proposal templates** (branch `claude/proposal-templates`) — org-owned
@@ -403,7 +427,11 @@ in PR #70; queue the next increment here.)*
 - Parked `git stash` of pre-redesign proposals WIP — likely stale; keep or drop.
 - Convert-to-work manual scenarios 6/7/18/19 from the plan's walkthrough.
 - `ProposalResponseClient` sign/decline/deposit flows: zero test coverage.
-- Roster-off orgs still see registration fields in event settings (D3 follow-up).
+- ~~Roster-off orgs still see registration fields in event settings (D3 follow-up).~~
+  Closed on the `event-types-inc1` branch (Workstream B): registration fields +
+  the Status "registration open" copy are now conditioned on `rosterEnabled`,
+  Forms/People event tabs and all six roster admin routes are module-gated,
+  and the legacy per-event "Event type" select is removed from event settings.
 
 ## Deferred (deliberately)
 

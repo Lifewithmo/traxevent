@@ -19,14 +19,6 @@ vi.mock('@/actions/orgs', () => ({
   getOrgBySlug: vi.fn().mockResolvedValue({ id: 'org1' }),
 }))
 
-vi.mock('@/actions/event-types', () => ({
-  // id must equal DEFAULT_EVENT_TYPE_ID ('event') so the form's default selection
-  // resolves without opening the <select>.
-  listOrgEventTypes: vi.fn().mockResolvedValue([
-    { id: 'event', name: 'Client job', description: 'A booked job', registrationUnit: 'individual', terminology: {} },
-  ]),
-}))
-
 vi.mock('@/actions/events', () => ({
   createEvent: (...a: unknown[]) => createEventSpy(...a),
 }))
@@ -34,7 +26,7 @@ vi.mock('@/actions/events', () => ({
 import NewEventPage from '@/app/(admin)/[orgSlug]/new-event/page'
 
 async function fillBaseFields() {
-  // wait for the event type to load (Create button enables once types arrive)
+  // wait for the org to load (Create button enables once orgId arrives)
   await waitFor(() => expect(screen.getByRole('button', { name: /create event/i })).not.toBeDisabled())
   fireEvent.change(screen.getByLabelText(/event name/i), { target: { value: 'Summer Gala' } })
   fireEvent.change(screen.getByLabelText(/start date/i), { target: { value: '2026-08-22' } })
@@ -98,5 +90,18 @@ describe('NewEventPage — optional booking time', () => {
     fireEvent.click(screen.getByRole('button', { name: /create event/i }))
     expect(await screen.findByText(/end time must be after/i)).toBeInTheDocument()
     expect(createEventSpy).not.toHaveBeenCalled()
+  })
+
+  // The picker is retired (spec 5e): every job resolves the DEFAULT event type
+  // internally, with no select in the DOM to drive it.
+  it('has no Event type picker — resolves the default type internally', async () => {
+    render(<NewEventPage />)
+    await fillBaseFields()
+    expect(screen.queryByLabelText(/event type/i)).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: /create event/i }))
+    await waitFor(() => expect(createEventSpy).toHaveBeenCalledWith('org1', expect.objectContaining({
+      event_type_id: 'event',
+      registration_type: 'individual',
+    })))
   })
 })

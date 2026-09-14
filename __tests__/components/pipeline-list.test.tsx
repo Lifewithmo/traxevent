@@ -6,6 +6,7 @@ import type { Lead } from '@/lib/types'
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }) }))
 vi.mock('@/actions/nudge', () => ({ nudgeProposal: vi.fn() }))
 vi.mock('@/actions/leads', () => ({ createLead: vi.fn() }))
+vi.mock('@/actions/event-type-profiles', () => ({ createEventTypeProfile: vi.fn() }))
 
 const lead = (over: Partial<Lead>): Lead => ({
   id: 'l1', name: 'Dana', stage: 'consultation', created_at: '2026-07-01T00:00:00.000Z', ...over,

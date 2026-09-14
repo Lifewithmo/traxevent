@@ -92,6 +92,19 @@ export async function submitIntake(
   )
   if (fieldError) throw new Error(fieldError)
 
+  // Event types inc 1 (spec §5c): the reference is resolved SERVER-SIDE from
+  // the submitted string against the org's ACTIVE profiles — the public client
+  // is never trusted with an id. Trim+lowercase, last match wins (mirroring
+  // lib/capacity/requirement.ts); archived and id-less entries never match, and
+  // "Something else" free text simply resolves to nothing.
+  const typeKey = eventType.toLowerCase()
+  let matchedProfileId: string | undefined
+  if (typeKey) {
+    for (const p of org.event_type_profiles ?? []) {
+      if (!p.archived && p.id && p.name.trim().toLowerCase() === typeKey) matchedProfileId = p.id
+    }
+  }
+
   const { customer } = await findOrCreateCustomerCore(orgId, {
     name,
     email,
@@ -105,6 +118,7 @@ export async function submitIntake(
     email,
     ...(phone ? { phone } : {}),
     ...(eventType ? { event_type: eventType } : {}),
+    ...(matchedProfileId ? { event_type_id: matchedProfileId } : {}),
     ...(eventDate ? { event_date: eventDate } : {}),
     ...(guestCount != null ? { guest_count: guestCount } : {}),
     ...(message ? { notes: message } : {}),

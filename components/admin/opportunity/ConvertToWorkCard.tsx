@@ -11,8 +11,7 @@ import { Label } from '@/components/ui/label'
 import { RelatedRecordCard, type RelatedRow } from '@/components/ui/related-record-card'
 import { StatusPill } from '@/components/ui/status-pill'
 import { convertOpportunityToWork, setLeadStage } from '@/actions/leads'
-import { eventCreateFieldsFromType, DEFAULT_EVENT_TYPE_ID } from '@/lib/event-types'
-import type { EventType } from '@/lib/event-types'
+import { eventCreateFieldsFromType, getEventType, DEFAULT_EVENT_TYPE_ID } from '@/lib/event-types'
 import { opportunityTitle } from '@/lib/leads'
 import type { ConvertBlocker } from '@/lib/opportunity-detail'
 import { EVENT_KIND_LABELS } from '@/lib/occasions/kind'
@@ -32,7 +31,6 @@ interface ConvertToWorkCardProps {
   orgSlug: string
   lead: Lead
   job: Event | null
-  eventTypes: EventType[]
   open?: boolean
   blockReason?: string
   /**
@@ -53,13 +51,12 @@ interface ConvertToWorkCardProps {
  * or it can (an empty with the single CTA). Only the last opens a form, and
  * only on request.
  */
-export function ConvertToWorkCard({ orgId, orgSlug, lead, job, eventTypes, open: openProp = false, blockReason, blocker }: ConvertToWorkCardProps) {
+export function ConvertToWorkCard({ orgId, orgSlug, lead, job, open: openProp = false, blockReason, blocker }: ConvertToWorkCardProps) {
   const router = useRouter()
   const [open, setOpen] = useState(openProp)
   const [name, setName] = useState(opportunityTitle(lead))
   const [date, setDate] = useState(lead.event_date ?? '')
   const [kind, setKind] = useState<EventKind>('client_job')
-  const [eventTypeId, setEventTypeId] = useState<string>(DEFAULT_EVENT_TYPE_ID)
   const [headcount, setHeadcount] = useState(lead.guest_count != null ? String(lead.guest_count) : '')
   // Booking time, captured at the one moment the client just told us when.
   // Always seeded EMPTY — the Lead has no time-of-day field, so any prefill
@@ -214,8 +211,10 @@ export function ConvertToWorkCard({ orgId, orgSlug, lead, job, eventTypes, open:
   }
 
   async function handleConvert() {
-    const type = eventTypes.find((t) => t.id === eventTypeId)
-    if (!type) { setError('Select an event type'); return }
+    // The event-type picker is retired (spec 5e): every conversion resolves
+    // the built-in default internally, killing the silent-reassignment defect
+    // where a deleted custom id snapped an event back to "General Event".
+    const type = getEventType(DEFAULT_EVENT_TYPE_ID)
     // Same both-or-neither rule as settings/new-event: a one-sided range would
     // be silently dropped, and end <= start renders flagged on the calendar.
     if (Boolean(hoursStart) !== Boolean(hoursEnd)) {
@@ -279,17 +278,6 @@ export function ConvertToWorkCard({ orgId, orgSlug, lead, job, eventTypes, open:
               {(Object.entries(EVENT_KIND_LABELS) as Array<[EventKind, string]>).map(([k, label]) => (
                 <option key={k} value={k}>{label}</option>
               ))}
-            </select>
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="cw-type">Event type</Label>
-            <select
-              id="cw-type"
-              value={eventTypeId}
-              onChange={(e) => setEventTypeId(e.target.value)}
-              className="block h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
-            >
-              {eventTypes.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
           </div>
           <div className="space-y-1">

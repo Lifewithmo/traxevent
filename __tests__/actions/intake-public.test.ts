@@ -208,4 +208,59 @@ describe('submitIntake', () => {
     expect(await submitIntake('tok_intake', submission(), 5000)).toEqual({ ok: true })
     expect(sendIntakeSpy).not.toHaveBeenCalled()
   })
+
+  /*
+    EVENT TYPE RESOLUTION (event types inc 1, spec §5c): the public client
+    submits ONLY the string; the server resolves `event_type_id` by matching it
+    against the org's ACTIVE profiles. A client-supplied id is never trusted,
+    an archived profile never matches, and "Something else" free text simply
+    resolves to nothing.
+  */
+  describe('event_type_id resolution', () => {
+    const PROFILED_ORG = {
+      ...ORG,
+      event_type_profiles: [
+        { id: 'p-wed', name: 'Wedding', needsMobile: true, needsVenue: true },
+        { id: 'p-gala', name: 'Gala', needsMobile: true, needsVenue: false, archived: true },
+      ],
+    }
+
+    it('resolves a submitted string to the matching ACTIVE profile id (trim + case-insensitive)', async () => {
+      mockOrg(PROFILED_ORG)
+      await submitIntake('tok_intake', submission({ event_type: '  wEdDing ' }), 5000)
+      expect(createLeadCoreSpy).toHaveBeenCalledWith('org-1',
+        expect.objectContaining({ event_type: 'wEdDing', event_type_id: 'p-wed' })
+      )
+    })
+
+    it('an ARCHIVED profile never matches — the string lands without an id', async () => {
+      mockOrg(PROFILED_ORG)
+      await submitIntake('tok_intake', submission({ event_type: 'Gala' }), 5000)
+      const input = createLeadCoreSpy.mock.calls[0][1]
+      expect(input.event_type).toBe('Gala')
+      expect(input).not.toHaveProperty('event_type_id')
+    })
+
+    it('unmatched free text lands without an id (surfaces later in adopt/merge)', async () => {
+      mockOrg(PROFILED_ORG)
+      await submitIntake('tok_intake', submission({ event_type: 'Quinceañera' }), 5000)
+      expect(createLeadCoreSpy.mock.calls[0][1]).not.toHaveProperty('event_type_id')
+    })
+
+    it('NEVER trusts a client-smuggled event_type_id', async () => {
+      mockOrg(PROFILED_ORG)
+      await submitIntake(
+        'tok_intake',
+        { ...submission({ event_type: 'Not a profile' }), event_type_id: 'p-wed' } as never,
+        5000
+      )
+      expect(createLeadCoreSpy.mock.calls[0][1]).not.toHaveProperty('event_type_id')
+    })
+
+    it('an org with no profiles keeps today\'s payload byte-for-byte (no id key)', async () => {
+      mockOrg(ORG)
+      await submitIntake('tok_intake', submission(), 5000)
+      expect(createLeadCoreSpy.mock.calls[0][1]).not.toHaveProperty('event_type_id')
+    })
+  })
 })

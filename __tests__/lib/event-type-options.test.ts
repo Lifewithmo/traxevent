@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { buildEventTypeOptions, eventTypeProfileNames, pastJobCounts } from '@/lib/crm/event-type-options'
+import {
+  buildEventTypeOptions,
+  eventTypeProfileNames,
+  activeEventTypeProfiles,
+  pastJobCounts,
+} from '@/lib/crm/event-type-options'
 
 /*
   THE CHIP VOCABULARY RULE (New Opportunity inc 1, plan §Agent C item 1):
@@ -65,6 +70,31 @@ describe('buildEventTypeOptions', () => {
   it('returns [] for an org with no profiles and no history (0-profiles empty state upstream)', () => {
     expect(buildEventTypeOptions(undefined, [])).toEqual([])
   })
+
+  /*
+    ARCHIVED EXCLUSION (event types inc 1, spec §4): an archived profile's name
+    must vanish from the chip row on BOTH sides — it is not an active chip, and
+    it must not resurface as a frequency chip from history either (that would
+    undo the archive one lead at a time).
+  */
+  it('excludes an archived profile name from both the profile side and history', () => {
+    const profiles = [
+      { id: 'a', name: 'Wedding', needsMobile: true, needsVenue: true },
+      { id: 'b', name: 'Gala', needsMobile: true, needsVenue: false, archived: true },
+    ]
+    const leads = [withType('gala'), withType('GALA'), withType('gala'), withType('Brunch')]
+    expect(buildEventTypeOptions(profiles, leads)).toEqual(['Wedding', 'Brunch'])
+  })
+
+  it('an archived profile does not consume a cap-8 slot', () => {
+    const profiles = [
+      { ...profile('Dead'), id: 'x', archived: true },
+      ...['P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'P8'].map(profile),
+    ]
+    expect(buildEventTypeOptions(profiles, [])).toEqual([
+      'P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'P8',
+    ])
+  })
 })
 
 /*
@@ -84,6 +114,32 @@ describe('eventTypeProfileNames', () => {
     expect(eventTypeProfileNames([profile('   '), profile('Gala')])).toEqual(['Gala'])
     expect(eventTypeProfileNames(undefined)).toEqual([])
     expect(eventTypeProfileNames([])).toEqual([])
+  })
+
+  it('excludes archived profiles — ACTIVE names only (inc 1)', () => {
+    expect(eventTypeProfileNames([
+      { ...profile('Wedding'), id: 'a' },
+      { ...profile('Gala'), id: 'b', archived: true },
+    ])).toEqual(['Wedding'])
+  })
+})
+
+/*
+  `activeEventTypeProfiles` (event types inc 1): the full ACTIVE profile objects
+  in display (array) order — what the pickers and the inline-create popover
+  consume when they need ids + policy flags, not just name strings.
+*/
+describe('activeEventTypeProfiles', () => {
+  it('filters archived entries and preserves array order', () => {
+    const wedding = { id: 'a', name: 'Wedding', needsMobile: true, needsVenue: true }
+    const gala = { id: 'b', name: 'Gala', needsMobile: true, needsVenue: false, archived: true }
+    const market = { id: 'c', name: 'Market', needsMobile: true, needsVenue: false }
+    expect(activeEventTypeProfiles([wedding, gala, market])).toEqual([wedding, market])
+  })
+
+  it('returns [] for undefined or empty profiles', () => {
+    expect(activeEventTypeProfiles(undefined)).toEqual([])
+    expect(activeEventTypeProfiles([])).toEqual([])
   })
 })
 

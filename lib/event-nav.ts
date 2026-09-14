@@ -12,7 +12,10 @@ export interface EventNavItem {
 }
 
 // Per-event nav items that belong to the optional attendee-roster module.
-const ROSTER_KEYS = new Set(['families', 'assignments', 'checkin'])
+// Forms + People are family/roster machinery too (signed_forms counts,
+// volunteer hours) — D3 closeout: they were leaking into every pack because
+// they were never added here alongside families/assignments/checkin.
+const ROSTER_KEYS = new Set(['families', 'assignments', 'checkin', 'forms', 'people'])
 
 // Market days get an explicit, minimal nav — none of the client-job pages
 // (Ops, roster, etc.) apply. Register joins this list with the
@@ -39,7 +42,7 @@ export interface BuildEventNavInput {
  * Build the visible per-event nav. Rules preserved from the sidebar's
  * original inline model: market_day → Overview + Settings only;
  * dashboard + settings always visible regardless of page grants;
- * roster pages (families/assignments/checkin) gated on the
+ * roster pages (families/assignments/checkin/forms/people) gated on the
  * 'attendee-roster' module; labels driven by terminology.
  * Teams and Budget are deliberately absent — no routes exist for them.
  */

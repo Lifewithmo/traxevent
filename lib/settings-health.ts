@@ -7,7 +7,7 @@ export interface SettingsArea {
 }
 
 export interface SettingsInput {
-  org: Pick<Org, 'name' | 'branding' | 'public_profile' | 'sending_domain_status'>
+  org: Pick<Org, 'name' | 'branding' | 'public_profile' | 'sending_domain_status' | 'event_type_profiles'>
   memberCount: number
   templateCount: number
 }
@@ -26,7 +26,13 @@ export function buildSettingsAreas({ org, memberCount, templateCount }: Settings
     { slug: 'proposal-templates', label: 'Proposal templates', configured: templateCount > 0 },
     { slug: 'public-profile', label: 'Public profile', configured: Boolean(org.public_profile?.enabled) },
     { slug: 'email-domain', label: 'Email domain', configured: org.sending_domain_status === 'verified' },
-    { slug: 'event-types', label: 'Event types', configured: true },
+    // Event types inc 1: honestly computed — at least one ACTIVE profile.
+    // Archived types feed no picker, so an all-archived list is not "set up".
+    {
+      slug: 'event-types',
+      label: 'Event types',
+      configured: (org.event_type_profiles ?? []).some((p) => !p.archived),
+    },
     // Shown to every org: a base-tier operator lands on the Business-plan upsell,
     // a business-tier one on the inventory editor (the page itself gates). No
     // completeness nag — `configured: true` keeps it out of the "what's left"

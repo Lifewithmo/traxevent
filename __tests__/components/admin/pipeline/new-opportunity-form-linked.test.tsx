@@ -6,8 +6,11 @@ import type { Customer } from '@/lib/types'
 
 const refresh = vi.fn()
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh }) }))
-// 'use server' module backed by firebase-admin — mocked like CustomerDetailClient.test.tsx does.
+// 'use server' modules backed by firebase-admin — mocked like CustomerDetailClient.test.tsx does.
 vi.mock('@/actions/leads', () => ({ createLead: vi.fn().mockResolvedValue({ id: 'l1' }) }))
+// Imported by the inline-create popover the form now hosts; its own behavior
+// is covered in new-event-type-popover.test.tsx.
+vi.mock('@/actions/event-type-profiles', () => ({ createEventTypeProfile: vi.fn() }))
 
 const customer: Customer = {
   id: 'c1', name: 'Dana Kim', company: 'Riverside', email: 'dana@riv.co', created_at: '2026-01-01T00:00:00.000Z',
@@ -110,7 +113,8 @@ describe('NewOpportunityForm linked mode', () => {
       render(
         <NewOpportunityForm
           orgId="o1" orgSlug="brew" open onClose={() => {}} customer={customer}
-          showDeliveryMode eventTypeProfileNames={['Wedding']}
+          showDeliveryMode
+          eventTypeProfiles={[{ id: 'p-wed', name: 'Wedding', needsMobile: true, needsVenue: true }]}
         />
       )
       expect(screen.getByRole('group', { name: 'Where' })).toBeInTheDocument()
@@ -125,7 +129,8 @@ describe('NewOpportunityForm linked mode', () => {
       render(
         <NewOpportunityForm
           orgId="o1" orgSlug="brew" open onClose={() => {}} customer={customer}
-          showDeliveryMode eventTypeProfileNames={['Wedding']}
+          showDeliveryMode
+          eventTypeProfiles={[{ id: 'p-wed', name: 'Wedding', needsMobile: true, needsVenue: true }]}
         />
       )
       fireEvent.click(screen.getByRole('button', { name: 'On-site' }))
@@ -135,6 +140,31 @@ describe('NewOpportunityForm linked mode', () => {
         event_type: 'Wedding',
       })))
       expect(vi.mocked(createLead).mock.calls[0][1]).not.toHaveProperty('delivery_mode')
+    })
+
+    // F4: leadRequirement's name match includes ARCHIVED profiles — the saved
+    // lead gets the archived policy and the toggle's answer is ignored, so the
+    // toggle must leave the screen for an archived name match too.
+    it('hides the Where toggle for an ARCHIVED name match — its saved policy already answers Where', async () => {
+      render(
+        <NewOpportunityForm
+          orgId="o1" orgSlug="brew" open onClose={() => {}} customer={customer}
+          showDeliveryMode
+          eventTypeProfiles={[{ id: 'p-wed', name: 'Wedding', needsMobile: true, needsVenue: true, archived: true }]}
+        />
+      )
+      expect(screen.getByRole('group', { name: 'Where' })).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: 'On-site' }))
+      const typeInput = screen.getByLabelText('Event type')
+      fireEvent.change(typeInput, { target: { value: ' wedding ' } }) // trim + case-insensitive
+      expect(screen.queryByRole('group', { name: 'Where' })).not.toBeInTheDocument()
+      // The superseded On-site pick never rides along either.
+      fireEvent.click(screen.getByRole('button', { name: 'Create opportunity' }))
+      await waitFor(() => expect(createLead).toHaveBeenCalled())
+      expect(vi.mocked(createLead).mock.calls[0][1]).not.toHaveProperty('delivery_mode')
+      // Non-matching text brings the toggle back.
+      fireEvent.change(typeInput, { target: { value: 'Birthday' } })
+      expect(screen.getByRole('group', { name: 'Where' })).toBeInTheDocument()
     })
   })
 })

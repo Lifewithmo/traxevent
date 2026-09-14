@@ -11,6 +11,10 @@ export interface LeadUpdate {
   phone?: string | null
   organization?: string | null
   event_type?: string | null
+  // Reference to Org.event_type_profiles[].id. The ACTION layer is responsible
+  // for verifying it references a real profile (actions/leads.ts drops unknown
+  // ids silently); `null` unsets via the FieldValue.delete idiom below.
+  event_type_id?: string | null
   event_date?: string | null
   estimated_value?: number | null
   stage?: LeadStage
@@ -47,6 +51,7 @@ export interface CreateLeadCoreInput {
   phone?: string
   organization?: string
   event_type?: string
+  event_type_id?: string   // verified by the caller (see LeadUpdate note)
   event_date?: string
   estimated_value?: number
   guest_count?: number
@@ -85,6 +90,7 @@ export async function createLeadCore(
     ...(input.phone?.trim() ? { phone: input.phone.trim() } : {}),
     ...(input.organization?.trim() ? { organization: input.organization.trim() } : {}),
     ...(input.event_type?.trim() ? { event_type: input.event_type.trim() } : {}),
+    ...(input.event_type_id?.trim() ? { event_type_id: input.event_type_id.trim() } : {}),
     ...(input.event_date?.trim() ? { event_date: input.event_date.trim() } : {}),
     ...(input.estimated_value != null ? { estimated_value: input.estimated_value } : {}),
     ...(input.guest_count != null ? { guest_count: input.guest_count } : {}),

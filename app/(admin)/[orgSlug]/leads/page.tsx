@@ -1,8 +1,6 @@
 export const dynamic = 'force-dynamic'
 
-import { notFound } from 'next/navigation'
-import { adminDb } from '@/lib/firebase-admin'
-import type { BillingPlan, Org } from '@/lib/types'
+import { requireOrgMember } from '@/lib/auth/guards'
 import { listLeads } from '@/actions/leads'
 import { listCustomers } from '@/actions/customers'
 import { listTasks } from '@/actions/tasks'
@@ -11,7 +9,7 @@ import { buildPipelineRows, closedThisMonth, radarConflictOpts, DEFAULT_PREP_LEA
 import { hasMultiResourceCapacity, listCapacityUnitsCore } from '@/lib/capacity/units'
 import { buildBookabilityCtx } from '@/lib/calendar-bookability'
 import { loadCalendarEvents } from '@/lib/calendar-fetch'
-import { buildEventTypeOptions, eventTypeProfileNames, pastJobCounts } from '@/lib/crm/event-type-options'
+import { buildEventTypeOptions, pastJobCounts } from '@/lib/crm/event-type-options'
 import { todayYmd } from '@/lib/opportunity-detail'
 import { OPEN_STAGES, CLOSED_STAGES } from '@/lib/leads'
 import { PipelineListClient } from '@/components/admin/pipeline/PipelineListClient'
@@ -27,23 +25,27 @@ export default async function LeadsPage({
   searchParams: Promise<{ view?: string }>
 }) {
   const [{ orgSlug }, { view }] = await Promise.all([params, searchParams])
-  const orgSnap = await adminDb.collection('orgs').where('slug', '==', orgSlug).limit(1).get()
-  if (orgSnap.empty) notFound()
-  const orgId = orgSnap.docs[0].id
-  const orgData = orgSnap.docs[0].data()
-  const prepLeadDays = (orgData.prep_lead_days as number | undefined) ?? DEFAULT_PREP_LEAD_DAYS
+  // requireOrgMember (was a raw slug query): same org read + notFound, and it
+  // also resolves the MEMBER — the inline event-type create is owner/admin
+  // only (event types inc 1), and the role must be decided server-side. The
+  // house idiom (drops/compliance/catalog pages resolve members the same way).
+  const { org: orgDoc, orgId, member } = await requireOrgMember(orgSlug)
+  const prepLeadDays = orgDoc.prep_lead_days ?? DEFAULT_PREP_LEAD_DAYS
   const org = {
-    plan: orgData.plan as BillingPlan | undefined,
+    plan: orgDoc.plan,
     // Per-event-type resource profiles (Inc 4). Threaded into radarConflictOpts →
     // computeCapacity so the resource-aware radar honors "which kinds this event
     // type consumes"; absent ⇒ leadRequirement's default rule (backstop).
-    event_type_profiles: orgData.event_type_profiles as Org['event_type_profiles'],
+    event_type_profiles: orgDoc.event_type_profiles,
   }
   // The operator's kind vocabulary (increment 3 de-silo). Threaded into the
   // pipeline surface so the over-capacity pill's noun reads in their words via
   // `kindLabel`. Absent ⇒ the neutral platform defaults; base/solo orgs never
   // render the pill, so it is simply unused for them.
-  const resourceLabels = orgData.resource_labels as Org['resource_labels']
+  const resourceLabels = orgDoc.resource_labels
+  // A boolean, never the role itself: the create form only needs "may this
+  // member mint event types" (owner/admin).
+  const canCreateEventTypes = member.role === 'owner' || member.role === 'admin'
 
   // `loadCalendarEvents(orgId, null, null)` is the ONE Firestore read this
   // increment adds to the page (spec §6 Data, feasibility-verified): a single
@@ -146,17 +148,16 @@ export default async function LeadsPage({
   // is a word the operator has actually used.
   const eventTypeOptions = buildEventTypeOptions(org.event_type_profiles, leads)
 
-  // C5b's two recognition inputs, computed from data already in hand:
-  // • the RAW profile vocabulary (independent of the merged chip list above —
-  //   the form keys its "not a configured event type" hint on this);
-  // • past-job counts per customer, over EVERY loaded lead (open or closed),
-  //   for the caller-recognition hint's "{n} past jobs".
-  const profileNames = eventTypeProfileNames(org.event_type_profiles)
+  // C5b: past-job counts per customer, over EVERY loaded lead (open or
+  // closed), for the caller-recognition hint's "{n} past jobs". (The form's
+  // profile matching — hint, delivery-mode hiding, event_type_id — now runs
+  // against the org profile array threaded below, not a names list.)
   const jobCounts = pastJobCounts(leads)
 
   const shared = {
     orgId, orgSlug, groups, monthly, showDeliveryMode, eventTypeOptions, bookabilityCtx,
-    eventTypeProfileNames: profileNames, pastJobCounts: jobCounts,
+    eventTypeProfiles: org.event_type_profiles, resourceLabels, canCreateEventTypes,
+    pastJobCounts: jobCounts,
   }
   return (
     <div>
@@ -175,9 +176,12 @@ export default async function LeadsPage({
       <div className="mx-auto max-w-6xl px-6 pt-6">
         <PipelineStatsHeader stats={stats} />
       </div>
+      {/* resourceLabels + eventTypeProfiles moved into `shared` (event types
+          inc 1): the BOARD's create form needs them too now, and the two
+          surfaces' forms must stay identical. */}
       {view === 'board'
         ? <PipelineBoardView {...shared} customers={customers} />
-        : <PipelineListClient {...shared} openCount={open.length} closed={closed} customers={customers} resourceLabels={resourceLabels} eventTypeProfiles={org.event_type_profiles} />}
+        : <PipelineListClient {...shared} openCount={open.length} closed={closed} customers={customers} />}
     </div>
   )
 }

@@ -9,12 +9,10 @@ vi.mock('@/actions/leads', () => ({ convertOpportunityToWork, setLeadStage }))
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: routerPush, refresh: routerRefresh }) }))
 
 import { ConvertToWorkCard } from '@/components/admin/opportunity/ConvertToWorkCard'
-import { getEventType } from '@/lib/event-types'
 import type { Event, Lead } from '@/lib/types'
 
-const eventTypes = [getEventType('event'), getEventType('coffee-service')]
 const won = { id: 'l1', name: 'Dana Kim', title: 'Nguyen Wedding', stage: 'closed_won', event_date: '2026-09-12', created_at: 'x' } as Lead
-const props = { orgId: 'o1', orgSlug: 'acme', lead: won, job: null, eventTypes }
+const props = { orgId: 'o1', orgSlug: 'acme', lead: won, job: null }
 
 describe('ConvertToWorkCard', () => {
   beforeEach(() => {
@@ -181,16 +179,18 @@ describe('ConvertToWorkCard', () => {
     expect(screen.getByRole('button', { name: /^schedule job$/i })).toBeDisabled()
   })
 
-  it('submits the resolved event-type fields and the headcount', async () => {
+  // The picker is retired (spec 5e): every conversion resolves the DEFAULT
+  // event type internally, with no select in the DOM to drive it.
+  it('has no Event type picker — resolves the default type internally', async () => {
     render(<ConvertToWorkCard {...props} />)
     fireEvent.click(screen.getByRole('button', { name: /convert to work/i }))
-    fireEvent.change(screen.getByLabelText('Event type'), { target: { value: 'coffee-service' } })
+    expect(screen.queryByLabelText('Event type')).toBeNull()
     fireEvent.change(screen.getByLabelText('Headcount'), { target: { value: '180' } })
     fireEvent.click(screen.getByRole('button', { name: /^schedule job$/i }))
     await waitFor(() => expect(convertOpportunityToWork).toHaveBeenCalledWith('o1', 'l1', {
       name: 'Nguyen Wedding',
       date: '2026-09-12',
-      event_type_id: 'coffee-service',
+      event_type_id: 'event',
       registration_type: 'individual',
       headcount: 180,
     }))
