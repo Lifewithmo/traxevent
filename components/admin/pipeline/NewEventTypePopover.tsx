@@ -42,7 +42,12 @@ export function NewEventTypePopover({
   orgId: string
   open: boolean
   onClose: () => void
-  onCreated: (profile: EventTypeProfile) => void
+  /** Receives the server-returned profile plus whether the create was an
+   *  IDEMPOTENT name match whose saved policy differs from the toggles just
+   *  submitted — the parent owns the announce region the one-line notice
+   *  belongs in (this dialog closes on create, so a line here would vanish
+   *  unread). */
+  onCreated: (profile: EventTypeProfile, info: { existingPolicyKept: boolean }) => void
   /** Prefill from the flow's current free text (empty when it already matches). */
   initialName: string
   /** Prefill from the flow's current Where state (on-site → true). */
@@ -94,7 +99,12 @@ export function NewEventTypePopover({
         needsMobile,
         needsVenue,
       })
-      onCreated(profile)
+      // Idempotent create: a case-insensitive name match returns the EXISTING
+      // profile with ITS policy, silently discarding the toggles above —
+      // compare, so the flow can tell the operator whose policy is in force.
+      const existingPolicyKept =
+        Boolean(profile.needsMobile) !== needsMobile || Boolean(profile.needsVenue) !== needsVenue
+      onCreated(profile, { existingPolicyKept })
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to create the event type')
     } finally {

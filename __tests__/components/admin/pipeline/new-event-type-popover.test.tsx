@@ -165,6 +165,36 @@ describe('NewEventTypePopover (inline create-in-flow)', () => {
       expect(popover()).toBeInTheDocument()
     })
 
+    // F8: createEventTypeProfile is idempotent on a case-insensitive name
+    // match and returns the EXISTING profile with ITS policy — the toggles
+    // the operator just set are then silently discarded. The flow must say so.
+    it('announces when the name already existed and its saved policy overrides the toggles', async () => {
+      // Existing "Wedding" needs a venue; the popover's defaults submit
+      // needsVenue: false → policy mismatch.
+      vi.mocked(createEventTypeProfile).mockResolvedValueOnce({
+        id: 'p-wed', name: 'Wedding', needsMobile: true, needsVenue: true,
+      })
+      renderAdminForm()
+      fireEvent.click(screen.getByRole('button', { name: '+ New type' }))
+      fireEvent.change(nameField(), { target: { value: 'wedding' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Create type' }))
+      await waitFor(() => expect(popover()).not.toBeInTheDocument())
+      // One line in the flow's announce region (aria-live), not a silent swap.
+      const notice = screen.getByText('“Wedding” already existed — using its saved policy.')
+      expect(notice.closest('[aria-live="polite"]')).not.toBeNull()
+      // The existing type is still selected with its canonical casing.
+      expect(typeInput()).toHaveValue('Wedding')
+    })
+
+    it('stays quiet when the created profile matches the submitted policy exactly', async () => {
+      renderAdminForm() // default mock: needsMobile true / needsVenue false = the popover defaults
+      fireEvent.click(screen.getByRole('button', { name: '+ New type' }))
+      fireEvent.change(nameField(), { target: { value: 'Quinceañera' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Create type' }))
+      await waitFor(() => expect(popover()).not.toBeInTheDocument())
+      expect(screen.queryByText(/already existed/i)).not.toBeInTheDocument()
+    })
+
     it('surfaces a server failure in a live region and stays open for a retry', async () => {
       vi.mocked(createEventTypeProfile).mockRejectedValueOnce(new Error('Only an org admin can do that'))
       renderAdminForm()

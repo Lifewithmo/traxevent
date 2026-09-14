@@ -423,14 +423,20 @@ export function NewOpportunityForm({
   /** The popover created (or idempotently found) a profile: layer it over the
    *  props, mirror its canonical name into the field — which selects the chip
    *  and resolves `event_type_id` — and refresh so the server props catch up.
-   *  Focus returns to the event-type input via the popover's finalFocus. */
-  function handleTypeCreated(profile: EventTypeProfile) {
+   *  Focus returns to the event-type input via the popover's finalFocus. When
+   *  the create was an idempotent match whose SAVED policy overrides the
+   *  toggles the operator just set, say so here in the announce region — the
+   *  popover has closed, so its own live region can't carry the line. */
+  function handleTypeCreated(profile: EventTypeProfile, info: { existingPolicyKept: boolean }) {
     setSessionProfiles((prev) => [
       ...prev.filter((p) => !(profile.id && p.id === profile.id)),
       profile,
     ])
     setEventType(profile.name)
     setTypePopoverOpen(false)
+    if (info.existingPolicyKept) {
+      setAnnounce(`“${profile.name}” already existed — using its saved policy.`)
+    }
     router.refresh()
   }
 
