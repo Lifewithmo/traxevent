@@ -8,6 +8,7 @@ const refresh = vi.fn()
 const push = vi.fn()
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh, push }) }))
 vi.mock('@/actions/leads', () => ({ createLead: vi.fn(), setLeadStage: vi.fn() }))
+vi.mock('@/actions/event-type-profiles', () => ({ createEventTypeProfile: vi.fn() }))
 
 const lead = (over: Partial<Lead>): Lead => ({
   id: 'l1', name: 'Dana', stage: 'consultation', created_at: '2026-07-01T00:00:00.000Z', ...over,
