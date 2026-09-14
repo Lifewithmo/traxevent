@@ -198,6 +198,9 @@ function EventTypeFact({
 
   async function commit(next: EventTypeSelectValue) {
     if (busy) return
+    // Name-string equality only: re-picking the same name on a legacy
+    // name-matched lead is a no-op here — it is NOT id-upgraded by this
+    // editor; the rename backfill is what stamps ids onto matching history.
     if (next.event_type.trim() === currentEventType.trim()) {
       setEditing(false)
       return

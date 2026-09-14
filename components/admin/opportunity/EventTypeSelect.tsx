@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
+import { Input } from '@/components/ui/input'
 
 /**
  * The shared select-or-other event-type picker (event types inc 1, spec
@@ -46,12 +47,17 @@ export interface EventTypeSelectOption {
 
 const OTHER_VALUE = '__other__'
 
-// Pinned to ConvertToWorkCard.tsx's Kind select (~:276) so every event-type
-// control in the product — public or admin — reads as the same control.
-// h-9 clears the ≥24px touch-target gate; border-input/bg-background are the
-// house tokens, dark-mode safe with no palette-specific literals.
-const CONTROL_CLASSNAME =
-  'block h-9 w-full rounded-md border border-input bg-background px-2 text-sm disabled:opacity-60 disabled:cursor-not-allowed'
+// The kit Input's control skin (components/ui/input.tsx), rebuilt for the
+// native <select> so every event-type control — public intake included —
+// matches its kit-Input neighbors instead of forking them: same h-8/rounded-lg
+// metrics, the house focus-visible ring, and `text-base` under md (16px — any
+// smaller and iOS Safari focus-zooms the PUBLIC intake form) stepping down to
+// `md:text-sm`. Select-specific departures from the Input string: the file:*
+// and placeholder: variants don't apply, and `appearance` stays native so the
+// platform chevron survives (px-2.5 leaves it room). The two text fields this
+// component renders use the kit <Input> component itself.
+const SELECT_CLASSNAME =
+  'block h-8 w-full min-w-0 rounded-lg border border-input bg-transparent px-2.5 py-1 text-base transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50 md:text-sm dark:bg-input/30 dark:disabled:bg-input/80'
 
 interface EventTypeSelectProps {
   profiles: EventTypeSelectOption[]
@@ -108,6 +114,17 @@ export function EventTypeSelect({
 }: EventTypeSelectProps) {
   const matched = profiles.find((p) => p.name.trim().toLowerCase() === value.trim().toLowerCase())
   const [otherMode, setOtherMode] = useState(() => value.trim() !== '' && !matched)
+  /**
+   * True from the moment "Other…" is picked until the select's next blur (or
+   * a listed re-pick): picking Other clears the draft to '' and mounts the
+   * autofocused Other input, so the select immediately blurs — a HAND-OFF
+   * inside the control, not the operator leaving it. Forwarding that blur to
+   * a commit-on-blur host (FactsGrid) committed the just-cleared draft:
+   * event_type saved as null over a set value, or the editor closed blank.
+   * Consumed on first blur; `relatedTarget === the Other input` is the
+   * belt-and-suspenders for a manual select→Other tab with no pick.
+   */
+  const enteringOtherRef = useRef(false)
 
   // Zero active types: nothing to choose from, so this is just the plain
   // free-text field (spec §5c's 0-types rule, extended to the editors). It
@@ -117,7 +134,7 @@ export function EventTypeSelect({
   // `otherAriaLabel`'s "secondary, clarifying field" role to apply to.
   if (profiles.length === 0) {
     return (
-      <input
+      <Input
         id={id}
         type="text"
         aria-label={selectAriaLabel}
@@ -127,7 +144,6 @@ export function EventTypeSelect({
         onBlur={onBlur}
         onKeyDown={onKeyDown}
         placeholder={otherPlaceholder}
-        className={CONTROL_CLASSNAME}
       />
     )
   }
@@ -137,15 +153,28 @@ export function EventTypeSelect({
   function handleSelectChange(e: React.ChangeEvent<HTMLSelectElement>) {
     const next = e.target.value
     if (next === OTHER_VALUE) {
+      enteringOtherRef.current = true
       setOtherMode(true)
       onChange({ event_type: '', event_type_id: null })
       return
     }
+    enteringOtherRef.current = false
     setOtherMode(false)
     const profile = profiles.find((p) => p.name === next)
     const resolved: EventTypeSelectValue = { event_type: profile?.name ?? next, event_type_id: profile?.id ?? null }
     onChange(resolved)
     onCommitSelect?.(resolved)
+  }
+
+  /** Swallows the into-Other hand-off blur (see `enteringOtherRef`); every
+   *  other select blur reaches the host unchanged. The Other input's own blur
+   *  is wired straight to `onBlur` — its commit-on-blur contract is untouched. */
+  function handleSelectBlur(e: React.FocusEvent<HTMLSelectElement>) {
+    const toOtherInput = e.relatedTarget instanceof HTMLElement && e.relatedTarget.id === otherInputId
+    const handingOff = enteringOtherRef.current || toOtherInput
+    enteringOtherRef.current = false
+    if (handingOff) return
+    onBlur?.()
   }
 
   return (
@@ -156,9 +185,9 @@ export function EventTypeSelect({
         value={selectValue}
         disabled={disabled}
         onChange={handleSelectChange}
-        onBlur={onBlur}
+        onBlur={handleSelectBlur}
         onKeyDown={onKeyDown}
-        className={CONTROL_CLASSNAME}
+        className={SELECT_CLASSNAME}
       >
         <option value="" disabled hidden={selectValue !== ''}>
           Select an event type
@@ -171,7 +200,7 @@ export function EventTypeSelect({
         <option value={OTHER_VALUE}>{otherOptionLabel}</option>
       </select>
       {otherMode && (
-        <input
+        <Input
           id={otherInputId}
           type="text"
           aria-label={otherAriaLabel}
@@ -182,7 +211,6 @@ export function EventTypeSelect({
           onBlur={onBlur}
           onKeyDown={onKeyDown}
           placeholder={otherPlaceholder}
-          className={CONTROL_CLASSNAME}
         />
       )}
     </div>

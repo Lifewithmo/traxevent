@@ -93,7 +93,9 @@ describe('IntakeForm — event type select (event types inc 1)', () => {
     render(<IntakeForm token="tok_1" orgName="Brew Cart Co" activeEventTypeNames={['Wedding', 'Corporate']} />)
     fillRequired()
     fireEvent.change(screen.getByLabelText('Event type'), { target: { value: '__other__' } })
-    fireEvent.change(screen.getByLabelText('Tell us more'), { target: { value: 'Bar mitzvah' } })
+    // "Custom event type" — the same label the admin editors use for the
+    // revealed field, so one control reads the same everywhere.
+    fireEvent.change(screen.getByLabelText('Custom event type'), { target: { value: 'Bar mitzvah' } })
     fireEvent.click(screen.getByRole('button', { name: 'Send inquiry' }))
     await waitFor(() => expect(submitIntakeSpy).toHaveBeenCalledTimes(1))
     expect(submitIntakeSpy.mock.calls[0][1]).toEqual(

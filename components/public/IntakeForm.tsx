@@ -106,7 +106,7 @@ export function IntakeForm({ token, orgName, activeEventTypeNames = [] }: Intake
                 id="intakeEventTypeSelect"
                 otherInputId="intakeEventType"
                 selectAriaLabel="Event type"
-                otherAriaLabel="Tell us more"
+                otherAriaLabel="Custom event type"
                 otherPlaceholder="e.g. Wedding"
                 otherOptionLabel="Something else…"
               />

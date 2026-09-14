@@ -176,7 +176,11 @@ describe('EventTypeSelect', () => {
     expect(screen.getByLabelText('Custom event type')).toBeDisabled()
   })
 
-  it('uses the pinned ConvertToWorkCard native-select classNames for AA-consistent, ≥24px controls', () => {
+  // F3: the select wears the kit Input's skin (components/ui/input.tsx), not a
+  // fork of it — same h-8/rounded-lg metrics as its kit neighbors, the house
+  // focus-visible ring, and text-base (16px) below md so iOS Safari never
+  // focus-zooms the PUBLIC intake form, stepping down to md:text-sm.
+  it('skins the select from the kit Input class set (metrics, focus ring, no-iOS-zoom type scale)', () => {
     render(
       <EventTypeSelect
         profiles={PROFILES}
@@ -188,8 +192,45 @@ describe('EventTypeSelect', () => {
       />
     )
     const select = screen.getByLabelText('Event type')
-    for (const cls of ['h-9', 'w-full', 'rounded-md', 'border-input', 'bg-background', 'text-sm']) {
+    for (const cls of [
+      'h-8', 'w-full', 'rounded-lg', 'border-input', 'text-base', 'md:text-sm',
+      'focus-visible:border-ring', 'focus-visible:ring-3', 'dark:bg-input/30',
+    ]) {
       expect(select.className).toContain(cls)
     }
+    // The pre-F3 fork: 14px everywhere (iOS focus-zoom on the public form),
+    // no focus ring, off-kit metrics.
+    expect(select.className).not.toContain('h-9')
+    expect(select.className).not.toContain('rounded-md')
+  })
+
+  it('renders the revealed Other field with the kit Input component itself', () => {
+    render(
+      <EventTypeSelect
+        profiles={PROFILES}
+        value="Gala Night"
+        onChange={vi.fn()}
+        id="et-select"
+        otherInputId="et-other"
+        selectAriaLabel="Event type"
+        otherAriaLabel="Custom event type"
+      />
+    )
+    // data-slot="input" is the kit Input's marker (components/ui/input.tsx).
+    expect(screen.getByLabelText('Custom event type')).toHaveAttribute('data-slot', 'input')
+  })
+
+  it('renders the 0-profiles fallback with the kit Input component too', () => {
+    render(
+      <EventTypeSelect
+        profiles={[]}
+        value=""
+        onChange={vi.fn()}
+        id="et-select"
+        otherInputId="et-other"
+        selectAriaLabel="Event type"
+      />
+    )
+    expect(screen.getByLabelText('Event type')).toHaveAttribute('data-slot', 'input')
   })
 })

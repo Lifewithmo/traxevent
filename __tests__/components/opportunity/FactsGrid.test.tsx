@@ -163,6 +163,49 @@ describe('FactsGrid — Event type picker', () => {
     await waitFor(() => expect(updateLead).toHaveBeenCalledWith('o1', 'l1', { event_type: null, event_type_id: null }))
   })
 
+  // THE INTO-OTHER HANDOFF. Picking "Other…" clears the draft (so the operator
+  // can type) and mounts the autofocused Other input — at which point, in a
+  // real browser, the SELECT blurs with relatedTarget = that input. The host's
+  // commit-on-blur must not treat that hand-off blur as "operator left the
+  // control": it would commit the just-cleared draft, saving event_type: null
+  // over a set value (or closing the editor on a blank one) before a single
+  // keystroke. jsdom never runs the focus cascade — nine green tests missed
+  // this — so the hand-off blur is driven explicitly below to pin it.
+  it('picking "Other…" on a set fact saves nothing and leaves the editor open in Other mode', () => {
+    render(<FactsGrid {...props} lead={{ ...lead, event_type: 'Wedding', event_type_id: 'et-wedding' }} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Wedding' }))
+    fireEvent.change(screen.getByLabelText('Event type'), { target: { value: '__other__' } })
+    expect(updateLead).not.toHaveBeenCalled()
+    expect(screen.getByLabelText('Custom event type')).toBeInTheDocument()
+  })
+
+  it('the select blur during the into-Other handoff never commits the cleared draft', async () => {
+    render(<FactsGrid {...props} lead={{ ...lead, event_type: 'Wedding', event_type_id: 'et-wedding' }} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Wedding' }))
+    const select = screen.getByLabelText('Event type')
+    fireEvent.change(select, { target: { value: '__other__' } })
+    fireEvent.blur(select, { relatedTarget: screen.getByLabelText('Custom event type') })
+    await Promise.resolve()
+    expect(updateLead).not.toHaveBeenCalled()
+    // Editor still open in Other mode, ready for typing.
+    expect(screen.getByLabelText('Custom event type')).toBeInTheDocument()
+  })
+
+  it('typing in the Other field after the handoff commits exactly the typed value on blur', async () => {
+    render(<FactsGrid {...props} lead={{ ...lead, event_type: 'Wedding', event_type_id: 'et-wedding' }} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Wedding' }))
+    const select = screen.getByLabelText('Event type')
+    fireEvent.change(select, { target: { value: '__other__' } })
+    fireEvent.blur(select, { relatedTarget: screen.getByLabelText('Custom event type') })
+    const other = screen.getByLabelText('Custom event type')
+    fireEvent.change(other, { target: { value: 'Gala' } })
+    fireEvent.blur(other)
+    await waitFor(() =>
+      expect(updateLead).toHaveBeenCalledWith('o1', 'l1', { event_type: 'Gala', event_type_id: null })
+    )
+    expect(updateLead).toHaveBeenCalledTimes(1)
+  })
+
   it('surfaces a failed save instead of silently dropping the edit', async () => {
     updateLead.mockRejectedValue(new Error('Permission denied'))
     render(<FactsGrid {...props} />)
