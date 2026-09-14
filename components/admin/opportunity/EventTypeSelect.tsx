@@ -8,10 +8,11 @@ import { Input } from '@/components/ui/input'
  * §5c/§5d): a native `<select>` of the org's ACTIVE profile names plus
  * "Other…", which reveals a plain free-text input for anything not on the
  * list. One control everywhere it appears — public intake, FactsGrid's
- * inline fact, OpportunityDetailsForm — so an operator who has used one has
- * used them all (Jakob's law), and the capacity/matching engine's own
- * trim+case-insensitive name rule never has to reconcile three spellings of
- * the same control.
+ * inline fact, OpportunityDetailsForm, and the New Opportunity form (which
+ * also opts into the inline-create option below) — so an operator who has
+ * used one has used them all (Jakob's law), and the capacity/matching
+ * engine's own trim+case-insensitive name rule never has to reconcile four
+ * spellings of the same control.
  *
  * With ZERO active profiles it renders nothing but the plain input — the
  * same "today's free-text input stands" rule spec §5c states for the public
@@ -46,6 +47,7 @@ export interface EventTypeSelectOption {
 }
 
 const OTHER_VALUE = '__other__'
+const CREATE_VALUE = '__create__'
 
 // The kit Input's control skin (components/ui/input.tsx), rebuilt for the
 // native <select> so every event-type control — public intake included —
@@ -94,6 +96,31 @@ interface EventTypeSelectProps {
    */
   onBlur?: () => void
   onKeyDown?: (e: React.KeyboardEvent<HTMLSelectElement | HTMLInputElement>) => void
+  /**
+   * Hosts with an in-flow create dialog (the New Opportunity form) pass this
+   * and get ONE extra "+ New event type…" option pinned at the BOTTOM of the
+   * list, after the Other option. It is an ACTION, not a value: picking it
+   * fires the callback and the select reverts to its previous rendering —
+   * the sentinel never reaches `onChange`/`onCommitSelect` and never
+   * persists. Not rendered in 0-profiles mode (there is no select to carry
+   * it — a host that still needs create-from-zero renders its own affordance
+   * beside the plain input), and NEVER passed by the public intake form:
+   * anonymous visitors must not mint taxonomy entries (spec §5c).
+   */
+  onCreateNew?: () => void
+  /**
+   * The host's handle on the PRIMARY control — the select, or the plain
+   * input in 0-profiles mode (only one is ever mounted) — for focus
+   * management: validation landing, dialog initial/return focus.
+   */
+  controlRef?: React.RefObject<HTMLSelectElement | HTMLInputElement | null>
+  /**
+   * Field-error aria, applied to EVERY mounted control so the host's error
+   * line stays announced whichever control holds the entry (the kit Input
+   * also picks up its destructive ring from aria-invalid).
+   */
+  ariaInvalid?: boolean
+  ariaDescribedby?: string
 }
 
 export function EventTypeSelect({
@@ -111,6 +138,10 @@ export function EventTypeSelect({
   autoFocusOther,
   onBlur,
   onKeyDown,
+  onCreateNew,
+  controlRef,
+  ariaInvalid,
+  ariaDescribedby,
 }: EventTypeSelectProps) {
   const matched = profiles.find((p) => p.name.trim().toLowerCase() === value.trim().toLowerCase())
   const [otherMode, setOtherMode] = useState(() => value.trim() !== '' && !matched)
@@ -125,6 +156,10 @@ export function EventTypeSelect({
    * belt-and-suspenders for a manual select→Other tab with no pick.
    */
   const enteringOtherRef = useRef(false)
+  /** Same hand-off idea for the create option: picking it moves focus into
+   *  the host's create dialog — an action inside the control, not the
+   *  operator leaving it — so the next select blur is swallowed too. */
+  const creatingRef = useRef(false)
 
   // Zero active types: nothing to choose from, so this is just the plain
   // free-text field (spec §5c's 0-types rule, extended to the editors). It
@@ -135,9 +170,14 @@ export function EventTypeSelect({
   if (profiles.length === 0) {
     return (
       <Input
+        // Union ref shared across the two mount states (select vs plain
+        // input); only one is ever mounted, so the narrowing cast is safe.
+        ref={controlRef as React.RefObject<HTMLInputElement | null> | undefined}
         id={id}
         type="text"
         aria-label={selectAriaLabel}
+        aria-invalid={ariaInvalid || undefined}
+        aria-describedby={ariaDescribedby}
         value={value}
         disabled={disabled}
         onChange={(e) => onChange({ event_type: e.target.value, event_type_id: null })}
@@ -152,6 +192,15 @@ export function EventTypeSelect({
 
   function handleSelectChange(e: React.ChangeEvent<HTMLSelectElement>) {
     const next = e.target.value
+    if (next === CREATE_VALUE) {
+      // An ACTION, not a value — handled BEFORE any onChange so the sentinel
+      // can never commit or persist. State here is untouched, so React's own
+      // controlled-select guarantee snaps the DOM back to the previous
+      // rendering after this handler runs.
+      creatingRef.current = true
+      onCreateNew?.()
+      return
+    }
     if (next === OTHER_VALUE) {
       enteringOtherRef.current = true
       setOtherMode(true)
@@ -171,8 +220,9 @@ export function EventTypeSelect({
    *  is wired straight to `onBlur` — its commit-on-blur contract is untouched. */
   function handleSelectBlur(e: React.FocusEvent<HTMLSelectElement>) {
     const toOtherInput = e.relatedTarget instanceof HTMLElement && e.relatedTarget.id === otherInputId
-    const handingOff = enteringOtherRef.current || toOtherInput
+    const handingOff = enteringOtherRef.current || creatingRef.current || toOtherInput
     enteringOtherRef.current = false
+    creatingRef.current = false
     if (handingOff) return
     onBlur?.()
   }
@@ -180,8 +230,11 @@ export function EventTypeSelect({
   return (
     <div className="space-y-1.5">
       <select
+        ref={controlRef as React.RefObject<HTMLSelectElement | null> | undefined}
         id={id}
         aria-label={selectAriaLabel}
+        aria-invalid={ariaInvalid || undefined}
+        aria-describedby={ariaDescribedby}
         value={selectValue}
         disabled={disabled}
         onChange={handleSelectChange}
@@ -198,12 +251,15 @@ export function EventTypeSelect({
           </option>
         ))}
         <option value={OTHER_VALUE}>{otherOptionLabel}</option>
+        {onCreateNew && <option value={CREATE_VALUE}>+ New event type…</option>}
       </select>
       {otherMode && (
         <Input
           id={otherInputId}
           type="text"
           aria-label={otherAriaLabel}
+          aria-invalid={ariaInvalid || undefined}
+          aria-describedby={ariaDescribedby}
           value={value}
           disabled={disabled}
           autoFocus={autoFocusOther}

@@ -18,7 +18,7 @@ vi.mock('@/actions/event-type-profiles', () => ({
 
 const wedding: EventTypeProfile = { id: 'p-wed', name: 'Wedding', needsMobile: true, needsVenue: true }
 
-/** Renders the form as an admin (canCreateEventTypes) with one profile chip. */
+/** Renders the form as an admin (canCreateEventTypes) with one listed profile. */
 function renderAdminForm(props: Partial<React.ComponentProps<typeof NewOpportunityForm>> = {}) {
   return render(
     <NewOpportunityForm
@@ -26,7 +26,6 @@ function renderAdminForm(props: Partial<React.ComponentProps<typeof NewOpportuni
       orgSlug="brew"
       open
       onClose={() => {}}
-      eventTypeOptions={['Wedding']}
       eventTypeProfiles={[wedding]}
       canCreateEventTypes
       {...props}
@@ -35,6 +34,12 @@ function renderAdminForm(props: Partial<React.ComponentProps<typeof NewOpportuni
 }
 
 const typeInput = () => screen.getByLabelText('Event type')
+/** The admin trigger: the "+ New event type…" option pinned at the bottom of
+ *  the ONE event-type select. An action, not a value — see EventTypeSelect. */
+const openCreate = () => fireEvent.change(typeInput(), { target: { value: '__create__' } })
+/** Free text goes through "Something else…" now (one dropdown, no echo input). */
+const chooseSomethingElse = () => fireEvent.change(typeInput(), { target: { value: '__other__' } })
+const otherInput = () => screen.getByLabelText('Custom event type')
 const popover = () => screen.queryByRole('dialog', { name: 'New event type' })
 const nameField = () => screen.getByLabelText('Event type name')
 
@@ -42,29 +47,33 @@ describe('NewEventTypePopover (inline create-in-flow)', () => {
   beforeEach(() => vi.clearAllMocks())
 
   describe('opening', () => {
-    it('opens from the "+ New type" chip with focus on the name field, empty when nothing is typed', async () => {
+    it('opens from the "+ New event type…" option with focus on the name field, empty when nothing is typed', async () => {
       renderAdminForm()
-      fireEvent.click(screen.getByRole('button', { name: '+ New type' }))
+      openCreate()
       expect(popover()).toBeInTheDocument()
       // The outer New-opportunity dialog stays mounted underneath (inert
       // while the child is up, so a text query, not a role query).
       expect(screen.getByText('New opportunity')).toBeInTheDocument()
       expect(nameField()).toHaveValue('')
       await waitFor(() => expect(nameField()).toHaveFocus())
+      // The option is an ACTION: the sentinel never committed, so the select
+      // still sits on its placeholder.
+      expect(document.getElementById('leadEventType')).toHaveValue('')
     })
 
     it('prefills the name from unrecognized free text via the hint action', async () => {
       renderAdminForm()
-      fireEvent.change(typeInput(), { target: { value: '  Quinceañera ' } })
+      chooseSomethingElse()
+      fireEvent.change(otherInput(), { target: { value: '  Quinceañera ' } })
       fireEvent.click(screen.getByRole('button', { name: 'Add as event type' }))
       expect(popover()).toBeInTheDocument()
       expect(nameField()).toHaveValue('Quinceañera')
     })
 
-    it('does NOT prefill from text that already matches a profile', () => {
+    it('does NOT prefill from a pick that already matches a profile', () => {
       renderAdminForm()
       fireEvent.change(typeInput(), { target: { value: 'Wedding' } })
-      fireEvent.click(screen.getByRole('button', { name: '+ New type' }))
+      openCreate()
       expect(nameField()).toHaveValue('')
     })
   })
@@ -72,7 +81,7 @@ describe('NewEventTypePopover (inline create-in-flow)', () => {
   describe('policy toggles', () => {
     it('prefills needs-mobile pressed and needs-venue unpressed by default', () => {
       renderAdminForm()
-      fireEvent.click(screen.getByRole('button', { name: '+ New type' }))
+      openCreate()
       expect(screen.getByRole('button', { name: 'needs serving unit', pressed: true })).toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'needs room', pressed: false })).toBeInTheDocument()
     })
@@ -80,7 +89,7 @@ describe('NewEventTypePopover (inline create-in-flow)', () => {
     it('prefills needs-venue pressed when Where is currently On-site', () => {
       renderAdminForm({ showDeliveryMode: true })
       fireEvent.click(screen.getByRole('button', { name: 'On-site' }))
-      fireEvent.click(screen.getByRole('button', { name: '+ New type' }))
+      openCreate()
       expect(screen.getByRole('button', { name: 'needs room', pressed: true })).toBeInTheDocument()
     })
 
@@ -88,14 +97,14 @@ describe('NewEventTypePopover (inline create-in-flow)', () => {
       renderAdminForm({
         resourceLabels: { mobile: { one: 'cart', many: 'carts' }, venue: { one: 'taproom', many: 'taprooms' } },
       })
-      fireEvent.click(screen.getByRole('button', { name: '+ New type' }))
+      openCreate()
       expect(screen.getByRole('button', { name: 'needs cart' })).toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'needs taproom' })).toBeInTheDocument()
     })
 
     it('renders AA status tokens and stays motion-reduce safe', () => {
       renderAdminForm()
-      fireEvent.click(screen.getByRole('button', { name: '+ New type' }))
+      openCreate()
       const pressed = screen.getByRole('button', { name: 'needs serving unit' })
       const unpressed = screen.getByRole('button', { name: 'needs room' })
       expect(pressed.className).toContain('--status-confirmed-bg')
@@ -108,10 +117,11 @@ describe('NewEventTypePopover (inline create-in-flow)', () => {
   })
 
   describe('create', () => {
-    it('creates the profile, selects the chip, resolves the id, and returns focus to the flow', async () => {
+    it('creates the profile, selects the new type in the dropdown, resolves the id, and returns focus to the flow', async () => {
       renderAdminForm()
       fireEvent.change(screen.getByRole('textbox', { name: 'Name' }), { target: { value: 'Jane Doe' } })
-      fireEvent.change(typeInput(), { target: { value: 'Quinceañera' } })
+      chooseSomethingElse()
+      fireEvent.change(otherInput(), { target: { value: 'Quinceañera' } })
       fireEvent.click(screen.getByRole('button', { name: 'Add as event type' }))
       fireEvent.click(screen.getByRole('button', { name: 'Create type' }))
 
@@ -120,17 +130,19 @@ describe('NewEventTypePopover (inline create-in-flow)', () => {
           name: 'Quinceañera', needsMobile: true, needsVenue: false,
         })
       )
-      // Popover closes; the created type is now a SELECTED chip and the input
-      // mirrors the created (server-canonical) name.
+      // Popover closes; the created type is now a listed option AND the
+      // select's current pick — Other mode stands down (the free text became
+      // a real, configured type with the server-canonical name).
       await waitFor(() => expect(popover()).not.toBeInTheDocument())
       // The popover's submit must NEVER leak into the outer form (React
       // portals bubble through the React tree): no premature lead create.
       expect(createLead).not.toHaveBeenCalled()
       expect(typeInput()).toHaveValue('Quinceañera')
-      expect(screen.getByRole('button', { name: 'Quinceañera' })).toHaveAttribute('aria-pressed', 'true')
+      expect(screen.getByRole('option', { name: 'Quinceañera' })).toBeInTheDocument()
+      expect(screen.queryByLabelText('Custom event type')).not.toBeInTheDocument()
       // The hint stands down — the type is configured now.
       expect(screen.queryByText(/not a configured event type/i)).not.toBeInTheDocument()
-      // Focus returns to the event-type input (never leave the flow).
+      // Focus returns to the event-type select (never leave the flow).
       await waitFor(() => expect(typeInput()).toHaveFocus())
 
       // The very next lead create carries the new id.
@@ -144,7 +156,7 @@ describe('NewEventTypePopover (inline create-in-flow)', () => {
 
     it('honors the toggles as pressed at create time', async () => {
       renderAdminForm()
-      fireEvent.click(screen.getByRole('button', { name: '+ New type' }))
+      openCreate()
       fireEvent.change(nameField(), { target: { value: 'Festival' } })
       fireEvent.click(screen.getByRole('button', { name: 'needs serving unit' }))
       fireEvent.click(screen.getByRole('button', { name: 'needs room' }))
@@ -158,7 +170,7 @@ describe('NewEventTypePopover (inline create-in-flow)', () => {
 
     it('never calls the action with a blank name', async () => {
       renderAdminForm()
-      fireEvent.click(screen.getByRole('button', { name: '+ New type' }))
+      openCreate()
       fireEvent.click(screen.getByRole('button', { name: 'Create type' }))
       expect(await screen.findByText(/enter a name/i)).toBeInTheDocument()
       expect(createEventTypeProfile).not.toHaveBeenCalled()
@@ -175,7 +187,7 @@ describe('NewEventTypePopover (inline create-in-flow)', () => {
         id: 'p-wed', name: 'Wedding', needsMobile: true, needsVenue: true,
       })
       renderAdminForm()
-      fireEvent.click(screen.getByRole('button', { name: '+ New type' }))
+      openCreate()
       fireEvent.change(nameField(), { target: { value: 'wedding' } })
       fireEvent.click(screen.getByRole('button', { name: 'Create type' }))
       await waitFor(() => expect(popover()).not.toBeInTheDocument())
@@ -188,7 +200,7 @@ describe('NewEventTypePopover (inline create-in-flow)', () => {
 
     it('stays quiet when the created profile matches the submitted policy exactly', async () => {
       renderAdminForm() // default mock: needsMobile true / needsVenue false = the popover defaults
-      fireEvent.click(screen.getByRole('button', { name: '+ New type' }))
+      openCreate()
       fireEvent.change(nameField(), { target: { value: 'Quinceañera' } })
       fireEvent.click(screen.getByRole('button', { name: 'Create type' }))
       await waitFor(() => expect(popover()).not.toBeInTheDocument())
@@ -198,7 +210,7 @@ describe('NewEventTypePopover (inline create-in-flow)', () => {
     it('surfaces a server failure in a live region and stays open for a retry', async () => {
       vi.mocked(createEventTypeProfile).mockRejectedValueOnce(new Error('Only an org admin can do that'))
       renderAdminForm()
-      fireEvent.click(screen.getByRole('button', { name: '+ New type' }))
+      openCreate()
       fireEvent.change(nameField(), { target: { value: 'Festival' } })
       fireEvent.click(screen.getByRole('button', { name: 'Create type' }))
       const error = await screen.findByText('Only an org admin can do that')
@@ -213,7 +225,7 @@ describe('NewEventTypePopover (inline create-in-flow)', () => {
   describe('closing', () => {
     it('Escape closes only the popover and returns focus to the event-type input', async () => {
       renderAdminForm()
-      fireEvent.click(screen.getByRole('button', { name: '+ New type' }))
+      openCreate()
       await waitFor(() => expect(nameField()).toHaveFocus())
       fireEvent.keyDown(nameField(), { key: 'Escape' })
       await waitFor(() => expect(popover()).not.toBeInTheDocument())
@@ -226,7 +238,7 @@ describe('NewEventTypePopover (inline create-in-flow)', () => {
 
     it('Cancel does the same', async () => {
       renderAdminForm()
-      fireEvent.click(screen.getByRole('button', { name: '+ New type' }))
+      openCreate()
       // Scoped: the outer New-opportunity dialog has its own Cancel button.
       const pop = screen.getByRole('dialog', { name: 'New event type' })
       fireEvent.click(within(pop).getByRole('button', { name: 'Cancel' }))
@@ -236,11 +248,11 @@ describe('NewEventTypePopover (inline create-in-flow)', () => {
 
     it('reopening starts a fresh draft (no stale name from the last open)', async () => {
       renderAdminForm()
-      fireEvent.click(screen.getByRole('button', { name: '+ New type' }))
+      openCreate()
       fireEvent.change(nameField(), { target: { value: 'Stale draft' } })
       fireEvent.keyDown(nameField(), { key: 'Escape' })
       await waitFor(() => expect(popover()).not.toBeInTheDocument())
-      fireEvent.click(screen.getByRole('button', { name: '+ New type' }))
+      openCreate()
       expect(nameField()).toHaveValue('')
     })
   })

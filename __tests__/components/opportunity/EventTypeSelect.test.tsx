@@ -233,4 +233,185 @@ describe('EventTypeSelect', () => {
     )
     expect(screen.getByLabelText('Event type')).toHaveAttribute('data-slot', 'input')
   })
+
+  /*
+    INLINE CREATE (picker unification): hosts with an in-flow create dialog
+    (the New Opportunity form) pass `onCreateNew` and get ONE extra
+    "+ New event type…" option pinned at the BOTTOM of the list, after the
+    Other option. It is an ACTION, not a value: picking it fires the callback
+    and the select reverts to its previous rendering — the sentinel never
+    reaches onChange/onCommitSelect and never persists. Hosts that pass
+    nothing (the public intake form MUST not offer create to anonymous
+    visitors) are byte-for-byte unchanged.
+  */
+  describe('inline-create option', () => {
+    it('renders no create option unless onCreateNew is given', () => {
+      render(
+        <EventTypeSelect
+          profiles={PROFILES}
+          value=""
+          onChange={vi.fn()}
+          id="et-select"
+          otherInputId="et-other"
+          selectAriaLabel="Event type"
+        />
+      )
+      const labels = Array.from((screen.getByLabelText('Event type') as HTMLSelectElement).options)
+        .map((o) => o.textContent)
+      expect(labels).not.toContain('+ New event type…')
+    })
+
+    it('pins "+ New event type…" at the bottom, after the Other option', () => {
+      render(
+        <EventTypeSelect
+          profiles={PROFILES}
+          value=""
+          onChange={vi.fn()}
+          onCreateNew={vi.fn()}
+          id="et-select"
+          otherInputId="et-other"
+          selectAriaLabel="Event type"
+        />
+      )
+      const labels = Array.from((screen.getByLabelText('Event type') as HTMLSelectElement).options)
+        .map((o) => o.textContent)
+      expect(labels[labels.length - 1]).toBe('+ New event type…')
+      expect(labels[labels.length - 2]).toBe('Other…')
+    })
+
+    it('fires onCreateNew without committing — the previous selection survives', () => {
+      const onChange = vi.fn()
+      const onCommitSelect = vi.fn()
+      const onCreateNew = vi.fn()
+      render(
+        <EventTypeSelect
+          profiles={PROFILES}
+          value="Wedding"
+          onChange={onChange}
+          onCommitSelect={onCommitSelect}
+          onCreateNew={onCreateNew}
+          id="et-select"
+          otherInputId="et-other"
+          selectAriaLabel="Event type"
+        />
+      )
+      fireEvent.change(screen.getByLabelText('Event type'), { target: { value: '__create__' } })
+      expect(onCreateNew).toHaveBeenCalledTimes(1)
+      // Never a value: neither change channel hears about the sentinel…
+      expect(onChange).not.toHaveBeenCalled()
+      expect(onCommitSelect).not.toHaveBeenCalled()
+      // …and the controlled select snaps back to the previous rendering.
+      expect(screen.getByLabelText('Event type')).toHaveValue('Wedding')
+      expect(screen.queryByRole('textbox')).toBeNull() // no Other reveal either
+    })
+
+    it('swallows the hand-off blur into the create UI, like the into-Other hand-off', () => {
+      const onBlur = vi.fn()
+      render(
+        <EventTypeSelect
+          profiles={PROFILES}
+          value=""
+          onChange={vi.fn()}
+          onCreateNew={vi.fn()}
+          onBlur={onBlur}
+          id="et-select"
+          otherInputId="et-other"
+          selectAriaLabel="Event type"
+        />
+      )
+      const select = screen.getByLabelText('Event type')
+      fireEvent.change(select, { target: { value: '__create__' } })
+      // Focus moving into the host's create dialog is a hand-off inside the
+      // control, not the operator leaving it — a commit-on-blur host must not
+      // commit here.
+      fireEvent.blur(select)
+      expect(onBlur).not.toHaveBeenCalled()
+      // The NEXT blur is a real leave again.
+      fireEvent.blur(select)
+      expect(onBlur).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  /*
+    HOST WIRING (picker unification): the New Opportunity form manages focus
+    (validation landing, dialog initial/return focus) and error aria on the
+    event-type field — pass-throughs, unused by the pre-existing hosts.
+  */
+  describe('controlRef + error aria pass-throughs', () => {
+    it('hands the host the PRIMARY control in both modes', () => {
+      const ref = { current: null as HTMLSelectElement | HTMLInputElement | null }
+      const { rerender } = render(
+        <EventTypeSelect
+          profiles={PROFILES}
+          value=""
+          onChange={vi.fn()}
+          controlRef={ref}
+          id="et-select"
+          otherInputId="et-other"
+          selectAriaLabel="Event type"
+        />
+      )
+      expect(ref.current?.tagName).toBe('SELECT')
+      rerender(
+        <EventTypeSelect
+          profiles={[]}
+          value=""
+          onChange={vi.fn()}
+          controlRef={ref}
+          id="et-select"
+          otherInputId="et-other"
+          selectAriaLabel="Event type"
+        />
+      )
+      expect(ref.current?.tagName).toBe('INPUT')
+    })
+
+    it('applies ariaInvalid + ariaDescribedby to every mounted control', () => {
+      render(
+        <EventTypeSelect
+          profiles={PROFILES}
+          value="Gala Night"
+          onChange={vi.fn()}
+          ariaInvalid
+          ariaDescribedby="et-error"
+          id="et-select"
+          otherInputId="et-other"
+          selectAriaLabel="Event type"
+          otherAriaLabel="Custom event type"
+        />
+      )
+      for (const el of [screen.getByLabelText('Event type'), screen.getByLabelText('Custom event type')]) {
+        expect(el).toHaveAttribute('aria-invalid', 'true')
+        expect(el).toHaveAttribute('aria-describedby', 'et-error')
+      }
+    })
+
+    it('applies them to the 0-profiles input too, and omits the attributes when unset', () => {
+      const { rerender } = render(
+        <EventTypeSelect
+          profiles={[]}
+          value=""
+          onChange={vi.fn()}
+          ariaInvalid
+          ariaDescribedby="et-error"
+          id="et-select"
+          otherInputId="et-other"
+          selectAriaLabel="Event type"
+        />
+      )
+      expect(screen.getByLabelText('Event type')).toHaveAttribute('aria-invalid', 'true')
+      rerender(
+        <EventTypeSelect
+          profiles={[]}
+          value=""
+          onChange={vi.fn()}
+          id="et-select"
+          otherInputId="et-other"
+          selectAriaLabel="Event type"
+        />
+      )
+      expect(screen.getByLabelText('Event type')).not.toHaveAttribute('aria-invalid')
+      expect(screen.getByLabelText('Event type')).not.toHaveAttribute('aria-describedby')
+    })
+  })
 })

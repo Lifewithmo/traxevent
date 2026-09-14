@@ -23,7 +23,7 @@ import { activeEventTypeProfiles } from '@/lib/crm/event-type-options'
 import { kindLabel } from '@/lib/capacity/labels'
 import { cn } from '@/lib/utils'
 import { CustomerPicker } from './CustomerPicker'
-import { EventTypeChips } from './EventTypeChips'
+import { EventTypeSelect } from '@/components/admin/opportunity/EventTypeSelect'
 import { NewEventTypePopover } from './NewEventTypePopover'
 import { CallerMatchHint } from './CallerMatchHint'
 import { FollowUpField, defaultFollowUpYmd } from './FollowUpField'
@@ -41,19 +41,20 @@ interface NewOpportunityFormProps {
   // delivery toggle (default offsite). The server decides this — nothing to
   // choose for an org with no venue, so the control simply does not render.
   showDeliveryMode?: boolean
-  eventTypeOptions?: string[]         // ordered: profile names first, then historical by frequency
-  // The org's event-type profiles (event types inc 1) — independent of the
-  // merged eventTypeOptions, which also carries historical types and stays the
-  // chips' DISPLAY source. Only ACTIVE-profile membership decides what the
-  // capacity engine does with a typed type (leadRequirement), so this list
-  // alone drives the "not a configured event type" hint, the delivery-mode
-  // hiding, AND the `event_type_id` the create payload carries on a name
-  // match. Archived entries are ignored here (the form filters), so callers
-  // may thread the org array verbatim.
+  // The org's event-type profiles (event types inc 1) — the ONE dropdown's
+  // option list (the shared EventTypeSelect, same control as the intake form
+  // and the opportunity editors — the chip-row-over-an-input combo is gone:
+  // "IT LOOKS AND ACTS LIKE A TAG"). Only ACTIVE-profile membership decides
+  // what the capacity engine does with a typed type (leadRequirement), so
+  // this list alone drives the options, the "not a configured event type"
+  // hint, the delivery-mode hiding, AND the `event_type_id` the create
+  // payload carries on a name match. Archived entries are ignored here (the
+  // form filters), so callers may thread the org array verbatim.
   eventTypeProfiles?: EventTypeProfile[]
   // Owner/admin (computed server-side from the member role): offers the
-  // inline "+ New type" chip and the hint's "Add as event type" action —
-  // decision (b), never leave the flow. Absent/false ⇒ neither renders.
+  // "+ New event type…" option in the dropdown (a zero-state button when the
+  // org has no profiles yet) and the hint's "Add as event type" action —
+  // decision (b), never leave the flow. Absent/false ⇒ none of them render.
   canCreateEventTypes?: boolean
   // The operator's kind vocabulary for the popover's policy toggles
   // ("needs cart" / "needs room" in THEIR words via `kindLabel`). Absent ⇒
@@ -110,8 +111,9 @@ function SectionLegend({ children }: { children: React.ReactNode }) {
  * The New-opportunity dialog — the moment the business answers the caller.
  *
  * Task-flow order, not schema order (spec §6): WHO (name/phone + caller
- * recognition + client search fallback), WHAT & WHEN (type chips, date +
- * guests with the LIVE bookability verdict rendered at the date field), NEXT
+ * recognition + client search fallback), WHAT & WHEN (the event-type
+ * dropdown, date + guests with the LIVE bookability verdict rendered at the
+ * date field), NEXT
  * (a follow-up that becomes a real task in the same server write), and a
  * More-details disclosure for the long tail (title/org/email/value/notes).
  *
@@ -129,7 +131,6 @@ export function NewOpportunityForm({
   customer,
   customers,
   showDeliveryMode,
-  eventTypeOptions,
   eventTypeProfiles,
   canCreateEventTypes,
   resourceLabels,
@@ -173,14 +174,23 @@ export function NewOpportunityForm({
   // Inline create-in-flow (event types inc 1). `sessionProfiles` holds types
   // created through the popover THIS mount: they are real server records
   // already, layered over the props until a router.refresh delivers them —
-  // so the new chip appears, matches, and carries its id immediately. NOT
+  // so the new option appears, matches, and carries its id immediately. NOT
   // reset with the draft: closing the dialog does not un-create a type.
   const [typePopoverOpen, setTypePopoverOpen] = useState(false)
   const [sessionProfiles, setSessionProfiles] = useState<EventTypeProfile[]>([])
+  // Remount handle for the event-type picker. EventTypeSelect deliberately
+  // never yanks itself out of Other mode while the operator is typing (a
+  // coincidental name match must not steal the field), so after a popover
+  // create turns the typed free text into a REAL listed type, the host bumps
+  // this key: the remounted picker re-derives its mode from the (now
+  // matching) value and shows the new type as the selected option.
+  const [pickerEpoch, setPickerEpoch] = useState(0)
 
   const nameRef = useRef<HTMLInputElement>(null)
   const phoneRef = useRef<HTMLInputElement>(null)
-  const eventTypeRef = useRef<HTMLInputElement>(null)
+  // The event-type stop is the select — or EventTypeSelect's plain-input
+  // fallback when the org has zero active profiles (only one is mounted).
+  const eventTypeRef = useRef<HTMLSelectElement | HTMLInputElement | null>(null)
   const dateRef = useRef<HTMLInputElement>(null)
   const guestsRef = useRef<HTMLInputElement>(null)
   const emailRef = useRef<HTMLInputElement>(null)
@@ -312,7 +322,10 @@ export function NewOpportunityForm({
 
   // ACTIVE profiles: the props' list (archived filtered out) plus any types
   // created inline this session — a session profile stands down as soon as a
-  // refreshed props list carries its id or name (no duplicate chips/matches).
+  // refreshed props list carries its id or name (no duplicate options or
+  // matches). This IS the dropdown's option list: profiles only, never the
+  // historical free-text vocabulary — history belongs to adopt-from-history
+  // on the settings page, not to this picker.
   const activeProfiles = useMemo(() => {
     const base = activeEventTypeProfiles(eventTypeProfiles)
     const seenIds = new Set(base.map((p) => p.id).filter(Boolean))
@@ -324,16 +337,6 @@ export function NewOpportunityForm({
       ),
     ]
   }, [eventTypeProfiles, sessionProfiles])
-  // Chip DISPLAY stays the merged options list; a session-created type gets
-  // its chip appended so "Create" can select it before the refresh lands.
-  const options = useMemo(() => {
-    const base = eventTypeOptions ?? []
-    const seen = new Set(base.map((o) => o.trim().toLowerCase()))
-    return [
-      ...base,
-      ...sessionProfiles.map((p) => p.name).filter((n) => !seen.has(n.trim().toLowerCase())),
-    ]
-  }, [eventTypeOptions, sessionProfiles])
   const trimmedType = eventType.trim()
   const typeKey = trimmedType.toLowerCase()
   // PROFILE membership, not merged-options membership: the merged list also
@@ -421,18 +424,22 @@ export function NewOpportunityForm({
   const venueOne = kindLabel({ resource_labels: resourceLabels }, 'venue', 1)
 
   /** The popover created (or idempotently found) a profile: layer it over the
-   *  props, mirror its canonical name into the field — which selects the chip
-   *  and resolves `event_type_id` — and refresh so the server props catch up.
-   *  Focus returns to the event-type input via the popover's finalFocus. When
-   *  the create was an idempotent match whose SAVED policy overrides the
-   *  toggles the operator just set, say so here in the announce region — the
-   *  popover has closed, so its own live region can't carry the line. */
+   *  props, mirror its canonical name into the field — which selects the new
+   *  option and resolves `event_type_id` — and refresh so the server props
+   *  catch up. The picker remounts (pickerEpoch) so an Other-mode launch
+   *  lands back on the select showing the new type, not on free text that
+   *  happens to match. Focus returns to the event-type control via the
+   *  popover's finalFocus (the ref tracks the remounted node). When the
+   *  create was an idempotent match whose SAVED policy overrides the toggles
+   *  the operator just set, say so here in the announce region — the popover
+   *  has closed, so its own live region can't carry the line. */
   function handleTypeCreated(profile: EventTypeProfile, info: { existingPolicyKept: boolean }) {
     setSessionProfiles((prev) => [
       ...prev.filter((p) => !(profile.id && p.id === profile.id)),
       profile,
     ])
     setEventType(profile.name)
+    setPickerEpoch((n) => n + 1)
     setTypePopoverOpen(false)
     if (info.existingPolicyKept) {
       setAnnounce(`“${profile.name}” already existed — using its saved policy.`)
@@ -646,21 +653,47 @@ export function NewOpportunityForm({
                 <div className="space-y-3">
                   <div className="space-y-1">
                     <Label htmlFor="leadEventType">Event type</Label>
-                    <EventTypeChips
-                      options={options}
-                      value={eventType}
-                      onChange={setEventType}
-                      onCreateNew={canCreateEventTypes ? () => setTypePopoverOpen(true) : undefined}
-                    />
-                    <Input
-                      ref={eventTypeRef}
-                      id="leadEventType"
-                      value={eventType}
-                      onChange={(e) => setEventType(e.target.value)}
-                      placeholder="e.g. Wedding"
-                      aria-invalid={errors.event_type ? true : undefined}
-                      aria-describedby={errors.event_type ? 'leadEventType-error' : undefined}
-                    />
+                    {/* ONE dropdown — the same EventTypeSelect the intake
+                        form and the opportunity editors use (the chip row
+                        over an echoing input read as a TAG control and was
+                        rejected). Listed pick = active profile; "Something
+                        else…" reveals free text (which never blocks); the
+                        admin's "+ New event type…" lives INSIDE the list.
+                        With zero active profiles this renders the plain
+                        free-text input, exactly like the intake form. */}
+                    <div className="flex gap-2">
+                      <div className="min-w-0 flex-1">
+                        <EventTypeSelect
+                          key={pickerEpoch}
+                          profiles={activeProfiles}
+                          value={eventType}
+                          onChange={(next) => setEventType(next.event_type)}
+                          id="leadEventType"
+                          otherInputId="leadEventTypeOther"
+                          otherAriaLabel="Custom event type"
+                          otherPlaceholder="e.g. Wedding"
+                          otherOptionLabel="Something else…"
+                          autoFocusOther
+                          controlRef={eventTypeRef}
+                          ariaInvalid={errors.event_type ? true : undefined}
+                          ariaDescribedby={errors.event_type ? 'leadEventType-error' : undefined}
+                          onCreateNew={canCreateEventTypes ? () => setTypePopoverOpen(true) : undefined}
+                        />
+                      </div>
+                      {activeProfiles.length === 0 && canCreateEventTypes && (
+                        // Zero-state ONLY: with no list to pin the create
+                        // option into, the popover's trigger sits beside the
+                        // plain input. Never chips.
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => setTypePopoverOpen(true)}
+                          className="shrink-0 border-dashed text-muted-foreground"
+                        >
+                          + New type
+                        </Button>
+                      )}
+                    </div>
                     {typeUnrecognized && (
                       <p className="text-xs text-muted-foreground">
                         Not a configured event type — capacity uses the default rule.

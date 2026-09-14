@@ -31,15 +31,12 @@ interface PipelineBoardViewProps {
   // Offers the offsite / on-site toggle in the board's create form so both
   // pipeline surfaces behave identically. Undefined ⇒ hidden.
   showDeliveryMode?: boolean
-  // The create form's chip vocabulary (contract C5) — same server-computed list
-  // the list surface threads, so the two views' forms are identical.
-  eventTypeOptions?: string[]
   // The org's event-type profiles (event types inc 1) — the form's matching
   // source for the hint, delivery-mode hiding, and the event_type_id payload
   // (it ignores archived entries itself).
   eventTypeProfiles?: Org['event_type_profiles']
-  // Owner/admin: the create form offers the inline "+ New type" chip and
-  // hint action. Computed server-side from the member role.
+  // Owner/admin: the create form offers the in-list "+ New event type…"
+  // option and hint action. Computed server-side from the member role.
   canCreateEventTypes?: boolean
   // The operator's kind vocabulary for the inline-create popover's policy
   // toggles ("needs cart" in their words via kindLabel).
@@ -103,7 +100,7 @@ function applyPending(base: PipelineRow[], pending: Map<string, PendingMove>): P
 }
 
 export function PipelineBoardView({
-  orgId, orgSlug, groups, monthly, customers, showDeliveryMode, eventTypeOptions,
+  orgId, orgSlug, groups, monthly, customers, showDeliveryMode,
   eventTypeProfiles, canCreateEventTypes, resourceLabels, pastJobCounts, bookabilityCtx,
 }: PipelineBoardViewProps) {
   const router = useRouter()
@@ -339,7 +336,6 @@ export function PipelineBoardView({
         onClose={() => setCreating(false)}
         customers={customers}
         showDeliveryMode={showDeliveryMode}
-        eventTypeOptions={eventTypeOptions}
         eventTypeProfiles={eventTypeProfiles}
         canCreateEventTypes={canCreateEventTypes}
         resourceLabels={resourceLabels}

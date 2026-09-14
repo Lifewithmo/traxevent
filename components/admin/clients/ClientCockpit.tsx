@@ -26,16 +26,14 @@ interface ClientCockpitProps {
   activity: ActivityEvent[]
   ar: CustomerAR
   // Server-computed create-form context (New Opportunity inc 1, contract C5):
-  // business tier + ≥1 active venue unit gates the delivery toggle, and the
-  // chip vocabulary is profiles + THIS customer's own history (page.tsx).
+  // business tier + ≥1 active venue unit gates the delivery toggle.
   showDeliveryMode?: boolean
-  eventTypeOptions?: string[]
   // The org's event-type profiles (event types inc 1) — the form's matching
   // source for the hint, delivery-mode hiding, and the event_type_id payload
   // (it ignores archived entries itself).
   eventTypeProfiles?: Org['event_type_profiles']
-  // Owner/admin: the create form offers the inline "+ New type" chip and
-  // hint action. Computed server-side from the member role.
+  // Owner/admin: the create form offers the in-list "+ New event type…"
+  // option and hint action. Computed server-side from the member role.
   canCreateEventTypes?: boolean
   // The operator's kind vocabulary for the inline-create popover's policy
   // toggles ("needs cart" in their words via kindLabel).
@@ -47,7 +45,7 @@ function byCreatedDesc<T extends { created_at?: string }>(rows: T[]): T[] {
 }
 
 export function ClientCockpit({
-  orgId, orgSlug, customer, opportunities, notes, invoices, activity, ar, showDeliveryMode, eventTypeOptions,
+  orgId, orgSlug, customer, opportunities, notes, invoices, activity, ar, showDeliveryMode,
   eventTypeProfiles, canCreateEventTypes, resourceLabels,
 }: ClientCockpitProps) {
   const router = useRouter()
@@ -150,7 +148,6 @@ export function ClientCockpit({
         onClose={() => setCreatingJob(false)}
         customer={customer}
         showDeliveryMode={showDeliveryMode}
-        eventTypeOptions={eventTypeOptions}
         eventTypeProfiles={eventTypeProfiles}
         canCreateEventTypes={canCreateEventTypes}
         resourceLabels={resourceLabels}

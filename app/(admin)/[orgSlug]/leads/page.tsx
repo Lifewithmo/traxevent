@@ -9,7 +9,7 @@ import { buildPipelineRows, closedThisMonth, radarConflictOpts, DEFAULT_PREP_LEA
 import { hasMultiResourceCapacity, listCapacityUnitsCore } from '@/lib/capacity/units'
 import { buildBookabilityCtx } from '@/lib/calendar-bookability'
 import { loadCalendarEvents } from '@/lib/calendar-fetch'
-import { buildEventTypeOptions, pastJobCounts } from '@/lib/crm/event-type-options'
+import { pastJobCounts } from '@/lib/crm/event-type-options'
 import { todayYmd } from '@/lib/opportunity-detail'
 import { OPEN_STAGES, CLOSED_STAGES } from '@/lib/leads'
 import { PipelineListClient } from '@/components/admin/pipeline/PipelineListClient'
@@ -142,20 +142,15 @@ export default async function LeadsPage({
   const ctxOrg = { plan: org.plan, prep_lead_days: prepLeadDays, event_type_profiles: org.event_type_profiles }
   const bookabilityCtx = buildBookabilityCtx({ orgSlug, org: ctxOrg, leads, events, units, today })
 
-  // The form's event-type chip vocabulary: profile names first, then the org's
-  // own history by frequency (lib/crm/event-type-options — one rule shared
-  // with the cockpit page). Whole-org history here: every lead, open or closed,
-  // is a word the operator has actually used.
-  const eventTypeOptions = buildEventTypeOptions(org.event_type_profiles, leads)
-
   // C5b: past-job counts per customer, over EVERY loaded lead (open or
   // closed), for the caller-recognition hint's "{n} past jobs". (The form's
-  // profile matching — hint, delivery-mode hiding, event_type_id — now runs
-  // against the org profile array threaded below, not a names list.)
+  // event-type picker — options, hint, delivery-mode hiding, event_type_id —
+  // runs entirely against the org profile array threaded below; the old
+  // history-mixed chip vocabulary is gone with the chips.)
   const jobCounts = pastJobCounts(leads)
 
   const shared = {
-    orgId, orgSlug, groups, monthly, showDeliveryMode, eventTypeOptions, bookabilityCtx,
+    orgId, orgSlug, groups, monthly, showDeliveryMode, bookabilityCtx,
     eventTypeProfiles: org.event_type_profiles, resourceLabels, canCreateEventTypes,
     pastJobCounts: jobCounts,
   }

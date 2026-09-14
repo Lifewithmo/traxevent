@@ -28,7 +28,7 @@ vi.mock('@/actions/intake', () => ({
   THE FORM IS A CONTRACT, NOT A DEPENDENCY (New Opportunity inc 1). Agent F owns
   NewOpportunityForm and rewrites it in parallel; this surface builds against
   contract C5 only — so the form is mocked here and these tests assert the PROPS
-  this call site threads (orgSlug, eventTypeOptions, bookabilityCtx, onCreated)
+  this call site threads (orgSlug, eventTypeProfiles, bookabilityCtx, onCreated)
   and what the call site does with onCreated, never the form's internals. The
   mock renders its own role="dialog" when open because that is C5's one
   structural promise: the form owns its Dialog now.
@@ -629,11 +629,10 @@ describe('PipelineListClient', () => {
       radar: { mode: 'degraded' as const, conflictDates: [], bookedCounts: {} },
     }
 
-    it('threads orgSlug, eventTypeOptions, bookabilityCtx, customers and showDeliveryMode into the form', () => {
+    it('threads orgSlug, the profile array, bookabilityCtx, customers and showDeliveryMode into the form', () => {
       render(<PipelineListClient {...baseProps}
         customers={[{ id: 'c1', name: 'Jane Doe' } as never]}
         showDeliveryMode
-        eventTypeOptions={['Wedding', 'Market']}
         eventTypeProfiles={[{ id: 'p-wed', name: 'Wedding', needsMobile: true, needsVenue: true }]}
         canCreateEventTypes
         resourceLabels={{ mobile: { one: 'cart', many: 'carts' } }}
@@ -643,7 +642,7 @@ describe('PipelineListClient', () => {
       const props = formProps.mock.calls.at(-1)![0]
       expect(props).toMatchObject({
         orgId: 'o1', orgSlug: 'demo', open: false,
-        showDeliveryMode: true, eventTypeOptions: ['Wedding', 'Market'],
+        showDeliveryMode: true,
         // Event types inc 1: the org profile array, the owner/admin
         // inline-create gate, and the operator's kind words all ride through
         // untouched — the form keys its matching and popover on them.
