@@ -6,6 +6,21 @@ export type EventRegistrationType = 'family' | 'individual' | 'child'
 
 export type BillingPlan = 'standard' | 'business'
 
+/**
+ * One org event type (Org.event_type_profiles entry) — the single, id-referenced,
+ * archivable taxonomy feeding every picker AND the capacity policy engine
+ * (event types inc 1, docs/superpowers/specs/2026-09-14-event-types-first-class-design.md §3).
+ */
+export interface EventTypeProfile {
+  id?: string            // stable 16-hex reference (randomBytes(8)); absent only on
+                         // legacy entries not yet re-saved — assigned lazily on the
+                         // next settings save (actions/capacity-config.ts)
+  name: string
+  needsMobile: boolean
+  needsVenue: boolean
+  archived?: boolean     // hidden from all pickers; history + policy stay intact
+}
+
 export interface Org {
   id: string
   name: string
@@ -41,12 +56,13 @@ export interface Org {
     mobile?: { one: string; many: string }
     venue?: { one: string; many: string }
   }
-  // Optional per-event-type resource profiles: declare which capacity kinds an
-  // event_type consumes (0/1 each). Absent ⇒ leadRequirement's default rule
-  // (a mobile unit always, a room when on-site) — migration-free. `name` is
-  // matched trimmed + case-insensitive against the free-text `lead.event_type`
-  // (an overlay, not a picklist migration). See lib/capacity/requirement.ts.
-  event_type_profiles?: Array<{ name: string; needsMobile: boolean; needsVenue: boolean }>
+  // The org's event types (first-class, inc 1): each declares which capacity
+  // kinds it consumes (0/1 each). Absent ⇒ leadRequirement's default rule
+  // (a mobile unit always, a room when on-site) — migration-free. Matching is
+  // id-first via `Lead.event_type_id`, then `name` trimmed + case-insensitive
+  // against the free-text `lead.event_type`. Array order = display order
+  // (chips + settings list). See lib/capacity/requirement.ts.
+  event_type_profiles?: EventTypeProfile[]
   // Org-default pack/drive buffers behind the back-planned "Pack by / Leave by"
   // chips. Absent (either field) ⇒ the lib/event-ui constants. Migration-free.
   ops_buffers?: {
@@ -506,6 +522,8 @@ export interface Lead {
   phone?: string
   organization?: string
   event_type?: string          // free text, e.g. "Wedding", "Corporate gala"
+  event_type_id?: string       // references Org.event_type_profiles[].id; matching is
+                               // id-first, then name (lib/capacity/requirement.ts)
   event_date?: string          // ISO date, optional
   estimated_value?: number     // dollars
   stage: LeadStage

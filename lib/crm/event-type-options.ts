@@ -1,4 +1,4 @@
-import type { Lead, Org } from '@/lib/types'
+import type { EventTypeProfile, Lead, Org } from '@/lib/types'
 
 /**
  * The event-type chip vocabulary for the New Opportunity form (inc 1, contract
@@ -25,6 +25,11 @@ import type { Lead, Org } from '@/lib/types'
  *
  * Capped at 8 TOTAL (spec §1: event types are n:few — 3–10 — and a chip row
  * longer than that stops being recognition and becomes a second list to scan).
+ *
+ * ARCHIVED profiles (event types inc 1) are excluded from BOTH sides: not an
+ * active chip, and their name must not resurface as a frequency chip from
+ * history either — that would undo the archive one lead at a time. (They still
+ * match in `leadRequirement`, so booked history keeps its capacity policy.)
  */
 export function buildEventTypeOptions(
   profiles: Org['event_type_profiles'],
@@ -37,8 +42,8 @@ export function buildEventTypeOptions(
     const name = p.name.trim()
     const key = name.toLowerCase()
     if (name === '' || seen.has(key)) continue
-    seen.add(key)
-    out.push(name)
+    seen.add(key) // archived names land in `seen` too — they must not resurface below
+    if (!p.archived) out.push(name)
   }
 
   // First-seen display casing + count per normalized key. Map preserves
@@ -62,15 +67,32 @@ export function buildEventTypeOptions(
 
 /**
  * The RAW profile vocabulary (contract C5b's `eventTypeProfileNames`) —
- * trimmed, original casing, in profile order, blanks dropped.
+ * ACTIVE profiles only (inc 1), trimmed, original casing, in profile order,
+ * blanks dropped.
  *
  * Deliberately independent of `buildEventTypeOptions` above: that list mixes
  * history in and caps at 8, so it cannot answer the form's "is the typed value
  * a CONFIGURED event type?" question — a 9th profile squeezed off the chip row
- * must still count as configured, and a merely-historical chip must not.
+ * must still count as configured, and a merely-historical chip must not. An
+ * archived profile is NOT configured for new work, so it is excluded here too.
  */
 export function eventTypeProfileNames(profiles: Org['event_type_profiles']): string[] {
-  return (profiles ?? []).map((p) => p.name.trim()).filter((n) => n !== '')
+  return (profiles ?? [])
+    .filter((p) => !p.archived)
+    .map((p) => p.name.trim())
+    .filter((n) => n !== '')
+}
+
+/**
+ * The full ACTIVE profile objects in display (array) order — what the pickers
+ * and the inline-create popover consume when they need ids + policy flags, not
+ * just name strings (event types inc 1). Entries are returned verbatim; legacy
+ * entries without an `id` are included (they are still real, active types).
+ */
+export function activeEventTypeProfiles(
+  profiles: Org['event_type_profiles']
+): EventTypeProfile[] {
+  return (profiles ?? []).filter((p) => !p.archived)
 }
 
 /**
