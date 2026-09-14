@@ -4,9 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter, useParams, useSearchParams } from 'next/navigation'
 import { createEvent } from '@/actions/events'
 import { getOrgBySlug } from '@/actions/orgs'
-import { listOrgEventTypes } from '@/actions/event-types'
-import { DEFAULT_EVENT_TYPE_ID, eventCreateFieldsFromType } from '@/lib/event-types'
-import type { EventType } from '@/lib/event-types'
+import { DEFAULT_EVENT_TYPE_ID, eventCreateFieldsFromType, getEventType } from '@/lib/event-types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -22,7 +20,6 @@ export default function NewEventPage() {
   const seedDate = dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : ''
   const [name, setName] = useState('')
   const [year, setYear] = useState(new Date().getFullYear())
-  const [eventTypeId, setEventTypeId] = useState<string>(DEFAULT_EVENT_TYPE_ID)
   const [eventStart, setEventStart] = useState(seedDate)
   const [eventEnd, setEventEnd] = useState(seedDate)
   // Optional booking time for client jobs (writes the existing Event.hours field).
@@ -31,7 +28,6 @@ export default function NewEventPage() {
   const [hoursEnd, setHoursEnd] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
-  const [eventTypes, setEventTypes] = useState<EventType[]>([])
   const [orgId, setOrgId] = useState<string | null>(null)
 
   useEffect(() => {
@@ -43,9 +39,8 @@ export default function NewEventPage() {
           return
         }
         setOrgId(org.id)
-        setEventTypes(await listOrgEventTypes(org.id))
       } catch {
-        setError('Failed to load event types')
+        setError('Failed to load organization')
       }
     }
     load()
@@ -67,12 +62,13 @@ export default function NewEventPage() {
     setLoading(true)
     try {
       if (!orgId) throw new Error('Organization not found')
-      const selectedType = eventTypes.find((t) => t.id === eventTypeId)
-      if (!selectedType) throw new Error('Select an event type')
+      // The event-type picker is retired (spec 5e): every job is created with
+      // the built-in default internally.
+      const type = getEventType(DEFAULT_EVENT_TYPE_ID)
       const event = await createEvent(orgId, {
         name,
         year,
-        ...eventCreateFieldsFromType(selectedType),
+        ...eventCreateFieldsFromType(type),
         event_start: eventStart,
         event_end: eventEnd,
         ...(hoursStart && hoursEnd ? { hours: { start: hoursStart, end: hoursEnd } } : {}),
@@ -91,21 +87,6 @@ export default function NewEventPage() {
       <Card>
         <CardContent className="pt-6">
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-1">
-              <Label htmlFor="eventType">Event type</Label>
-              <select
-                id="eventType"
-                className="w-full border rounded-md px-3 py-2 text-sm bg-white"
-                value={eventTypeId}
-                onChange={(e) => setEventTypeId(e.target.value)}
-              >
-                {eventTypes.map((et) => (
-                  <option key={et.id} value={et.id}>
-                    {et.name}{et.is_custom ? ' (custom)' : ''} — {et.description}
-                  </option>
-                ))}
-              </select>
-            </div>
             <div className="space-y-1">
               <Label htmlFor="name">Event name</Label>
               <Input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Summer Gala 2026" required />
@@ -136,7 +117,7 @@ export default function NewEventPage() {
               </div>
             </div>
             {error && <p className="text-sm text-destructive">{error}</p>}
-            <Button type="submit" className="w-full" disabled={loading || eventTypes.length === 0}>
+            <Button type="submit" className="w-full" disabled={loading}>
               {loading ? 'Creating…' : 'Create event'}
             </Button>
           </form>

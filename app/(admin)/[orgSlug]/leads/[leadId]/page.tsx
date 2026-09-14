@@ -12,7 +12,6 @@ import { listProposals } from '@/actions/proposals'
 import { listInvoices } from '@/actions/invoices'
 import { listVendors } from '@/actions/vendors'
 import { listEventsByLead } from '@/actions/events'
-import { listOrgEventTypes } from '@/actions/event-types'
 import { listCalendarRange } from '@/actions/calendar'
 import { hasMultiResourceCapacity, listCapacityUnitsCore } from '@/lib/capacity/units'
 import { BOOKABLE_STAGES } from '@/lib/capacity/capacity'
@@ -60,7 +59,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ org
   const center = lead.event_date ?? today
   const win = windowDays(center)
 
-  const [customer, tasks, activity, proposals, invoices, vendors, jobs, eventTypes, customerLeads, calendarItems] = await Promise.all([
+  const [customer, tasks, activity, proposals, invoices, vendors, jobs, customerLeads, calendarItems] = await Promise.all([
     lead.customer_id ? getCustomer(orgId, lead.customer_id) : Promise.resolve(null),
     listTasks(orgId, leadId),
     listActivity(orgId, 'opportunity', leadId),
@@ -68,7 +67,6 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ org
     listInvoices(orgId, leadId),
     listVendors(orgId, leadId),
     listEventsByLead(orgId, leadId),
-    listOrgEventTypes(orgId),
     lead.customer_id ? listCustomerOpportunities(orgId, lead.customer_id) : Promise.resolve([]),
     listCalendarRange(orgId, orgSlug, win[0], win[9]),
   ])
@@ -95,7 +93,6 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ org
       tasks={tasks}
       activity={activity}
       job={jobs[0] ?? null}
-      eventTypes={eventTypes}
       proposals={proposals}
       invoices={invoices}
       vendors={vendors}

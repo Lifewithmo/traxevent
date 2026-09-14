@@ -39,7 +39,6 @@ import { LeadInvoicesClient } from '@/components/admin/LeadInvoicesClient'
 import { LeadVendorsClient } from '@/components/admin/LeadVendorsClient'
 import type { ActivityEvent, CapacityUnit, Customer, Event, Lead, NormalizedInvoice, Proposal, Task, Vendor } from '@/lib/types'
 import type { UnitAnnotation } from '@/lib/capacity/assignment'
-import type { EventType } from '@/lib/event-types'
 import type { ConvertBlocker } from '@/lib/opportunity-detail'
 import type { CalendarItem } from '@/lib/calendar'
 
@@ -51,7 +50,6 @@ interface OpportunityDetailClientProps {
   tasks: Task[]
   activity: ActivityEvent[]
   job: Event | null
-  eventTypes: EventType[]
   proposals: Proposal[]
   invoices: NormalizedInvoice[]
   vendors: Vendor[]
@@ -468,7 +466,7 @@ function UnitAssignmentControl({
  * ledes stacked would render the same facts twice — see buildClientStory on the
  * Clients cockpit, where the header carries no equivalent narrative.
  */
-export function OpportunityDetailClient({ orgId, orgSlug, lead, customer, tasks, activity, job, eventTypes, proposals, invoices, vendors, acceptedProposals, pastBookings = 0, convertBlockReason, convertBlocker, today, calendarItems, showDeliveryMode, showAssignment, capacityUnits = [], unitAnnotations = {} }: OpportunityDetailClientProps) {
+export function OpportunityDetailClient({ orgId, orgSlug, lead, customer, tasks, activity, job, proposals, invoices, vendors, acceptedProposals, pastBookings = 0, convertBlockReason, convertBlocker, today, calendarItems, showDeliveryMode, showAssignment, capacityUnits = [], unitAnnotations = {} }: OpportunityDetailClientProps) {
   const searchParams = useSearchParams()
   const [convertOpen, setConvertOpen] = useState(searchParams.get('convert') === '1')
   /**
@@ -648,7 +646,6 @@ export function OpportunityDetailClient({ orgId, orgSlug, lead, customer, tasks,
             orgSlug={orgSlug}
             lead={lead}
             job={job}
-            eventTypes={eventTypes}
             open={convertOpen}
             blockReason={convertBlockReason}
             blocker={convertBlocker}

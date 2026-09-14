@@ -67,7 +67,6 @@ const base = {
   tasks: [],
   activity: [],
   job: null,
-  eventTypes: [],
   ...docsProps,
 }
 

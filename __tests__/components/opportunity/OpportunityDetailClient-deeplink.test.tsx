@@ -64,7 +64,6 @@ const base = {
   tasks: [],
   activity: [],
   job: null,
-  eventTypes: [],
   proposals: [],
   invoices: [],
   vendors: [],

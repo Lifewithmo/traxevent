@@ -54,9 +54,10 @@ describe('industry packs', () => {
     expect(resolveEnabledModules(undefined)).toEqual(getIndustryPack('general').modules)
   })
 
-  it('every pack references a non-empty event type id and a module list', () => {
+  // eventTypeId was dropped from IndustryPack (zero readers — spec 5e); every
+  // pack still owns a non-empty module list.
+  it('every pack has a non-empty module list', () => {
     for (const pack of getAllIndustryPacks()) {
-      expect(pack.eventTypeId).toBeTruthy()
       expect(pack.modules.length).toBeGreaterThan(0)
     }
   })

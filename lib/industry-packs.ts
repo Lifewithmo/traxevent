@@ -1,5 +1,3 @@
-import type { EventTypeId } from '@/lib/event-types'
-
 export type ModuleId =
   | 'leads' | 'clients' | 'proposals' | 'invoices'
   | 'events' | 'registrants' | 'vendors' | 'calendar' | 'reports' | 'forms'
@@ -12,7 +10,6 @@ export interface IndustryPack {
   id: string
   name: string
   description: string
-  eventTypeId: EventTypeId | string   // terminology comes from the event type
   modules: ModuleId[]                  // which admin modules are active
   catalogKind: 'menu' | 'services' | 'rental-stock' | null
   publicMode: boolean                  // food-truck public-sale / POS mode
@@ -31,7 +28,6 @@ const BUILT_IN_PACKS: IndustryPack[] = [
     id: 'general',
     name: 'General',
     description: 'Every module enabled — the default for existing orgs.',
-    eventTypeId: 'event',
     modules: [...ALL_CURRENT_MODULES, 'attendee-roster'],
     catalogKind: null,
     publicMode: false,
@@ -40,7 +36,6 @@ const BUILT_IN_PACKS: IndustryPack[] = [
     id: 'coffee-cart',
     name: 'Coffee Cart',
     description: 'Mobile beverage vendor booking private events.',
-    eventTypeId: 'coffee-service',
     modules: ['leads', 'clients', 'proposals', 'invoices', 'events', 'vendors', 'calendar', 'reports', 'forms', 'storefront', 'catalog', 'compliance', 'inventory'],
     catalogKind: 'menu',
     publicMode: false,
@@ -49,7 +44,6 @@ const BUILT_IN_PACKS: IndustryPack[] = [
     id: 'caterer',
     name: 'Caterer',
     description: 'Event catering: menu, headcount, staffing, delivery.',
-    eventTypeId: 'catering',
     modules: ['leads', 'clients', 'proposals', 'invoices', 'calendar', 'reports', 'forms', 'catalog', 'inventory', 'deliverables', 'routing'],
     catalogKind: 'menu',
     publicMode: false,
@@ -58,7 +52,6 @@ const BUILT_IN_PACKS: IndustryPack[] = [
     id: 'florist',
     name: 'Event Florist',
     description: 'Wedding & event floral design and installation.',
-    eventTypeId: 'floral-event',
     modules: ['leads', 'clients', 'proposals', 'invoices', 'calendar', 'reports', 'forms', 'inventory', 'deliverables', 'routing'],
     catalogKind: 'services',
     publicMode: false,
@@ -67,7 +60,6 @@ const BUILT_IN_PACKS: IndustryPack[] = [
     id: 'photographer',
     name: 'Photographer',
     description: 'Event & portrait photography with questionnaires and galleries.',
-    eventTypeId: 'photo-shoot',
     modules: ['leads', 'clients', 'proposals', 'invoices', 'calendar', 'reports', 'forms', 'deliverables'],
     catalogKind: 'services',
     publicMode: false,
