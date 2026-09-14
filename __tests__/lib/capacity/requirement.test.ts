@@ -106,6 +106,19 @@ describe('leadRequirement — id-first matching', () => {
     )).toEqual({ mobile: false, venue: true })
   })
 
+  it('an id match resolves an ARCHIVED profile even when the free-text type no longer matches (renamed before archive)', () => {
+    // Isolates the id branch: if id matching wrongly skipped archived profiles,
+    // this lead has no name match to fall back on and would hit the default
+    // rule ({mobile: true, venue: false} offsite) instead.
+    const withArchived: Org['event_type_profiles'] = [
+      { id: 'p-gala', name: 'Gala', needsMobile: false, needsVenue: true, archived: true },
+    ]
+    expect(leadRequirement(
+      lead({ event_type: 'Something else entirely', event_type_id: 'p-gala', delivery_mode: 'offsite' }),
+      { event_type_profiles: withArchived },
+    )).toEqual({ mobile: false, venue: true })
+  })
+
   it('a stale event_type_id (no such profile) falls back to name matching', () => {
     expect(leadRequirement(
       lead({ event_type: 'Photo package', event_type_id: 'gone-id' }),
