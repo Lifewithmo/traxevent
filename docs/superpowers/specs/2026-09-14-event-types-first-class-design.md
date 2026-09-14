@@ -222,7 +222,44 @@ new files in worktrees — Turbopack stray-lockfile gotcha).
   section → add → navigate back → re-enter everything (~30+ interactions, form state
   lost) → **popover in place, ~6 interactions, zero navigation** (decision b).
 
-## 10. Ambition ladder location
+## 10. Workstream B — finish the roster-module gate (fold-in, independently shippable)
+
+Added 2026-09-14 after Ryan's screenshot of the event shell showing registration-era
+surfaces (families / liability waivers / Check-in / Registrants). Research verdict:
+the screenshot org is `pinecrest-day-camp` — **our own seeded walkthrough fixture**
+(`scripts/seed/roster-data.ts`, `--with-roster-org`, PR #133), on the `general`
+pack, which enables `attendee-roster`. The roster cluster proper (Customers/
+Assignments/Check-in tabs, Registrants, registration readiness lines, public
+register + registrant portal) is already module-gated and correctly hidden for a
+`coffee-cart` org. Three genuine defects remain from the D3 gate, fixed here:
+
+1. **Forms + People event tabs leak** into every pack (grant-only; not in
+   `ROSTER_KEYS` at `lib/event-nav.ts:15`, though the D3 spec listed per-person
+   forms behind the toggle). Both pages are family/roster machinery
+   (`signed_forms` counts, volunteer hours) → add them to the roster gate; the tab
+   row and sidebar inherit it for free.
+2. **No admin route enforcement** — every roster page is deep-linkable on any
+   pack (`requireEventPage` checks permission, not module). Add thin
+   `assertOrgModule('attendee-roster')` layouts under
+   `[eventSlug]/{families,assignments,checkin,forms,people}` and
+   (`'registrants'`) under `[orgSlug]/registrants`, mirroring the existing public
+   register / registrant-portal guards.
+3. **Event-settings save payload writes registration fields regardless of
+   `rosterEnabled`** (`registration_open/close`, `capacity`, `payment_amount`,
+   `registration_type` — `settings/page.tsx:160-178`), and the Status select reads
+   "Active — registration open" for every org. Condition both on `rosterEnabled` —
+   this closes the standing ROADMAP:406 "D3 follow-up" thread.
+
+**Flagged, out of scope:** the `general` pack is the default for orgs with no
+`industry_pack_id` and it enables the roster — meaning an org that never picked a
+pack gets the registration-era experience by default. Changing the default is a
+product decision (existing orgs may rely on it), queued as an open thread, not
+changed here. Deprecating the roster vertical entirely is a strategic call that is
+explicitly NOT taken by this spec — custody check-in, guardian email, and QR were
+deliberate investments in it as recently as the Events ambition increments
+(#122/#128).
+
+## 11. Ambition ladder location
 
 CRUD + dropdown + archive alone = **good** (HoneyBook/Tripleseat parity). With
 id-referenced rename propagation, merge-with-counts, adopt-from-history, and the
