@@ -219,12 +219,12 @@ describe('createEventTypeProfileCore', () => {
 })
 
 describe('renameEventTypeProfileCore', () => {
-  it('updates the entry, then backfills exactly the matching leads with {event_type_id, event_type}', async () => {
+  it('backfills exactly the matching leads FIRST, then renames the entry (leads-before-profile order)', async () => {
     mockOrg([WEDDING, CORP])
     mockLeads([
       lead({ id: 'l1', event_type: 'Something old', event_type_id: 'p-wed' }), // id match
       lead({ id: 'l2', event_type: ' wedding ' }),                             // no-id name match on OLD name
-      lead({ id: 'l3', event_type: 'Wedding', event_type_id: 'p-corp' }),      // OTHER id — untouched
+      lead({ id: 'l3', event_type: 'Wedding', event_type_id: 'p-corp' }),      // OTHER live id — untouched
       lead({ id: 'l4', event_type: 'Gala' }),                                  // different name — untouched
     ])
     const res = await renameEventTypeProfileCore('org-1', 'p-wed', ' Weddings ')
@@ -236,6 +236,37 @@ describe('renameEventTypeProfileCore', () => {
     expect(batchUpdateSpy).toHaveBeenCalledWith({ __lead: 'l1' }, { event_type_id: 'p-wed', event_type: 'Weddings' })
     expect(batchUpdateSpy).toHaveBeenCalledWith({ __lead: 'l2' }, { event_type_id: 'p-wed', event_type: 'Weddings' })
     expect(batchCommitSpy).toHaveBeenCalledTimes(1)
+    // ORDER PIN (mirrors mergeEventTypeProfilesCore): the lead backfill commits
+    // BEFORE the renamed profile array is written. Id-first matching keeps the
+    // intermediate state correct either way round, but profile-first stranded
+    // old-name leads on the default rule whenever the backfill died mid-way —
+    // and a retry never converged, because oldKey then came from the
+    // already-renamed entry.
+    expect(batchCommitSpy.mock.invocationCallOrder[0]).toBeLessThan(
+      orgDocUpdateSpy.mock.invocationCallOrder[0]
+    )
+  })
+
+  it('a failed backfill leaves the entry un-renamed, so a retry still matches the old name and converges', async () => {
+    mockOrg([WEDDING])
+    mockLeads([lead({ id: 'l1', event_type: 'wedding' })])
+    batchCommitSpy.mockRejectedValueOnce(new Error('deadline exceeded'))
+    await expect(renameEventTypeProfileCore('org-1', 'p-wed', 'Weddings')).rejects.toThrow('deadline exceeded')
+    expect(orgDocUpdateSpy).not.toHaveBeenCalled()
+  })
+
+  it('a failed profile write leaves the array unchanged while backfilled leads already resolve by id', async () => {
+    mockOrg([WEDDING])
+    mockLeads([lead({ id: 'l1', event_type: 'Wedding' })])
+    orgDocUpdateSpy.mockRejectedValueOnce(new Error('unavailable'))
+    await expect(renameEventTypeProfileCore('org-1', 'p-wed', 'Weddings')).rejects.toThrow('unavailable')
+    // The backfill DID land first (leads-first order) — that lead now carries
+    // the id, so it resolves to the profile whatever the entry's name says…
+    expect(batchUpdateSpy).toHaveBeenCalledWith({ __lead: 'l1' }, { event_type_id: 'p-wed', event_type: 'Weddings' })
+    const backfilled = lead({ id: 'l1', event_type: 'Weddings', event_type_id: 'p-wed' })
+    expect(computeEventTypeUsage([backfilled], [WEDDING]).byProfileId).toEqual({ 'p-wed': 1 })
+    // …and the profiles array saw exactly one (failed) write: nothing half-renamed.
+    expect(orgDocUpdateSpy).toHaveBeenCalledTimes(1)
   })
 
   it('with no matching leads: renames the entry, commits no batch, returns {updated: 0}', async () => {
@@ -299,6 +330,57 @@ describe('mergeEventTypeProfilesCore', () => {
   })
 })
 
+/*
+  DANGLING-ID AGREEMENT (F5): `resolveLeadProfile` (and leadRequirement, and
+  therefore every usage count and delete guard) lets an id that resolves to NO
+  profile fall back to name matching — so the backfills must do the same, or a
+  lead COUNTS toward a profile yet is skipped by that profile's rename/merge
+  backfill and by adopt. Only an id pointing at a DIFFERENT live profile
+  protects a lead from name matching.
+*/
+describe('backfill vs usage on dangling event_type_ids', () => {
+  it('rename backfills a dangling-id lead whose name matches (its usage already counted here)', async () => {
+    mockOrg([WEDDING, CORP])
+    const dangling = lead({ id: 'l1', event_type: ' wedding ', event_type_id: 'gone-id' })
+    mockLeads([
+      dangling,
+      lead({ id: 'l2', event_type: 'Wedding', event_type_id: 'p-corp' }), // live OTHER id — untouched
+    ])
+    // Usage attributes l1 to p-wed via the name fallback…
+    expect(computeEventTypeUsage([dangling], [WEDDING, CORP]).byProfileId['p-wed']).toBe(1)
+    // …so the rename backfill must touch exactly that lead.
+    const res = await renameEventTypeProfileCore('org-1', 'p-wed', 'Weddings')
+    expect(res).toEqual({ updated: 1 })
+    expect(batchUpdateSpy).toHaveBeenCalledTimes(1)
+    expect(batchUpdateSpy).toHaveBeenCalledWith({ __lead: 'l1' }, { event_type_id: 'p-wed', event_type: 'Weddings' })
+  })
+
+  it('merge backfills a dangling-id lead whose name matches the source', async () => {
+    mockOrg([WEDDING, CORP])
+    mockLeads([lead({ id: 'l1', event_type: 'Wedding', event_type_id: 'gone-id' })])
+    const res = await mergeEventTypeProfilesCore('org-1', 'p-wed', 'p-corp')
+    expect(res).toEqual({ updated: 1 })
+    expect(batchUpdateSpy).toHaveBeenCalledWith({ __lead: 'l1' }, { event_type_id: 'p-corp', event_type: 'Corporate' })
+  })
+
+  it('adopt claims a dangling-id lead, and its usage attribution equals what the backfill touches', async () => {
+    mockOrg([])
+    const dangling = lead({ id: 'l1', event_type: 'Gala', event_type_id: 'gone-id' })
+    mockLeads([dangling])
+    // Usage groups the lead as unadopted "Gala" (the dangling id resolves to
+    // nothing), so adopting Gala must stamp exactly this lead.
+    expect(computeEventTypeUsage([dangling], []).unadopted).toEqual([
+      { name: 'Gala', count: 1, onsiteMajority: false },
+    ])
+    const res = await adoptEventTypesFromHistoryCore('org-1', [
+      { name: 'Gala', needsMobile: true, needsVenue: false },
+    ])
+    expect(res).toEqual({ created: 1, adopted: 1 })
+    const written = orgDocUpdateSpy.mock.calls[0][0].event_type_profiles as EventTypeProfile[]
+    expect(batchUpdateSpy).toHaveBeenCalledWith({ __lead: 'l1' }, { event_type_id: written[0].id })
+  })
+})
+
 describe('deleteEventTypeProfileCore', () => {
   it('refuses with the usage count when the profile is in use (guard-as-return-value)', async () => {
     mockOrg([WEDDING])
@@ -352,7 +434,7 @@ describe('adoptEventTypesFromHistoryCore', () => {
     mockLeads([
       lead({ id: 'l1', event_type: 'corporate offsite' }),
       lead({ id: 'l2', event_type: 'Corporate Offsite ' }),
-      lead({ id: 'l3', event_type: 'Gala', event_type_id: 'stale' }), // has an id — never touched
+      lead({ id: 'l3', event_type: 'Gala', event_type_id: 'p-wed' }), // id of a LIVE profile — never touched
       lead({ id: 'l4', event_type: 'Gala' }),
       lead({ id: 'l5', event_type: 'Brunch' }),                       // not adopted this round
     ])

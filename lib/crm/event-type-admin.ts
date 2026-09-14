@@ -45,16 +45,30 @@ async function writeProfiles(orgId: string, profiles: EventTypeProfile[]): Promi
   await orgRef(orgId).update({ event_type_profiles: profiles.map(cleanEntry) })
 }
 
+/** The id-bearing profiles a lead's `event_type_id` could actually resolve to —
+ *  the set every backfill checks ids against, so "has an id" only protects a
+ *  lead when the id is real. */
+function knownProfileIds(profiles: EventTypeProfile[]): ReadonlySet<string> {
+  return new Set(profiles.map((p) => p.id).filter((x): x is string => Boolean(x)))
+}
+
 /** The BACKFILL match rule (spec §4 rename/merge): a lead belongs to the
- *  profile when it references it by id, or — unadopted, i.e. carrying no id at
- *  all — when its free-text type name-matches (trim + lowercase). A lead
- *  pointing at a DIFFERENT id is never re-routed by name. */
+ *  profile when it references it by id; a lead pointing at a DIFFERENT known
+ *  profile is never re-routed by name; and a lead with no id — or a DANGLING
+ *  id resolving to no profile, exactly as `resolveLeadProfile` and
+ *  leadRequirement treat one — matches on its free-text name (trim +
+ *  lowercase). Without the dangling-id fallback a lead could COUNT toward a
+ *  profile's usage yet be skipped by that profile's backfills. */
 function matchesForBackfill(
   lead: Pick<Lead, 'event_type' | 'event_type_id'>,
   id: string,
-  nameKey: string
+  nameKey: string,
+  knownIds: ReadonlySet<string>
 ): boolean {
-  if (lead.event_type_id) return lead.event_type_id === id
+  if (lead.event_type_id) {
+    if (lead.event_type_id === id) return true
+    if (knownIds.has(lead.event_type_id)) return false
+  }
   const key = lead.event_type ? norm(lead.event_type) : ''
   return key !== '' && key === nameKey
 }
@@ -219,11 +233,18 @@ export async function createEventTypeProfileCore(
 }
 
 /**
- * Guard-free rename-with-backfill (spec §4): updates the entry, THEN rewrites
- * every lead with `event_type_id === id` OR (no id + name-matching the OLD
- * name) to `{event_type_id, event_type: newName}` — so a rename propagates to
- * all history and every engine instead of silently reverting it to the default
- * rule. Renaming onto another profile's name is refused (that is a merge).
+ * Guard-free rename-with-backfill (spec §4): rewrites every lead with
+ * `event_type_id === id` OR (no resolvable id + name-matching the OLD name)
+ * to `{event_type_id, event_type: newName}`, THEN renames the entry — so a
+ * rename propagates to all history and every engine instead of silently
+ * reverting it to the default rule. Leads move FIRST, mirroring
+ * `mergeEventTypeProfilesCore`: id-first matching keeps every intermediate
+ * state correct (a backfilled lead resolves to this profile by id under
+ * either name), and a failed backfill leaves the entry un-renamed so a retry
+ * still computes the OLD name key and converges. The reverse order stranded
+ * old-name leads on the default rule when the backfill died mid-way, and
+ * retries were no-ops. Renaming onto another profile's name is refused (that
+ * is a merge).
  */
 export async function renameEventTypeProfileCore(
   orgId: string,
@@ -240,17 +261,18 @@ export async function renameEventTypeProfileCore(
     throw new Error('An event type with that name already exists — merge instead')
   }
   const oldKey = norm(profiles[idx].name)
-
-  const next = [...profiles]
-  next[idx] = { ...profiles[idx], name }
-  await writeProfiles(orgId, next)
+  const knownIds = knownProfileIds(profiles)
 
   const snap = await leadsRef(orgId).get()
-  const targets = snap.docs.filter((d) => matchesForBackfill(d.data() as Lead, id, oldKey))
+  const targets = snap.docs.filter((d) => matchesForBackfill(d.data() as Lead, id, oldKey, knownIds))
   const updated = await batchLeadUpdates(
     targets.map((d) => d.ref),
     { event_type_id: id, event_type: name }
   )
+
+  const next = [...profiles]
+  next[idx] = { ...profiles[idx], name }
+  await writeProfiles(orgId, next)
   return { updated }
 }
 
@@ -274,7 +296,8 @@ export async function mergeEventTypeProfilesCore(
 
   const snap = await leadsRef(orgId).get()
   const fromKey = norm(from.name)
-  const targets = snap.docs.filter((d) => matchesForBackfill(d.data() as Lead, fromId, fromKey))
+  const knownIds = knownProfileIds(profiles)
+  const targets = snap.docs.filter((d) => matchesForBackfill(d.data() as Lead, fromId, fromKey, knownIds))
   const updated = await batchLeadUpdates(
     targets.map((d) => d.ref),
     { event_type_id: intoId, event_type: into.name }
@@ -391,12 +414,17 @@ export async function adoptEventTypesFromHistoryCore(
   if (profilesChanged) await writeProfiles(orgId, next)
 
   const snap = await leadsRef(orgId).get()
+  const knownIds = knownProfileIds(next)
   let adopted = 0
   let batch = adminDb.batch()
   let inBatch = 0
   for (const d of snap.docs) {
     const lead = d.data() as Lead
-    if (lead.event_type_id) continue
+    // Same dangling-id rule as matchesForBackfill: only an id that resolves
+    // to a real profile protects a lead from adoption. A dangling one already
+    // falls back to name in usage/leadRequirement, so adopt must claim it —
+    // or the unadopted count and the stamped count disagree.
+    if (lead.event_type_id && knownIds.has(lead.event_type_id)) continue
     const key = lead.event_type ? norm(lead.event_type) : ''
     if (!key) continue
     const id = idByKey.get(key)
