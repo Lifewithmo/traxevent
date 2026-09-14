@@ -403,7 +403,11 @@ in PR #70; queue the next increment here.)*
 - Parked `git stash` of pre-redesign proposals WIP — likely stale; keep or drop.
 - Convert-to-work manual scenarios 6/7/18/19 from the plan's walkthrough.
 - `ProposalResponseClient` sign/decline/deposit flows: zero test coverage.
-- Roster-off orgs still see registration fields in event settings (D3 follow-up).
+- ~~Roster-off orgs still see registration fields in event settings (D3 follow-up).~~
+  Closed on the `event-types-inc1` branch (Workstream B): registration fields +
+  the Status "registration open" copy are now conditioned on `rosterEnabled`,
+  Forms/People event tabs and all six roster admin routes are module-gated,
+  and the legacy per-event "Event type" select is removed from event settings.
 
 ## Deferred (deliberately)
 
