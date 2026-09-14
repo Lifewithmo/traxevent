@@ -6,8 +6,11 @@ import type { Customer } from '@/lib/types'
 
 const refresh = vi.fn()
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh }) }))
-// 'use server' module backed by firebase-admin — mocked like CustomerDetailClient.test.tsx does.
+// 'use server' modules backed by firebase-admin — mocked like CustomerDetailClient.test.tsx does.
 vi.mock('@/actions/leads', () => ({ createLead: vi.fn().mockResolvedValue({ id: 'l1' }) }))
+// Imported by the inline-create popover the form now hosts; its own behavior
+// is covered in new-event-type-popover.test.tsx.
+vi.mock('@/actions/event-type-profiles', () => ({ createEventTypeProfile: vi.fn() }))
 
 const customer: Customer = {
   id: 'c1', name: 'Dana Kim', company: 'Riverside', email: 'dana@riv.co', created_at: '2026-01-01T00:00:00.000Z',
@@ -110,7 +113,8 @@ describe('NewOpportunityForm linked mode', () => {
       render(
         <NewOpportunityForm
           orgId="o1" orgSlug="brew" open onClose={() => {}} customer={customer}
-          showDeliveryMode eventTypeProfileNames={['Wedding']}
+          showDeliveryMode
+          eventTypeProfiles={[{ id: 'p-wed', name: 'Wedding', needsMobile: true, needsVenue: true }]}
         />
       )
       expect(screen.getByRole('group', { name: 'Where' })).toBeInTheDocument()
@@ -125,7 +129,8 @@ describe('NewOpportunityForm linked mode', () => {
       render(
         <NewOpportunityForm
           orgId="o1" orgSlug="brew" open onClose={() => {}} customer={customer}
-          showDeliveryMode eventTypeProfileNames={['Wedding']}
+          showDeliveryMode
+          eventTypeProfiles={[{ id: 'p-wed', name: 'Wedding', needsMobile: true, needsVenue: true }]}
         />
       )
       fireEvent.click(screen.getByRole('button', { name: 'On-site' }))
