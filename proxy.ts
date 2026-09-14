@@ -17,16 +17,30 @@ export function extractOrgSlug(hostname: string): string | null {
 export function proxy(request: NextRequest) {
   const hostname = request.headers.get('host') ?? ''
 
-  // Brand acquisition domains (brewtrax.com, …): serve the brand landing at /.
-  // Everything else on a brand domain falls through to normal routes.
+  // Brand acquisition domains (brewtrax.com, …): serve marketing pages from
+  // the /brand/{brandId} tree. `/` maps to the brand landing page; other
+  // marketing paths are rewritten 1:1 into the same tree. App/infra paths
+  // (/api, already-namespaced /brand/..., static assets) pass through.
   const brand = getBrandByHostname(hostname)
   if (brand) {
-    if (request.nextUrl.pathname === '/') {
+    const { pathname } = request.nextUrl
+    if (pathname === '/') {
       const url = request.nextUrl.clone()
       url.pathname = `/brand/${brand.id}`
       return NextResponse.rewrite(url)
     }
-    return NextResponse.next()
+    // Pass through app/infra paths and already-namespaced paths untouched.
+    const hasFileExtension = /\.[a-zA-Z0-9]+$/.test(pathname)
+    if (
+      pathname.startsWith('/api') ||
+      pathname.startsWith(`/brand/`) ||
+      hasFileExtension
+    ) {
+      return NextResponse.next()
+    }
+    const url = request.nextUrl.clone()
+    url.pathname = `/brand/${brand.id}${pathname}`
+    return NextResponse.rewrite(url)
   }
 
   const orgSlug = extractOrgSlug(hostname)

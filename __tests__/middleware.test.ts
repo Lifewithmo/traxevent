@@ -44,11 +44,51 @@ describe('proxy — brand domains', () => {
     expect(res.headers.get('x-middleware-rewrite')).toContain('/brand/brewtrax')
   })
 
-  it('leaves non-root paths on brand domains untouched', () => {
-    const request = new NextRequest('https://brewtrax.com/signup', {
+  it('rewrites a brand-domain marketing path into the brand tree', () => {
+    const request = new NextRequest('https://brewtrax.com/pricing', {
+      headers: { host: 'brewtrax.com' },
+    })
+    const res = proxy(request)
+    expect(res.headers.get('x-middleware-rewrite')).toContain('/brand/brewtrax/pricing')
+  })
+
+  it('rewrites a nested brand-domain marketing path into the brand tree', () => {
+    const request = new NextRequest('https://brewtrax.com/vs/hotplate', {
+      headers: { host: 'brewtrax.com' },
+    })
+    const res = proxy(request)
+    expect(res.headers.get('x-middleware-rewrite')).toContain('/brand/brewtrax/vs/hotplate')
+  })
+
+  it('does not double-prefix a path that already starts with /brand/', () => {
+    const request = new NextRequest('https://brewtrax.com/brand/brewtrax/pricing', {
       headers: { host: 'brewtrax.com' },
     })
     const res = proxy(request)
     expect(res.headers.get('x-middleware-rewrite')).toBeNull()
+  })
+
+  it('leaves API paths on brand domains untouched', () => {
+    const request = new NextRequest('https://brewtrax.com/api/signup', {
+      headers: { host: 'brewtrax.com' },
+    })
+    const res = proxy(request)
+    expect(res.headers.get('x-middleware-rewrite')).toBeNull()
+  })
+
+  it('leaves static asset paths with a file extension untouched', () => {
+    const request = new NextRequest('https://brewtrax.com/robots.txt', {
+      headers: { host: 'brewtrax.com' },
+    })
+    const res = proxy(request)
+    expect(res.headers.get('x-middleware-rewrite')).toBeNull()
+  })
+
+  it('non-brand host behavior is unchanged (org subdomain still rewrites to /{orgSlug}/...)', () => {
+    const request = new NextRequest('https://fbc.traxevent.com/summer', {
+      headers: { host: 'fbc.traxevent.com' },
+    })
+    const res = proxy(request)
+    expect(res.headers.get('x-middleware-rewrite')).toContain('/fbc/summer')
   })
 })
