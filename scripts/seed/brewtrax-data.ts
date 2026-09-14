@@ -16,6 +16,15 @@ export function buildBrewtraxSeed(today: Date): BrewtraxSeed {
     brand_id: 'brewtrax',
     tips_enabled: true,
     created_at: isoFrom(today, -420),
+    // Event types inc 1: four id-referenced profiles. Fixed ids for determinism
+    // (the seed is a pure function of `today`) — 16-hex is not required in seed
+    // data, ids are opaque strings (docs/superpowers/specs/2026-09-14-event-types-first-class-design.md §6).
+    event_type_profiles: [
+      { id: 'et-wedding', name: 'Wedding', needsMobile: true, needsVenue: true },
+      { id: 'et-corporate', name: 'Corporate', needsMobile: true, needsVenue: false },
+      { id: 'et-private-party', name: 'Private party', needsMobile: true, needsVenue: false },
+      { id: 'et-festival', name: 'Festival', needsMobile: true, needsVenue: false },
+    ],
   }
 
   const customers: BrewtraxSeed['customers'] = [
@@ -56,7 +65,7 @@ export function buildBrewtraxSeed(today: Date): BrewtraxSeed {
       lead: {
         id: 'demo-lead-01', name: 'Dana Harper', title: 'Harper wedding — espresso bar',
         email: 'dana.harper@example.com', phone: '208-555-0134', organization: 'Harper & Vance Weddings',
-        event_type: 'Wedding', event_date: daysFrom(today, 14), estimated_value: 2400,
+        event_type: 'Wedding', event_type_id: 'et-wedding', event_date: daysFrom(today, 14), estimated_value: 2400,
         stage: 'closed_won', created_at: isoFrom(today, -52),
         notes: 'Booked. 120 guests, outdoor ceremony, wants the copper cart.',
       },
@@ -86,7 +95,7 @@ export function buildBrewtraxSeed(today: Date): BrewtraxSeed {
       lead: {
         id: 'demo-lead-04', name: 'Jordan Ellis', title: 'Summit product launch',
         email: 'jordan.ellis@summitcreative.example.com', phone: '208-555-0148', organization: 'Summit Creative Co.',
-        event_type: 'Corporate', event_date: daysFrom(today, 45), estimated_value: 3200,
+        event_type: 'Corporate', event_type_id: 'et-corporate', event_date: daysFrom(today, 45), estimated_value: 3200,
         stage: 'proposal', created_at: isoFrom(today, -11),
         notes: 'Sent the three-tier proposal. Deciding between Better and Best.',
       },
@@ -96,7 +105,7 @@ export function buildBrewtraxSeed(today: Date): BrewtraxSeed {
       lead: {
         id: 'demo-lead-05', name: 'Sam Larkin', title: 'Larkin 40th anniversary',
         email: 'sam.larkin@example.com', phone: '208-555-0119',
-        event_type: 'Private party', event_date: daysFrom(today, 60), estimated_value: 1100,
+        event_type: 'Private party', event_type_id: 'et-private-party', event_date: daysFrom(today, 60), estimated_value: 1100,
         stage: 'proposal', created_at: isoFrom(today, -9),
         waiting: { reason: 'Waiting on final guest count from the venue', follow_up_date: daysFrom(today, 3) },
         notes: 'Venue caps at 80 but they think 60.',
@@ -107,7 +116,7 @@ export function buildBrewtraxSeed(today: Date): BrewtraxSeed {
       lead: {
         id: 'demo-lead-06', name: 'Camille Benoit', title: 'Benoit baby shower',
         email: 'camille.benoit@example.com', phone: '208-555-0163',
-        event_type: 'Private party', event_date: daysFrom(today, 33), estimated_value: 750,
+        event_type: 'Private party', event_type_id: 'et-private-party', event_date: daysFrom(today, 33), estimated_value: 750,
         stage: 'consultation', created_at: isoFrom(today, -6),
         notes: 'Discovery call done. Wants a decaf-forward menu.',
       },
@@ -117,7 +126,7 @@ export function buildBrewtraxSeed(today: Date): BrewtraxSeed {
       lead: {
         id: 'demo-lead-07', name: 'Tess Alvarado', title: 'Northgate staff appreciation day',
         email: 'tess@northgateschool.example.com', phone: '208-555-0155', organization: 'Northgate School District',
-        event_type: 'Corporate', event_date: daysFrom(today, 71), estimated_value: 2100,
+        event_type: 'Corporate', event_type_id: 'et-corporate', event_date: daysFrom(today, 71), estimated_value: 2100,
         stage: 'consultation', created_at: isoFrom(today, -4),
         notes: 'Purchase order process — needs a W-9 before booking.',
       },
@@ -160,7 +169,7 @@ export function buildBrewtraxSeed(today: Date): BrewtraxSeed {
       lead: {
         id: 'demo-lead-11', name: 'Nina Torres', title: 'Meridian Summerfest — vendor day',
         email: 'nina@meridiansummerfest.example.com', phone: '208-555-0201', organization: 'Meridian Summerfest',
-        event_type: 'Festival', event_date: daysFrom(today, -21), estimated_value: 3600,
+        event_type: 'Festival', event_type_id: 'et-festival', event_date: daysFrom(today, -21), estimated_value: 3600,
         stage: 'closed_won', created_at: isoFrom(today, -100),
         notes: 'Delivered. Festival office short-paid the deposit and the balance is still open.',
       },
