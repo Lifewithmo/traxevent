@@ -1,9 +1,10 @@
 'use server'
 
+import { randomBytes } from 'crypto'
 import { adminDb } from '@/lib/firebase-admin'
 import { assertOrgAdmin } from '@/lib/auth/assert'
 import { assertValidBlockout } from '@/lib/capacity/units'
-import type { Org } from '@/lib/types'
+import type { EventTypeProfile, Org } from '@/lib/types'
 
 // NOTE: this is a 'use server' module — every export must be an async function.
 // Types (Org, CapacityBlockout) are imported from '@/lib/types', never
@@ -82,6 +83,12 @@ export async function updateResourceLabels(
  * case-insensitively (last wins), and the `needs*` flags are coerced to real
  * booleans. An empty array is valid — it clears all profiles, so every lead
  * falls back to `leadRequirement`'s default rule (see lib/capacity/requirement.ts).
+ *
+ * Inc 1 (event types first-class): the surviving entries keep their `id` and
+ * `archived` flag through the dedupe (last-wins carries the last entry's id),
+ * and every entry MISSING an id is assigned a stable 16-hex one — this is the
+ * lazy migration path for legacy id-less entries. `archived: false` is dropped
+ * from the stored shape (clean docs; absence means active).
  */
 export async function updateEventTypeProfiles(
   orgId: string,
@@ -93,18 +100,23 @@ export async function updateEventTypeProfiles(
 
   // Dedupe by case-insensitive trimmed name, last-wins. A Map keeps the first
   // occurrence's position while overwriting its value on a later duplicate.
-  const byName = new Map<string, NonNullable<Org['event_type_profiles']>[number]>()
+  const byName = new Map<string, EventTypeProfile>()
   for (const p of profiles) {
     const name = typeof p?.name === 'string' ? p.name.trim() : ''
     if (!name) throw new Error('An event type needs a name')
+    const id = typeof p.id === 'string' && p.id.trim() ? p.id.trim() : undefined
     byName.set(name.toLowerCase(), {
+      ...(id ? { id } : {}),
       name,
       needsMobile: Boolean(p.needsMobile),
       needsVenue: Boolean(p.needsVenue),
+      ...(p.archived ? { archived: true } : {}),
     })
   }
 
-  const event_type_profiles = Array.from(byName.values())
+  const event_type_profiles = Array.from(byName.values()).map((p) =>
+    p.id ? p : { ...p, id: randomBytes(8).toString('hex') }
+  )
 
   await adminDb.collection('orgs').doc(orgId).update({ event_type_profiles })
 }

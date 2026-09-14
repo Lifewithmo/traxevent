@@ -121,7 +121,11 @@ describe('updateResourceLabels', () => {
 })
 
 describe('updateEventTypeProfiles', () => {
-  it('asserts admin then persists the profiles array (names trimmed, booleans coerced)', async () => {
+  // Inc 1: the whole-array-replace contract now also assigns a stable 16-hex id
+  // to any entry missing one, so legacy entries get ids lazily on the next save.
+  const HEX16 = /^[0-9a-f]{16}$/
+
+  it('asserts admin then persists the profiles array (names trimmed, booleans coerced, ids assigned)', async () => {
     const { assertOrgAdmin } = await import('@/lib/auth/assert')
     await updateEventTypeProfiles('org-1', [
       { name: '  Wedding ', needsMobile: true, needsVenue: false },
@@ -130,8 +134,8 @@ describe('updateEventTypeProfiles', () => {
     expect(assertOrgAdmin).toHaveBeenCalledWith('org-1')
     expect(orgDocUpdateSpy).toHaveBeenCalledWith({
       event_type_profiles: [
-        { name: 'Wedding', needsMobile: true, needsVenue: false },
-        { name: 'Photo package', needsMobile: false, needsVenue: false },
+        { id: expect.stringMatching(HEX16), name: 'Wedding', needsMobile: true, needsVenue: false },
+        { id: expect.stringMatching(HEX16), name: 'Photo package', needsMobile: false, needsVenue: false },
       ],
     })
   })
@@ -142,7 +146,9 @@ describe('updateEventTypeProfiles', () => {
       { name: 'Gala', needsMobile: 1 as unknown as boolean, needsVenue: 0 as unknown as boolean },
     ])
     expect(orgDocUpdateSpy).toHaveBeenCalledWith({
-      event_type_profiles: [{ name: 'Gala', needsMobile: true, needsVenue: false }],
+      event_type_profiles: [
+        { id: expect.stringMatching(HEX16), name: 'Gala', needsMobile: true, needsVenue: false },
+      ],
     })
   })
 
@@ -157,7 +163,34 @@ describe('updateEventTypeProfiles', () => {
       { name: '  wedding ', needsMobile: false, needsVenue: true },
     ])
     expect(orgDocUpdateSpy).toHaveBeenCalledWith({
-      event_type_profiles: [{ name: 'wedding', needsMobile: false, needsVenue: true }],
+      event_type_profiles: [
+        { id: expect.stringMatching(HEX16), name: 'wedding', needsMobile: false, needsVenue: true },
+      ],
+    })
+  })
+
+  it('preserves an existing id and the archived flag through the dedupe (inc 1)', async () => {
+    await updateEventTypeProfiles('org-1', [
+      { id: 'aaaaaaaaaaaaaaaa', name: 'Wedding', needsMobile: true, needsVenue: true },
+      { id: 'bbbbbbbbbbbbbbbb', name: 'Gala', needsMobile: true, needsVenue: false, archived: true },
+    ])
+    expect(orgDocUpdateSpy).toHaveBeenCalledWith({
+      event_type_profiles: [
+        { id: 'aaaaaaaaaaaaaaaa', name: 'Wedding', needsMobile: true, needsVenue: true },
+        { id: 'bbbbbbbbbbbbbbbb', name: 'Gala', needsMobile: true, needsVenue: false, archived: true },
+      ],
+    })
+  })
+
+  it('omits archived:false from the stored shape (clean docs) and keeps last-wins id on name dupes', async () => {
+    await updateEventTypeProfiles('org-1', [
+      { id: 'aaaaaaaaaaaaaaaa', name: 'Wedding', needsMobile: true, needsVenue: true, archived: false },
+      { id: 'bbbbbbbbbbbbbbbb', name: ' wedding ', needsMobile: false, needsVenue: true },
+    ])
+    expect(orgDocUpdateSpy).toHaveBeenCalledWith({
+      event_type_profiles: [
+        { id: 'bbbbbbbbbbbbbbbb', name: 'wedding', needsMobile: false, needsVenue: true },
+      ],
     })
   })
 
