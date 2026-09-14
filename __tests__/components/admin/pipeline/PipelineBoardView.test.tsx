@@ -33,18 +33,21 @@ vi.mock('@/components/admin/pipeline/NewOpportunityForm', () => ({
   NewOpportunityForm: (props: Record<string, unknown>) => {
     formProps(props)
     if (!props.open) return null
+    // C5b: onCreated carries (lead, { stayedOpen }) — stayedOpen=true on the
+    // save-and-create-another path, where the dialog stays up and the form
+    // announces the create itself.
+    const onCreated = props.onCreated as
+      | ((l: unknown, info: { stayedOpen: boolean }) => void)
+      | undefined
+    const created = (stayedOpen: boolean) => onCreated?.({
+      id: 'new1', name: 'Jane Doe', stage: 'inquiry',
+      event_type: 'Wedding', event_date: '2026-10-04',
+      created_at: 't', updated_at: 't',
+    }, { stayedOpen })
     return (
       <div role="dialog" aria-label="New opportunity">
-        <button
-          type="button"
-          onClick={() => (props.onCreated as ((l: unknown) => void) | undefined)?.({
-            id: 'new1', name: 'Jane Doe', stage: 'inquiry',
-            event_type: 'Wedding', event_date: '2026-10-04',
-            created_at: 't', updated_at: 't',
-          })}
-        >
-          mock-create
-        </button>
+        <button type="button" onClick={() => created(false)}>mock-create</button>
+        <button type="button" onClick={() => created(true)}>mock-create-another</button>
         <button type="button" onClick={props.onClose as () => void}>mock-close</button>
       </div>
     )
@@ -784,12 +787,18 @@ describe('PipelineBoardView', () => {
         customers={[{ id: 'c1', name: 'Jane Doe' } as never]}
         showDeliveryMode
         eventTypeOptions={['Wedding', 'Market']}
+        eventTypeProfileNames={['Wedding']}
+        pastJobCounts={{ c1: 3 }}
         bookabilityCtx={degradedCtx}
       />)
       const props = formProps.mock.calls.at(-1)![0]
       expect(props).toMatchObject({
         orgId: 'o1', orgSlug: 'demo', open: false,
         showDeliveryMode: true, eventTypeOptions: ['Wedding', 'Market'],
+        // C5b: the raw profile vocabulary and per-customer past-job counts
+        // ride through untouched — the form keys its hints on them.
+        eventTypeProfileNames: ['Wedding'],
+        pastJobCounts: { c1: 3 },
         bookabilityCtx: degradedCtx,
       })
       expect(props.customers).toHaveLength(1)
@@ -835,6 +844,28 @@ describe('PipelineBoardView', () => {
         act(() => { vi.advanceTimersByTime(4000) })
         expect(screen.queryByRole('status')).toBeNull()
       } finally { vi.useRealTimers() }
+    })
+
+    /*
+      C5b: on save-and-create-another the dialog STAYS OPEN, so a toast would
+      render under its backdrop. The form announces that create in its own
+      aria-live region; the board suppresses the toast but still records the
+      highlight id, so the new card pulses once the refresh lands.
+    */
+    it('suppresses the toast on the save-and-create-another path but still arms the card highlight', () => {
+      const { rerender } = render(<PipelineBoardView {...baseProps} />)
+      fireEvent.click(screen.getAllByRole('button', { name: 'New opportunity' })[0])
+      fireEvent.click(screen.getByRole('button', { name: 'mock-create-another' }))
+      expect(screen.queryByRole('status')).toBeNull()
+      rerender(<PipelineBoardView {...baseProps} groups={{
+        needs_attention: [],
+        waiting: [],
+        active: [
+          ...baseProps.groups.active,
+          { lead: lead({ id: 'new1', name: 'Jane Doe', stage: 'inquiry' }), health: 'active' as const, statusLine: 'New' },
+        ],
+      }} />)
+      expect(screen.getByRole('article', { name: /Jane Doe/ }).className).toContain('ring-2')
     })
   })
 })

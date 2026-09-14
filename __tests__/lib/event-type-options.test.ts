@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildEventTypeOptions } from '@/lib/crm/event-type-options'
+import { buildEventTypeOptions, eventTypeProfileNames, pastJobCounts } from '@/lib/crm/event-type-options'
 
 /*
   THE CHIP VOCABULARY RULE (New Opportunity inc 1, plan §Agent C item 1):
@@ -64,5 +64,46 @@ describe('buildEventTypeOptions', () => {
 
   it('returns [] for an org with no profiles and no history (0-profiles empty state upstream)', () => {
     expect(buildEventTypeOptions(undefined, [])).toEqual([])
+  })
+})
+
+/*
+  CONTRACT C5b: `eventTypeProfileNames` is the form's "is this a CONFIGURED
+  type?" key — the raw profile vocabulary, independent of the merged chip list
+  above (which mixes in history and caps at 8, so it cannot answer that
+  question). Trimmed, original casing.
+*/
+describe('eventTypeProfileNames', () => {
+  it('returns the profile names trimmed, in profile order, original casing', () => {
+    expect(eventTypeProfileNames([profile('  Wedding '), profile('market DAY')])).toEqual([
+      'Wedding', 'market DAY',
+    ])
+  })
+
+  it('drops blank names and returns [] for no profiles', () => {
+    expect(eventTypeProfileNames([profile('   '), profile('Gala')])).toEqual(['Gala'])
+    expect(eventTypeProfileNames(undefined)).toEqual([])
+    expect(eventTypeProfileNames([])).toEqual([])
+  })
+})
+
+/*
+  CONTRACT C5b: `pastJobCounts` feeds the caller-recognition hint's "{n} past
+  jobs" — total opportunity count per customer_id over whatever lead set the
+  page loaded (the pipeline page feeds every lead, open or closed: a past job
+  is a past job regardless of how it ended).
+*/
+describe('pastJobCounts', () => {
+  it('counts every lead per customer_id', () => {
+    const rows = [
+      { customer_id: 'c1' }, { customer_id: 'c2' }, { customer_id: 'c1' },
+      { customer_id: 'c1' },
+    ]
+    expect(pastJobCounts(rows)).toEqual({ c1: 3, c2: 1 })
+  })
+
+  it('skips leads with no customer link and returns {} for none', () => {
+    expect(pastJobCounts([{ customer_id: undefined }, {}])).toEqual({})
+    expect(pastJobCounts([])).toEqual({})
   })
 })

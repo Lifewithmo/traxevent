@@ -6,7 +6,7 @@ import { addBusinessDays, defaultFollowUpYmd } from '@/components/admin/pipeline
 import { createLead } from '@/actions/leads'
 import { todayYmd, addDays } from '@/lib/opportunity-detail'
 import { shortDayLabel, type BookabilityCtx } from '@/lib/calendar-bookability'
-import type { Customer } from '@/lib/types'
+import type { Customer, Lead } from '@/lib/types'
 
 const refresh = vi.fn()
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh }) }))
@@ -94,12 +94,35 @@ describe('NewOpportunityForm', () => {
       expect(refresh).toHaveBeenCalled()
     })
 
-    it('fires onCreated with the created lead', async () => {
+    it('fires onCreated with the created lead and stayedOpen: false', async () => {
       const onCreated = vi.fn()
       renderForm({ onCreated })
       fireEvent.change(nameInput(), { target: { value: 'Jane Doe' } })
       fireEvent.click(screen.getByRole('button', { name: 'Create opportunity' }))
-      await waitFor(() => expect(onCreated).toHaveBeenCalledWith(expect.objectContaining({ id: 'l1' })))
+      await waitFor(() =>
+        expect(onCreated).toHaveBeenCalledWith(
+          expect.objectContaining({ id: 'l1' }),
+          { stayedOpen: false }
+        )
+      )
+    })
+
+    it('submits exactly once when submit fires twice while the first save is in flight', async () => {
+      let resolveCreate!: (lead: Lead) => void
+      vi.mocked(createLead).mockImplementationOnce(
+        () => new Promise<Lead>((resolve) => { resolveCreate = resolve })
+      )
+      const { onClose } = renderForm()
+      fireEvent.change(nameInput(), { target: { value: 'Jane Doe' } })
+      // Two rapid submits through the keyboard path (the button disables
+      // itself, but Cmd+Enter has no disabled attribute to hide behind).
+      fireEvent.keyDown(nameInput(), { key: 'Enter', metaKey: true })
+      fireEvent.keyDown(nameInput(), { key: 'Enter', metaKey: true })
+      expect(createLead).toHaveBeenCalledTimes(1)
+
+      resolveCreate({ id: 'l1', name: 'Jane Doe' } as Lead)
+      await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1))
+      expect(createLead).toHaveBeenCalledTimes(1)
     })
   })
 
@@ -132,6 +155,23 @@ describe('NewOpportunityForm', () => {
       expect(screen.getByLabelText('Follow up by')).toHaveValue(defaultFollowUpYmd(today))
       await waitFor(() => expect(nameInput()).toHaveFocus())
       expect(refresh).toHaveBeenCalled()
+    })
+
+    it('reports stayedOpen: true and announces the create in its own live region', async () => {
+      const onCreated = vi.fn()
+      renderForm({ onCreated })
+      fireEvent.change(nameInput(), { target: { value: 'Jane Doe' } })
+      fireEvent.keyDown(nameInput(), { key: 'Enter', ctrlKey: true, shiftKey: true })
+      await waitFor(() =>
+        expect(onCreated).toHaveBeenCalledWith(
+          expect.objectContaining({ id: 'l1' }),
+          { stayedOpen: true }
+        )
+      )
+      // The dialog stays open, so the call site's toast is suppressed and the
+      // form's top aria-live region carries the confirmation instead.
+      const announcement = screen.getByText('Opportunity created for Jane Doe.')
+      expect(announcement.closest('[aria-live="polite"]')).not.toBeNull()
     })
   })
 
@@ -181,6 +221,33 @@ describe('NewOpportunityForm', () => {
     })
   })
 
+  describe('validation focus order', () => {
+    it('lands on the WHAT & WHEN field, disclosure closed, when it and an email error compete', async () => {
+      renderForm()
+      await waitFor(() => expect(nameInput()).toHaveFocus())
+      fireEvent.change(nameInput(), { target: { value: 'Jane Doe' } })
+      const toggle = screen.getByRole('button', { name: /more details/i })
+      fireEvent.click(toggle)
+      fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'not-an-email' } })
+      fireEvent.click(toggle) // collapse — the email error alone would reopen it
+      // Guests, not the date: a date INPUT (jsdom and real browsers alike)
+      // sanitizes any non-YMD string to '', so event_date can never be
+      // format-invalid through this UI — the fractional guest count is the
+      // WHAT & WHEN error an operator can actually produce.
+      fireEvent.change(screen.getByLabelText('Guests'), { target: { value: '2.5' } })
+
+      fireEvent.click(screen.getByRole('button', { name: 'Create opportunity' }))
+      await screen.findByText('Please enter a valid guest count.')
+      // Task-flow order: the WHAT & WHEN field outranks the validator's
+      // historical email-first intake order…
+      await waitFor(() => expect(screen.getByLabelText('Guests')).toHaveFocus())
+      // …so the disclosure must stay closed rather than springing open for
+      // the lower-priority email error.
+      expect(screen.queryByLabelText('Email')).not.toBeInTheDocument()
+      expect(createLead).not.toHaveBeenCalled()
+    })
+  })
+
   describe('caller recognition', () => {
     it('recognizes a typed phone number by its digits and links on request', async () => {
       renderForm({ customers: [dana, sam] })
@@ -206,6 +273,44 @@ describe('NewOpportunityForm', () => {
       expect(screen.getByText(/looks like/i)).toHaveTextContent('Sam Ortiz')
       // Hint only — the name path is still the new-client path until Link is pressed.
       expect(screen.queryByText(/linked to/i)).not.toBeInTheDocument()
+    })
+
+    // Suffix matching must hold in BOTH directions — the stored book and the
+    // caller each drop prefixes the other keeps.
+    it('matches when the stored number carries a country code the caller did not say', () => {
+      const priya: Customer = {
+        id: 'c3', name: 'Priya Nair', phone: '+1 208 555 0142', created_at: '2026-01-01T00:00:00.000Z',
+      }
+      renderForm({ customers: [priya] })
+      fireEvent.change(screen.getByLabelText('Phone'), { target: { value: '2085550142' } })
+      expect(screen.getByText(/looks like/i)).toHaveTextContent('Priya Nair')
+    })
+
+    it('matches when the book holds a 7-digit local number and the caller gives 10', () => {
+      const wes: Customer = {
+        id: 'c4', name: 'Wes Boone', phone: '555-0142', created_at: '2026-01-01T00:00:00.000Z',
+      }
+      renderForm({ customers: [wes] })
+      fireEvent.change(screen.getByLabelText('Phone'), { target: { value: '2085550142' } })
+      expect(screen.getByText(/looks like/i)).toHaveTextContent('Wes Boone')
+    })
+
+    it("appends the caller's past-job count to the hint (spec copy)", () => {
+      renderForm({ customers: [dana], pastJobCounts: { c1: 3 } })
+      fireEvent.change(screen.getByLabelText('Phone'), { target: { value: '2085550142' } })
+      expect(screen.getByText(/looks like/i).textContent)
+        .toBe('Looks like Dana Kim · Riverside · 3 past jobs')
+    })
+
+    it('uses the singular for one past job and omits the segment without a count', () => {
+      renderForm({ customers: [dana, sam], pastJobCounts: { c1: 1 } })
+      fireEvent.change(screen.getByLabelText('Phone'), { target: { value: '2085550142' } })
+      expect(screen.getByText(/looks like/i).textContent)
+        .toBe('Looks like Dana Kim · Riverside · 1 past job')
+      // Sam has no count on record: the segment disappears entirely.
+      fireEvent.click(screen.getByRole('button', { name: 'No, new client' }))
+      fireEvent.change(nameInput(), { target: { value: 'Sam Ortiz' } })
+      expect(screen.getByText(/looks like/i).textContent).toBe('Looks like Sam Ortiz')
     })
 
     it('stays dismissed for the rest of the open once declined', () => {
@@ -283,17 +388,48 @@ describe('NewOpportunityForm', () => {
       expect(screen.getByLabelText('Event type')).toHaveValue('')
     })
 
-    it('hints quietly when a typed value matches no configured type', () => {
-      renderForm({ eventTypeOptions: ['Wedding'] })
+    it('hints quietly when a typed value matches no configured profile', () => {
+      renderForm({ eventTypeOptions: ['Wedding'], eventTypeProfileNames: ['Wedding'] })
       fireEvent.change(screen.getByLabelText('Event type'), { target: { value: 'Birthday' } })
       expect(screen.getByText(/not a configured event type/i)).toBeInTheDocument()
     })
 
-    it('renders a plain input with no chips and no hint when there are no options', () => {
+    it('keys the hint on PROFILE membership, not the merged options list', () => {
+      // 'Birthday' is a merged (historical) option but not a profile — the
+      // capacity engine will use the default rule for it, so the hint shows.
+      renderForm({ eventTypeOptions: ['Wedding', 'Birthday'], eventTypeProfileNames: ['Wedding'] })
+      const input = screen.getByLabelText('Event type')
+      fireEvent.change(input, { target: { value: 'Birthday' } })
+      expect(screen.getByText(/not a configured event type/i)).toBeInTheDocument()
+      // Trim + case-insensitive against the profile name — hint stands down.
+      fireEvent.change(input, { target: { value: '  wedding ' } })
+      expect(screen.queryByText(/not a configured event type/i)).not.toBeInTheDocument()
+    })
+
+    it('renders a plain input with no chips and no unrecognized-type hint when there are no options', () => {
       renderForm()
       fireEvent.change(screen.getByLabelText('Event type'), { target: { value: 'Birthday' } })
       expect(screen.queryByText(/not a configured event type/i)).not.toBeInTheDocument()
       expect(screen.queryByRole('group', { name: /common event types/i })).not.toBeInTheDocument()
+    })
+
+    it('shows the configure-profiles onboarding hint when the org has no profiles', () => {
+      // Historical types exist but no profiles are configured: never the
+      // "not configured" nag — the onboarding cue with a real link instead.
+      renderForm({ eventTypeOptions: ['Birthday'] })
+      fireEvent.change(screen.getByLabelText('Event type'), { target: { value: 'Gala' } })
+      expect(screen.queryByText(/not a configured event type/i)).not.toBeInTheDocument()
+      expect(screen.getByText(/type any event type/i)).toBeInTheDocument()
+      const link = screen.getByRole('link', { name: /configure profiles to get capacity verdicts/i })
+      expect(link).toHaveAttribute('href', '/brew/capacity')
+      // ≥24px link target (kit vocabulary: min-h-6 = 24px).
+      expect(link.className).toContain('min-h-6')
+    })
+
+    it('drops the onboarding hint once the org has any profile', () => {
+      renderForm({ eventTypeProfileNames: ['Wedding'] })
+      expect(screen.queryByText(/type any event type/i)).not.toBeInTheDocument()
+      expect(screen.queryByRole('link', { name: /configure profiles/i })).not.toBeInTheDocument()
     })
   })
 

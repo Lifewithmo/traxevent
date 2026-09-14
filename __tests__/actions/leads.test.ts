@@ -532,6 +532,28 @@ describe('createLead follow-up at birth (increment: New Opportunity)', () => {
     expect(batchSetSpy).not.toHaveBeenCalled()
   })
 
+  /*
+    The follow-up pair goes through the SAME validator as every other field
+    (the one-rule-set claim, lib/crm/validate). Before this, a malformed
+    follow_up_date was written verbatim onto the task's due_date — a date no
+    due-date query would ever surface, i.e. a follow-up born already lost.
+  */
+  it('rejects a malformed follow_up_date before writing anything', async () => {
+    await expect(createLead('o1', { name: 'Dana Kim', follow_up_date: '16/09/2026' })).rejects.toThrow(
+      'Please pick a valid follow-up date.'
+    )
+    expect(leadDocSetSpy).not.toHaveBeenCalled()
+    expect(batchCommitSpy).not.toHaveBeenCalled()
+  })
+
+  it('rejects a follow_up_title over 200 chars before writing anything', async () => {
+    await expect(
+      createLead('o1', { name: 'Dana Kim', follow_up_date: '2026-09-16', follow_up_title: 'x'.repeat(201) })
+    ).rejects.toThrow('That submission looks too long.')
+    expect(leadDocSetSpy).not.toHaveBeenCalled()
+    expect(batchCommitSpy).not.toHaveBeenCalled()
+  })
+
   it("logs a 'created' activity naming the booked follow-up", async () => {
     const lead = await createLead('o1', { name: 'Dana Kim', follow_up_date: '2026-09-16' })
     expect(logActivity).toHaveBeenCalledWith('o1', {

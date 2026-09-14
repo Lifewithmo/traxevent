@@ -162,6 +162,43 @@ describe('validateLeadFields', () => {
     })
   })
 
+  /*
+    The follow-up pair rides the SAME rule set as everything else (the module's
+    one-rule-set claim): createLead used to write follow_up_date/follow_up_title
+    straight through with no validation at all, so a malformed date became a
+    task no due-date query would ever surface.
+  */
+  describe('follow_up_date', () => {
+    it('rejects a non-ISO date', () => {
+      expect(validateLeadFields({ follow_up_date: '16/09/2026' }).follow_up_date).toBe(
+        'Please pick a valid follow-up date.'
+      )
+    })
+
+    it('treats an empty/whitespace date as absent (empty ⇒ no task)', () => {
+      expect(validateLeadFields({ follow_up_date: '' })).toEqual({})
+      expect(validateLeadFields({ follow_up_date: '   ' })).toEqual({})
+    })
+
+    it('accepts a well-formed date, past included — same tense rule as event_date', () => {
+      expect(validateLeadFields({ follow_up_date: '2026-09-16' })).toEqual({})
+      expect(validateLeadFields({ follow_up_date: '2000-01-01' })).toEqual({})
+    })
+  })
+
+  describe('follow_up_title', () => {
+    it('rejects a title over 200 chars (trimmed)', () => {
+      expect(validateLeadFields({ follow_up_title: 'x'.repeat(201) }).follow_up_title).toBe(
+        'That submission looks too long.'
+      )
+    })
+
+    it('accepts exactly 200 chars after trimming, and absence', () => {
+      expect(validateLeadFields({ follow_up_title: `  ${'x'.repeat(200)}  ` })).toEqual({})
+      expect(validateLeadFields({})).toEqual({})
+    })
+  })
+
   it('reports every invalid field at once, keyed per field', () => {
     const errors = validateLeadFields(
       { email: 'nope', event_date: 'soon', guest_count: -2 },

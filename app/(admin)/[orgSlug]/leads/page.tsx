@@ -10,8 +10,8 @@ import { listProposals } from '@/actions/proposals'
 import { buildPipelineRows, closedThisMonth, radarConflictOpts, DEFAULT_PREP_LEAD_DAYS } from '@/lib/pipeline-view'
 import { hasMultiResourceCapacity, listCapacityUnitsCore } from '@/lib/capacity/units'
 import { buildBookabilityCtx } from '@/lib/calendar-bookability'
-import { orgEvents } from '@/lib/calendar-fetch'
-import { buildEventTypeOptions } from '@/lib/crm/event-type-options'
+import { loadCalendarEvents } from '@/lib/calendar-fetch'
+import { buildEventTypeOptions, eventTypeProfileNames, pastJobCounts } from '@/lib/crm/event-type-options'
 import { todayYmd } from '@/lib/opportunity-detail'
 import { OPEN_STAGES, CLOSED_STAGES } from '@/lib/leads'
 import { PipelineListClient } from '@/components/admin/pipeline/PipelineListClient'
@@ -45,13 +45,21 @@ export default async function LeadsPage({
   // render the pill, so it is simply unused for them.
   const resourceLabels = orgData.resource_labels as Org['resource_labels']
 
-  // `orgEvents` is the ONE Firestore read this increment adds to the page
-  // (spec §6 Data, feasibility-verified): the form's bookability verdict must
-  // read demand off the same events the calendar renders, or it contradicts
-  // the job block the cockpit draws (see `calendarDemand`). Folded into the
+  // `loadCalendarEvents(orgId, null, null)` is the ONE Firestore read this
+  // increment adds to the page (spec §6 Data, feasibility-verified): a single
+  // whole-collection events query, so the form's bookability verdict reads
+  // demand off the same events the calendar renders (see `calendarDemand`).
+  // Deliberately NOT `orgEvents` — that door goes through the calendar's
+  // memoised `loadCalendarSources` fan-out, which would re-read leads,
+  // per-lead tasks, invoices, compliance and drops this page already loads (or
+  // never needs) through its own queries. `loadCalendarEvents` is guard-free
+  // by the calendar module's assert-first contract; the caller's guards are
+  // the admin layout's `requireOrgMember(orgSlug)` (notFound for non-members
+  // before this page's payload can render) and the asserting actions
+  // (`listLeads`/`listCustomers`) in this same Promise.all. Folded into the
   // existing parallel fan-out so it costs latency nothing.
   const [leads, customers, events] = await Promise.all([
-    listLeads(orgId), listCustomers(orgId), orgEvents(orgId),
+    listLeads(orgId), listCustomers(orgId), loadCalendarEvents(orgId, null, null),
   ])
   const open = leads.filter((l) => OPEN_STAGES.includes(l.stage))
   const closed = leads.filter((l) => CLOSED_STAGES.includes(l.stage))
@@ -120,7 +128,7 @@ export default async function LeadsPage({
   /*
     The create form's live-verdict context (New Opportunity inc 1). Built from
     what this render already holds — leads, units, today — plus the one added
-    `orgEvents` read above; the form then answers "are you free Oct 4?" client-
+    events read above; the form then answers "are you free Oct 4?" client-
     side with zero further I/O. A variable (not an inline literal) so
     `event_type_profiles` can ride along past `buildBookabilityCtx`'s
     Pick<'plan'|'prep_lead_days'> input type: the builder forwards its `org`
@@ -138,7 +146,18 @@ export default async function LeadsPage({
   // is a word the operator has actually used.
   const eventTypeOptions = buildEventTypeOptions(org.event_type_profiles, leads)
 
-  const shared = { orgId, orgSlug, groups, monthly, showDeliveryMode, eventTypeOptions, bookabilityCtx }
+  // C5b's two recognition inputs, computed from data already in hand:
+  // • the RAW profile vocabulary (independent of the merged chip list above —
+  //   the form keys its "not a configured event type" hint on this);
+  // • past-job counts per customer, over EVERY loaded lead (open or closed),
+  //   for the caller-recognition hint's "{n} past jobs".
+  const profileNames = eventTypeProfileNames(org.event_type_profiles)
+  const jobCounts = pastJobCounts(leads)
+
+  const shared = {
+    orgId, orgSlug, groups, monthly, showDeliveryMode, eventTypeOptions, bookabilityCtx,
+    eventTypeProfileNames: profileNames, pastJobCounts: jobCounts,
+  }
   return (
     <div>
       {/* `units` is populated only for a business org (the gate above); a

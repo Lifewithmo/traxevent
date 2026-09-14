@@ -189,10 +189,29 @@ If the verdict block is cut for time, the increment drops to **great** and must 
 
 ---
 
-## Appendix A — canon audit (verbatim findings, evidence cited)
+## Appendix A — acceptance checklist (canon-audit defects 1–16, status as built 2026-09-14)
 
-_(see the critic report; severity-ordered defect list 1–16 reproduced below at build time as the acceptance checklist)_
+| # | Sev | Defect | Status | Evidence |
+|---|---|---|---|---|
+| 1 | 4 | Not a `<form>`: no Enter submit, no native validation, no required semantics | **Fixed** | Real `<form onSubmit>` + `noValidate`, Enter / ⌘↩ / ⌘⇧↩; `aria-required` on Name — `NewOpportunityForm.tsx` |
+| 2 | 4 | Server accepts anything but name; public intake stricter than operator path | **Fixed** | Shared `validateLeadFields` (`lib/crm/validate.ts`) used by `createLead` AND `submitIntake`; follow-up fields included after review finding [3] |
+| 3 | 4 | Phone-only callers create duplicate customers; no in-form dupe hint | **Fixed (inline)** | Caller recognition on typed phone (digit-suffix ≥7)/email/name with Link / No-new-client (`CallerMatchHint.tsx`), "· n past jobs" evidence. Server-side dedupe key remains email-only — deliberate: never auto-link on phone/name |
+| 4 | 3 | Save below the fold at 375 and 768 on the unlinked path | **Fixed** | Sticky `DialogFooter` outside the scroll region; core fields + footer co-visible — CSS claim, confirm in the walkthrough |
+| 5 | 3 | No post-save status; cockpit form appears at page bottom unseen | **Fixed** | `CreatedToast` (role=status, Open link, 8s) + ~4s row/card highlight on both pipeline views; cockpit toast "Job created for {name}"; cockpit form is a Dialog now |
+| 6 | 3 | Event type free text vs authoritative profiles | **Fixed** | `EventTypeChips` from profiles ∪ history; not-a-configured-type hint keyed on `eventTypeProfileNames` only; 0-profiles onboarding hint links to `/{orgSlug}/capacity` |
+| 7 | 3 | Focus dropped after picking a client | **Fixed** | Focus moves to the event-type input after link (picker pick or hint Link) |
+| 8 | 3 | Error not tied to its field; disabled-Save anti-pattern | **Fixed** | Submit never disabled; per-field `aria-invalid` + `aria-describedby`; first-invalid focus in task-flow order (mutation-tested) |
+| 9 | 3 | Every manual lead born `needs_attention`, no next-step capture | **Fixed** | "Follow up by" defaults to +2 business days; task written in the SAME Firestore batch as the lead (`createLeadCore` `alsoWrite` seam); clearable |
+| 10 | 2 | Escape keeps stale draft, Cancel wipes | **Fixed** | One close handler: every close path resets; reopen re-inits (cockpit prefill + fresh follow-up default) |
+| 11 | 2 | Schema-order field stack | **Fixed** | Who / What & When / Next / More-details disclosure (derived-title placeholder never persisted) |
+| 12 | 2 | Cockpit sites: no Dialog, two instances, duplicate ids, no delivery toggle | **Fixed** | Single instance owned by `ClientCockpit`; rail gets `onNewJob`; `showDeliveryMode` derived on the cockpit page (units gate) |
+| 13 | 2 | No manual-create activity log | **Fixed** | `logActivity(kind: 'created')` best-effort after the batch commits — the kind's first producer |
+| 14 | 2 | Phone input plain text | **Fixed** | `type="tel" inputMode="tel" autoComplete="off"` |
+| 15 | 1 | Hand-rolled textarea diverges from kit | **Fixed in-form** | Textarea styled with the Input tokens; `components/ui` untouched (kit addition remains flagged for the kit owner) |
+| 16 | 1 | No heading element in dialog; no combobox results live region | **Fixed** | Visible `h2` DialogTitle; sr-only polite "N clients match" region + "No matching clients" state |
 
-## Appendix B — feasibility skeptic (verbatim verdicts)
+Post-build additions from the adversarial review (25 raw → 16 confirmed, all fixed): the pipeline page's events read no longer routes through the `loadCalendarSources` fan-out (true one-added-read); `getBookabilityCtx` is slug-only and asserts membership on the RESOLVED org (cross-tenant ctx hole closed, lean 3–4 read build); Enter mid-search in the picker can no longer implicitly submit; a matched profile hides the Where toggle (profile is authoritative); create-another announces in the dialog's live region instead of a toast under the backdrop; five test gaps closed with mutation-verified tests.
 
-_(reproduced below at build time)_
+## Appendix B — feasibility skeptic (verdicts as built)
+
+The skeptic's pre-build verdicts held with one refutation that shaped the build: "zero new Firestore reads" was FALSE — `buildBookabilityCtx` requires events, so the pipeline page adds exactly one `loadCalendarEvents` query, and the cockpit lazy-loads a lean ctx (3 reads, 4 on business tier) once per form open via the slug-only `getBookabilityCtx`. Confirmed as predicted: `BookabilityCtx` is plain JSON across the RSC boundary (~25–35 KB at 200 dated jobs); `bookability()` is pure and cheap enough for per-change client evaluation; `BookabilityBanner` needed extraction from `DaySpine` (done, byte-for-byte render parity proven by a scratch parity test) with an `onPickAlternative` prop; `leadRequirement`'s free-text profile matching justified the chips + profile-hint design; `created` activity had zero producers (now has its first); email-only customer dedupe justified inline recognition.

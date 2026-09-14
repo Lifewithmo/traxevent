@@ -102,9 +102,15 @@ export function CustomerPicker({ customers, value, onChange, autoFocus }: Custom
       setActive((from + step + matches.length) % matches.length)
       return
     }
-    if (event.key === 'Enter' && open && activeIndex >= 0) {
+    if (event.key === 'Enter') {
+      // While the popup OR the no-matches note is showing, Enter belongs to
+      // the combobox — mid-search it must never fall through to the form's
+      // implicit submission and create a lead (mirror of the Escape guard).
+      // With a row highlighted it picks; with none it is a deliberate no-op.
+      // Only a quiet picker (nothing showing) lets Enter submit the form.
+      if (!open && !noMatches) return
       event.preventDefault()
-      pick(matches[activeIndex])
+      if (open && activeIndex >= 0) pick(matches[activeIndex])
     }
   }
 

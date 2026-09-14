@@ -30,6 +30,10 @@ interface ClientCockpitProps {
   // chip vocabulary is profiles + THIS customer's own history (page.tsx).
   showDeliveryMode?: boolean
   eventTypeOptions?: string[]
+  // C5b: the RAW profile vocabulary (trimmed, original casing) — independent
+  // of the merged/capped chip list; the form keys its "not a configured event
+  // type" hint on this.
+  eventTypeProfileNames?: string[]
 }
 
 function byCreatedDesc<T extends { created_at?: string }>(rows: T[]): T[] {
@@ -38,6 +42,7 @@ function byCreatedDesc<T extends { created_at?: string }>(rows: T[]): T[] {
 
 export function ClientCockpit({
   orgId, orgSlug, customer, opportunities, notes, invoices, activity, ar, showDeliveryMode, eventTypeOptions,
+  eventTypeProfileNames,
 }: ClientCockpitProps) {
   const router = useRouter()
   const [creatingJob, setCreatingJob] = useState(false)
@@ -140,11 +145,22 @@ export function ClientCockpit({
         customer={customer}
         showDeliveryMode={showDeliveryMode}
         eventTypeOptions={eventTypeOptions}
-        loadBookabilityCtx={() => getBookabilityCtx(orgId, orgSlug)}
+        eventTypeProfileNames={eventTypeProfileNames}
+        // C5b: the pinned customer's own history IS their past-job count.
+        pastJobCounts={{ [customer.id]: opportunities.length }}
+        // Slug-only by contract (C5b): the action resolves the org from the
+        // slug and asserts membership on the RESOLVED id — a caller-supplied
+        // id pair was a cross-tenant read.
+        loadBookabilityCtx={() => getBookabilityCtx(orgSlug)}
         initialValues={mostRecentJob
           ? { event_type: mostRecentJob.event_type, guest_count: mostRecentJob.guest_count }
           : undefined}
-        onCreated={(lead: Lead) => setCreatedJob(lead)}
+        // C5b: while save-and-create-another keeps the dialog up (stayedOpen),
+        // the toast would sit under its backdrop — the form announces that
+        // create in its own aria-live region instead.
+        onCreated={(lead: Lead, info: { stayedOpen: boolean }) => {
+          if (!info.stayedOpen) setCreatedJob(lead)
+        }}
       />
 
       {createdJob && (

@@ -103,5 +103,38 @@ describe('NewOpportunityForm linked mode', () => {
       await waitFor(() => expect(createLead).toHaveBeenCalled())
       expect(vi.mocked(createLead).mock.calls[0][1]).not.toHaveProperty('delivery_mode')
     })
+
+    // A matched profile drives Where (leadRequirement ignores delivery_mode on
+    // a match) — the toggle would be a dead control, so it leaves the screen.
+    it('hides the Where toggle while the typed type matches a profile, and restores it after', () => {
+      render(
+        <NewOpportunityForm
+          orgId="o1" orgSlug="brew" open onClose={() => {}} customer={customer}
+          showDeliveryMode eventTypeProfileNames={['Wedding']}
+        />
+      )
+      expect(screen.getByRole('group', { name: 'Where' })).toBeInTheDocument()
+      const typeInput = screen.getByLabelText('Event type')
+      fireEvent.change(typeInput, { target: { value: '  wedding ' } }) // trim + case-insensitive
+      expect(screen.queryByRole('group', { name: 'Where' })).not.toBeInTheDocument()
+      fireEvent.change(typeInput, { target: { value: 'Birthday' } }) // no match → toggle returns
+      expect(screen.getByRole('group', { name: 'Where' })).toBeInTheDocument()
+    })
+
+    it('never submits delivery_mode for a profile-matched type, even after an On-site pick', async () => {
+      render(
+        <NewOpportunityForm
+          orgId="o1" orgSlug="brew" open onClose={() => {}} customer={customer}
+          showDeliveryMode eventTypeProfileNames={['Wedding']}
+        />
+      )
+      fireEvent.click(screen.getByRole('button', { name: 'On-site' }))
+      fireEvent.change(screen.getByLabelText('Event type'), { target: { value: 'Wedding' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Create opportunity' }))
+      await waitFor(() => expect(createLead).toHaveBeenCalledWith('o1', expect.objectContaining({
+        event_type: 'Wedding',
+      })))
+      expect(vi.mocked(createLead).mock.calls[0][1]).not.toHaveProperty('delivery_mode')
+    })
   })
 })

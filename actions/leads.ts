@@ -57,9 +57,10 @@ export async function createLead(orgId: string, input: CreateLeadInput): Promise
   if (!LEAD_STAGES.includes(stage)) throw new Error('Invalid stage')
 
   // One rule set for every door a lead comes through: the operator path
-  // validates exactly what the public intake form does (lib/crm/validate).
-  // Linked mode takes its identity from the customer record, so only the
-  // unlinked path requires a name here.
+  // validates exactly what the public intake form does (lib/crm/validate) —
+  // INCLUDING the follow-up pair, which only this door accepts. Linked mode
+  // takes its identity from the customer record, so only the unlinked path
+  // requires a name here.
   const fieldError = firstLeadFieldError(
     validateLeadFields(
       {
@@ -71,6 +72,8 @@ export async function createLead(orgId: string, input: CreateLeadInput): Promise
         guest_count: input.guest_count,
         estimated_value: input.estimated_value,
         notes: input.notes,
+        follow_up_date: input.follow_up_date,
+        follow_up_title: input.follow_up_title,
       },
       { requireName: !input.customer_id }
     )

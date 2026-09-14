@@ -8,7 +8,7 @@ import { listActivity } from '@/actions/activity'
 import { listInvoicesByCustomerCore } from '@/lib/crm/invoices'
 import { mergeActivity } from '@/lib/crm/customer-activity'
 import { customerAR } from '@/lib/crm/ar-rollup'
-import { buildEventTypeOptions } from '@/lib/crm/event-type-options'
+import { buildEventTypeOptions, eventTypeProfileNames } from '@/lib/crm/event-type-options'
 import { hasMultiResourceCapacity, listCapacityUnitsCore } from '@/lib/capacity/units'
 import { ClientCockpit } from '@/components/admin/clients/ClientCockpit'
 import type { BillingPlan, Org } from '@/lib/types'
@@ -53,6 +53,11 @@ export default async function CustomerDetailPage({
   // Chip vocabulary: profiles + THIS customer's own history (one shared rule,
   // lib/crm/event-type-options — the pipeline page feeds it the whole org's).
   const eventTypeOptions = buildEventTypeOptions(eventTypeProfiles, opportunities)
+  // C5b: the RAW profile vocabulary, independent of the merged chip list —
+  // the form keys its "not a configured event type" hint on this. (The
+  // cockpit's pastJobCounts is derived in ClientCockpit from the pinned
+  // customer's own opportunities — no extra prop.)
+  const profileNames = eventTypeProfileNames(eventTypeProfiles)
 
   // The rollup/story is derived in the client from opportunities — no prop for it.
   return (
@@ -67,6 +72,7 @@ export default async function CustomerDetailPage({
       ar={ar}
       showDeliveryMode={showDeliveryMode}
       eventTypeOptions={eventTypeOptions}
+      eventTypeProfileNames={profileNames}
     />
   )
 }

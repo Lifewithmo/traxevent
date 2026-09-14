@@ -34,12 +34,21 @@ vi.mock('@/components/admin/pipeline/NewOpportunityForm', () => ({
           <div role="dialog" aria-label="New opportunity">
             <button
               type="button"
-              onClick={() => (props.onCreated as ((l: unknown) => void) | undefined)?.({
+              onClick={() => (props.onCreated as ((l: unknown, info: { stayedOpen: boolean }) => void) | undefined)?.({
                 id: 'new1', name: 'Jane Doe', stage: 'inquiry',
                 created_at: 't', updated_at: 't',
-              })}
+              }, { stayedOpen: false })}
             >
               mock-create
+            </button>
+            <button
+              type="button"
+              onClick={() => (props.onCreated as ((l: unknown, info: { stayedOpen: boolean }) => void) | undefined)?.({
+                id: 'new2', name: 'Jane Doe', stage: 'inquiry',
+                created_at: 't', updated_at: 't',
+              }, { stayedOpen: true })}
+            >
+              mock-create-another
             </button>
           </div>
         ) : null}
@@ -84,18 +93,32 @@ describe('ClientCockpit (New Opportunity inc 1 — one form instance, contract C
   })
 
   it('threads the C5 props: orgSlug, showDeliveryMode, eventTypeOptions and the lazy ctx loader', async () => {
-    render(<ClientCockpit {...baseProps} showDeliveryMode eventTypeOptions={['Wedding', 'Market']} />)
+    render(<ClientCockpit {...baseProps}
+      showDeliveryMode
+      eventTypeOptions={['Wedding', 'Market']}
+      eventTypeProfileNames={['Wedding']}
+      opportunities={[
+        opp({ id: 'a', created_at: '2025-05-01T00:00:00.000Z' }),
+        opp({ id: 'b', created_at: '2026-02-01T00:00:00.000Z' }),
+      ]}
+    />)
     const props = formProps.mock.calls.at(-1)![0]
     expect(props).toMatchObject({
       orgId: 'o', orgSlug: 'acme', open: false,
       showDeliveryMode: true, eventTypeOptions: ['Wedding', 'Market'],
+      // C5b: the raw profile vocabulary rides through untouched, and the
+      // pinned customer's own history IS their past-job count.
+      eventTypeProfileNames: ['Wedding'],
+      pastJobCounts: { c1: 2 },
     })
     // Lazy, not preloaded: the cockpit hands a LOADER (contract C3 via C5's
     // loadBookabilityCtx) so most visits — which never open the form — pay
-    // zero ctx reads. The loader must hit the server action with this org.
+    // zero ctx reads. SLUG-ONLY by C5b: the action resolves the org from the
+    // slug and asserts membership on the RESOLVED id (the old (orgId, slug)
+    // pair was a cross-tenant read).
     expect(props.bookabilityCtx).toBeUndefined()
     await (props.loadBookabilityCtx as () => Promise<unknown>)()
-    expect(getBookabilityCtx).toHaveBeenCalledWith('o', 'acme')
+    expect(getBookabilityCtx).toHaveBeenCalledWith('acme')
   })
 
   it('prefills initialValues from the customer’s MOST RECENT opportunity', () => {
@@ -119,5 +142,17 @@ describe('ClientCockpit (New Opportunity inc 1 — one form instance, contract C
     const toast = screen.getByRole('status')
     expect(toast.textContent).toContain('Job created for Tessa Lund')
     expect(screen.getByRole('link', { name: 'Open' })).toHaveAttribute('href', '/acme/leads/new1')
+  })
+
+  /*
+    C5b: on save-and-create-another the dialog STAYS OPEN, so the toast would
+    render under its backdrop — the form announces that create in its own
+    aria-live region instead, and the cockpit stays quiet.
+  */
+  it('suppresses the toast on the save-and-create-another path', () => {
+    render(<ClientCockpit {...baseProps} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Book a job' }))
+    fireEvent.click(screen.getByRole('button', { name: 'mock-create-another' }))
+    expect(screen.queryByRole('status')).toBeNull()
   })
 })

@@ -19,6 +19,8 @@ export interface LeadFieldErrors {
   guest_count?: string
   estimated_value?: string
   notes?: string
+  follow_up_date?: string
+  follow_up_title?: string
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -45,6 +47,11 @@ export function validateLeadFields(
     guest_count?: number
     estimated_value?: number
     notes?: string
+    // Operator-only follow-up pair (createLead's born-with-a-next-step task).
+    // Validated HERE, not ad hoc in the action, so the one-rule-set claim in
+    // the header stays true for every field the operator door accepts.
+    follow_up_date?: string
+    follow_up_title?: string
   },
   opts?: { requireName?: boolean; requireEmail?: boolean }
 ): LeadFieldErrors {
@@ -82,6 +89,16 @@ export function validateLeadFields(
   ) {
     errors.estimated_value = 'Please enter a valid estimated value.'
   }
+  // The follow-up pair (operator-only, appended after the historical intake
+  // order so `firstLeadFieldError` still reproduces intake's throws verbatim).
+  // Blank ⇒ absent (empty follow-up = no task); a PAST follow-up date is valid
+  // for the same reason a past event_date is — format is all this layer owns.
+  const followUpDate = (fields.follow_up_date ?? '').trim()
+  const followUpTitle = (fields.follow_up_title ?? '').trim()
+  if (followUpDate && !YMD_RE.test(followUpDate)) {
+    errors.follow_up_date = 'Please pick a valid follow-up date.'
+  }
+  if (followUpTitle.length > 200) errors.follow_up_title = 'That submission looks too long.'
   return errors
 }
 

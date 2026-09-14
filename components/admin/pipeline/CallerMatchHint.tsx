@@ -16,10 +16,15 @@ import type { Customer } from '@/lib/types'
  */
 export function CallerMatchHint({
   customer,
+  pastJobs,
   onLink,
   onDismiss,
 }: {
   customer: Customer
+  /** The customer's total opportunity count (spec: "Looks like Jane Doe · 3
+   *  past jobs"); the segment is omitted entirely when the caller has no
+   *  count to offer — never "undefined past jobs", never a guessed zero. */
+  pastJobs?: number
   onLink: () => void
   onDismiss: () => void
 }) {
@@ -28,6 +33,7 @@ export function CallerMatchHint({
       <p className="text-sm">
         Looks like <span className="font-medium">{customer.name}</span>
         {customer.company ? ` · ${customer.company}` : ''}
+        {pastJobs != null ? ` · ${pastJobs} past ${pastJobs === 1 ? 'job' : 'jobs'}` : ''}
       </p>
       <div className="mt-1.5 flex flex-wrap gap-2">
         <Button type="button" size="sm" onClick={onLink}>Link</Button>

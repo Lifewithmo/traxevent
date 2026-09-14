@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ChevronRightIcon } from 'lucide-react'
 import {
@@ -38,10 +39,23 @@ interface NewOpportunityFormProps {
   // choose for an org with no venue, so the control simply does not render.
   showDeliveryMode?: boolean
   eventTypeOptions?: string[]         // ordered: profile names first, then historical by frequency
+  // The org's event-type-profile names alone (trimmed, original casing) —
+  // independent of the merged eventTypeOptions, which also carries historical
+  // types. Only PROFILE membership decides what the capacity engine does with
+  // a typed type (leadRequirement, lib/capacity/requirement.ts), so only this
+  // list may drive the "not a configured event type" hint (contract C5b).
+  eventTypeProfileNames?: string[]
+  // customer_id -> that customer's total opportunity count, for the caller-
+  // recognition card's "· {n} past jobs" segment (contract C5b).
+  pastJobCounts?: Record<string, number>
   bookabilityCtx?: BookabilityCtx | null          // pipeline: preloaded at page render
   loadBookabilityCtx?: () => Promise<BookabilityCtx | null>  // cockpit: lazy, called once on first open
   initialValues?: { event_type?: string; guest_count?: number }  // cockpit: prefill from last job
-  onCreated?: (lead: Lead) => void    // fires after each successful create (also on create-another)
+  /** Fires after each successful create; `stayedOpen` is true on the
+   *  save-and-create-another path, where the form announces the create in its
+   *  own live region and the call site must NOT also raise the CreatedToast
+   *  (contract C5b). The row-highlight id is recorded either way. */
+  onCreated?: (lead: Lead, info: { stayedOpen: boolean }) => void
 }
 
 type FieldKey = keyof LeadFieldErrors
@@ -102,6 +116,8 @@ export function NewOpportunityForm({
   customers,
   showDeliveryMode,
   eventTypeOptions,
+  eventTypeProfileNames,
+  pastJobCounts,
   bookabilityCtx,
   loadBookabilityCtx,
   initialValues,
@@ -110,6 +126,10 @@ export function NewOpportunityForm({
   const router = useRouter()
   const [saving, setSaving] = useState(false)
   const [serverError, setServerError] = useState<string | null>(null)
+  // The create-another announcement: the dialog stays open, so the top live
+  // region — not the call site's CreatedToast — must say the record now
+  // exists (contract C5b).
+  const [announce, setAnnounce] = useState<string | null>(null)
   const [errors, setErrors] = useState<LeadFieldErrors>({})
   const [picked, setPicked] = useState<Customer | null>(null)
   // Caller recognition remembers "No, new client" per customer for the life of
@@ -150,7 +170,10 @@ export function NewOpportunityForm({
   const pendingFocusRef = useRef<FieldKey | null>(null)
 
   function focusField(key: FieldKey) {
-    const el: HTMLElement | null = {
+    // Partial on purpose: the follow-up keys the validator can also carry
+    // (server-door inputs) have no focus target here — the form's own date
+    // input can never produce them, so an unmapped key is a quiet no-op.
+    const refs: Partial<Record<FieldKey, HTMLElement | null>> = {
       name: nameRef.current,
       phone: phoneRef.current,
       event_type: eventTypeRef.current,
@@ -159,8 +182,8 @@ export function NewOpportunityForm({
       email: emailRef.current,
       estimated_value: valueRef.current,
       notes: notesRef.current,
-    }[key]
-    el?.focus()
+    }
+    refs[key]?.focus()
   }
 
   useEffect(() => {
@@ -194,13 +217,17 @@ export function NewOpportunityForm({
     setMoreOpen(false)
     setErrors({})
     setServerError(null)
+    setAnnounce(null)
   }
 
   // Re-initialize on every open so the follow-up default and cockpit prefill
   // are computed at open time, not mount time. Latest-ref so a parent
   // re-render (new `initialValues` identity) can never wipe a draft mid-typing.
+  // The ref is written in an effect, never during render (react-hooks rule) —
+  // effects run in order, so the latest closure is in place before the
+  // open-effect below ever reads it.
   const initDraftRef = useRef(initDraft)
-  initDraftRef.current = initDraft
+  useEffect(() => { initDraftRef.current = initDraft })
   useEffect(() => {
     if (open) initDraftRef.current()
   }, [open])
@@ -260,14 +287,23 @@ export function NewOpportunityForm({
   }, [linked, customers, phone, email, name, dismissedIds])
 
   const options = eventTypeOptions ?? []
+  const profileNames = eventTypeProfileNames ?? []
   const trimmedType = eventType.trim()
+  const typeKey = trimmedType.toLowerCase()
+  // PROFILE membership, not merged-options membership: the merged list also
+  // carries historical free-text types, which the capacity engine treats with
+  // the default rule — keying the hint on it misfires both ways. Same
+  // trim+lowercase match as leadRequirement (lib/capacity/requirement.ts).
+  const profileMatched =
+    trimmedType !== '' && profileNames.some((p) => p.trim().toLowerCase() === typeKey)
   // Quiet, never blocking: a free-text type is legitimate (profiles are an
   // overlay, not a migration) — the hint just says what the capacity engine
   // will do with it.
-  const typeUnrecognized =
-    options.length > 0 &&
-    trimmedType !== '' &&
-    !options.some((o) => o.toLowerCase() === trimmedType.toLowerCase())
+  const typeUnrecognized = profileNames.length > 0 && trimmedType !== '' && !profileMatched
+  // A matched profile is authoritative about Where — leadRequirement ignores
+  // delivery_mode entirely on a match, so the toggle would be a dead control
+  // and its answer silently discarded. Hide it and submit nothing.
+  const deliveryModeRelevant = Boolean(showDeliveryMode) && !profileMatched
 
   // Derived, never persisted: the placeholder previews "Jane Doe · Wedding ·
   // Oct 4" but the field submits ONLY what the operator types — persisting the
@@ -296,8 +332,9 @@ export function NewOpportunityForm({
       ...(parsedGuests != null && !Number.isNaN(parsedGuests) ? { guest_count: parsedGuests } : {}),
       // Only a business-tier org with a venue is asked; offsite is the default
       // and needs no stored flag, so we persist the choice only when the
-      // control was shown and the operator picked on-site.
-      ...(showDeliveryMode && deliveryMode === 'onsite' ? { delivery_mode: 'onsite' as const } : {}),
+      // control was shown (and not superseded by a matched profile) and the
+      // operator picked on-site.
+      ...(deliveryModeRelevant && deliveryMode === 'onsite' ? { delivery_mode: 'onsite' as const } : {}),
       // Empty = no task. The server creates the Task in the same batch as the
       // lead (contract C2), so the opportunity is born with a next step.
       ...(followUp.trim() ? { follow_up_date: followUp.trim() } : {}),
@@ -347,9 +384,13 @@ export function NewOpportunityForm({
     setServerError(null)
     try {
       const lead = await createLead(orgId, buildPayload(parsedGuests, parsedValue))
-      onCreated?.(lead)
+      onCreated?.(lead, { stayedOpen: mode === 'another' })
       if (mode === 'another') {
+        const createdName = lead.name || contactName
         resetForAnother()
+        // The dialog stays open, so the call site suppresses its CreatedToast
+        // (contract C5b) and THIS live region closes the loop instead.
+        setAnnounce(`Opportunity created for ${createdName}.`)
         // Straight back to the top of the next call. No Name field in pinned
         // cockpit mode — the event type is the first stop there.
         pendingFocusRef.current = customer ? 'event_type' : 'name'
@@ -406,9 +447,13 @@ export function NewOpportunityForm({
           {/* Scrollable body; the footer below stays put so Create is visible
               with the core fields at 375×812. */}
           <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
-            {/* Server-side failures land here; field errors live at their fields. */}
+            {/* Server-side failures and the create-another confirmation land
+                here; field errors live at their fields. */}
             <div aria-live="polite" aria-atomic="true">
               {serverError && <p className="mb-3 text-sm text-destructive">{serverError}</p>}
+              {!serverError && announce && (
+                <p className="mb-3 text-sm text-muted-foreground">{announce}</p>
+              )}
             </div>
             <div className="space-y-5">
               <fieldset>
@@ -462,6 +507,7 @@ export function NewOpportunityForm({
                     {recognition && (
                       <CallerMatchHint
                         customer={recognition}
+                        pastJobs={pastJobCounts?.[recognition.id]}
                         onLink={() => setPicked(recognition)}
                         onDismiss={() => setDismissedIds((ids) => [...ids, recognition.id])}
                       />
@@ -516,6 +562,19 @@ export function NewOpportunityForm({
                         Not a configured event type — capacity uses the default rule.
                       </p>
                     )}
+                    {profileNames.length === 0 && (
+                      // 0-profiles onboarding (spec §empty states): free text
+                      // always works; the link says where verdicts come from.
+                      <p className="text-xs text-muted-foreground">
+                        Type any event type —{' '}
+                        <Link
+                          href={`/${orgSlug}/capacity`}
+                          className="inline-flex min-h-6 items-center underline underline-offset-2 hover:text-foreground"
+                        >
+                          configure profiles to get capacity verdicts
+                        </Link>
+                      </p>
+                    )}
                     <FieldError id="leadEventType-error">{errors.event_type}</FieldError>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
@@ -568,7 +627,7 @@ export function NewOpportunityForm({
                       className="mx-0"
                     />
                   )}
-                  {showDeliveryMode && (
+                  {deliveryModeRelevant && (
                     <DeliveryModeToggle
                       value={deliveryMode}
                       onChange={setDeliveryMode}

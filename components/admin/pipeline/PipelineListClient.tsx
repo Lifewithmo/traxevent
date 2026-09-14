@@ -49,6 +49,13 @@ interface PipelineListClientProps {
   // the org's own historical types by frequency — computed on the server
   // (lib/crm/event-type-options) and passed through untouched.
   eventTypeOptions?: string[]
+  // C5b: the RAW profile vocabulary (trimmed, original casing) — independent
+  // of the merged/capped chip list above; the form keys its "not a configured
+  // event type" hint on this.
+  eventTypeProfileNames?: string[]
+  // C5b: customer_id → total opportunity count over the page's loaded leads,
+  // for the caller-recognition hint's "{n} past jobs".
+  pastJobCounts?: Record<string, number>
   // Everything `bookability(date, ctx)` needs to render the live verdict at the
   // form's date field with NO further I/O — built once at page render (this
   // page already loads the leads/units; events cost the one added read the
@@ -184,7 +191,7 @@ function GroupHeader({ label, rows, alert }: { label: string; rows: PipelineRow[
 
 export function PipelineListClient({
   orgId, orgSlug, groups, closed, openCount, monthly, customers, showDeliveryMode, resourceLabels, eventTypeProfiles,
-  eventTypeOptions, bookabilityCtx,
+  eventTypeOptions, eventTypeProfileNames, pastJobCounts, bookabilityCtx,
 }: PipelineListClientProps) {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState<Tab>('open')
@@ -220,8 +227,15 @@ export function PipelineListClient({
     return () => clearTimeout(t)
   }, [highlightVisible])
 
-  function handleCreated(lead: Lead) {
-    setCreated({ lead })
+  /*
+    C5b: on the save-and-create-another path (`stayedOpen`) the dialog is still
+    up, so the toast would render UNDER its backdrop — inert link, unreachable
+    dismiss. The form announces that create in its own top aria-live region
+    instead; this call site only records the row highlight, so every create
+    still pulses its row once the dialog finally closes and the refresh lands.
+  */
+  function handleCreated(lead: Lead, info: { stayedOpen: boolean }) {
+    if (!info.stayedOpen) setCreated({ lead })
     setHighlightId(lead.id)
   }
   /*
@@ -631,6 +645,8 @@ export function PipelineListClient({
         customers={customers}
         showDeliveryMode={showDeliveryMode}
         eventTypeOptions={eventTypeOptions}
+        eventTypeProfileNames={eventTypeProfileNames}
+        pastJobCounts={pastJobCounts}
         bookabilityCtx={bookabilityCtx}
         onCreated={handleCreated}
       />

@@ -1,4 +1,5 @@
 import { render, screen, fireEvent } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import { CustomerPicker } from '@/components/admin/pipeline/CustomerPicker'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
@@ -110,6 +111,84 @@ describe('CustomerPicker', () => {
 
     fireEvent.keyDown(input, { key: 'Enter' })
     expect(onChange).toHaveBeenCalledWith(customers[0])
+  })
+
+  it('wraps the highlight: ArrowUp from none lands on the last option, ArrowDown from the last on the first', () => {
+    render(<CustomerPicker customers={customers} value={null} onChange={() => {}} />)
+    const input = screen.getByRole('combobox', { name: /link to existing customer/i })
+    type('a')
+
+    fireEvent.keyDown(input, { key: 'ArrowUp' })
+    let options = screen.getAllByRole('option')
+    expect(options[1]).toHaveAttribute('aria-selected', 'true')
+
+    fireEvent.keyDown(input, { key: 'ArrowDown' })
+    options = screen.getAllByRole('option')
+    expect(options[0]).toHaveAttribute('aria-selected', 'true')
+    expect(options[1]).toHaveAttribute('aria-selected', 'false')
+
+    // From a dismissed (closed) list, ArrowUp reopens straight onto the last row.
+    fireEvent.keyDown(input, { key: 'Escape' })
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+    fireEvent.keyDown(input, { key: 'ArrowUp' })
+    expect(screen.getAllByRole('option')[1]).toHaveAttribute('aria-selected', 'true')
+  })
+
+  // MID-SEARCH ENTER (the lead-creating fall-through): `active` resets to -1 on
+  // every keystroke, so Enter with the list open but nothing highlighted used
+  // to reach the browser's implicit form submission and CREATE a lead. While
+  // the popup or the no-matches note is showing, Enter belongs to the combobox.
+  describe('Enter while searching', () => {
+    function renderInForm() {
+      const onSubmit = vi.fn((e: React.FormEvent) => e.preventDefault())
+      const onChange = vi.fn()
+      render(
+        <form onSubmit={onSubmit}>
+          <CustomerPicker customers={customers} value={null} onChange={onChange} />
+          <button type="submit">Create opportunity</button>
+        </form>
+      )
+      return {
+        onSubmit,
+        onChange,
+        input: screen.getByRole('combobox', { name: /link to existing customer/i }),
+      }
+    }
+
+    it('does not submit the form when the list is open with nothing highlighted', async () => {
+      const user = userEvent.setup()
+      const { onSubmit, onChange, input } = renderInForm()
+      await user.type(input, 'a') // list open; active is -1 after the keystroke
+      await user.keyboard('{Enter}')
+      expect(onSubmit).not.toHaveBeenCalled()
+      expect(onChange).not.toHaveBeenCalled()
+    })
+
+    it('picks the highlighted row on Enter without submitting the form', async () => {
+      const user = userEvent.setup()
+      const { onSubmit, onChange, input } = renderInForm()
+      await user.type(input, 'a')
+      await user.keyboard('{ArrowDown}{Enter}')
+      expect(onChange).toHaveBeenCalledWith(customers[0])
+      expect(onSubmit).not.toHaveBeenCalled()
+    })
+
+    it('does not submit the form from the no-matches state either', async () => {
+      const user = userEvent.setup()
+      const { onSubmit, input } = renderInForm()
+      await user.type(input, 'zz')
+      expect(screen.getAllByText('No matching clients').length).toBeGreaterThan(0)
+      await user.keyboard('{Enter}')
+      expect(onSubmit).not.toHaveBeenCalled()
+    })
+
+    it('leaves Enter to implicit submission when the picker is quiet', async () => {
+      const user = userEvent.setup()
+      const { onSubmit, input } = renderInForm()
+      await user.click(input)
+      await user.keyboard('{Enter}')
+      expect(onSubmit).toHaveBeenCalledTimes(1)
+    })
   })
 
   it('dismisses the list on Escape and on a click outside, and reopens on the next keystroke', () => {

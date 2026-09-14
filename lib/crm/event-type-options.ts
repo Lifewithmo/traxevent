@@ -59,3 +59,32 @@ export function buildEventTypeOptions(
 
   return out.slice(0, 8)
 }
+
+/**
+ * The RAW profile vocabulary (contract C5b's `eventTypeProfileNames`) —
+ * trimmed, original casing, in profile order, blanks dropped.
+ *
+ * Deliberately independent of `buildEventTypeOptions` above: that list mixes
+ * history in and caps at 8, so it cannot answer the form's "is the typed value
+ * a CONFIGURED event type?" question — a 9th profile squeezed off the chip row
+ * must still count as configured, and a merely-historical chip must not.
+ */
+export function eventTypeProfileNames(profiles: Org['event_type_profiles']): string[] {
+  return (profiles ?? []).map((p) => p.name.trim()).filter((n) => n !== '')
+}
+
+/**
+ * customer_id → total opportunity count (contract C5b's `pastJobCounts`),
+ * feeding the caller-recognition hint's "{n} past jobs". Counts EVERY lead in
+ * the set it is given — open or closed; a past job is a past job however it
+ * ended. The pipeline page feeds the whole org's leads; the cockpit page pins
+ * one customer and passes `{ [customerId]: opportunities.length }` directly.
+ */
+export function pastJobCounts(leads: Array<Pick<Lead, 'customer_id'>>): Record<string, number> {
+  const counts: Record<string, number> = {}
+  for (const l of leads) {
+    if (!l.customer_id) continue
+    counts[l.customer_id] = (counts[l.customer_id] ?? 0) + 1
+  }
+  return counts
+}

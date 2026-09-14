@@ -328,6 +328,25 @@ EventTrax pivot (neutralization, multi-brand, ops core). Detailed designs live i
 
 ## In flight
 
+- **New Opportunity — answer-the-caller create flow** (branch
+  `new-opportunity-ambition`, PR pending) — the create form rebuilt from the
+  design-ambition gate (spec:
+  `superpowers/specs/2026-09-12-new-opportunity-design-ambition.md`): the
+  category-defining move is the **live bookability verdict at the date field**
+  (open/tight/closed + binding constraint + one-tap next-open dates, via the
+  extracted `BookabilityBanner`; pipeline preloads the ctx for one added events
+  read, cockpit lazy-loads a lean slug-resolved ctx). Around it: task-flow
+  composition (Who / What & When / Next / More), real `<form>` with
+  Enter / ⌘↩ / ⌘⇧↩ create-another, caller recognition from typed phone/email/
+  name, event-type chips keyed to profiles, follow-up task born with the lead
+  in one batch (kills the born-`needs_attention` scold), shared
+  `validateLeadFields` (operator path now validates at least as much as public
+  intake), `created` activity, CreatedToast + row highlight, cockpit
+  single-instance parity. Reviewed by a five-lens adversarial fleet (25 raw →
+  16 confirmed findings, incl. a cross-tenant ctx hole and a read-amplification
+  regression — all fixed). Owed at merge: three-viewport preview walkthrough,
+  promote this entry to Shipped.
+
 - **Proposal templates** (branch `claude/proposal-templates`) — org-owned
   full-document templates: pick one on New proposal (above the built-in
   skeletons), manage under Settings → Proposal templates, edit in a builder

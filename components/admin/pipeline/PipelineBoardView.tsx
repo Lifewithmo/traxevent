@@ -34,6 +34,13 @@ interface PipelineBoardViewProps {
   // The create form's chip vocabulary (contract C5) — same server-computed list
   // the list surface threads, so the two views' forms are identical.
   eventTypeOptions?: string[]
+  // C5b: the RAW profile vocabulary (trimmed, original casing) — independent
+  // of the merged/capped chip list above; the form keys its "not a configured
+  // event type" hint on this.
+  eventTypeProfileNames?: string[]
+  // C5b: customer_id → total opportunity count over the page's loaded leads,
+  // for the caller-recognition hint's "{n} past jobs".
+  pastJobCounts?: Record<string, number>
   // The form's live-verdict context, preloaded at page render (see the list's
   // prop comment). Null/absent ⇒ the form renders no verdict block.
   bookabilityCtx?: BookabilityCtx | null
@@ -90,7 +97,8 @@ function applyPending(base: PipelineRow[], pending: Map<string, PendingMove>): P
 }
 
 export function PipelineBoardView({
-  orgId, orgSlug, groups, monthly, customers, showDeliveryMode, eventTypeOptions, bookabilityCtx,
+  orgId, orgSlug, groups, monthly, customers, showDeliveryMode, eventTypeOptions,
+  eventTypeProfileNames, pastJobCounts, bookabilityCtx,
 }: PipelineBoardViewProps) {
   const router = useRouter()
   const [rows, setRows] = useState<PipelineRow[]>(() => flatten(groups))
@@ -165,8 +173,14 @@ export function PipelineBoardView({
     return () => clearTimeout(t)
   }, [highlightVisible])
 
-  function handleCreated(lead: Lead) {
-    setCreated({ lead })
+  /*
+    C5b: on the save-and-create-another path (`stayedOpen`) the dialog is still
+    up, so the toast would render UNDER its backdrop — the form announces that
+    create in its own top aria-live region instead. The highlight id is still
+    recorded, so every create pulses its card once the refresh lands.
+  */
+  function handleCreated(lead: Lead, info: { stayedOpen: boolean }) {
+    if (!info.stayedOpen) setCreated({ lead })
     setHighlightId(lead.id)
   }
 
@@ -320,6 +334,8 @@ export function PipelineBoardView({
         customers={customers}
         showDeliveryMode={showDeliveryMode}
         eventTypeOptions={eventTypeOptions}
+        eventTypeProfileNames={eventTypeProfileNames}
+        pastJobCounts={pastJobCounts}
         bookabilityCtx={bookabilityCtx}
         onCreated={handleCreated}
       />

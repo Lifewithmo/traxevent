@@ -39,17 +39,14 @@ export function defaultFollowUpYmd(todayYmd: string): string {
 export function FollowUpField({
   value,
   onChange,
-  inputRef,
 }: {
   value: string
   onChange: (next: string) => void
-  inputRef?: React.Ref<HTMLInputElement>
 }) {
   return (
     <div className="space-y-1">
       <Label htmlFor="leadFollowUp">Follow up by</Label>
       <Input
-        ref={inputRef}
         id="leadFollowUp"
         type="date"
         value={value}

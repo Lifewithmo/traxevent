@@ -69,6 +69,25 @@ describe('CreatedToast', () => {
     expect(onDismiss).toHaveBeenCalledTimes(1)
   })
 
+  // Callers pass an inline `() => setCreated(null)` — a fresh identity every
+  // parent render. A timer effect keyed on it would re-arm on each render and
+  // silently extend the toast forever on a busy page.
+  it('keeps the original 8s deadline when a rerender hands it a new onDismiss identity', () => {
+    vi.useFakeTimers()
+    const first = vi.fn()
+    const second = vi.fn()
+    const { rerender } = render(<CreatedToast message="x" onDismiss={first} />)
+    act(() => { vi.advanceTimersByTime(4000) })
+    rerender(<CreatedToast message="x" onDismiss={second} />)
+    act(() => { vi.advanceTimersByTime(3999) })
+    expect(first).not.toHaveBeenCalled()
+    expect(second).not.toHaveBeenCalled()
+    act(() => { vi.advanceTimersByTime(1) })
+    // Fires at the ORIGINAL deadline, through the LATEST handler.
+    expect(second).toHaveBeenCalledTimes(1)
+    expect(first).not.toHaveBeenCalled()
+  })
+
   it('cancels the auto-dismiss timer on unmount instead of calling a stale handler', () => {
     vi.useFakeTimers()
     const onDismiss = vi.fn()
