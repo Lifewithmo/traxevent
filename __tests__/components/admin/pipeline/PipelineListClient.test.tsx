@@ -24,6 +24,41 @@ vi.mock('@/actions/intake', () => ({
   regenerateIntakeToken: vi.fn().mockResolvedValue('tok456'),
 }))
 
+/*
+  THE FORM IS A CONTRACT, NOT A DEPENDENCY (New Opportunity inc 1). Agent F owns
+  NewOpportunityForm and rewrites it in parallel; this surface builds against
+  contract C5 only — so the form is mocked here and these tests assert the PROPS
+  this call site threads (orgSlug, eventTypeOptions, bookabilityCtx, onCreated)
+  and what the call site does with onCreated, never the form's internals. The
+  mock renders its own role="dialog" when open because that is C5's one
+  structural promise: the form owns its Dialog now.
+*/
+const { formProps } = vi.hoisted(() => ({ formProps: vi.fn() }))
+vi.mock('@/components/admin/pipeline/NewOpportunityForm', () => ({
+  NewOpportunityForm: (props: Record<string, unknown>) => {
+    formProps(props)
+    if (!props.open) return null
+    // C5b: onCreated carries (lead, { stayedOpen }) — stayedOpen=true on the
+    // save-and-create-another path, where the dialog stays up and the form
+    // announces the create itself.
+    const onCreated = props.onCreated as
+      | ((l: unknown, info: { stayedOpen: boolean }) => void)
+      | undefined
+    const created = (stayedOpen: boolean) => onCreated?.({
+      id: 'new1', name: 'Jane Doe', stage: 'inquiry',
+      event_type: 'Wedding', event_date: '2026-10-04',
+      created_at: 't', updated_at: 't',
+    }, { stayedOpen })
+    return (
+      <div role="dialog" aria-label="New opportunity">
+        <button type="button" onClick={() => created(false)}>mock-create</button>
+        <button type="button" onClick={() => created(true)}>mock-create-another</button>
+        <button type="button" onClick={props.onClose as () => void}>mock-close</button>
+      </div>
+    )
+  },
+}))
+
 const lead = (over: Partial<Lead>): Lead => ({
   id: 'l1', name: 'Halcyon Studios', stage: 'proposal', created_at: 't', updated_at: 't', ...over,
 } as Lead)
@@ -57,6 +92,7 @@ describe('PipelineListClient', () => {
     setLeadStage.mockReset().mockResolvedValue({ ok: true })
     push.mockClear()
     refresh.mockClear()
+    formProps.mockClear()
     const slot = document.createElement('div')
     slot.id = 'tx-pipeline-actions'
     document.body.appendChild(slot)
@@ -579,14 +615,118 @@ describe('PipelineListClient', () => {
     expect(screen.queryByText(/needs action/i)).toBeNull()
   })
 
-  it('mounts the create form in a dialog rather than inline above the list', () => {
-    const { container } = render(<PipelineListClient {...baseProps} />)
-    expect(container.querySelector('#leadEventType')).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: 'New opportunity' }))
-    const dialog = screen.getByRole('dialog')
-    expect(dialog.querySelector('#leadEventType')).toBeTruthy()
-    // In a portal on <body>, so the pipeline below is not pushed down.
-    expect(container.querySelector('#leadEventType')).toBeNull()
+  /*
+    CONTRACT C5 + THE CREATED LOOP (New Opportunity inc 1). The form owns its
+    Dialog now, so this call site's job shrank to exactly three things: thread
+    the contract props through, get out of the way (no wrapper Dialog, no
+    card-strip class hacks), and close the loop after a create — toast with a
+    deep link, and a short pulse on the new row once the refreshed payload
+    actually lands.
+  */
+  describe('create form contract (C5) and the created loop', () => {
+    const degradedCtx = {
+      today: '2026-09-14', prepLeadDays: 14, orgSlug: 'demo',
+      radar: { mode: 'degraded' as const, conflictDates: [], bookedCounts: {} },
+    }
+
+    it('threads orgSlug, eventTypeOptions, bookabilityCtx, customers and showDeliveryMode into the form', () => {
+      render(<PipelineListClient {...baseProps}
+        customers={[{ id: 'c1', name: 'Jane Doe' } as never]}
+        showDeliveryMode
+        eventTypeOptions={['Wedding', 'Market']}
+        eventTypeProfileNames={['Wedding']}
+        pastJobCounts={{ c1: 3 }}
+        bookabilityCtx={degradedCtx}
+      />)
+      const props = formProps.mock.calls.at(-1)![0]
+      expect(props).toMatchObject({
+        orgId: 'o1', orgSlug: 'demo', open: false,
+        showDeliveryMode: true, eventTypeOptions: ['Wedding', 'Market'],
+        // C5b: the raw profile vocabulary and the per-customer past-job counts
+        // ride through untouched — the form keys its hints on them.
+        eventTypeProfileNames: ['Wedding'],
+        pastJobCounts: { c1: 3 },
+        bookabilityCtx: degradedCtx,
+      })
+      expect(props.customers).toHaveLength(1)
+      expect(typeof props.onCreated).toBe('function')
+      expect(typeof props.onClose).toBe('function')
+    })
+
+    it('renders the form with no call-site Dialog wrapper and no card-strip hacks — the form owns its dialog', () => {
+      render(<PipelineListClient {...baseProps} />)
+      expect(screen.queryByRole('dialog')).toBeNull()
+      fireEvent.click(screen.getByRole('button', { name: 'New opportunity' }))
+      // Exactly ONE dialog: the form's own. A second would be the old wrapper.
+      expect(screen.getAllByRole('dialog')).toHaveLength(1)
+      // The [&_[data-slot=card]] strip resets existed only to un-card the form
+      // inside the call-site dialog; with the form owning its shell they're gone.
+      expect(document.body.innerHTML).not.toContain('data-slot=card]')
+      expect(formProps.mock.calls.at(-1)![0].open).toBe(true)
+    })
+
+    it('shows the created toast with the Open deep link when the form reports a create', () => {
+      render(<PipelineListClient {...baseProps} />)
+      fireEvent.click(screen.getByRole('button', { name: 'New opportunity' }))
+      fireEvent.click(screen.getByRole('button', { name: 'mock-create' }))
+      const toast = screen.getByRole('status')
+      expect(toast.textContent).toContain('Opportunity created — Jane Doe · Wedding · Oct 4')
+      expect(screen.getByRole('link', { name: 'Open' })).toHaveAttribute('href', '/demo/leads/new1')
+    })
+
+    /*
+      C5b: on save-and-create-another the dialog STAYS OPEN, so a toast here
+      would render under its backdrop — inert Open link, unreachable dismiss.
+      The form announces that create in its own aria-live region; this call
+      site suppresses the toast but still arms the row highlight, so the row
+      pulses once the dialog finally closes and the refresh lands.
+    */
+    it('suppresses the toast on the save-and-create-another path but still arms the row highlight', () => {
+      const { rerender, container } = render(<PipelineListClient {...baseProps} />)
+      fireEvent.click(screen.getByRole('button', { name: 'New opportunity' }))
+      fireEvent.click(screen.getByRole('button', { name: 'mock-create-another' }))
+      expect(screen.queryByRole('status')).toBeNull()
+      // …but the highlight id was recorded: the row pulses when it lands.
+      rerender(<PipelineListClient {...baseProps} groups={{
+        ...baseProps.groups,
+        active: [{ lead: lead({ id: 'new1', name: 'Jane Doe', stage: 'inquiry' }), health: 'active', statusLine: 'New' }],
+      }} />)
+      expect((container.querySelector('[data-row="new1"]') as HTMLElement).className).toContain('ring-2')
+    })
+
+    it('pulses the new row for ~4s once the refreshed payload lands, then lets it rest', () => {
+      vi.useFakeTimers()
+      try {
+        const { rerender, container } = render(<PipelineListClient {...baseProps} />)
+        fireEvent.click(screen.getByRole('button', { name: 'New opportunity' }))
+        fireEvent.click(screen.getByRole('button', { name: 'mock-create' }))
+        // The refresh is still in flight — no row yet, nothing to pulse.
+        expect(container.querySelector('[data-row="new1"]')).toBeNull()
+        // The refreshed payload lands with the new row.
+        rerender(<PipelineListClient {...baseProps} groups={{
+          ...baseProps.groups,
+          active: [{ lead: lead({ id: 'new1', name: 'Jane Doe', stage: 'inquiry' }), health: 'active', statusLine: 'New' }],
+        }} />)
+        const row = container.querySelector('[data-row="new1"]') as HTMLElement
+        expect(row.className).toContain('ring-2')
+        // …and only the new row — the pulse must not bleed onto neighbours.
+        expect((container.querySelector('[data-row="l1"]') as HTMLElement).className).not.toContain('ring-2')
+        act(() => { vi.advanceTimersByTime(4000) })
+        expect((container.querySelector('[data-row="new1"]') as HTMLElement).className).not.toContain('ring-2')
+      } finally { vi.useRealTimers() }
+    })
+
+    it('auto-dismisses the toast after 8s', () => {
+      vi.useFakeTimers()
+      try {
+        render(<PipelineListClient {...baseProps} />)
+        fireEvent.click(screen.getByRole('button', { name: 'New opportunity' }))
+        fireEvent.click(screen.getByRole('button', { name: 'mock-create' }))
+        expect(screen.getByRole('status')).toBeInTheDocument()
+        act(() => { vi.advanceTimersByTime(8000) })
+        expect(screen.queryByRole('status')).toBeNull()
+      } finally { vi.useRealTimers() }
+    })
   })
 
   it('wraps the tab bar and the row action cluster instead of overflowing below md (R8)', () => {

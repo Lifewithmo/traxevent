@@ -1,164 +1,768 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { ChevronRightIcon } from 'lucide-react'
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { createLead } from '@/actions/leads'
+import { createLead, type CreateLeadInput } from '@/actions/leads'
+import { validateLeadFields, type LeadFieldErrors } from '@/lib/crm/validate'
+import { bookability, shortDayLabel, type BookabilityCtx } from '@/lib/calendar-bookability'
+import { BookabilityBanner } from '@/components/admin/calendar/BookabilityBanner'
+import { isValidYmd, todayYmd } from '@/lib/opportunity-detail'
+import { cn } from '@/lib/utils'
 import { CustomerPicker } from './CustomerPicker'
+import { EventTypeChips } from './EventTypeChips'
+import { CallerMatchHint } from './CallerMatchHint'
+import { FollowUpField, defaultFollowUpYmd } from './FollowUpField'
 import { DeliveryModeToggle, type DeliveryMode } from './DeliveryModeToggle'
-import type { Customer } from '@/lib/types'
+import type { Customer, Lead } from '@/lib/types'
 
 interface NewOpportunityFormProps {
   orgId: string
+  orgSlug: string
   open: boolean
   onClose: () => void
-  customer?: Customer
-  customers?: Customer[]
+  customer?: Customer                 // cockpit: pinned; hides Who section's picker+contact fields
+  customers?: Customer[]              // pipeline: picker + caller recognition
   // Business-tier org with a room to host in: offer the offsite / on-site
   // delivery toggle (default offsite). The server decides this — nothing to
   // choose for an org with no venue, so the control simply does not render.
   showDeliveryMode?: boolean
+  eventTypeOptions?: string[]         // ordered: profile names first, then historical by frequency
+  // The org's event-type-profile names alone (trimmed, original casing) —
+  // independent of the merged eventTypeOptions, which also carries historical
+  // types. Only PROFILE membership decides what the capacity engine does with
+  // a typed type (leadRequirement, lib/capacity/requirement.ts), so only this
+  // list may drive the "not a configured event type" hint (contract C5b).
+  eventTypeProfileNames?: string[]
+  // customer_id -> that customer's total opportunity count, for the caller-
+  // recognition card's "· {n} past jobs" segment (contract C5b).
+  pastJobCounts?: Record<string, number>
+  bookabilityCtx?: BookabilityCtx | null          // pipeline: preloaded at page render
+  loadBookabilityCtx?: () => Promise<BookabilityCtx | null>  // cockpit: lazy, called once on first open
+  initialValues?: { event_type?: string; guest_count?: number }  // cockpit: prefill from last job
+  /** Fires after each successful create; `stayedOpen` is true on the
+   *  save-and-create-another path, where the form announces the create in its
+   *  own live region and the call site must NOT also raise the CreatedToast
+   *  (contract C5b). The row-highlight id is recorded either way. */
+  onCreated?: (lead: Lead, info: { stayedOpen: boolean }) => void
 }
 
-export function NewOpportunityForm({ orgId, open, onClose, customer, customers, showDeliveryMode }: NewOpportunityFormProps) {
+type FieldKey = keyof LeadFieldErrors
+
+/** Focus lands on the FIRST invalid field in task-flow (visual) order — not
+ *  the validator's historical intake order, which front-loads email. */
+const FOCUS_ORDER: readonly FieldKey[] = [
+  'name', 'phone', 'event_type', 'event_date', 'guest_count',
+  'email', 'estimated_value', 'notes',
+]
+
+/** Fields that live inside the More-details disclosure: an error there must
+ *  reopen the disclosure before focus can land. */
+const MORE_FIELDS: ReadonlySet<FieldKey> = new Set(['email', 'estimated_value', 'notes'])
+
+const digitsOf = (s: string) => s.replace(/\D/g, '')
+
+/** The error line under a field. Renders nothing when the field is clean so
+ *  `aria-describedby` never points at an empty node. */
+function FieldError({ id, children }: { id: string; children?: string }) {
+  if (!children) return null
+  return (
+    <p id={id} className="text-xs font-medium text-destructive">
+      {children}
+    </p>
+  )
+}
+
+function SectionLegend({ children }: { children: React.ReactNode }) {
+  return (
+    <legend className="mb-2 text-[11px] font-semibold uppercase tracking-[.06em] text-muted-foreground">
+      {children}
+    </legend>
+  )
+}
+
+/**
+ * The New-opportunity dialog — the moment the business answers the caller.
+ *
+ * Task-flow order, not schema order (spec §6): WHO (name/phone + caller
+ * recognition + client search fallback), WHAT & WHEN (type chips, date +
+ * guests with the LIVE bookability verdict rendered at the date field), NEXT
+ * (a follow-up that becomes a real task in the same server write), and a
+ * More-details disclosure for the long tail (title/org/email/value/notes).
+ *
+ * The form OWNS its kit Dialog (contract C5) — call sites stop wrapping it —
+ * with a sticky footer so Create is visible at 375×812 while the core fields
+ * are on screen. The verdict INFORMS, never gates: Save stays live on a
+ * `closed` day, and validation happens on submit with per-field errors rather
+ * than a disabled button the operator has to reverse-engineer.
+ */
+export function NewOpportunityForm({
+  orgId,
+  orgSlug,
+  open,
+  onClose,
+  customer,
+  customers,
+  showDeliveryMode,
+  eventTypeOptions,
+  eventTypeProfileNames,
+  pastJobCounts,
+  bookabilityCtx,
+  loadBookabilityCtx,
+  initialValues,
+  onCreated,
+}: NewOpportunityFormProps) {
   const router = useRouter()
   const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [serverError, setServerError] = useState<string | null>(null)
+  // The create-another announcement: the dialog stays open, so the top live
+  // region — not the call site's CreatedToast — must say the record now
+  // exists (contract C5b).
+  const [announce, setAnnounce] = useState<string | null>(null)
+  const [errors, setErrors] = useState<LeadFieldErrors>({})
   const [picked, setPicked] = useState<Customer | null>(null)
+  // Caller recognition remembers "No, new client" per customer for the life of
+  // one open — a father and son sharing a landline must not re-trigger the
+  // hint on every keystroke after the operator has already answered it.
+  const [dismissedIds, setDismissedIds] = useState<string[]>([])
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [moreOpen, setMoreOpen] = useState(false)
   const linked = customer ?? picked
 
-  const [title, setTitle] = useState('')
   const [name, setName] = useState('')
-  const [organization, setOrganization] = useState('')
-  const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
-  const [eventType, setEventType] = useState('')
+  const [email, setEmail] = useState('')
+  const [organization, setOrganization] = useState('')
+  const [title, setTitle] = useState('')
+  const [eventType, setEventType] = useState(initialValues?.event_type ?? '')
   const [eventDate, setEventDate] = useState('')
-  const [guestCount, setGuestCount] = useState('')
+  const [guestCount, setGuestCount] = useState(
+    initialValues?.guest_count != null ? String(initialValues.guest_count) : ''
+  )
   const [estimatedValue, setEstimatedValue] = useState('')
   const [notes, setNotes] = useState('')
   const [deliveryMode, setDeliveryMode] = useState<DeliveryMode>('offsite')
+  const [followUp, setFollowUp] = useState(() => defaultFollowUpYmd(todayYmd()))
 
-  function resetForm() {
-    setTitle(''); setName(''); setOrganization(''); setEmail(''); setPhone('')
-    setEventType(''); setEventDate(''); setGuestCount(''); setEstimatedValue(''); setNotes('')
-    setDeliveryMode('offsite')
-    setPicked(null)
-    setError(null)
+  const nameRef = useRef<HTMLInputElement>(null)
+  const phoneRef = useRef<HTMLInputElement>(null)
+  const eventTypeRef = useRef<HTMLInputElement>(null)
+  const dateRef = useRef<HTMLInputElement>(null)
+  const guestsRef = useRef<HTMLInputElement>(null)
+  const emailRef = useRef<HTMLInputElement>(null)
+  const valueRef = useRef<HTMLInputElement>(null)
+  const notesRef = useRef<HTMLTextAreaElement>(null)
+  /** Set before a state update, consumed by the after-commit effect below, so
+   *  focus can land on a field the same update just mounted (a More-details
+   *  field behind a closed disclosure, the Name input after create-another
+   *  clears a linked customer). */
+  const pendingFocusRef = useRef<FieldKey | null>(null)
+
+  function focusField(key: FieldKey) {
+    // Partial on purpose: the follow-up keys the validator can also carry
+    // (server-door inputs) have no focus target here — the form's own date
+    // input can never produce them, so an unmapped key is a quiet no-op.
+    const refs: Partial<Record<FieldKey, HTMLElement | null>> = {
+      name: nameRef.current,
+      phone: phoneRef.current,
+      event_type: eventTypeRef.current,
+      event_date: dateRef.current,
+      guest_count: guestsRef.current,
+      email: emailRef.current,
+      estimated_value: valueRef.current,
+      notes: notesRef.current,
+    }
+    refs[key]?.focus()
   }
 
-  async function handleCreate() {
-    if (!linked && !name.trim()) { setError('Name is required.'); return }
-    setSaving(true); setError(null)
+  useEffect(() => {
+    if (!pendingFocusRef.current) return
+    const key = pendingFocusRef.current
+    pendingFocusRef.current = null
+    focusField(key)
+  })
+
+  // After linking (via the picker OR the recognition card) the input that had
+  // focus unmounts; without this, focus drops to <body> and a keyboard user is
+  // stranded. WHO is answered at that point, so the next task-flow stop is the
+  // event type.
+  const wasLinkedRef = useRef(Boolean(linked))
+  useEffect(() => {
+    const isLinked = Boolean(linked)
+    if (isLinked && !wasLinkedRef.current) eventTypeRef.current?.focus()
+    wasLinkedRef.current = isLinked
+  }, [linked])
+
+  function initDraft() {
+    setPicked(null)
+    setDismissedIds([])
+    setPickerOpen(false)
+    setName(''); setPhone(''); setEmail(''); setOrganization(''); setTitle('')
+    setEventType(initialValues?.event_type ?? '')
+    setGuestCount(initialValues?.guest_count != null ? String(initialValues.guest_count) : '')
+    setEventDate(''); setEstimatedValue(''); setNotes('')
+    setDeliveryMode('offsite')
+    setFollowUp(defaultFollowUpYmd(todayYmd()))
+    setMoreOpen(false)
+    setErrors({})
+    setServerError(null)
+    setAnnounce(null)
+  }
+
+  // Re-initialize on every open so the follow-up default and cockpit prefill
+  // are computed at open time, not mount time. Latest-ref so a parent
+  // re-render (new `initialValues` identity) can never wipe a draft mid-typing.
+  // The ref is written in an effect, never during render (react-hooks rule) —
+  // effects run in order, so the latest closure is in place before the
+  // open-effect below ever reads it.
+  const initDraftRef = useRef(initDraft)
+  useEffect(() => { initDraftRef.current = initDraft })
+  useEffect(() => {
+    if (open) initDraftRef.current()
+  }, [open])
+
+  // Ctx sourcing (contract C5): the pipeline preloads `bookabilityCtx`; the
+  // cockpit hands a lazy loader called once on FIRST open, because most
+  // cockpit visits never open this form. Loading and failure both render
+  // nothing — no spinner jitter on a block most opens never look at.
+  const [lazyCtx, setLazyCtx] = useState<BookabilityCtx | null>(null)
+  const ctxRequestedRef = useRef(false)
+  useEffect(() => {
+    if (!open || ctxRequestedRef.current) return
+    if (bookabilityCtx !== undefined || !loadBookabilityCtx) return
+    ctxRequestedRef.current = true
+    loadBookabilityCtx()
+      .then((c) => setLazyCtx(c))
+      .catch(() => {})
+  }, [open, bookabilityCtx, loadBookabilityCtx])
+  const ctx = bookabilityCtx !== undefined ? bookabilityCtx : lazyCtx
+
+  // THE ANSWER AT THE FIELD. Pure and in-memory (<100 ms), recomputed as the
+  // date is typed. Past dates get the amber tense note INSTEAD of an engine
+  // verdict — mirrors useDayVerdict (bookability-context.tsx): every past date
+  // is technically `closed` (its book-by passed long ago), and nobody asks
+  // whether they were free last Tuesday. The pure function stays honest; the
+  // renderer owns the question's tense.
+  const referenceToday = ctx?.today ?? todayYmd()
+  const dateValid = isValidYmd(eventDate)
+  const datePast = dateValid && eventDate < referenceToday
+  const verdict = useMemo(
+    () => (ctx && dateValid && !datePast ? bookability(eventDate, ctx) : null),
+    [ctx, eventDate, dateValid, datePast]
+  )
+
+  // CALLER RECOGNITION — zero reads; `customers` is already in client memory.
+  // Phone matches on digits (suffix either way, ≥7 digits, so "(208) 555-0142"
+  // finds "+1 208 555 0142"); email on the normalized lower-case exact; name on
+  // a case-insensitive exact. All three only ever produce the HINT — linking is
+  // always an explicit tap, never automatic.
+  const recognition = useMemo(() => {
+    if (linked || !customers || customers.length === 0) return null
+    const typedPhone = digitsOf(phone)
+    const typedEmail = email.trim().toLowerCase()
+    const typedName = name.trim().toLowerCase()
+    return (
+      customers.find((c) => {
+        if (dismissedIds.includes(c.id)) return false
+        if (typedPhone.length >= 7 && c.phone) {
+          const d = digitsOf(c.phone)
+          if (d.length >= 7 && (d.endsWith(typedPhone) || typedPhone.endsWith(d))) return true
+        }
+        if (typedEmail && (c.email_lower ?? c.email?.toLowerCase()) === typedEmail) return true
+        if (typedName && c.name.trim().toLowerCase() === typedName) return true
+        return false
+      }) ?? null
+    )
+  }, [linked, customers, phone, email, name, dismissedIds])
+
+  const options = eventTypeOptions ?? []
+  const profileNames = eventTypeProfileNames ?? []
+  const trimmedType = eventType.trim()
+  const typeKey = trimmedType.toLowerCase()
+  // PROFILE membership, not merged-options membership: the merged list also
+  // carries historical free-text types, which the capacity engine treats with
+  // the default rule — keying the hint on it misfires both ways. Same
+  // trim+lowercase match as leadRequirement (lib/capacity/requirement.ts).
+  const profileMatched =
+    trimmedType !== '' && profileNames.some((p) => p.trim().toLowerCase() === typeKey)
+  // Quiet, never blocking: a free-text type is legitimate (profiles are an
+  // overlay, not a migration) — the hint just says what the capacity engine
+  // will do with it.
+  const typeUnrecognized = profileNames.length > 0 && trimmedType !== '' && !profileMatched
+  // A matched profile is authoritative about Where — leadRequirement ignores
+  // delivery_mode entirely on a match, so the toggle would be a dead control
+  // and its answer silently discarded. Hide it and submit nothing.
+  const deliveryModeRelevant = Boolean(showDeliveryMode) && !profileMatched
+
+  // Derived, never persisted: the placeholder previews "Jane Doe · Wedding ·
+  // Oct 4" but the field submits ONLY what the operator types — persisting the
+  // derivation would freeze a label that the fallback (`title ?? name`)
+  // already computes live everywhere else.
+  const contactName = linked?.name ?? name.trim()
+  const derivedTitle = [contactName, trimmedType, dateValid ? shortDayLabel(eventDate) : '']
+    .filter(Boolean)
+    .join(' · ')
+
+  function buildPayload(parsedGuests?: number, parsedValue?: number): CreateLeadInput {
+    return {
+      ...(linked
+        ? { customer_id: linked.id }
+        : {
+            name: name.trim(),
+            ...(organization.trim() ? { organization: organization.trim() } : {}),
+            ...(email.trim() ? { email: email.trim() } : {}),
+            ...(phone.trim() ? { phone: phone.trim() } : {}),
+          }),
+      ...(title.trim() ? { title: title.trim() } : {}),
+      ...(trimmedType ? { event_type: trimmedType } : {}),
+      ...(eventDate.trim() ? { event_date: eventDate.trim() } : {}),
+      ...(notes.trim() ? { notes: notes.trim() } : {}),
+      ...(parsedValue != null && !Number.isNaN(parsedValue) ? { estimated_value: parsedValue } : {}),
+      ...(parsedGuests != null && !Number.isNaN(parsedGuests) ? { guest_count: parsedGuests } : {}),
+      // Only a business-tier org with a venue is asked; offsite is the default
+      // and needs no stored flag, so we persist the choice only when the
+      // control was shown (and not superseded by a matched profile) and the
+      // operator picked on-site.
+      ...(deliveryModeRelevant && deliveryMode === 'onsite' ? { delivery_mode: 'onsite' as const } : {}),
+      // Empty = no task. The server creates the Task in the same batch as the
+      // lead (contract C2), so the opportunity is born with a next step.
+      ...(followUp.trim() ? { follow_up_date: followUp.trim() } : {}),
+    }
+  }
+
+  /** Create-another keeps the WHAT & WHEN half (the operator is logging a run
+   *  of similar calls), clears the WHO half and everything personal to it. */
+  function resetForAnother() {
+    setPicked(null)
+    setDismissedIds([])
+    setPickerOpen(false)
+    setName(''); setPhone(''); setEmail(''); setOrganization(''); setTitle('')
+    setGuestCount(''); setEstimatedValue(''); setNotes('')
+    setFollowUp(defaultFollowUpYmd(todayYmd()))
+    setErrors({})
+    setServerError(null)
+  }
+
+  async function handleCreate(mode: 'normal' | 'another') {
+    if (saving) return
+    const parsedGuests = guestCount.trim() === '' ? undefined : Number(guestCount)
+    const parsedValue = estimatedValue.trim() === '' ? undefined : Number(estimatedValue)
+    // Validate exactly what will be submitted: linked mode snapshots contact
+    // fields from the customer record, so typed leftovers are neither sent
+    // nor validated. Same rule set as the server and the public intake form.
+    const fieldErrors = validateLeadFields(
+      {
+        ...(linked ? {} : { name, email, phone }),
+        event_type: eventType,
+        event_date: eventDate,
+        notes,
+        ...(parsedGuests !== undefined ? { guest_count: parsedGuests } : {}),
+        ...(parsedValue !== undefined ? { estimated_value: parsedValue } : {}),
+      },
+      { requireName: !linked }
+    )
+    const first = FOCUS_ORDER.find((k) => fieldErrors[k])
+    if (first) {
+      setErrors(fieldErrors)
+      if (MORE_FIELDS.has(first)) setMoreOpen(true)
+      pendingFocusRef.current = first
+      return
+    }
+    setErrors({})
+    setSaving(true)
+    setServerError(null)
     try {
-      const parsedValue = estimatedValue.trim() === '' ? undefined : Number(estimatedValue)
-      const parsedGuests = guestCount.trim() === '' ? undefined : Number(guestCount)
-      await createLead(orgId, {
-        ...(linked
-          ? { customer_id: linked.id }
-          : {
-              name: name.trim(),
-              organization: organization.trim() || undefined,
-              email: email.trim() || undefined,
-              phone: phone.trim() || undefined,
-            }),
-        title: title.trim() || undefined,
-        event_type: eventType.trim() || undefined,
-        event_date: eventDate.trim() || undefined,
-        notes: notes.trim() || undefined,
-        ...(parsedValue != null && !Number.isNaN(parsedValue) ? { estimated_value: parsedValue } : {}),
-        ...(parsedGuests != null && !Number.isNaN(parsedGuests) ? { guest_count: parsedGuests } : {}),
-        // Only a business-tier org with a venue is asked; offsite is the default
-        // and needs no stored flag, so we persist the choice only when the
-        // control was shown and the operator picked on-site.
-        ...(showDeliveryMode && deliveryMode === 'onsite' ? { delivery_mode: 'onsite' as const } : {}),
-      })
-      resetForm()
-      onClose()
+      const lead = await createLead(orgId, buildPayload(parsedGuests, parsedValue))
+      onCreated?.(lead, { stayedOpen: mode === 'another' })
+      if (mode === 'another') {
+        const createdName = lead.name || contactName
+        resetForAnother()
+        // The dialog stays open, so the call site suppresses its CreatedToast
+        // (contract C5b) and THIS live region closes the loop instead.
+        setAnnounce(`Opportunity created for ${createdName}.`)
+        // Straight back to the top of the next call. No Name field in pinned
+        // cockpit mode — the event type is the first stop there.
+        pendingFocusRef.current = customer ? 'event_type' : 'name'
+      } else {
+        initDraft()
+        onClose()
+      }
       router.refresh()
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to create')
-    } finally { setSaving(false) }
+      setServerError(err instanceof Error ? err.message : 'Failed to create')
+    } finally {
+      setSaving(false)
+    }
   }
 
-  if (!open) return null
+  /** EVERY close path — Escape, backdrop, ✕, Cancel — resets the draft. One
+   *  consistent behavior (defect #10), routed through the Dialog's
+   *  onOpenChange so no path can forget the reset. */
+  function handleClose() {
+    initDraft()
+    onClose()
+  }
+
+  function onFormKeyDown(e: React.KeyboardEvent<HTMLFormElement>) {
+    // ⌘/Ctrl+↩ submits from anywhere including the textarea; +⇧ is save-and-
+    // create-another (Linear parity). Plain Enter is left to the browser's
+    // implicit submission — real <form>, no re-implementation.
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault()
+      void handleCreate(e.shiftKey ? 'another' : 'normal')
+    }
+  }
+
+  const isMac = typeof navigator !== 'undefined' && /Mac|iP(hone|ad|od)/.test(navigator.platform)
 
   return (
-    <Card>
-      <CardHeader><CardTitle className="text-base">New opportunity</CardTitle></CardHeader>
-      <CardContent className="space-y-3">
-        <div aria-live="polite" aria-atomic="true">
-          {error && <p className="text-sm text-destructive">{error}</p>}
-        </div>
-        {customer && (
-          <p className="text-sm text-muted-foreground">
-            For {customer.name}{customer.company ? ` · ${customer.company}` : ''}
-          </p>
-        )}
-        {!customer && customers && customers.length > 0 && (
-          <CustomerPicker customers={customers} value={picked} onChange={setPicked} />
-        )}
-        <div className="space-y-1">
-          <Label htmlFor="leadTitle">Title</Label>
-          <Input id="leadTitle" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Riverside gala" />
-        </div>
-        {!linked && (
-          <>
-            <div className="space-y-1">
-              <Label htmlFor="leadName">Name</Label>
-              <Input id="leadName" value={name} onChange={(e) => setName(e.target.value)} placeholder="Contact name" />
+    <Dialog open={open} onOpenChange={(next) => { if (!next) handleClose() }}>
+      <DialogContent
+        className="flex max-h-[85dvh] flex-col gap-0 p-0 sm:max-w-lg"
+        initialFocus={customer ? eventTypeRef : nameRef}
+      >
+        <DialogHeader className="shrink-0 border-b px-4 py-3">
+          {/* A real, visible h2 (defect #16) — DialogTitle renders one. */}
+          <DialogTitle>New opportunity</DialogTitle>
+        </DialogHeader>
+        {/* noValidate: validation is ours (per-field messages, focus
+            management); the native bubbles would race it on the email field. */}
+        <form
+          onSubmit={(e) => { e.preventDefault(); void handleCreate('normal') }}
+          onKeyDown={onFormKeyDown}
+          noValidate
+          className="flex min-h-0 flex-1 flex-col"
+        >
+          {/* Scrollable body; the footer below stays put so Create is visible
+              with the core fields at 375×812. */}
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+            {/* Server-side failures and the create-another confirmation land
+                here; field errors live at their fields. */}
+            <div aria-live="polite" aria-atomic="true">
+              {serverError && <p className="mb-3 text-sm text-destructive">{serverError}</p>}
+              {!serverError && announce && (
+                <p className="mb-3 text-sm text-muted-foreground">{announce}</p>
+              )}
             </div>
-            <div className="space-y-1">
-              <Label htmlFor="leadOrg">Organization</Label>
-              <Input id="leadOrg" value={organization} onChange={(e) => setOrganization(e.target.value)} placeholder="Company / organization" />
+            <div className="space-y-5">
+              <fieldset>
+                <SectionLegend>Who</SectionLegend>
+                {customer ? (
+                  <p className="text-sm text-muted-foreground">
+                    For {customer.name}{customer.company ? ` · ${customer.company}` : ''}
+                  </p>
+                ) : linked ? (
+                  <CustomerPicker
+                    customers={customers ?? []}
+                    value={linked}
+                    onChange={(c) => { setPicked(c); if (!c) setPickerOpen(false) }}
+                  />
+                ) : (
+                  <div className="space-y-3">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="space-y-1">
+                        <Label htmlFor="leadName">
+                          Name <span aria-hidden className="text-muted-foreground">*</span>
+                        </Label>
+                        <Input
+                          ref={nameRef}
+                          id="leadName"
+                          value={name}
+                          onChange={(e) => setName(e.target.value)}
+                          placeholder="Contact name"
+                          aria-required="true"
+                          aria-invalid={errors.name ? true : undefined}
+                          aria-describedby={errors.name ? 'leadName-error' : undefined}
+                        />
+                        <FieldError id="leadName-error">{errors.name}</FieldError>
+                      </div>
+                      <div className="space-y-1">
+                        <Label htmlFor="leadPhone">Phone</Label>
+                        <Input
+                          ref={phoneRef}
+                          id="leadPhone"
+                          type="tel"
+                          inputMode="tel"
+                          autoComplete="off"
+                          value={phone}
+                          onChange={(e) => setPhone(e.target.value)}
+                          placeholder="(555) 555-5555"
+                          aria-invalid={errors.phone ? true : undefined}
+                          aria-describedby={errors.phone ? 'leadPhone-error' : undefined}
+                        />
+                        <FieldError id="leadPhone-error">{errors.phone}</FieldError>
+                      </div>
+                    </div>
+                    {recognition && (
+                      <CallerMatchHint
+                        customer={recognition}
+                        pastJobs={pastJobCounts?.[recognition.id]}
+                        onLink={() => setPicked(recognition)}
+                        onDismiss={() => setDismissedIds((ids) => [...ids, recognition.id])}
+                      />
+                    )}
+                    {customers && customers.length > 0 && (
+                      pickerOpen ? (
+                        <CustomerPicker
+                          customers={customers}
+                          value={null}
+                          onChange={(c) => { setPicked(c); if (!c) setPickerOpen(false) }}
+                          autoFocus
+                        />
+                      ) : (
+                        // Recognition (above) does the finding; the explicit
+                        // search is the fallback, collapsed so it costs no
+                        // tab stop until asked for.
+                        <button
+                          type="button"
+                          onClick={() => setPickerOpen(true)}
+                          className="inline-flex min-h-6 items-center text-sm text-muted-foreground underline underline-offset-2 hover:text-foreground"
+                        >
+                          or search clients
+                        </button>
+                      )
+                    )}
+                    {customers?.length === 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        This will be your first client.
+                      </p>
+                    )}
+                  </div>
+                )}
+              </fieldset>
+
+              <fieldset>
+                <SectionLegend>What &amp; when</SectionLegend>
+                <div className="space-y-3">
+                  <div className="space-y-1">
+                    <Label htmlFor="leadEventType">Event type</Label>
+                    <EventTypeChips options={options} value={eventType} onChange={setEventType} />
+                    <Input
+                      ref={eventTypeRef}
+                      id="leadEventType"
+                      value={eventType}
+                      onChange={(e) => setEventType(e.target.value)}
+                      placeholder="e.g. Wedding"
+                      aria-invalid={errors.event_type ? true : undefined}
+                      aria-describedby={errors.event_type ? 'leadEventType-error' : undefined}
+                    />
+                    {typeUnrecognized && (
+                      <p className="text-xs text-muted-foreground">
+                        Not a configured event type — capacity uses the default rule.
+                      </p>
+                    )}
+                    {profileNames.length === 0 && (
+                      // 0-profiles onboarding (spec §empty states): free text
+                      // always works; the link says where verdicts come from.
+                      <p className="text-xs text-muted-foreground">
+                        Type any event type —{' '}
+                        <Link
+                          href={`/${orgSlug}/capacity`}
+                          className="inline-flex min-h-6 items-center underline underline-offset-2 hover:text-foreground"
+                        >
+                          configure profiles to get capacity verdicts
+                        </Link>
+                      </p>
+                    )}
+                    <FieldError id="leadEventType-error">{errors.event_type}</FieldError>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label htmlFor="leadEventDate">Event date</Label>
+                      {/* No `min`: a past date is allowed (back-logging real
+                          inquiries) — it gets the amber note below instead of
+                          a silent clamp or a block. */}
+                      <Input
+                        ref={dateRef}
+                        id="leadEventDate"
+                        type="date"
+                        value={eventDate}
+                        onChange={(e) => setEventDate(e.target.value)}
+                        aria-invalid={errors.event_date ? true : undefined}
+                        aria-describedby={errors.event_date ? 'leadEventDate-error' : undefined}
+                      />
+                      <FieldError id="leadEventDate-error">{errors.event_date}</FieldError>
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="leadGuestCount">Guests</Label>
+                      <Input
+                        ref={guestsRef}
+                        id="leadGuestCount"
+                        type="number"
+                        inputMode="numeric"
+                        min={0}
+                        step={1}
+                        value={guestCount}
+                        onChange={(e) => setGuestCount(e.target.value)}
+                        aria-invalid={errors.guest_count ? true : undefined}
+                        aria-describedby={errors.guest_count ? 'leadGuestCount-error' : undefined}
+                      />
+                      <FieldError id="leadGuestCount-error">{errors.guest_count}</FieldError>
+                    </div>
+                  </div>
+                  {datePast && (
+                    <p
+                      data-slot="past-date-note"
+                      className="rounded-md border border-[var(--warn-border)] bg-[var(--warn-bg)] px-2.5 py-1.5 text-xs font-medium text-[var(--warn-fg)]"
+                    >
+                      That date is in the past.
+                    </p>
+                  )}
+                  {verdict && (
+                    <BookabilityBanner
+                      orgSlug={orgSlug}
+                      bookability={verdict}
+                      onPickAlternative={setEventDate}
+                      className="mx-0"
+                    />
+                  )}
+                  {deliveryModeRelevant && (
+                    <DeliveryModeToggle
+                      value={deliveryMode}
+                      onChange={setDeliveryMode}
+                      idPrefix="new-lead-delivery"
+                    />
+                  )}
+                </div>
+              </fieldset>
+
+              <fieldset>
+                <SectionLegend>Next</SectionLegend>
+                <FollowUpField value={followUp} onChange={setFollowUp} />
+              </fieldset>
+
+              <div className="space-y-3">
+                <button
+                  type="button"
+                  aria-expanded={moreOpen}
+                  // Conditional: the panel is conditionally RENDERED (values
+                  // live in state, so nothing is lost), and aria-controls must
+                  // not point at an id that is not in the document.
+                  aria-controls={moreOpen ? 'leadMoreDetails' : undefined}
+                  onClick={() => setMoreOpen((v) => !v)}
+                  className="inline-flex min-h-6 items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground"
+                >
+                  <ChevronRightIcon
+                    aria-hidden
+                    className={cn(
+                      'size-3.5 transition-transform motion-reduce:transition-none',
+                      moreOpen && 'rotate-90'
+                    )}
+                  />
+                  More details
+                </button>
+                {moreOpen && (
+                  <div id="leadMoreDetails" className="space-y-3">
+                    <div className="space-y-1">
+                      <Label htmlFor="leadTitle">Title</Label>
+                      <Input
+                        id="leadTitle"
+                        value={title}
+                        onChange={(e) => setTitle(e.target.value)}
+                        placeholder={derivedTitle || 'e.g. Riverside gala'}
+                      />
+                    </div>
+                    {!linked && (
+                      <>
+                        <div className="space-y-1">
+                          <Label htmlFor="leadOrg">Organization</Label>
+                          <Input
+                            id="leadOrg"
+                            value={organization}
+                            onChange={(e) => setOrganization(e.target.value)}
+                            placeholder="Company / organization"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label htmlFor="leadEmail">Email</Label>
+                          <Input
+                            ref={emailRef}
+                            id="leadEmail"
+                            type="email"
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
+                            placeholder="name@example.com"
+                            aria-invalid={errors.email ? true : undefined}
+                            aria-describedby={errors.email ? 'leadEmail-error' : undefined}
+                          />
+                          <FieldError id="leadEmail-error">{errors.email}</FieldError>
+                        </div>
+                      </>
+                    )}
+                    <div className="space-y-1">
+                      <Label htmlFor="leadValue">Estimated value</Label>
+                      <div className="relative">
+                        <span
+                          aria-hidden
+                          className="pointer-events-none absolute inset-y-0 left-2.5 flex items-center text-sm text-muted-foreground"
+                        >
+                          $
+                        </span>
+                        <Input
+                          ref={valueRef}
+                          id="leadValue"
+                          type="number"
+                          inputMode="decimal"
+                          min={0}
+                          value={estimatedValue}
+                          onChange={(e) => setEstimatedValue(e.target.value)}
+                          className="pl-6"
+                          aria-invalid={errors.estimated_value ? true : undefined}
+                          aria-describedby={errors.estimated_value ? 'leadValue-error' : undefined}
+                        />
+                      </div>
+                      <FieldError id="leadValue-error">{errors.estimated_value}</FieldError>
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="leadNotes">Notes</Label>
+                      {/* Kit-consistent by hand (the kit ships no Textarea and
+                          is frozen): tokens copied from components/ui/input.tsx
+                          — rounded-lg, the focus ring triple, the aria-invalid
+                          destructive ring. */}
+                      <textarea
+                        ref={notesRef}
+                        id="leadNotes"
+                        value={notes}
+                        onChange={(e) => setNotes(e.target.value)}
+                        placeholder="Notes"
+                        className="flex min-h-16 w-full rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-base transition-colors outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 md:text-sm dark:bg-input/30 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40"
+                        aria-invalid={errors.notes ? true : undefined}
+                        aria-describedby={errors.notes ? 'leadNotes-error' : undefined}
+                      />
+                      <FieldError id="leadNotes-error">{errors.notes}</FieldError>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
-            <div className="space-y-1">
-              <Label htmlFor="leadEmail">Email</Label>
-              <Input id="leadEmail" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.com" />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="leadPhone">Phone</Label>
-              <Input id="leadPhone" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="(555) 555-5555" />
-            </div>
-          </>
-        )}
-        <div className="space-y-1">
-          <Label htmlFor="leadEventType">Event type</Label>
-          <Input id="leadEventType" value={eventType} onChange={(e) => setEventType(e.target.value)} placeholder="e.g. Wedding" />
-        </div>
-        <div className="space-y-1">
-          <Label htmlFor="leadEventDate">Event date</Label>
-          <Input id="leadEventDate" type="date" value={eventDate} onChange={(e) => setEventDate(e.target.value)} />
-        </div>
-        {showDeliveryMode && (
-          <DeliveryModeToggle value={deliveryMode} onChange={setDeliveryMode} idPrefix="new-lead-delivery" />
-        )}
-        <div className="space-y-1">
-          <Label htmlFor="leadGuestCount">Guest count</Label>
-          <Input id="leadGuestCount" type="number" value={guestCount} onChange={(e) => setGuestCount(e.target.value)} placeholder="0" />
-        </div>
-        <div className="space-y-1">
-          <Label htmlFor="leadValue">Estimated value</Label>
-          <Input id="leadValue" type="number" value={estimatedValue} onChange={(e) => setEstimatedValue(e.target.value)} placeholder="0" />
-        </div>
-        <div className="space-y-1">
-          <Label htmlFor="leadNotes">Notes</Label>
-          <textarea
-            id="leadNotes"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder="Notes"
-            className="flex min-h-16 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-          />
-        </div>
-        <div className="flex gap-2">
-          <Button onClick={handleCreate} disabled={saving || (!linked && !name.trim())}>{saving ? 'Saving…' : 'Save'}</Button>
-          <Button variant="outline" onClick={() => { resetForm(); onClose() }}>Cancel</Button>
-        </div>
-      </CardContent>
-    </Card>
+          </div>
+          <DialogFooter className="mx-0 mb-0 shrink-0">
+            <Button type="button" variant="outline" onClick={handleClose}>Cancel</Button>
+            <Button type="submit" disabled={saving}>
+              {saving ? 'Saving…' : 'Create opportunity'}
+              {!saving && (
+                <kbd
+                  aria-hidden
+                  className="ml-1 rounded border border-current/30 px-1 font-mono text-[10px] leading-4"
+                >
+                  {isMac ? '⌘↩' : 'Ctrl+↩'}
+                </kbd>
+              )}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }

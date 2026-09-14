@@ -7,7 +7,6 @@ import { useRouter } from 'next/navigation'
 import { Plus } from 'lucide-react'
 import { Avatar } from '@/components/ui/avatar'
 import { Button, buttonVariants } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { EmptyState } from '@/components/ui/empty-state'
 import { StatusPill } from '@/components/ui/status-pill'
 import { cn } from '@/lib/utils'
@@ -18,8 +17,10 @@ import { STAGE_TONE, money, shortDate, type Tone } from '@/lib/pipeline-presenta
 import type { PipelineGroups, PipelineRow, closedThisMonth } from '@/lib/pipeline-view'
 import { rowOwnsClash, type CapacityDay } from '@/lib/capacity/capacity'
 import { kindLabel } from '@/lib/capacity/labels'
+import type { BookabilityCtx } from '@/lib/calendar-bookability'
 import type { Customer, Lead, LeadStage, Org } from '@/lib/types'
 import { NewOpportunityForm } from './NewOpportunityForm'
+import { CreatedToast, opportunityCreatedMessage } from './CreatedToast'
 import { IntakeLinkCard } from './IntakeLinkCard'
 import { ClosedMonthSummary } from './ClosedMonthSummary'
 import { StageChip } from './StageChip'
@@ -44,6 +45,23 @@ interface PipelineListClientProps {
   // Event-type profiles (increment 4) so a row's clash badge/ownership is
   // profile-aware, matching the server engine. Absent ⇒ leadRequirement default.
   eventTypeProfiles?: Org['event_type_profiles']
+  // The create form's chip vocabulary (contract C5): profile names first, then
+  // the org's own historical types by frequency — computed on the server
+  // (lib/crm/event-type-options) and passed through untouched.
+  eventTypeOptions?: string[]
+  // C5b: the RAW profile vocabulary (trimmed, original casing) — independent
+  // of the merged/capped chip list above; the form keys its "not a configured
+  // event type" hint on this.
+  eventTypeProfileNames?: string[]
+  // C5b: customer_id → total opportunity count over the page's loaded leads,
+  // for the caller-recognition hint's "{n} past jobs".
+  pastJobCounts?: Record<string, number>
+  // Everything `bookability(date, ctx)` needs to render the live verdict at the
+  // form's date field with NO further I/O — built once at page render (this
+  // page already loads the leads/units; events cost the one added read the
+  // spec approved). Null/absent ⇒ the form degrades silently: no verdict
+  // block, everything else fully functional.
+  bookabilityCtx?: BookabilityCtx | null
 }
 
 /*
@@ -173,12 +191,53 @@ function GroupHeader({ label, rows, alert }: { label: string; rows: PipelineRow[
 
 export function PipelineListClient({
   orgId, orgSlug, groups, closed, openCount, monthly, customers, showDeliveryMode, resourceLabels, eventTypeProfiles,
+  eventTypeOptions, eventTypeProfileNames, pastJobCounts, bookabilityCtx,
 }: PipelineListClientProps) {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState<Tab>('open')
   const [creating, setCreating] = useState(false)
   const [intakeOpen, setIntakeOpen] = useState(false)
   const [nudging, setNudging] = useState<string | null>(null)
+  /*
+    THE CREATED LOOP (New Opportunity inc 1). `created` drives the toast —
+    keyed by the lead so a second create remounts it and re-arms its own 8s
+    clock. `highlightId` drives the ~4s ring pulse on the new row; it is a
+    SEPARATE slot because the two outlive each other in both directions (the
+    toast stands after the pulse rests; a dismissed toast must not kill an
+    in-flight pulse).
+  */
+  const [created, setCreated] = useState<{ lead: Lead } | null>(null)
+  const [highlightId, setHighlightId] = useState<string | null>(null)
+
+  /*
+    The pulse clock starts when the refreshed payload actually DELIVERS the row,
+    not when the form reports the create — `router.refresh()` takes 300ms–1.5s
+    on this force-dynamic page, and a timer armed at create time would burn most
+    of its window on a row that is not on screen yet. Derived from props each
+    render; the effect keys on the boolean so a mere re-render (same payload)
+    never re-arms it. setState lives inside the timeout callback, not the effect
+    body (the repo's eslint fails the build on `set-state-in-effect`).
+  */
+  const highlightVisible = highlightId != null &&
+    [...groups.needs_attention, ...groups.waiting, ...groups.active]
+      .some((r) => r.lead.id === highlightId)
+  useEffect(() => {
+    if (!highlightVisible) return
+    const t = setTimeout(() => setHighlightId(null), 4000)
+    return () => clearTimeout(t)
+  }, [highlightVisible])
+
+  /*
+    C5b: on the save-and-create-another path (`stayedOpen`) the dialog is still
+    up, so the toast would render UNDER its backdrop — inert link, unreachable
+    dismiss. The form announces that create in its own top aria-live region
+    instead; this call site only records the row highlight, so every create
+    still pulses its row once the dialog finally closes and the refresh lands.
+  */
+  function handleCreated(lead: Lead, info: { stayedOpen: boolean }) {
+    if (!info.stayedOpen) setCreated({ lead })
+    setHighlightId(lead.id)
+  }
   /*
     Lead id → the move that row is still travelling on: the stage the server
     last reported (`from`) and the stage the operator sent it to (`to`).
@@ -345,6 +404,11 @@ export function PipelineListClient({
           'flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-l-2 py-2.5 pr-1 pl-3',
           'border-b-border/60',
           needsAttention ? 'border-l-destructive' : 'border-l-transparent',
+          // The just-created row's ~4s landing pulse: the focus-ring token (a
+          // static ring, so nothing moves for reduced-motion users), released
+          // by the timer above. Rounded only while ringed — a square ring on a
+          // flat row reads as a rendering bug, not a highlight.
+          highlightId === lead.id ? 'rounded-md ring-2 ring-ring/60' : '',
         ].join(' ')}
       >
         <div className="flex min-w-0 flex-1 items-center gap-2.5">
@@ -566,22 +630,40 @@ export function PipelineListClient({
       </div>
 
       {/*
-        R1/R3: the create form used to mount INLINE and shove the whole pipeline
-        a screen and a half down the page. It is wrapped in the kit Dialog HERE,
-        at the call site, because the component itself is shared with the
-        shipped Clients cockpit and must not change. The `[&_...]` resets strip
-        its Card chrome so the dialog does not render a box inside a box.
-        (IntakeLinkCard is NOT wrapped — it already owns a Dialog internally;
-        a second one would nest two roots and one Escape would close both.)
+        The form OWNS its Dialog now (contract C5, New Opportunity inc 1) — the
+        call-site wrapper and its `[&_[data-slot=card]]` strip hacks are gone
+        with it. This surface only threads the contract props: the preloaded
+        bookability ctx (built at page render), the event-type chip vocabulary,
+        and the onCreated hook that closes the loop below. (IntakeLinkCard has
+        always owned its own Dialog; unchanged.)
       */}
-      <Dialog open={creating} onOpenChange={(next) => { if (!next) setCreating(false) }}>
-        <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-lg">
-          <DialogTitle className="sr-only">New opportunity</DialogTitle>
-          <div className="[&_[data-slot=card-content]]:px-0 [&_[data-slot=card-header]]:px-0 [&_[data-slot=card]]:border-0 [&_[data-slot=card]]:bg-transparent [&_[data-slot=card]]:shadow-none">
-            <NewOpportunityForm orgId={orgId} open={creating} onClose={() => setCreating(false)} customers={customers} showDeliveryMode={showDeliveryMode} />
-          </div>
-        </DialogContent>
-      </Dialog>
+      <NewOpportunityForm
+        orgId={orgId}
+        orgSlug={orgSlug}
+        open={creating}
+        onClose={() => setCreating(false)}
+        customers={customers}
+        showDeliveryMode={showDeliveryMode}
+        eventTypeOptions={eventTypeOptions}
+        eventTypeProfileNames={eventTypeProfileNames}
+        pastJobCounts={pastJobCounts}
+        bookabilityCtx={bookabilityCtx}
+        onCreated={handleCreated}
+      />
+
+      {/*
+        After-create landing (spec §6): the dialog closes, the toast says what
+        now exists and links to it, and the row pulses when the refresh lands.
+        Keyed by the lead so back-to-back creates each get a full 8s clock.
+      */}
+      {created && (
+        <CreatedToast
+          key={created.lead.id}
+          message={opportunityCreatedMessage(created.lead)}
+          href={`/${orgSlug}/leads/${created.lead.id}`}
+          onDismiss={() => setCreated(null)}
+        />
+      )}
 
       <IntakeLinkCard orgId={orgId} open={intakeOpen} onClose={() => setIntakeOpen(false)} />
 

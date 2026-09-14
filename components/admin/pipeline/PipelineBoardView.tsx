@@ -6,7 +6,6 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Avatar } from '@/components/ui/avatar'
 import { Button, buttonVariants } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { EmptyState } from '@/components/ui/empty-state'
 import { StatusPill } from '@/components/ui/status-pill'
 import { setLeadStage } from '@/actions/leads'
@@ -14,10 +13,12 @@ import { cn } from '@/lib/utils'
 import { OPEN_STAGES, LEAD_STAGE_LABELS, opportunityTitle } from '@/lib/leads'
 import { money, shortDate } from '@/lib/pipeline-presentation'
 import type { PipelineGroups, PipelineRow, closedThisMonth } from '@/lib/pipeline-view'
-import type { Customer, LeadStage } from '@/lib/types'
+import type { BookabilityCtx } from '@/lib/calendar-bookability'
+import type { Customer, Lead, LeadStage } from '@/lib/types'
 import { ClosedMonthSummary } from './ClosedMonthSummary'
 import { StageChip } from './StageChip'
 import { NewOpportunityForm } from './NewOpportunityForm'
+import { CreatedToast, opportunityCreatedMessage } from './CreatedToast'
 import { IntakeLinkCard } from './IntakeLinkCard'
 
 interface PipelineBoardViewProps {
@@ -30,6 +31,19 @@ interface PipelineBoardViewProps {
   // Offers the offsite / on-site toggle in the board's create form so both
   // pipeline surfaces behave identically. Undefined ⇒ hidden.
   showDeliveryMode?: boolean
+  // The create form's chip vocabulary (contract C5) — same server-computed list
+  // the list surface threads, so the two views' forms are identical.
+  eventTypeOptions?: string[]
+  // C5b: the RAW profile vocabulary (trimmed, original casing) — independent
+  // of the merged/capped chip list above; the form keys its "not a configured
+  // event type" hint on this.
+  eventTypeProfileNames?: string[]
+  // C5b: customer_id → total opportunity count over the page's loaded leads,
+  // for the caller-recognition hint's "{n} past jobs".
+  pastJobCounts?: Record<string, number>
+  // The form's live-verdict context, preloaded at page render (see the list's
+  // prop comment). Null/absent ⇒ the form renders no verdict block.
+  bookabilityCtx?: BookabilityCtx | null
 }
 
 // The board only offers open stages plus Closed won; losing happens on the
@@ -83,7 +97,8 @@ function applyPending(base: PipelineRow[], pending: Map<string, PendingMove>): P
 }
 
 export function PipelineBoardView({
-  orgId, orgSlug, groups, monthly, customers, showDeliveryMode,
+  orgId, orgSlug, groups, monthly, customers, showDeliveryMode, eventTypeOptions,
+  eventTypeProfileNames, pastJobCounts, bookabilityCtx,
 }: PipelineBoardViewProps) {
   const router = useRouter()
   const [rows, setRows] = useState<PipelineRow[]>(() => flatten(groups))
@@ -93,6 +108,15 @@ export function PipelineBoardView({
   const [intakeOpen, setIntakeOpen] = useState(false)
   const [dragOverStage, setDragOverStage] = useState<LeadStage | null>(null)
   const [actionsSlot, setActionsSlot] = useState<HTMLElement | null>(null)
+  /*
+    THE CREATED LOOP (New Opportunity inc 1) — mirrors the list surface, same
+    reasoning: `created` drives the toast (keyed by lead so a second create
+    re-arms its 8s clock); `highlightId` drives the ~4s ring pulse on the new
+    card, released by the timer below only after the refreshed payload actually
+    delivers the card (see the list's comment for why the clock waits).
+  */
+  const [created, setCreated] = useState<{ lead: Lead } | null>(null)
+  const [highlightId, setHighlightId] = useState<string | null>(null)
 
   /**
    * Lead id → the NEWEST still-unresolved `setLeadStage` call for that lead.
@@ -138,6 +162,27 @@ export function PipelineBoardView({
   useEffect(() => {
     setActionsSlot(document.getElementById('tx-pipeline-actions'))
   }, [])
+
+  // Pulse clock — armed only once the new card is really in `rows` (the board
+  // reads its synced state, not the raw prop). setState stays inside the
+  // timeout callback (the repo's eslint fails on `set-state-in-effect`).
+  const highlightVisible = highlightId != null && rows.some((r) => r.lead.id === highlightId)
+  useEffect(() => {
+    if (!highlightVisible) return
+    const t = setTimeout(() => setHighlightId(null), 4000)
+    return () => clearTimeout(t)
+  }, [highlightVisible])
+
+  /*
+    C5b: on the save-and-create-another path (`stayedOpen`) the dialog is still
+    up, so the toast would render UNDER its backdrop — the form announces that
+    create in its own top aria-live region instead. The highlight id is still
+    recorded, so every create pulses its card once the refresh lands.
+  */
+  function handleCreated(lead: Lead, info: { stayedOpen: boolean }) {
+    if (!info.stayedOpen) setCreated({ lead })
+    setHighlightId(lead.id)
+  }
 
   async function handleStageChange(row: PipelineRow, newStage: LeadStage) {
     if (newStage === row.lead.stage) return
@@ -276,19 +321,37 @@ export function PipelineBoardView({
       </div>
 
       {/*
-        Wrapped in the kit Dialog at the CALL SITE — NewOpportunityForm is shared
-        with the shipped Clients cockpit and must not change. Inline, it pushed
-        the whole board below the fold. IntakeLinkCard is deliberately NOT
-        wrapped: it owns a Dialog internally already.
+        The form OWNS its Dialog now (contract C5, New Opportunity inc 1) — the
+        call-site wrapper and its `[&_[data-slot=card]]` strip hacks are gone.
+        This surface only threads the contract props, identically to the list
+        view. IntakeLinkCard has always owned its own Dialog; unchanged.
       */}
-      <Dialog open={creating} onOpenChange={(next) => { if (!next) setCreating(false) }}>
-        <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-lg">
-          <DialogTitle className="sr-only">New opportunity</DialogTitle>
-          <div className="[&_[data-slot=card-content]]:px-0 [&_[data-slot=card-header]]:px-0 [&_[data-slot=card]]:border-0 [&_[data-slot=card]]:bg-transparent [&_[data-slot=card]]:shadow-none">
-            <NewOpportunityForm orgId={orgId} open={creating} onClose={() => setCreating(false)} customers={customers} showDeliveryMode={showDeliveryMode} />
-          </div>
-        </DialogContent>
-      </Dialog>
+      <NewOpportunityForm
+        orgId={orgId}
+        orgSlug={orgSlug}
+        open={creating}
+        onClose={() => setCreating(false)}
+        customers={customers}
+        showDeliveryMode={showDeliveryMode}
+        eventTypeOptions={eventTypeOptions}
+        eventTypeProfileNames={eventTypeProfileNames}
+        pastJobCounts={pastJobCounts}
+        bookabilityCtx={bookabilityCtx}
+        onCreated={handleCreated}
+      />
+
+      {/*
+        After-create landing (spec §6) — same loop as the list: toast with the
+        deep link, pulse on the card once the refresh lands.
+      */}
+      {created && (
+        <CreatedToast
+          key={created.lead.id}
+          message={opportunityCreatedMessage(created.lead)}
+          href={`/${orgSlug}/leads/${created.lead.id}`}
+          onDismiss={() => setCreated(null)}
+        />
+      )}
 
       <IntakeLinkCard orgId={orgId} open={intakeOpen} onClose={() => setIntakeOpen(false)} />
 
@@ -449,7 +512,13 @@ export function PipelineBoardView({
                         if (e.key === 'ArrowRight') { e.preventDefault(); handleArrowMove(row, 1) }
                         if (e.key === 'ArrowLeft') { e.preventDefault(); handleArrowMove(row, -1) }
                       }}
-                      className="rounded-md border border-border bg-card px-3 py-2.5 focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
+                      className={cn(
+                        'rounded-md border border-border bg-card px-3 py-2.5 focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none',
+                        // The just-created card's ~4s landing pulse — a static
+                        // ring (nothing moves for reduced-motion users),
+                        // released by the timer near the top of the component.
+                        highlightId === lead.id && 'ring-2 ring-ring/60',
+                      )}
                       style={{ cursor: 'grab' }}
                     >
                       <div className="flex items-start gap-2">

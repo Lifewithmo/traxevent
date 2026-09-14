@@ -6,7 +6,6 @@ import { cn } from '@/lib/utils'
 import { RelatedRecordCard, type RelatedRow } from '@/components/ui/related-record-card'
 import { StatusPill, type pillVariants } from '@/components/ui/status-pill'
 import { TagEditor } from '@/components/admin/TagEditor'
-import { NewOpportunityForm } from '@/components/admin/pipeline/NewOpportunityForm'
 import { updateCustomer } from '@/actions/customers'
 import { listProposals } from '@/actions/proposals'
 import { LEAD_STAGE_LABELS, opportunityTitle } from '@/lib/leads'
@@ -28,6 +27,14 @@ interface ClientWorkingRailProps {
   opportunities: Lead[]
   invoices: Invoice[]
   ar: CustomerAR
+  /*
+    ONE FORM INSTANCE PER PAGE (New Opportunity inc 1). The rail used to mount
+    its own NewOpportunityForm beside the cockpit's — two dialogs, duplicate
+    field ids on one page. The rail now only TRIGGERS: every CTA that used to
+    open its private form calls up to the cockpit, which owns the single
+    instance (and everything the richer form needs — lazy ctx, initialValues).
+  */
+  onNewJob?: () => void
 }
 
 function money(n: number): string {
@@ -234,9 +241,8 @@ function MetadataCard({ orgId, customer }: { orgId: string; customer: Customer }
   )
 }
 
-export function ClientWorkingRail({ orgId, orgSlug, customer, opportunities, invoices, ar }: ClientWorkingRailProps) {
+export function ClientWorkingRail({ orgId, orgSlug, customer, opportunities, invoices, ar, onNewJob }: ClientWorkingRailProps) {
   const router = useRouter()
-  const [creatingJob, setCreatingJob] = useState(false)
   const [proposals, setProposals] = useState<Proposal[]>([])
 
   // Proposals aren't loaded by the customer-page loader (only invoices are,
@@ -303,7 +309,8 @@ export function ClientWorkingRail({ orgId, orgSlug, customer, opportunities, inv
 
   function goToNewProposal() {
     if (mostRecentLeadId) router.push(`/${orgSlug}/leads/${mostRecentLeadId}/proposals/new`)
-    else setCreatingJob(true)
+    // No lead to hang a proposal on — book the job first, via the cockpit's form.
+    else onNewJob?.()
   }
 
   function goToInvoices() {
@@ -311,7 +318,7 @@ export function ClientWorkingRail({ orgId, orgSlug, customer, opportunities, inv
     // inside the lead detail page itself (only .../invoices/[invoiceId]
     // has a page.tsx). Route to the lead detail, not a nonexistent list page.
     if (mostRecentLeadId) router.push(`/${orgSlug}/leads/${mostRecentLeadId}`)
-    else setCreatingJob(true)
+    else onNewJob?.()
   }
 
   const invoiceFooter = (
@@ -339,7 +346,7 @@ export function ClientWorkingRail({ orgId, orgSlug, customer, opportunities, inv
         rows={jobRows}
         emptyTitle="No jobs yet"
         emptyCtaLabel="Book a job"
-        onEmptyCta={() => setCreatingJob(true)}
+        onEmptyCta={() => onNewJob?.()}
         className={jobRows.length === 0 ? 'max-md:hidden' : undefined}
       />
 
@@ -363,8 +370,6 @@ export function ClientWorkingRail({ orgId, orgSlug, customer, opportunities, inv
         footer={invoiceFooter}
         className={invoiceRows.length === 0 ? 'max-md:hidden' : undefined}
       />
-
-      <NewOpportunityForm orgId={orgId} open={creatingJob} onClose={() => setCreatingJob(false)} customer={customer} />
     </aside>
   )
 }
