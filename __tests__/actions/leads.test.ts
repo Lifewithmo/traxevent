@@ -643,12 +643,29 @@ describe('leads actions — event_type_id trim-guard', () => {
     )
   })
 
-  it('updateLead drops an unknown event_type_id but keeps the rest of the update', async () => {
+  // F9: an update that MOVES event_type alongside an unverifiable id must
+  // UNSET the id — merely dropping the key kept the lead's OLD id, which
+  // id-resolves the old policy under the new label.
+  it('updateLead with an event_type change and an unverifiable id UNSETS the id', async () => {
     orgDocGetSpy.mockResolvedValueOnce(orgWithProfiles)
-    await updateLead('org-1', 'l1', { event_type: 'Wedding', event_type_id: 'bogus' })
+    await updateLead('org-1', 'l1', { event_type: 'Birthday', event_type_id: 'bogus' })
+    const payload = leadDocUpdateSpy.mock.calls[0][0]
+    expect(payload.event_type).toBe('Birthday')
+    expect(payload.event_type_id).toBe(fieldValueDeleteSentinel)
+  })
+
+  it('updateLead clearing event_type (null) with an unverifiable id unsets the id too', async () => {
+    orgDocGetSpy.mockResolvedValueOnce(orgWithProfiles)
+    await updateLead('org-1', 'l1', { event_type: null, event_type_id: 'bogus' })
+    expect(leadDocUpdateSpy.mock.calls[0][0].event_type_id).toBe(fieldValueDeleteSentinel)
+  })
+
+  it('updateLead drops a LONE unverifiable id — no event_type change, field left untouched', async () => {
+    orgDocGetSpy.mockResolvedValueOnce(orgWithProfiles)
+    await updateLead('org-1', 'l1', { event_type_id: 'bogus', notes: 'called back' })
     const payload = leadDocUpdateSpy.mock.calls[0][0]
     expect(payload).not.toHaveProperty('event_type_id')
-    expect(payload.event_type).toBe('Wedding')
+    expect(payload.notes).toBe('called back')
   })
 
   it('updateLead maps event_type_id: null to FieldValue.delete (explicit unset)', async () => {

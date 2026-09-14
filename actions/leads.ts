@@ -193,12 +193,17 @@ export async function createLead(orgId: string, input: CreateLeadInput): Promise
 export async function updateLead(orgId: string, leadId: string, updates: LeadUpdate): Promise<void> {
   await assertOrgAdmin(orgId)
   // Same trim-guard as createLead: a string event_type_id must verify against
-  // the org's profiles or the key is dropped (field left untouched). `null`
-  // passes through — it is the explicit unset (FieldValue.delete in the core).
+  // the org's profiles. `null` passes through — it is the explicit unset
+  // (FieldValue.delete in the core). An UNVERIFIABLE id splits on whether the
+  // update also moves `event_type`: alongside a type change the id is UNSET
+  // (merely dropping the key would keep the lead's OLD id, which id-resolves
+  // the old policy under the new label); on its own it is dropped, leaving
+  // the field untouched.
   const cleaned: LeadUpdate = { ...updates }
   if (typeof cleaned.event_type_id === 'string') {
     const verified = await verifiedEventTypeId(orgId, cleaned.event_type_id)
     if (verified) cleaned.event_type_id = verified
+    else if (cleaned.event_type !== undefined) cleaned.event_type_id = null
     else delete cleaned.event_type_id
   }
   let prevStage: LeadStage | undefined
