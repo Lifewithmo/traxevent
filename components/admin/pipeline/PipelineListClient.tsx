@@ -45,15 +45,9 @@ interface PipelineListClientProps {
   // Event-type profiles (increment 4) so a row's clash badge/ownership is
   // profile-aware, matching the server engine. Absent ⇒ leadRequirement default.
   eventTypeProfiles?: Org['event_type_profiles']
-  // The create form's chip vocabulary (contract C5): profile names first, then
-  // the org's own historical types by frequency — computed on the server
-  // (lib/crm/event-type-options) and passed through untouched. The form's
-  // profile matching (hint, delivery-mode hiding, event_type_id) runs against
-  // `eventTypeProfiles` above — the form ignores archived entries itself.
-  eventTypeOptions?: string[]
-  // Owner/admin (event types inc 1): the create form offers the inline
-  // "+ New type" chip and hint action. Computed server-side from the member
-  // role — the role itself never ships to the client.
+  // Owner/admin (event types inc 1): the create form offers the in-list
+  // "+ New event type…" option and hint action. Computed server-side from
+  // the member role — the role itself never ships to the client.
   canCreateEventTypes?: boolean
   // C5b: customer_id → total opportunity count over the page's loaded leads,
   // for the caller-recognition hint's "{n} past jobs".
@@ -193,7 +187,7 @@ function GroupHeader({ label, rows, alert }: { label: string; rows: PipelineRow[
 
 export function PipelineListClient({
   orgId, orgSlug, groups, closed, openCount, monthly, customers, showDeliveryMode, resourceLabels, eventTypeProfiles,
-  eventTypeOptions, canCreateEventTypes, pastJobCounts, bookabilityCtx,
+  canCreateEventTypes, pastJobCounts, bookabilityCtx,
 }: PipelineListClientProps) {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState<Tab>('open')
@@ -635,7 +629,7 @@ export function PipelineListClient({
         The form OWNS its Dialog now (contract C5, New Opportunity inc 1) — the
         call-site wrapper and its `[&_[data-slot=card]]` strip hacks are gone
         with it. This surface only threads the contract props: the preloaded
-        bookability ctx (built at page render), the event-type chip vocabulary,
+        bookability ctx (built at page render), the event-type profile array,
         and the onCreated hook that closes the loop below. (IntakeLinkCard has
         always owned its own Dialog; unchanged.)
       */}
@@ -646,7 +640,6 @@ export function PipelineListClient({
         onClose={() => setCreating(false)}
         customers={customers}
         showDeliveryMode={showDeliveryMode}
-        eventTypeOptions={eventTypeOptions}
         eventTypeProfiles={eventTypeProfiles}
         canCreateEventTypes={canCreateEventTypes}
         resourceLabels={resourceLabels}

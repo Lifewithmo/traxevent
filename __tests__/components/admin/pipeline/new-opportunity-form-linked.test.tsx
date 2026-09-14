@@ -109,7 +109,9 @@ describe('NewOpportunityForm linked mode', () => {
 
     // A matched profile drives Where (leadRequirement ignores delivery_mode on
     // a match) — the toggle would be a dead control, so it leaves the screen.
-    it('hides the Where toggle while the typed type matches a profile, and restores it after', () => {
+    // Both entry paths must agree: a listed pick from the dropdown AND free
+    // text through "Something else…" that happens to name a profile.
+    it('hides the Where toggle while the picked/typed type matches a profile, and restores it after', () => {
       render(
         <NewOpportunityForm
           orgId="o1" orgSlug="brew" open onClose={() => {}} customer={customer}
@@ -118,10 +120,16 @@ describe('NewOpportunityForm linked mode', () => {
         />
       )
       expect(screen.getByRole('group', { name: 'Where' })).toBeInTheDocument()
-      const typeInput = screen.getByLabelText('Event type')
-      fireEvent.change(typeInput, { target: { value: '  wedding ' } }) // trim + case-insensitive
+      const typeSelect = screen.getByLabelText('Event type')
+      fireEvent.change(typeSelect, { target: { value: 'Wedding' } }) // listed pick
       expect(screen.queryByRole('group', { name: 'Where' })).not.toBeInTheDocument()
-      fireEvent.change(typeInput, { target: { value: 'Birthday' } }) // no match → toggle returns
+      // "Something else…" empties the value → no match → the toggle returns…
+      fireEvent.change(typeSelect, { target: { value: '__other__' } })
+      expect(screen.getByRole('group', { name: 'Where' })).toBeInTheDocument()
+      const other = screen.getByLabelText('Custom event type')
+      fireEvent.change(other, { target: { value: '  wedding ' } }) // trim + case-insensitive free text
+      expect(screen.queryByRole('group', { name: 'Where' })).not.toBeInTheDocument()
+      fireEvent.change(other, { target: { value: 'Birthday' } }) // no match → toggle returns
       expect(screen.getByRole('group', { name: 'Where' })).toBeInTheDocument()
     })
 

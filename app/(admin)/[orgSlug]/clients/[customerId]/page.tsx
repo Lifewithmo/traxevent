@@ -8,7 +8,6 @@ import { listActivity } from '@/actions/activity'
 import { listInvoicesByCustomerCore } from '@/lib/crm/invoices'
 import { mergeActivity } from '@/lib/crm/customer-activity'
 import { customerAR } from '@/lib/crm/ar-rollup'
-import { buildEventTypeOptions } from '@/lib/crm/event-type-options'
 import { hasMultiResourceCapacity, listCapacityUnitsCore } from '@/lib/capacity/units'
 import { ClientCockpit } from '@/components/admin/clients/ClientCockpit'
 
@@ -47,13 +46,10 @@ export default async function CustomerDetailPage({
   // The delivery-mode toggle needs a room to host in: ≥1 ACTIVE venue unit —
   // the same rule the pipeline page threads to its create form.
   const showDeliveryMode = units.some((u) => u.kind === 'venue' && u.active)
-  // Chip vocabulary: profiles + THIS customer's own history (one shared rule,
-  // lib/crm/event-type-options — the pipeline page feeds it the whole org's).
-  // The form's profile matching (hint, delivery-mode hiding, event_type_id)
-  // runs against the org profile array threaded below. (The cockpit's
-  // pastJobCounts is derived in ClientCockpit from the pinned customer's own
-  // opportunities — no extra prop.)
-  const eventTypeOptions = buildEventTypeOptions(eventTypeProfiles, opportunities)
+  // The create form's event-type picker (options, hint, delivery-mode hiding,
+  // event_type_id) runs entirely against the org profile array threaded
+  // below. (The cockpit's pastJobCounts is derived in ClientCockpit from the
+  // pinned customer's own opportunities — no extra prop.)
 
   // The rollup/story is derived in the client from opportunities — no prop for it.
   return (
@@ -67,7 +63,6 @@ export default async function CustomerDetailPage({
       activity={activity}
       ar={ar}
       showDeliveryMode={showDeliveryMode}
-      eventTypeOptions={eventTypeOptions}
       eventTypeProfiles={eventTypeProfiles}
       canCreateEventTypes={canCreateEventTypes}
       resourceLabels={org.resource_labels}

@@ -92,10 +92,9 @@ describe('ClientCockpit (New Opportunity inc 1 — one form instance, contract C
     expect(props.customer).toMatchObject({ id: 'c1', name: 'Tessa Lund' })
   })
 
-  it('threads the C5 props: orgSlug, showDeliveryMode, eventTypeOptions and the lazy ctx loader', async () => {
+  it('threads the C5 props: orgSlug, showDeliveryMode, the profile array and the lazy ctx loader', async () => {
     render(<ClientCockpit {...baseProps}
       showDeliveryMode
-      eventTypeOptions={['Wedding', 'Market']}
       eventTypeProfiles={[{ id: 'p-wed', name: 'Wedding', needsMobile: true, needsVenue: true }]}
       canCreateEventTypes
       resourceLabels={{ mobile: { one: 'cart', many: 'carts' } }}
@@ -107,7 +106,7 @@ describe('ClientCockpit (New Opportunity inc 1 — one form instance, contract C
     const props = formProps.mock.calls.at(-1)![0]
     expect(props).toMatchObject({
       orgId: 'o', orgSlug: 'acme', open: false,
-      showDeliveryMode: true, eventTypeOptions: ['Wedding', 'Market'],
+      showDeliveryMode: true,
       // Event types inc 1: the org profile array, the owner/admin
       // inline-create gate, and the operator's kind words ride through
       // untouched — and the pinned customer's own history IS their

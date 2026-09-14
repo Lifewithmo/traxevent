@@ -20,10 +20,13 @@ vi.mock('@/actions/leads', () => ({
 // is covered in new-event-type-popover.test.tsx.
 vi.mock('@/actions/event-type-profiles', () => ({ createEventTypeProfile: vi.fn() }))
 
-// The org's configured profiles (event types inc 1): matching for the id
-// payload, the unrecognized hint, and delivery-mode hiding all key on these —
-// eventTypeOptions stays a display-only string list.
+// The org's configured profiles (event types inc 1): the ONE dropdown's
+// option list, and what the id payload, the unrecognized hint, and
+// delivery-mode hiding all key on. (The chip row + free-text combo is gone —
+// "IT LOOKS AND ACTS LIKE A TAG" — replaced by the same EventTypeSelect the
+// intake form and the opportunity editors already use.)
 const wedding: EventTypeProfile = { id: 'p-wed', name: 'Wedding', needsMobile: true, needsVenue: true }
+const market: EventTypeProfile = { id: 'p-mkt', name: 'Market', needsMobile: true, needsVenue: false }
 
 const dana: Customer = {
   id: 'c1', name: 'Dana Kim', company: 'Riverside', email: 'dana@riv.co',
@@ -52,6 +55,13 @@ function renderForm(props: Partial<React.ComponentProps<typeof NewOpportunityFor
 
 const nameInput = () => screen.getByRole('textbox', { name: 'Name' })
 const banner = () => document.body.querySelector('[data-slot="bookability-banner"]')
+// The ONE event-type control: the select when the org has active profiles,
+// EventTypeSelect's plain-input fallback with zero. Same label either way.
+const typeControl = () => screen.getByLabelText('Event type') as HTMLSelectElement | HTMLInputElement
+// "Something else…" reveals the free-text field (the intake form's wording).
+const chooseSomethingElse = () =>
+  fireEvent.change(typeControl(), { target: { value: '__other__' } })
+const otherInput = () => screen.getByLabelText('Custom event type')
 
 describe('NewOpportunityForm', () => {
   beforeEach(() => vi.clearAllMocks())
@@ -136,10 +146,10 @@ describe('NewOpportunityForm', () => {
 
   describe('save and create another (Cmd/Ctrl+Shift+Enter)', () => {
     it('keeps what-and-when, clears who, stays open, refocuses Name', async () => {
-      const { onClose } = renderForm({ eventTypeOptions: ['Wedding', 'Market'] })
+      const { onClose } = renderForm({ eventTypeProfiles: [wedding, market] })
       fireEvent.change(nameInput(), { target: { value: 'Jane Doe' } })
       fireEvent.change(screen.getByLabelText('Phone'), { target: { value: '208-555-9999' } })
-      fireEvent.click(screen.getByRole('button', { name: 'Wedding' }))
+      fireEvent.change(typeControl(), { target: { value: 'Wedding' } })
       const dateInput = screen.getByLabelText('Event date')
       fireEvent.change(dateInput, { target: { value: conflictDate } })
       fireEvent.change(screen.getByLabelText('Guests'), { target: { value: '120' } })
@@ -385,32 +395,49 @@ describe('NewOpportunityForm', () => {
     })
   })
 
-  describe('event-type chips', () => {
-    it('selects and toggles a chip, mirroring the free-text input', () => {
-      renderForm({ eventTypeOptions: ['Wedding', 'Market'] })
-      const chip = screen.getByRole('button', { name: 'Wedding' })
-      fireEvent.click(chip)
-      expect(screen.getByRole('button', { name: 'Wedding' })).toHaveAttribute('aria-pressed', 'true')
-      expect(screen.getByLabelText('Event type')).toHaveValue('Wedding')
-      fireEvent.click(screen.getByRole('button', { name: 'Wedding' }))
-      expect(screen.getByLabelText('Event type')).toHaveValue('')
+  describe('event-type picker (ONE dropdown — never a chip row)', () => {
+    it('renders one labeled select of active profile names — no chip row, no echo input', () => {
+      renderForm({ eventTypeProfiles: [wedding, market] })
+      const select = typeControl() as HTMLSelectElement
+      expect(select.tagName).toBe('SELECT')
+      const labels = Array.from(select.options).map((o) => o.textContent)
+      expect(labels).toEqual(['Select an event type', 'Wedding', 'Market', 'Something else…'])
+      // The rejected pattern: a chip group over a free-text input that echoed
+      // the picked chip. Neither may render.
+      expect(screen.queryByRole('group', { name: /common event types/i })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Wedding', pressed: false })).not.toBeInTheDocument()
+      expect(screen.queryByLabelText('Custom event type')).not.toBeInTheDocument()
     })
 
-    it('hints quietly when a typed value matches no configured profile', () => {
-      renderForm({ eventTypeOptions: ['Wedding'], eventTypeProfiles: [wedding] })
-      fireEvent.change(screen.getByLabelText('Event type'), { target: { value: 'Birthday' } })
+    it('picking a listed type sets the value; another pick replaces it', () => {
+      renderForm({ eventTypeProfiles: [wedding, market] })
+      fireEvent.change(typeControl(), { target: { value: 'Wedding' } })
+      expect(typeControl()).toHaveValue('Wedding')
+      fireEvent.change(typeControl(), { target: { value: 'Market' } })
+      expect(typeControl()).toHaveValue('Market')
+    })
+
+    it('"Something else…" reveals the free text; an unlisted type hints quietly and NEVER blocks', async () => {
+      renderForm({ eventTypeProfiles: [wedding] })
+      fireEvent.change(nameInput(), { target: { value: 'Jane Doe' } })
+      chooseSomethingElse()
+      fireEvent.change(otherInput(), { target: { value: 'Birthday' } })
       expect(screen.getByText(/not a configured event type/i)).toBeInTheDocument()
+      // Standing decision: free text never blocks a create.
+      fireEvent.click(screen.getByRole('button', { name: 'Create opportunity' }))
+      await waitFor(() =>
+        expect(createLead).toHaveBeenCalledWith('o1', expect.objectContaining({ event_type: 'Birthday' }))
+      )
+      expect(vi.mocked(createLead).mock.calls[0][1]).not.toHaveProperty('event_type_id')
     })
 
-    it('keys the hint on PROFILE membership, not the merged options list', () => {
-      // 'Birthday' is a merged (historical) option but not a profile — the
-      // capacity engine will use the default rule for it, so the hint shows.
-      renderForm({ eventTypeOptions: ['Wedding', 'Birthday'], eventTypeProfiles: [wedding] })
-      const input = screen.getByLabelText('Event type')
-      fireEvent.change(input, { target: { value: 'Birthday' } })
+    it('keys the hint on PROFILE membership — trim + case-insensitive free text stands it down', () => {
+      renderForm({ eventTypeProfiles: [wedding] })
+      chooseSomethingElse()
+      fireEvent.change(otherInput(), { target: { value: 'Birthday' } })
       expect(screen.getByText(/not a configured event type/i)).toBeInTheDocument()
       // Trim + case-insensitive against the profile name — hint stands down.
-      fireEvent.change(input, { target: { value: '  wedding ' } })
+      fireEvent.change(otherInput(), { target: { value: '  wedding ' } })
       expect(screen.queryByText(/not a configured event type/i)).not.toBeInTheDocument()
     })
 
@@ -419,14 +446,15 @@ describe('NewOpportunityForm', () => {
     // default rule" hint was a lie for exactly that input.
     it("typing an ARCHIVED type's name says its saved policy applies — never the default-rule hint", async () => {
       renderForm({
-        eventTypeOptions: [],
         eventTypeProfiles: [
           { id: 'p-gala', name: 'Gala', needsMobile: true, needsVenue: false },
           { ...wedding, archived: true },
         ],
       })
       fireEvent.change(nameInput(), { target: { value: 'Jane Doe' } })
-      fireEvent.change(screen.getByLabelText('Event type'), { target: { value: '  wedding ' } }) // trim + case-insensitive
+      // Archived names are OFF the list — the only way to say one is free text.
+      chooseSomethingElse()
+      fireEvent.change(otherInput(), { target: { value: '  wedding ' } }) // trim + case-insensitive
       expect(screen.getByText(/archived type — its saved policy still applies/i)).toBeInTheDocument()
       expect(screen.queryByText(/not a configured event type/i)).not.toBeInTheDocument()
       // Still never the archived profile's id: it is gone from the pickers and
@@ -438,29 +466,32 @@ describe('NewOpportunityForm', () => {
 
     it('a non-matching name still gets the default-rule hint when only archived types share the org', () => {
       renderForm({
-        eventTypeOptions: [],
         eventTypeProfiles: [
           { id: 'p-gala', name: 'Gala', needsMobile: true, needsVenue: false },
           { ...wedding, archived: true },
         ],
       })
-      fireEvent.change(screen.getByLabelText('Event type'), { target: { value: 'Birthday' } })
+      chooseSomethingElse()
+      fireEvent.change(otherInput(), { target: { value: 'Birthday' } })
       expect(screen.getByText(/not a configured event type/i)).toBeInTheDocument()
       expect(screen.queryByText(/archived type/i)).not.toBeInTheDocument()
     })
 
-    it('renders a plain input with no chips and no unrecognized-type hint when there are no options', () => {
+    it('with ZERO active profiles renders the plain free-text input — no select wrapping an empty list', () => {
       renderForm()
-      fireEvent.change(screen.getByLabelText('Event type'), { target: { value: 'Birthday' } })
+      const control = typeControl()
+      // EventTypeSelect's own 0-profiles rule, the same one the intake form
+      // rides: a taxonomy with no entries has no list to pick from.
+      expect(control.tagName).toBe('INPUT')
+      expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+      fireEvent.change(control, { target: { value: 'Birthday' } })
       expect(screen.queryByText(/not a configured event type/i)).not.toBeInTheDocument()
       expect(screen.queryByRole('group', { name: /common event types/i })).not.toBeInTheDocument()
     })
 
     it('shows the configure-profiles onboarding hint when the org has no profiles', () => {
-      // Historical types exist but no profiles are configured: never the
-      // "not configured" nag — the onboarding cue with a real link instead.
-      renderForm({ eventTypeOptions: ['Birthday'] })
-      fireEvent.change(screen.getByLabelText('Event type'), { target: { value: 'Gala' } })
+      renderForm()
+      fireEvent.change(typeControl(), { target: { value: 'Gala' } })
       expect(screen.queryByText(/not a configured event type/i)).not.toBeInTheDocument()
       expect(screen.getByText(/type any event type/i)).toBeInTheDocument()
       const link = screen.getByRole('link', { name: /configure profiles to get capacity verdicts/i })
@@ -479,10 +510,10 @@ describe('NewOpportunityForm', () => {
   })
 
   describe('id-backed event types (inc 1)', () => {
-    it('carries event_type_id when a chip pick matches an active profile', async () => {
-      renderForm({ eventTypeOptions: ['Wedding', 'Market'], eventTypeProfiles: [wedding] })
+    it('carries event_type_id when a listed pick matches an active profile', async () => {
+      renderForm({ eventTypeProfiles: [wedding] })
       fireEvent.change(nameInput(), { target: { value: 'Jane Doe' } })
-      fireEvent.click(screen.getByRole('button', { name: 'Wedding' }))
+      fireEvent.change(typeControl(), { target: { value: 'Wedding' } })
       fireEvent.click(screen.getByRole('button', { name: 'Create opportunity' }))
       await waitFor(() =>
         expect(createLead).toHaveBeenCalledWith('o1', expect.objectContaining({
@@ -491,10 +522,11 @@ describe('NewOpportunityForm', () => {
       )
     })
 
-    it('resolves the id from typed free text too — trim + case-insensitive', async () => {
+    it('resolves the id from Other-mode free text too — trim + case-insensitive', async () => {
       renderForm({ eventTypeProfiles: [wedding] })
       fireEvent.change(nameInput(), { target: { value: 'Jane Doe' } })
-      fireEvent.change(screen.getByLabelText('Event type'), { target: { value: '  wedding ' } })
+      chooseSomethingElse()
+      fireEvent.change(otherInput(), { target: { value: '  wedding ' } })
       fireEvent.click(screen.getByRole('button', { name: 'Create opportunity' }))
       await waitFor(() =>
         expect(createLead).toHaveBeenCalledWith('o1', expect.objectContaining({
@@ -506,7 +538,8 @@ describe('NewOpportunityForm', () => {
     it('submits no event_type_id when the text matches no active profile', async () => {
       renderForm({ eventTypeProfiles: [wedding] })
       fireEvent.change(nameInput(), { target: { value: 'Jane Doe' } })
-      fireEvent.change(screen.getByLabelText('Event type'), { target: { value: 'Birthday' } })
+      chooseSomethingElse()
+      fireEvent.change(otherInput(), { target: { value: 'Birthday' } })
       fireEvent.click(screen.getByRole('button', { name: 'Create opportunity' }))
       await waitFor(() => expect(createLead).toHaveBeenCalled())
       const input = vi.mocked(createLead).mock.calls[0][1]
@@ -514,10 +547,10 @@ describe('NewOpportunityForm', () => {
       expect(input).not.toHaveProperty('event_type_id')
     })
 
-    it('matches a LEGACY profile without an id — configured (no hint), nothing to reference', async () => {
+    it('picks a LEGACY profile without an id — configured (no hint), nothing to reference', async () => {
       renderForm({ eventTypeProfiles: [{ name: 'Market', needsMobile: true, needsVenue: false }] })
       fireEvent.change(nameInput(), { target: { value: 'Jane Doe' } })
-      fireEvent.change(screen.getByLabelText('Event type'), { target: { value: 'Market' } })
+      fireEvent.change(typeControl(), { target: { value: 'Market' } })
       // A legacy entry not yet re-saved has no id, but it IS a configured type.
       expect(screen.queryByText(/not a configured event type/i)).not.toBeInTheDocument()
       fireEvent.click(screen.getByRole('button', { name: 'Create opportunity' }))
@@ -527,23 +560,51 @@ describe('NewOpportunityForm', () => {
   })
 
   describe('inline-create affordances (admin gating)', () => {
-    it('shows no "+ New type" chip and no hint action without canCreateEventTypes', () => {
-      renderForm({ eventTypeOptions: ['Wedding'], eventTypeProfiles: [wedding] })
-      expect(screen.queryByRole('button', { name: /new type/i })).not.toBeInTheDocument()
-      fireEvent.change(screen.getByLabelText('Event type'), { target: { value: 'Birthday' } })
+    it('lists no "+ New event type…" option and no hint action without canCreateEventTypes', () => {
+      renderForm({ eventTypeProfiles: [wedding] })
+      const labels = Array.from((typeControl() as HTMLSelectElement).options).map((o) => o.textContent)
+      expect(labels).not.toContain('+ New event type…')
+      chooseSomethingElse()
+      fireEvent.change(otherInput(), { target: { value: 'Birthday' } })
       expect(screen.getByText(/not a configured event type/i)).toBeInTheDocument()
       expect(screen.queryByRole('button', { name: /add as event type/i })).not.toBeInTheDocument()
     })
 
-    it('offers "+ New type" as the LAST chip and the hint action for admins', () => {
-      renderForm({
-        eventTypeOptions: ['Wedding'], eventTypeProfiles: [wedding], canCreateEventTypes: true,
-      })
-      const group = screen.getByRole('group', { name: /common event types/i })
-      const chips = Array.from(group.querySelectorAll('button'))
-      expect(chips[chips.length - 1]).toHaveTextContent(/new type/i)
-      fireEvent.change(screen.getByLabelText('Event type'), { target: { value: 'Birthday' } })
+    it('pins "+ New event type…" at the BOTTOM of the list, after "Something else…", for admins', () => {
+      renderForm({ eventTypeProfiles: [wedding], canCreateEventTypes: true })
+      const labels = Array.from((typeControl() as HTMLSelectElement).options).map((o) => o.textContent)
+      expect(labels[labels.length - 1]).toBe('+ New event type…')
+      expect(labels[labels.length - 2]).toBe('Something else…')
+      // The hint's one-click adopt action still rides along for admins.
+      chooseSomethingElse()
+      fireEvent.change(otherInput(), { target: { value: 'Birthday' } })
       expect(screen.getByRole('button', { name: /add as event type/i })).toBeInTheDocument()
+    })
+
+    it('selecting "+ New event type…" opens the popover and does NOT change the committed value', () => {
+      renderForm({ eventTypeProfiles: [wedding, market], canCreateEventTypes: true })
+      fireEvent.change(typeControl(), { target: { value: 'Wedding' } })
+      fireEvent.change(typeControl(), { target: { value: '__create__' } })
+      // The popover opens…
+      expect(screen.getByRole('dialog', { name: 'New event type' })).toBeInTheDocument()
+      // …and the sentinel never commits: the select still shows the pick.
+      expect(document.getElementById('leadEventType')).toHaveValue('Wedding')
+      // Escape keeps it too — the sentinel never persisted anywhere.
+      fireEvent.keyDown(screen.getByLabelText('Event type name'), { key: 'Escape' })
+      expect(document.getElementById('leadEventType')).toHaveValue('Wedding')
+    })
+
+    it('ZERO profiles + admin: plain input plus a "+ New type" button — the popover stays reachable, never chips', () => {
+      renderForm({ canCreateEventTypes: true })
+      expect(typeControl().tagName).toBe('INPUT')
+      expect(screen.queryByRole('group', { name: /common event types/i })).not.toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: '+ New type' }))
+      expect(screen.getByRole('dialog', { name: 'New event type' })).toBeInTheDocument()
+    })
+
+    it('ZERO profiles without the admin gate: no "+ New type" button at all', () => {
+      renderForm()
+      expect(screen.queryByRole('button', { name: '+ New type' })).not.toBeInTheDocument()
     })
   })
 
@@ -630,6 +691,31 @@ describe('NewOpportunityForm', () => {
       renderForm({ customer: dana, initialValues: { event_type: 'Wedding', guest_count: 80 } })
       expect(screen.getByLabelText('Event type')).toHaveValue('Wedding')
       expect(screen.getByLabelText('Guests')).toHaveValue(80)
+    })
+
+    it('renders a prefill matching an active profile as the selected option', () => {
+      renderForm({
+        customer: dana,
+        eventTypeProfiles: [wedding],
+        initialValues: { event_type: 'Wedding' },
+      })
+      const select = typeControl() as HTMLSelectElement
+      expect(select.tagName).toBe('SELECT')
+      expect(select).toHaveValue('Wedding')
+      expect(screen.queryByLabelText('Custom event type')).not.toBeInTheDocument()
+    })
+
+    it("renders an unadopted historical prefill in Other mode with the text filled — the cockpit's last-job seed survives", () => {
+      // ClientCockpit prefills the client's most recent job's type, which may
+      // predate the org's profiles. The value must not be silently dropped.
+      renderForm({
+        customer: dana,
+        eventTypeProfiles: [wedding],
+        initialValues: { event_type: 'Collaboration' },
+      })
+      expect(typeControl()).toHaveValue('__other__')
+      expect(otherInput()).toHaveValue('Collaboration')
+      expect(screen.getByText(/not a configured event type/i)).toBeInTheDocument()
     })
   })
 })

@@ -782,11 +782,10 @@ describe('PipelineBoardView', () => {
       radar: { mode: 'degraded' as const, conflictDates: [], bookedCounts: {} },
     }
 
-    it('threads orgSlug, eventTypeOptions, bookabilityCtx and showDeliveryMode into the form', () => {
+    it('threads orgSlug, the profile array, bookabilityCtx and showDeliveryMode into the form', () => {
       render(<PipelineBoardView {...baseProps}
         customers={[{ id: 'c1', name: 'Jane Doe' } as never]}
         showDeliveryMode
-        eventTypeOptions={['Wedding', 'Market']}
         eventTypeProfiles={[{ id: 'p-wed', name: 'Wedding', needsMobile: true, needsVenue: true }]}
         canCreateEventTypes
         resourceLabels={{ mobile: { one: 'cart', many: 'carts' } }}
@@ -796,7 +795,7 @@ describe('PipelineBoardView', () => {
       const props = formProps.mock.calls.at(-1)![0]
       expect(props).toMatchObject({
         orgId: 'o1', orgSlug: 'demo', open: false,
-        showDeliveryMode: true, eventTypeOptions: ['Wedding', 'Market'],
+        showDeliveryMode: true,
         // Event types inc 1: the org profile array, the owner/admin
         // inline-create gate, and the operator's kind words all ride through
         // untouched — the form keys its matching and popover on them.
