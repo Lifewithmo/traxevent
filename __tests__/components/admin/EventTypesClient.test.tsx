@@ -155,6 +155,35 @@ describe('EventTypesClient', () => {
     expect(updateEventTypeProfiles).toHaveBeenCalledTimes(1)
   })
 
+  it('a confirmed destructive action dropped by the in-flight lock surfaces an error, never silence', async () => {
+    const user = userEvent.setup()
+    let resolveSave!: () => void
+    updateEventTypeProfiles.mockImplementationOnce(() => new Promise<void>((res) => { resolveSave = res }))
+    render(
+      <EventTypesClient
+        {...base}
+        initialProfiles={[wedding, corporate]}
+        usage={usage({ byProfileId: { et1: 1, et2: 0 } })}
+      />,
+    )
+    // Wedding's toggle write is in flight; Corporate's menu is deliberately NOT
+    // disabled (per-row scope) — so a confirmed Delete there must not vanish.
+    fireEvent.click(screen.getByRole('button', { name: 'Wedding — needs room' }))
+    await openRowMenu(user, 'Corporate')
+    await user.click(await screen.findByRole('menuitem', { name: 'Delete' }))
+    expect(await screen.findByText('Delete “Corporate”?')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Delete' }))
+
+    expect(deleteEventTypeProfile).not.toHaveBeenCalled()
+    expect(await screen.findByText('Still saving another change — try again in a moment.')).toBeInTheDocument()
+    resolveSave()
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Wedding — needs cart' })).not.toBeDisabled()
+    )
+    // Corporate's row is untouched and still present for a retry.
+    expect(screen.getByDisplayValue('Corporate')).toBeInTheDocument()
+  })
+
   it('rolls the optimistic toggle back and surfaces the error in the aria-live region when the save rejects', async () => {
     updateEventTypeProfiles.mockRejectedValue(new Error('Forbidden'))
     render(<EventTypesClient {...base} initialProfiles={[wedding]} usage={usage()} />)

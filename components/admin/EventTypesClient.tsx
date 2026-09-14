@@ -151,7 +151,13 @@ export function EventTypesClient({
   }
 
   async function run(key: string, action: () => Promise<void>) {
-    if (!begin(key)) return
+    if (!begin(key)) {
+      // The per-row scope leaves other rows' controls live while a write is in
+      // flight — a dropped action (a confirmed Delete especially) must say so,
+      // never vanish.
+      setError('Still saving another change — try again in a moment.')
+      return
+    }
     try {
       await action()
     } catch (err: unknown) {
