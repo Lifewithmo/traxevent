@@ -95,6 +95,66 @@ describe('EventTypesClient', () => {
     expect(screen.getByRole('button', { name: 'Wedding — needs room' })).toHaveAttribute('aria-pressed', 'false')
   })
 
+  // F6: the whole-array path (toggle/reorder/archive) must refresh on success
+  // like rename/add/merge/adopt do — the reset-from-props idiom then pulls
+  // server-minted ids back in, so a legacy id-less entry stops being handed a
+  // FRESH id on every subsequent toggle.
+  it('a successful whole-array save refreshes so server-assigned ids come back', async () => {
+    updateEventTypeProfiles.mockResolvedValue(undefined)
+    render(<EventTypesClient {...base} initialProfiles={[wedding]} usage={usage()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Wedding — needs room' }))
+    await waitFor(() => expect(updateEventTypeProfiles).toHaveBeenCalled())
+    await waitFor(() => expect(routerRefresh).toHaveBeenCalled())
+  })
+
+  it('a failed whole-array save does NOT refresh — the rollback owns the screen', async () => {
+    updateEventTypeProfiles.mockRejectedValue(new Error('Forbidden'))
+    render(<EventTypesClient {...base} initialProfiles={[wedding]} usage={usage()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Wedding — needs room' }))
+    await screen.findByText('Forbidden')
+    expect(routerRefresh).not.toHaveBeenCalled()
+  })
+
+  // F7: one in-flight write no longer locks EVERY control on the page — only
+  // the affected row disables; unrelated rows keep live pills and menus.
+  it('an in-flight save disables only the affected row, never the other rows', async () => {
+    let resolveSave!: () => void
+    updateEventTypeProfiles.mockImplementationOnce(
+      () => new Promise<void>((res) => { resolveSave = res })
+    )
+    render(<EventTypesClient {...base} initialProfiles={[wedding, corporate]} usage={usage()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Wedding — needs room' }))
+    // Wedding's own controls lock while its write is in flight…
+    expect(screen.getByRole('button', { name: 'Wedding — needs cart' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Wedding — actions' })).toBeDisabled()
+    // …Corporate's stay live.
+    expect(screen.getByRole('button', { name: 'Corporate — needs room' })).not.toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Corporate — actions' })).not.toBeDisabled()
+    resolveSave()
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Wedding — needs cart' })).not.toBeDisabled()
+    )
+  })
+
+  it('still serializes writes: a click on another row mid-flight is dropped, not interleaved', async () => {
+    let resolveSave!: () => void
+    updateEventTypeProfiles
+      .mockImplementationOnce(() => new Promise<void>((res) => { resolveSave = res }))
+      .mockResolvedValue(undefined)
+    render(<EventTypesClient {...base} initialProfiles={[wedding, corporate]} usage={usage()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Wedding — needs room' }))
+    // Whole-array writes replace the WHOLE server array; interleaving two
+    // optimistic snapshots corrupts the rollback — the second click is a no-op
+    // (its pill does not move) rather than a queued racer.
+    fireEvent.click(screen.getByRole('button', { name: 'Corporate — needs room' }))
+    expect(screen.getByRole('button', { name: 'Corporate — needs room' })).toHaveAttribute('aria-pressed', 'false')
+    resolveSave()
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Wedding — needs cart' })).not.toBeDisabled()
+    )
+    expect(updateEventTypeProfiles).toHaveBeenCalledTimes(1)
+  })
+
   it('rolls the optimistic toggle back and surfaces the error in the aria-live region when the save rejects', async () => {
     updateEventTypeProfiles.mockRejectedValue(new Error('Forbidden'))
     render(<EventTypesClient {...base} initialProfiles={[wedding]} usage={usage()} />)
@@ -229,7 +289,7 @@ describe('EventTypesClient', () => {
     await waitFor(() => expect(screen.queryByDisplayValue('Wedding')).not.toBeInTheDocument())
   })
 
-  it('disables Delete with the archive-or-merge hint while the type is in use', async () => {
+  it('disables Delete with a VISIBLE archive-or-merge hint in the menu while the type is in use', async () => {
     const user = userEvent.setup()
     render(
       <EventTypesClient
@@ -242,7 +302,25 @@ describe('EventTypesClient', () => {
     await openRowMenu(user, 'Wedding')
     const del = await screen.findByRole('menuitem', { name: /Delete/ })
     expect(del).toHaveAttribute('aria-disabled', 'true')
-    expect(del).toHaveAttribute('title', 'In use — archive or merge instead')
+    // An inline muted line, not a title-only tooltip: visible to touch and
+    // keyboard users, and wired to the item for AT via aria-describedby.
+    const hint = screen.getByText('In use — archive or merge instead')
+    expect(hint).toBeInTheDocument()
+    expect(del).toHaveAttribute('aria-describedby', hint.id)
+  })
+
+  it('shows no delete hint when the type is unused', async () => {
+    const user = userEvent.setup()
+    render(
+      <EventTypesClient
+        {...base}
+        initialProfiles={[wedding, corporate]}
+        usage={usage({ byProfileId: { et1: 0, et2: 0 } })}
+      />,
+    )
+    await openRowMenu(user, 'Wedding')
+    await screen.findByRole('menuitem', { name: 'Delete' })
+    expect(screen.queryByText('In use — archive or merge instead')).not.toBeInTheDocument()
   })
 
   it('deletes a zero-usage type behind a ConfirmDialog through deleteEventTypeProfile', async () => {

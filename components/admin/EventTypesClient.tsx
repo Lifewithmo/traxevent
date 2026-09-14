@@ -1,6 +1,7 @@
 'use client'
 
-import { useId, useState } from 'react'
+import { useId, useRef, useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { MoreHorizontal } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
@@ -100,7 +101,9 @@ export function EventTypesClient({
   const [profiles, setProfiles] = useState<EventTypeProfile[]>(initialProfiles)
   const [adopt, setAdopt] = useState<AdoptRow[]>(() => deriveAdoptRows(usage))
   const [adding, setAdding] = useState(false)
-  const [saving, setSaving] = useState(false)
+  /** Which write is in flight — a profile's row key, or 'add'. Scopes the
+   *  disable to the affected row/control instead of freezing the whole page. */
+  const [savingKey, setSavingKey] = useState<string | null>(null)
   const [adoptBusy, setAdoptBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [adoptReceipt, setAdoptReceipt] = useState<{ created: number; adopted: number } | null>(null)
@@ -122,15 +125,39 @@ export function EventTypesClient({
   const { mobileOne, venueOne } = kindLabels
   const checkedCount = adopt.filter((a) => a.checked).length
 
-  async function run(action: () => Promise<void>) {
-    setSaving(true)
+  /** The write lock. Every profile mutation stays SERIALIZED — the server
+   *  contract is whole-array replace, and each op's optimistic snapshot/
+   *  rollback assumes no interleaving — but only the row or control named by
+   *  `key` disables while one is in flight. A click elsewhere during the
+   *  (sub-second) flight is dropped before any optimistic update, so nothing
+   *  moves that was never sent; the user's very next click goes through.
+   *  Ref, not state: two clicks in one tick must both see the claim. */
+  const savingRef = useRef(false)
+
+  const rowKey = (p: EventTypeProfile): string => p.id ?? `legacy:${p.name}`
+
+  /** Claim the lock for `key`; false means another write is in flight. */
+  function begin(key: string): boolean {
+    if (savingRef.current) return false
+    savingRef.current = true
+    setSavingKey(key)
     setError(null)
+    return true
+  }
+
+  function end() {
+    savingRef.current = false
+    setSavingKey(null)
+  }
+
+  async function run(key: string, action: () => Promise<void>) {
+    if (!begin(key)) return
     try {
       await action()
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Something went wrong. Try again.')
     } finally {
-      setSaving(false)
+      end()
     }
   }
 
@@ -146,13 +173,20 @@ export function EventTypesClient({
     return revived.id!
   }
 
-  /** Whole-array persistence for order/policy/archive — optimistic w/ rollback. */
-  async function saveProfiles(next: EventTypeProfile[]) {
-    const prev = profiles
-    setProfiles(next)
-    await run(async () => {
+  /** Whole-array persistence for order/policy/archive — optimistic w/ rollback,
+   *  the disable scoped to the row that changed (`key`). The optimistic write
+   *  happens INSIDE the locked action, so a click dropped by the lock moves
+   *  nothing on screen it never sent. */
+  async function saveProfiles(next: EventTypeProfile[], key: string) {
+    await run(key, async () => {
+      const prev = profiles
+      setProfiles(next)
       try {
         await updateEventTypeProfiles(orgId, next)
+        // Server-side, a whole-array save mints ids for legacy id-less entries —
+        // refresh (matching rename/add/merge/adopt) so the reset-from-props
+        // idiom pulls them back in, instead of re-minting on every toggle.
+        router.refresh()
       } catch (err) {
         setProfiles(prev)
         throw err
@@ -161,11 +195,17 @@ export function EventTypesClient({
   }
 
   function toggleKind(index: number, key: 'needsMobile' | 'needsVenue') {
-    void saveProfiles(profiles.map((p, i) => (i === index ? { ...p, [key]: !p[key] } : p)))
+    void saveProfiles(
+      profiles.map((p, i) => (i === index ? { ...p, [key]: !p[key] } : p)),
+      rowKey(profiles[index]),
+    )
   }
 
   function toggleArchived(index: number) {
-    void saveProfiles(profiles.map((p, i) => (i === index ? { ...p, archived: !p.archived } : p)))
+    void saveProfiles(
+      profiles.map((p, i) => (i === index ? { ...p, archived: !p.archived } : p)),
+      rowKey(profiles[index]),
+    )
   }
 
   function move(index: number, delta: -1 | 1) {
@@ -173,16 +213,16 @@ export function EventTypesClient({
     if (target < 0 || target >= profiles.length) return
     const next = [...profiles]
     ;[next[index], next[target]] = [next[target], next[index]]
-    void saveProfiles(next)
+    void saveProfiles(next, rowKey(profiles[index]))
   }
 
   async function handleRename(index: number, rawName: string) {
     const target = profiles[index]
     const name = rawName.trim()
     if (!name || name === target.name) return
-    const prev = profiles
-    setProfiles(profiles.map((p, i) => (i === index ? { ...p, name } : p)))
-    await run(async () => {
+    await run(rowKey(target), async () => {
+      const prev = profiles
+      setProfiles(profiles.map((p, i) => (i === index ? { ...p, name } : p)))
       try {
         const id = await ensureId(target)
         await renameEventTypeProfile(orgId, id, name)
@@ -202,7 +242,7 @@ export function EventTypesClient({
       setError(`“${input.name}” is already on the list.`)
       return
     }
-    await run(async () => {
+    await run('add', async () => {
       const created = await createEventTypeProfile(orgId, input)
       setProfiles((cur) => [...cur, created])
       setAdding(false)
@@ -212,9 +252,9 @@ export function EventTypesClient({
   }
 
   async function handleMerge(from: EventTypeProfile, into: EventTypeProfile) {
-    const prev = profiles
-    setProfiles(profiles.filter((p) => p !== from))
-    await run(async () => {
+    await run(rowKey(from), async () => {
+      const prev = profiles
+      setProfiles(profiles.filter((p) => p !== from))
       try {
         const fromId = await ensureId(from)
         await mergeEventTypeProfiles(orgId, fromId, into.id!)
@@ -227,9 +267,9 @@ export function EventTypesClient({
   }
 
   async function handleDelete(target: EventTypeProfile) {
-    const prev = profiles
-    setProfiles(profiles.filter((p) => p !== target))
-    await run(async () => {
+    await run(rowKey(target), async () => {
+      const prev = profiles
+      setProfiles(profiles.filter((p) => p !== target))
       try {
         const id = await ensureId(target)
         // Guard-as-return-value: an in-use type comes back {ok:false} with the
@@ -408,7 +448,7 @@ export function EventTypesClient({
                 <AddEventTypeForm
                   mobileOne={mobileOne}
                   venueOne={venueOne}
-                  saving={saving}
+                  saving={savingKey === 'add'}
                   onAdd={(input) => void handleAdd(input)}
                   onCancel={() => setAdding(false)}
                 />
@@ -437,7 +477,10 @@ export function EventTypesClient({
                   mergeTargets={profiles.filter((t) => t !== p && t.id && !t.archived)}
                   mobileOne={mobileOne}
                   venueOne={venueOne}
-                  saving={saving}
+                  // Scoped: only the row whose write is in flight disables
+                  // (writes stay serialized in `run`, so unrelated rows'
+                  // menus and pills never lock).
+                  saving={savingKey === rowKey(p)}
                   onRename={(name) => void handleRename(i, name)}
                   onToggle={(key) => toggleKind(i, key)}
                   onToggleArchived={() => toggleArchived(i)}
@@ -455,12 +498,12 @@ export function EventTypesClient({
         Types not on this list use the default — a {mobileOne} always, a {venueOne} when
         on-site. A listed type consumes exactly the kinds you switch on, using the resources
         set up in{' '}
-        <a
+        <Link
           href={`/${orgSlug}/capacity`}
           className="font-medium text-foreground underline underline-offset-2"
         >
           Resources &amp; capacity
-        </a>
+        </Link>
         .
       </p>
 
@@ -571,6 +614,7 @@ function EventTypeRow({
 }) {
   const [name, setName] = useState(profile.name)
   const nameId = useId()
+  const deleteHintId = useId()
 
   function commitName() {
     const trimmed = name.trim()
@@ -651,11 +695,18 @@ function EventTypeRow({
               <MenuItem
                 className="text-destructive"
                 disabled={inUse}
-                title={inUse ? 'In use — archive or merge instead' : undefined}
+                aria-describedby={inUse ? deleteHintId : undefined}
                 onClick={onRequestDelete}
               >
                 Delete
               </MenuItem>
+              {inUse && (
+                // Inline, not a title tooltip: visible to touch and keyboard
+                // users, and reaching AT through the item's aria-describedby.
+                <p id={deleteHintId} className="px-2 pb-1 pt-0.5 text-xs text-muted-foreground">
+                  In use — archive or merge instead
+                </p>
+              )}
             </MenuContent>
           </Menu>
         </div>
