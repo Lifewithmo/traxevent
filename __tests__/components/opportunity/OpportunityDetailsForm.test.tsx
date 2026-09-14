@@ -7,7 +7,7 @@ const updateLead = vi.fn().mockResolvedValue(undefined)
 vi.mock('@/actions/leads', () => ({ updateLead: (...a: unknown[]) => updateLead(...a) }))
 
 import { OpportunityDetailsForm } from '@/components/admin/opportunity/OpportunityDetailsForm'
-import type { Customer, Lead } from '@/lib/types'
+import type { Customer, EventTypeProfile, Lead } from '@/lib/types'
 
 const lead: Lead = { id: 'l1', name: 'Ada', stage: 'inquiry', created_at: '', estimated_value: 1000 }
 
@@ -110,5 +110,64 @@ describe('OpportunityDetailsForm — kit skin', () => {
         expect(grid.className).toMatch(/(^|\s)grid-cols-\d/)
       }
     }
+  })
+})
+
+// Event types inc 1 (spec §5d): the Event type field switches to
+// EventTypeSelect — a select of active profiles + "Other…". Editing through
+// it must set/clear `event_type_id` coherently: a listed pick carries the
+// id, free text always clears it.
+describe('OpportunityDetailsForm — event type picker (event types inc 1)', () => {
+  beforeEach(() => { refresh.mockClear(); updateLead.mockClear() })
+
+  const profiles: EventTypeProfile[] = [
+    { id: 'et-wedding', name: 'Wedding', needsMobile: true, needsVenue: true },
+    { id: 'et-corporate', name: 'Corporate', needsMobile: true, needsVenue: false },
+  ]
+
+  it('falls back to a plain input with zero active profiles (unchanged pre-inc1 behavior)', () => {
+    render(<OpportunityDetailsForm orgId="o1" orgSlug="acme" lead={lead} customer={null} />)
+    const field = screen.getByLabelText('Event type')
+    expect(field.tagName).toBe('INPUT')
+  })
+
+  it('renders a select of active profile names when profiles are supplied', () => {
+    render(<OpportunityDetailsForm orgId="o1" orgSlug="acme" lead={lead} customer={null} eventTypeProfiles={profiles} />)
+    const field = screen.getByLabelText('Event type') as HTMLSelectElement
+    expect(field.tagName).toBe('SELECT')
+    const labels = Array.from(field.options).map((o) => o.textContent)
+    expect(labels).toEqual(expect.arrayContaining(['Wedding', 'Corporate', 'Other…']))
+  })
+
+  it('picking a listed profile and saving sends its id', async () => {
+    render(<OpportunityDetailsForm orgId="o1" orgSlug="acme" lead={lead} customer={null} eventTypeProfiles={profiles} />)
+    fireEvent.change(screen.getByLabelText('Event type'), { target: { value: 'Corporate' } })
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
+    await waitFor(() =>
+      expect(updateLead).toHaveBeenCalledWith(
+        'o1', 'l1',
+        expect.objectContaining({ event_type: 'Corporate', event_type_id: 'et-corporate' })
+      )
+    )
+  })
+
+  it('choosing Other… and typing free text saves the string and clears a previously set id', async () => {
+    const withId = { ...lead, event_type: 'Wedding', event_type_id: 'et-wedding' }
+    render(<OpportunityDetailsForm orgId="o1" orgSlug="acme" lead={withId} customer={null} eventTypeProfiles={profiles} />)
+    fireEvent.change(screen.getByLabelText('Event type'), { target: { value: '__other__' } })
+    fireEvent.change(screen.getByLabelText('Custom event type'), { target: { value: 'Bar mitzvah' } })
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
+    await waitFor(() =>
+      expect(updateLead).toHaveBeenCalledWith(
+        'o1', 'l1',
+        expect.objectContaining({ event_type: 'Bar mitzvah', event_type_id: null })
+      )
+    )
+  })
+
+  it('starts in Other mode, pre-filled, for a stored value that no longer matches any active profile', () => {
+    const drifted = { ...lead, event_type: 'Gala Night', event_type_id: undefined }
+    render(<OpportunityDetailsForm orgId="o1" orgSlug="acme" lead={drifted} customer={null} eventTypeProfiles={profiles} />)
+    expect(screen.getByLabelText('Custom event type')).toHaveValue('Gala Night')
   })
 })

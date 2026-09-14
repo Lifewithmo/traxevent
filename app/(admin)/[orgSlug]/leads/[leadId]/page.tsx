@@ -17,6 +17,7 @@ import { hasMultiResourceCapacity, listCapacityUnitsCore } from '@/lib/capacity/
 import { BOOKABLE_STAGES } from '@/lib/capacity/capacity'
 import { unitAnnotations } from '@/lib/capacity/assignment'
 import { leadsRef } from '@/lib/crm/leads'
+import { activeEventTypeProfiles } from '@/lib/crm/event-type-options'
 import type { BillingPlan, Lead, Org } from '@/lib/types'
 import { OpportunityDetailClient } from '@/components/admin/OpportunityDetailClient'
 
@@ -106,6 +107,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ org
       showAssignment={showAssignment}
       capacityUnits={activeUnits}
       unitAnnotations={assignmentAnnotations}
+      eventTypeProfiles={activeEventTypeProfiles(org.event_type_profiles)}
     />
   )
 }
