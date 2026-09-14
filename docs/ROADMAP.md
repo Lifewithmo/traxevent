@@ -326,10 +326,8 @@ EventTrax pivot (neutralization, multi-brand, ops core). Detailed designs live i
   `superpowers/plans/2026-08-15-module-levelup-playbook.md`. The remaining
   three modules shipped in #98–#100 — see the entry above.
 
-## In flight
-
-- **New Opportunity — answer-the-caller create flow** (branch
-  `new-opportunity-ambition`, PR pending) — the create form rebuilt from the
+- **New Opportunity — answer-the-caller create flow** (PR #138, squash-merged
+  2026-09-14, live) — the create form rebuilt from the
   design-ambition gate (spec:
   `superpowers/specs/2026-09-12-new-opportunity-design-ambition.md`): the
   category-defining move is the **live bookability verdict at the date field**
@@ -344,8 +342,14 @@ EventTrax pivot (neutralization, multi-brand, ops core). Detailed designs live i
   intake), `created` activity, CreatedToast + row highlight, cockpit
   single-instance parity. Reviewed by a five-lens adversarial fleet (25 raw →
   16 confirmed findings, incl. a cross-tenant ctx hole and a read-amplification
-  regression — all fixed). Owed at merge: three-viewport preview walkthrough,
-  promote this entry to Shipped.
+  regression — all fixed). Walked pre-merge on the
+  Vercel preview at desktop/768/375 (closed-verdict + provenance +
+  alternative-chip date flip, cross-format phone recognition, 375 fold holds,
+  cockpit pinned mode + last-job prefill + lazy verdict). Inc-2 seeds live in
+  the spec's out-of-scope list (value prefill with basis, command-palette
+  create, draft-requirement-aware verdict).
+
+## In flight
 
 - **Proposal templates** (branch `claude/proposal-templates`) — org-owned
   full-document templates: pick one on New proposal (above the built-in
